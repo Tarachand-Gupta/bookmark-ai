@@ -62,8 +62,13 @@ Checklist:
   back button works; clicking the active facet clears it.
 - A view with >100 bookmarks shows "Showing 100 of N" + a Load more button that appends
   the next page (server pages via `limit`/`offset`; search results are capped separately).
-- Search box: text mode filters live (250 ms debounce). AI toggle without key shows
-  "(AI unavailable — text results)" in the header.
+- Tag chip rail above the grid (top tags + counts from `/api/meta`): a chip click filters
+  via `?tag=…` and retitles the header `#tag`; clicking the active chip clears it; the
+  rail hides while searching.
+- Search box: typing filters live full-text (250 ms debounce); the in-box ✨ Ask AI button
+  runs semantic search. The header title never changes — a "Results for …" / "AI results
+  for …" heading renders above the grid (plus an "AI unavailable — showing text results"
+  note when the server has no key). Typing again returns to live text results.
 - "+ Add" dialog: paste URL (scheme auto-prepended) → saves → grid+sidebar refresh.
 - Hover a card → trash icon → delete works.
 - Mobile (375px): sidebar becomes sheet via trigger; header wraps; grid is 1-col.

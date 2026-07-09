@@ -1,6 +1,5 @@
 "use client";
 
-import type { SearchMode } from "@bookmark-ai/types";
 import { Plus, Search, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,19 +10,25 @@ import { cn } from "@/lib/utils";
 export interface LibraryHeaderProps {
   title: string;
   query: string;
-  mode: SearchMode;
+  /** True while the shown results came from an explicit "Ask AI". */
+  aiActive: boolean;
   onQueryChange: (q: string) => void;
-  onModeChange: (mode: SearchMode) => void;
+  onAskAi: () => void;
   onAdd: () => void;
 }
 
-/** Sticky top bar: sidebar trigger, active-view title, search, add. */
+/**
+ * Sticky top bar: sidebar trigger, active-view title, search, add.
+ * Typing searches full-text live; the in-box "Ask AI" affordance runs the
+ * semantic search. The title always names the selected view — search state
+ * is presented in the content area, never here.
+ */
 export function LibraryHeader({
   title,
   query,
-  mode,
+  aiActive,
   onQueryChange,
-  onModeChange,
+  onAskAi,
   onAdd,
 }: LibraryHeaderProps) {
   return (
@@ -33,7 +38,7 @@ export function LibraryHeader({
       <h1 className="mr-auto truncate text-sm font-medium sm:text-base">{title}</h1>
 
       <div className="order-last flex w-full items-center gap-2 sm:order-none sm:w-auto">
-        <div className="relative flex-1 sm:w-72 sm:flex-none">
+        <div className="relative flex-1 sm:w-80 sm:flex-none">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
             aria-hidden
@@ -41,20 +46,27 @@ export function LibraryHeader({
           <Input
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            placeholder={mode === "ai" ? "Ask your bookmarks…" : "Search bookmarks…"}
-            className="h-9 pl-8"
+            placeholder="Search bookmarks…"
+            className="h-9 pl-8 pr-[4.75rem]"
             aria-label="Search bookmarks"
           />
-        </div>
-
-        <div className="flex overflow-hidden rounded-md border" role="group" aria-label="Search mode">
-          <SegButton active={mode === "text"} onClick={() => onModeChange("text")}>
-            Text
-          </SegButton>
-          <SegButton active={mode === "ai"} onClick={() => onModeChange("ai")}>
+          <button
+            type="button"
+            onClick={onAskAi}
+            disabled={!query.trim()}
+            aria-pressed={aiActive}
+            aria-label="Ask AI"
+            className={cn(
+              "absolute right-1 top-1/2 inline-flex h-7 -translate-y-1/2 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
+              aiActive
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              !query.trim() && "pointer-events-none opacity-40",
+            )}
+          >
             <Sparkles className="size-3.5" aria-hidden />
-            AI
-          </SegButton>
+            Ask AI
+          </button>
         </div>
 
         <Button size="sm" className="h-9" onClick={onAdd}>
@@ -63,29 +75,5 @@ export function LibraryHeader({
         </Button>
       </div>
     </header>
-  );
-}
-
-function SegButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "inline-flex h-9 items-center gap-1 px-2.5 text-xs font-medium transition-colors",
-        active ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted",
-      )}
-    >
-      {children}
-    </button>
   );
 }

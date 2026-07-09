@@ -50,9 +50,22 @@ Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25
    User plans to retheme later — do it in theme.css first.
 8. **Category vocabulary is closed** (`CATEGORIES` in `services/categorize.ts`) so the
    sidebar stays tidy; Gemini is schema-constrained to it. Extend the list there.
+9. **Tags converge on a shared vocabulary**: at save time the AI tagger receives the
+   existing tags with usage counts (`listTagCounts`) and is instructed to reuse them
+   before inventing new ones; a tag that merely repeats the category is always dropped.
+   The homepage tag rail (`/api/meta` `tags`) and `?tag=` filtering ride on the same data.
 
 ## Deferred / roadmap
 
+- **AI search chat (next up)**: grow the one-shot "Ask AI" into a conversational panel
+  built on Vercel AI Elements + the AI SDK (Next.js route handler). The agent gets two
+  tools — full-text search and vector/RAG search over the library — decides which to
+  call, and streams an answer with cited bookmark cards.
+- **Browser-bookmark import & sync**: import existing Chrome/Safari bookmarks to populate
+  the library. A settings toggle then enables write-through: every save from our
+  extension also lands in the user's Chrome/Safari bookmarks — in a fitting existing
+  folder, or one the AI suggests/creates — so users are never locked in, while our store
+  keeps the rich copy (OG data, AI category/tags, embeddings).
 - Client-side synced DB + on-device vector search (libSQL embedded replicas).
 - Turso cloud: set `DATABASE_URL=libsql://…` + auth token in `createDb` — no query changes.
 - Desktop: save-from-desktop, images in cards (needs Zig-side `ui.image` + ImageId
@@ -60,7 +73,6 @@ Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25
   2026-07-09 — text mode; AI-mode toggle still open.)
 - Extension: context-menu "save link", options page, Arc-specific detection polish.
 - Auth/multi-user (everything is single-user local today).
-- Initial git commit (user hasn't asked yet).
 
 ## Server internals worth knowing
 

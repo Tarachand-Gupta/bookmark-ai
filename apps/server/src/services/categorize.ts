@@ -27,6 +27,12 @@ export interface Categorization {
   tags: string[];
 }
 
+/** An existing library tag and how many bookmarks use it. */
+export interface TagCount {
+  name: string;
+  count: number;
+}
+
 export interface PageFacts {
   url: string;
   domain: string;
@@ -42,22 +48,36 @@ export interface PageFacts {
 export async function categorize(
   gemini: GeminiClient | null,
   page: PageFacts,
+  existingTags: TagCount[] = [],
 ): Promise<Categorization> {
+  let result: Categorization | null = null;
   if (gemini) {
     try {
-      return await aiCategorize(gemini, page);
+      result = await aiCategorize(gemini, page, existingTags);
     } catch (err) {
       console.warn(`[categorize] Gemini failed, using heuristic: ${(err as Error).message}`);
     }
   }
-  return heuristicCategorize(page);
+  result ??= heuristicCategorize(page);
+  // A tag that merely repeats the category is noise next to the badge.
+  const category = result.category;
+  result.tags = result.tags.filter((t) => t.toLowerCase() !== category.toLowerCase());
+  return result;
 }
 
-async function aiCategorize(gemini: GeminiClient, page: PageFacts): Promise<Categorization> {
+async function aiCategorize(
+  gemini: GeminiClient,
+  page: PageFacts,
+  existingTags: TagCount[],
+): Promise<Categorization> {
   const prompt = [
     "Categorize this bookmarked web page.",
     `Pick exactly one category from: ${CATEGORIES.join(", ")}.`,
     "Also produce 2-5 short lowercase topic tags (single words or two-word phrases).",
+    "Reuse the existing library tags below whenever they fit; invent a new tag only when none covers the page. Never use the category itself as a tag.",
+    existingTags.length
+      ? `Existing library tags (tag:count): ${existingTags.map((t) => `${t.name}:${t.count}`).join(", ")}`
+      : "",
     "",
     `URL: ${page.url}`,
     `Domain: ${page.domain}`,

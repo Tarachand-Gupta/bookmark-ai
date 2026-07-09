@@ -15,6 +15,7 @@ export interface LibraryFilters {
   browser?: string;
   device?: string;
   day?: string;
+  tag?: string;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

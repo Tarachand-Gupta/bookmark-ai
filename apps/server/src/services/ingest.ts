@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Bookmark, CreateBookmarkInput } from "@bookmark-ai/types";
-import { insertBookmark, type Db } from "@bookmark-ai/db";
+import { insertBookmark, listTagCounts, type Db } from "@bookmark-ai/db";
 import type { GeminiClient } from "./gemini.js";
 import { scrapeOpenGraph } from "./og.js";
 import { categorize } from "./categorize.js";
@@ -22,13 +22,19 @@ export async function ingestBookmark(
   const title = scraped.title ?? input.title ?? domain;
   const description = scraped.description;
 
-  const { category, tags } = await categorize(gemini, {
-    url: input.url,
-    domain,
-    title,
-    description,
-    og: scraped.og,
-  });
+  // Share the established vocabulary so the AI reuses tags before inventing.
+  const existingTags = gemini ? await listTagCounts(db, 40) : [];
+  const { category, tags } = await categorize(
+    gemini,
+    {
+      url: input.url,
+      domain,
+      title,
+      description,
+      og: scraped.og,
+    },
+    existingTags,
+  );
 
   const now = new Date().toISOString();
   return insertBookmark(db, {

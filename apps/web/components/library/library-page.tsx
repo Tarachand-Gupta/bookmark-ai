@@ -10,9 +10,10 @@ import { useBookmarks, useHealth, useMeta, useRefresh, useSearch } from "@/hooks
 import { AppSidebar } from "./app-sidebar";
 import { BookmarkGrid } from "./bookmark-grid";
 import { LibraryHeader } from "./library-header";
+import { TagChips } from "./tag-chips";
 import { AddBookmarkDialog } from "./add-bookmark-dialog";
 
-const FILTER_KEYS = ["category", "browser", "device", "day"] as const;
+const FILTER_KEYS = ["category", "browser", "device", "day", "tag"] as const;
 
 /**
  * The whole library view. Facet filters live in the URL (shareable,
@@ -99,11 +100,9 @@ export function LibraryPage() {
     [refresh],
   );
 
-  const title = searching
-    ? search.data?.fallback
-      ? `Search "${query.trim()}" (AI unavailable — text results)`
-      : `Search "${query.trim()}"`
-    : viewTitle(filters);
+  // The title always names the selected view; search presents in the content area.
+  const title = viewTitle(filters);
+  const aiActive = mode === "ai";
 
   return (
     <SidebarProvider>
@@ -117,12 +116,34 @@ export function LibraryPage() {
         <LibraryHeader
           title={title}
           query={query}
-          mode={mode}
-          onQueryChange={setQuery}
-          onModeChange={setMode}
+          aiActive={aiActive}
+          onQueryChange={(q) => {
+            setQuery(q);
+            setMode("text"); // typing always returns to live full-text search
+          }}
+          onAskAi={() => setMode("ai")}
           onAdd={() => setAddOpen(true)}
         />
         <main className="flex-1 p-4">
+          {searching && (
+            <div className="mb-4 flex flex-wrap items-baseline gap-x-2">
+              <h2 className="text-lg font-semibold tracking-tight">
+                {aiActive ? "AI results" : "Results"} for “{query.trim()}”
+              </h2>
+              {aiActive && search.data?.fallback && (
+                <span className="text-xs text-muted-foreground">
+                  AI unavailable — showing text results
+                </span>
+              )}
+            </div>
+          )}
+          {!searching && (
+            <TagChips
+              tags={meta.data?.tags}
+              active={filters.tag}
+              onPick={(tag) => setFilters(tag ? { tag } : {})}
+            />
+          )}
           {actionError && (
             <p className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               Delete failed: {actionError}
@@ -136,7 +157,7 @@ export function LibraryPage() {
               searching
                 ? mode === "ai"
                   ? "No semantic matches. AI search needs embedded bookmarks — save a few first."
-                  : "No matches. Try different words or AI mode."
+                  : "No matches. Try different words, or Ask AI for a semantic search."
                 : "Save a page with the browser extension, or add a URL with the button above."
             }
             onDelete={handleDelete}
@@ -168,6 +189,7 @@ function viewTitle(filters: LibraryFilters): string {
   if (filters.browser) return `Saved from ${capitalize(filters.browser)}`;
   if (filters.device) return `Saved on ${capitalize(filters.device)}`;
   if (filters.day) return `Saved ${filters.day}`;
+  if (filters.tag) return `#${filters.tag}`;
   return "All bookmarks";
 }
 

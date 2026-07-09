@@ -107,6 +107,11 @@ export async function listBookmarks(
     where.push("saved_day = ?");
     args.push(q.day);
   }
+  if (q.tag) {
+    // tags_json is a JSON array of lowercased strings.
+    where.push("EXISTS (SELECT 1 FROM json_each(bookmarks.tags_json) WHERE json_each.value = ?)");
+    args.push(q.tag);
+  }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const [rows, count] = await Promise.all([
@@ -129,11 +134,14 @@ export async function listBookmarks(
 
 /** Facet counts that drive every client's sidebar. */
 export async function getMeta(db: Db): Promise<MetaResponse> {
-  const [categories, browsers, devices, days, total] = await Promise.all([
+  const [categories, browsers, devices, days, tags, total] = await Promise.all([
     db.execute("SELECT category AS name, count(*) AS count FROM bookmarks GROUP BY category ORDER BY count DESC, name"),
     db.execute("SELECT browser AS name, count(*) AS count FROM bookmarks GROUP BY browser ORDER BY count DESC"),
     db.execute("SELECT device AS name, count(*) AS count FROM bookmarks GROUP BY device ORDER BY count DESC"),
     db.execute("SELECT saved_day AS day, count(*) AS count FROM bookmarks GROUP BY saved_day ORDER BY day DESC LIMIT 30"),
+    db.execute(
+      "SELECT json_each.value AS name, count(*) AS count FROM bookmarks, json_each(bookmarks.tags_json) GROUP BY json_each.value ORDER BY count DESC, name LIMIT 24",
+    ),
     db.execute("SELECT count(*) AS n FROM bookmarks"),
   ]);
   return {
@@ -141,6 +149,22 @@ export async function getMeta(db: Db): Promise<MetaResponse> {
     browsers: browsers.rows.map((r) => ({ name: r.name as any, count: Number(r.count) })),
     devices: devices.rows.map((r) => ({ name: r.name as any, count: Number(r.count) })),
     days: days.rows.map((r) => ({ day: String(r.day), count: Number(r.count) })),
+    tags: tags.rows.map((r) => ({ name: String(r.name), count: Number(r.count) })),
     total: Number(total.rows[0]?.n ?? 0),
   };
+}
+
+/** Existing tag vocabulary with usage counts — fed to the AI tagger so it
+ * reuses established tags before inventing near-duplicates. */
+export async function listTagCounts(
+  db: Db,
+  limit = 40,
+): Promise<{ name: string; count: number }[]> {
+  const rs = await db.execute({
+    sql: `SELECT json_each.value AS name, count(*) AS count
+          FROM bookmarks, json_each(bookmarks.tags_json)
+          GROUP BY json_each.value ORDER BY count DESC, name LIMIT ?`,
+    args: [limit],
+  });
+  return rs.rows.map((r) => ({ name: String(r.name), count: Number(r.count) }));
 }

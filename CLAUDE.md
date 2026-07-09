@@ -33,9 +33,9 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
 ## API quick reference (all JSON, permissive CORS)
 
 - `POST /api/bookmarks` — body `CreateBookmarkInput` `{url, title?, browser?, device?, deviceName?, os?, savedAt?}` (`browser`/`device` default to `"other"` when omitted) → `201 {bookmark}`. Upserts by URL (re-save updates + clears embedding).
-- `GET /api/bookmarks?category=&browser=&device=&day=YYYY-MM-DD&limit=&offset=` → `{bookmarks, total}`
+- `GET /api/bookmarks?category=&browser=&device=&day=YYYY-MM-DD&tag=&limit=&offset=` → `{bookmarks, total}`
 - `GET /api/search?q=…&mode=text|ai&limit=` → `{mode, results:[{bookmark,score}], fallback?}`
-- `GET /api/meta` → sidebar facets `{categories, browsers, devices, days, total}`
+- `GET /api/meta` → sidebar facets + tag rail `{categories, browsers, devices, days, tags, total}`
 - `GET /api/health` → `{ok, ai}` · `DELETE /api/bookmarks/:id` → 204
 
 ## Hard-won gotchas (do not rediscover these)

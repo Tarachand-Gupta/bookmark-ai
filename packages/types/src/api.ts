@@ -19,6 +19,8 @@ export const listBookmarksQuerySchema = z.object({
   category: z.string().optional(),
   browser: browserSchema.optional(),
   device: deviceTypeSchema.optional(),
+  /** Exact tag match (tags are stored lowercased). */
+  tag: z.string().optional(),
   /** YYYY-MM-DD — bookmarks saved on this day. */
   day: z
     .string()
@@ -68,12 +70,14 @@ export const healthResponseSchema = z.object({
 });
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
-/** GET /api/meta — sidebar facets. */
+/** GET /api/meta — sidebar facets + the tag rail. */
 export const metaResponseSchema = z.object({
   categories: z.array(z.object({ name: z.string(), count: z.number() })),
   browsers: z.array(z.object({ name: browserSchema, count: z.number() })),
   devices: z.array(z.object({ name: deviceTypeSchema, count: z.number() })),
   days: z.array(z.object({ day: z.string(), count: z.number() })),
+  /** Most-used tags (top 24) for the homepage chip rail. */
+  tags: z.array(z.object({ name: z.string(), count: z.number() })),
   total: z.number(),
 });
 export type MetaResponse = z.infer<typeof metaResponseSchema>;

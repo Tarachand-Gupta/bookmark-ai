@@ -7,6 +7,7 @@ export {
   deleteBookmark,
   listBookmarks,
   getMeta,
+  listTagCounts,
   type InsertBookmark,
 } from "./queries/bookmarks";
 export {
