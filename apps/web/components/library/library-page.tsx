@@ -12,7 +12,10 @@ import { AppSidebar } from "./app-sidebar";
 import { BookmarkGrid } from "./bookmark-grid";
 import { LibraryHeader } from "./library-header";
 import { TagChips } from "./tag-chips";
+import { ViewToggle, type LibraryView } from "./view-toggle";
 import { AddBookmarkDialog } from "./add-bookmark-dialog";
+
+const VIEW_STORAGE_KEY = "bookmark-ai:view";
 
 const FILTER_KEYS = ["category", "browser", "device", "day", "tag"] as const;
 
@@ -60,6 +63,18 @@ export function LibraryPage() {
     searchParams.get("mode") === "ai" ? "ai" : "text",
   );
   const [addOpen, setAddOpen] = useState(false);
+
+  // Display preference, not shareable state → localStorage, not the URL.
+  // Read in an effect so the server-rendered markup (grid) hydrates cleanly.
+  const [view, setView] = useState<LibraryView>("grid");
+  useEffect(() => {
+    const saved = localStorage.getItem(VIEW_STORAGE_KEY);
+    if (saved === "grid" || saved === "list" || saved === "compact") setView(saved);
+  }, []);
+  const changeView = useCallback((next: LibraryView) => {
+    setView(next);
+    localStorage.setItem(VIEW_STORAGE_KEY, next);
+  }, []);
 
   // Mirror search state into the URL so refresh/share keeps it, like facets.
   // replace (not push) — keystrokes must not pollute history.
@@ -148,20 +163,21 @@ export function LibraryPage() {
             />
           ) : (
             <>
-          {searching && (
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold tracking-tight">
+          <div className="mb-4 flex items-start gap-3">
+            {searching ? (
+              <h2 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">
                 Results for “{query.trim()}”
               </h2>
-            </div>
-          )}
-          {!searching && (
-            <TagChips
-              tags={meta.data?.tags}
-              active={filters.tag}
-              onPick={(tag) => setFilters(tag ? { tag } : {})}
-            />
-          )}
+            ) : (
+              <TagChips
+                className="flex-1"
+                tags={meta.data?.tags}
+                active={filters.tag}
+                onPick={(tag) => setFilters(tag ? { tag } : {})}
+              />
+            )}
+            <ViewToggle view={view} onChange={changeView} className="ml-auto" />
+          </div>
           {!searching && filters.tag && (
             <div className="mb-4 flex items-baseline gap-2">
               <h2 className="text-lg font-semibold tracking-tight">#{filters.tag}</h2>
@@ -179,6 +195,7 @@ export function LibraryPage() {
           )}
           <BookmarkGrid
             bookmarks={bookmarks}
+            view={view}
             loading={searching ? search.loading : list.loading}
             error={searching ? search.error : list.error}
             emptyHint={

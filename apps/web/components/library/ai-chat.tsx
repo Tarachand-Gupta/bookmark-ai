@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type ToolUIPart } from "ai";
-import { Check, Copy, ExternalLink, Globe, Search, Sparkles, X } from "lucide-react";
+import { Check, Copy, ExternalLink, Folder, Globe, Search, Sparkles, X } from "lucide-react";
 import {
   Conversation,
   ConversationContent,
@@ -254,9 +254,10 @@ function BookmarkHits({
               <button
                 type="button"
                 onClick={() => onFilter?.({ category: r.category })}
-                title={`Show ${r.category} bookmarks`}
-                className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground transition-opacity hover:opacity-85"
+                title={`Category: ${r.category} — click to filter`}
+                className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground transition-opacity hover:opacity-85"
               >
+                <Folder className="size-2.5" aria-hidden />
                 {r.category}
               </button>
               {r.tags.slice(0, 4).map((t) => (

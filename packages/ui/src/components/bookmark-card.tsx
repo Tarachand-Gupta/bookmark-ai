@@ -6,7 +6,9 @@ import {
   Chrome,
   Compass,
   Flame,
+  Folder,
   Globe,
+  Hash,
   Laptop,
   Monitor,
   Smartphone,
@@ -88,11 +90,9 @@ export function BookmarkCard({ bookmark: b, onDelete, className }: BookmarkCardP
         ) : null}
 
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          <Badge>{b.category}</Badge>
+          <CategoryBadge category={b.category} />
           {b.tags.slice(0, 3).map((tag) => (
-            <Badge key={tag} variant="muted">
-              {tag}
-            </Badge>
+            <TagBadge key={tag} tag={tag} />
           ))}
         </div>
 
@@ -124,13 +124,186 @@ export function BookmarkCard({ bookmark: b, onDelete, className }: BookmarkCardP
   );
 }
 
-function CardImage({ bookmark: b }: { bookmark: Bookmark }) {
+/**
+ * List-view variant: horizontal row with a side thumbnail, the same content
+ * hierarchy as the card, and provenance pinned to the bottom edge.
+ */
+export function BookmarkListItem({ bookmark: b, onDelete, className }: BookmarkCardProps) {
+  const browser = BROWSER_META[b.source.browser] ?? BROWSER_META.other;
+  const device = DEVICE_META[b.source.device] ?? DEVICE_META.other;
+
+  return (
+    <Card
+      className={cn(
+        "group flex flex-row items-stretch overflow-hidden transition-shadow hover:shadow-md",
+        className,
+      )}
+    >
+      <a
+        href={b.url}
+        target="_blank"
+        rel="noreferrer noopener"
+        aria-label={b.title}
+        tabIndex={-1}
+        className="hidden w-44 shrink-0 self-stretch sm:block"
+      >
+        <CardImage
+          bookmark={b}
+          className="aspect-auto h-full w-full"
+          initialClassName="text-2xl"
+        />
+      </a>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-4">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Favicon bookmark={b} />
+          <span className="line-clamp-1 min-w-0 [overflow-wrap:anywhere]">
+            {b.og.siteName ?? b.domain}
+          </span>
+          <span aria-hidden>·</span>
+          <span className="line-clamp-1 min-w-0 [overflow-wrap:anywhere]">{b.domain}</span>
+          <time dateTime={b.source.savedAt} className="ml-auto shrink-0">
+            {formatDay(b.source.savedAt)}
+          </time>
+        </div>
+
+        <a
+          href={b.url}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="line-clamp-1 font-semibold leading-snug hover:underline"
+        >
+          {b.title}
+        </a>
+
+        {b.description ? (
+          <p className="line-clamp-1 text-sm text-muted-foreground">{b.description}</p>
+        ) : null}
+
+        <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1.5">
+          <CategoryBadge category={b.category} />
+          {b.tags.slice(0, 4).map((tag) => (
+            <TagBadge key={tag} tag={tag} />
+          ))}
+          <span
+            className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground"
+            title={`Saved from ${browser.label} · ${b.source.deviceName ?? device.label}`}
+          >
+            <browser.Icon className="size-3.5" aria-hidden />
+            <device.Icon className="size-3.5" aria-hidden />
+          </span>
+          {onDelete ? (
+            <button
+              type="button"
+              onClick={() => onDelete(b.id)}
+              aria-label={`Delete ${b.title}`}
+              className="rounded-md p-1 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              <Trash2 className="size-3.5" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Compact-view variant: one dense line — favicon, title, domain, category,
+ * date. Meant to be stacked inside a bordered, divided container.
+ */
+export function BookmarkCompactRow({ bookmark: b, onDelete, className }: BookmarkCardProps) {
+  const browser = BROWSER_META[b.source.browser] ?? BROWSER_META.other;
+
+  return (
+    <div
+      className={cn(
+        "group flex items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/50",
+        className,
+      )}
+    >
+      <Favicon bookmark={b} />
+      {/* line-clamp-1, not truncate: nowrap titles would push the row's
+          intrinsic min-content past the viewport and scroll the page. */}
+      <a
+        href={b.url}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="line-clamp-1 min-w-0 flex-1 text-sm font-medium [overflow-wrap:anywhere] hover:underline"
+      >
+        {b.title}
+      </a>
+      <span className="hidden w-40 shrink-0 truncate text-xs text-muted-foreground md:inline">
+        {b.domain}
+      </span>
+      <CategoryBadge category={b.category} className="hidden sm:inline-flex" />
+      <span
+        className="hidden shrink-0 text-muted-foreground lg:inline-flex"
+        title={`Saved from ${browser.label}`}
+      >
+        <browser.Icon className="size-3.5" aria-hidden />
+      </span>
+      <time
+        dateTime={b.source.savedAt}
+        className="w-20 shrink-0 text-right text-xs text-muted-foreground"
+      >
+        {formatDay(b.source.savedAt)}
+      </time>
+      {onDelete ? (
+        <button
+          type="button"
+          onClick={() => onDelete(b.id)}
+          aria-label={`Delete ${b.title}`}
+          className="rounded-md p-1 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          <Trash2 className="size-3.5" aria-hidden />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Category and tags share a chip look; the icon tells them apart at a glance. */
+function CategoryBadge({ category, className }: { category: string; className?: string }) {
+  return (
+    <Badge className={className} title={`Category: ${category}`}>
+      <Folder className="size-3" aria-hidden />
+      {category}
+    </Badge>
+  );
+}
+
+function TagBadge({ tag, className }: { tag: string; className?: string }) {
+  return (
+    <Badge variant="muted" className={className} title={`Tag: ${tag}`}>
+      <Hash className="size-3" aria-hidden />
+      {tag}
+    </Badge>
+  );
+}
+
+function CardImage({
+  bookmark: b,
+  className,
+  initialClassName,
+}: {
+  bookmark: Bookmark;
+  className?: string;
+  initialClassName?: string;
+}) {
   const [failed, setFailed] = React.useState(false);
   if (!b.og.image || failed) {
     // Graceful hero fallback: muted panel with the domain's initial.
     return (
-      <div className="flex aspect-[1.91/1] w-full items-center justify-center bg-muted">
-        <span className="text-4xl font-semibold text-muted-foreground/50">
+      <div
+        className={cn(
+          "flex aspect-[1.91/1] w-full items-center justify-center bg-muted",
+          className,
+        )}
+      >
+        <span
+          className={cn("text-4xl font-semibold text-muted-foreground/50", initialClassName)}
+        >
           {(b.og.siteName ?? b.domain).charAt(0).toUpperCase()}
         </span>
       </div>
@@ -143,7 +316,7 @@ function CardImage({ bookmark: b }: { bookmark: Bookmark }) {
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}
-      className="aspect-[1.91/1] w-full bg-muted object-cover"
+      className={cn("aspect-[1.91/1] w-full bg-muted object-cover", className)}
     />
   );
 }

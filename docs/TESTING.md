@@ -55,17 +55,24 @@ pnpm --filter @bookmark-ai/web dev   # :3000  (server must be up)
 ```
 
 Checklist:
-- Sidebar shows counts for Categories/Browsers/Devices/Recent days matching `/api/meta`.
+- Sidebar shows counts for Categories/Browsers/Devices/Recent days matching `/api/meta`;
+  every section header is a collapsible trigger (chevron flips, list folds); Categories
+  caps at 6 rows with "View all (N)" ↔ "Show less" expanding in place.
 - Cards render OG image (or domain-initial fallback), favicon, title, description, category
-  badge, tags, browser/device icons, relative date. Card links open the bookmarked URL.
+  badge (folder icon) vs tag badges (hash icon), browser/device icons, relative date.
+  Card links open the bookmarked URL.
+- View toggle right of the tag rail switches grid / list (side-thumbnail rows) / compact
+  (dense single lines); the choice persists across reloads (localStorage) and applies to
+  search results too. No layout may scroll the page horizontally.
 - Facet click filters grid + updates header title + URL query param (`?category=…`) —
   back button works; clicking the active facet clears it.
 - A view with >100 bookmarks shows "Showing 100 of N" + a Load more button that appends
   the next page (server pages via `limit`/`offset`; search results are capped separately).
-- Tag chip rail above the grid (top tags + counts from `/api/meta`): a chip click filters
-  via `?tag=…` and shows a `#tag · N bookmarks` heading in the content area — the header
-  title stays on the selected view; clicking the active chip clears it; the rail hides
-  while searching.
+- Tag rail above the grid (top tags + counts from `/api/meta`): "Tags" label, chips on a
+  single line with internal horizontal scroll, and an expand chevron at the end that
+  unfolds the full wrapped list. A chip click filters via `?tag=…` and shows a
+  `#tag · N bookmarks` heading in the content area — the header title stays on the
+  selected view; clicking the active chip clears it; the rail hides while searching.
 - Search box: typing filters live full-text (250 ms debounce); the header title never
   changes — a "Results for …" heading renders above the grid.
 - ✨ Ask AI opens the chat panel seeded with the query (URL gains `mode=ai`): each tool
