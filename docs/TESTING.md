@@ -106,7 +106,16 @@ All three must succeed. Live test (needs a real browser via computer use / chrom
 5. Settings row persists a custom API URL (storage.local). Note: non-localhost origins may
    need extra `host_permissions` in `wxt.config.ts`.
 - Firefox: `about:debugging` → Load Temporary Add-on → `.output/firefox-mv2/manifest.json`.
-- Safari: `xcrun safari-web-extension-converter apps/extension/.output/safari-mv2 --app-name "Bookmark AI"` → run Xcode project → enable in Safari (allow unsigned in Develop menu).
+- Safari (verified recipe — needs full Xcode):
+  1. `cd apps/extension && xcrun safari-web-extension-converter .output/safari-mv2 --app-name "Bookmark AI" --bundle-identifier ai.bookmark.safari --project-location safari-xcode --macos-only --no-open --no-prompt --force`
+  2. The converter mis-namespaces the APP target's bundle id (`ai.bookmark.Bookmark-AI` vs the
+     appex's `ai.bookmark.safari.Extension`) and the build fails at ValidateEmbeddedBinary —
+     fix: `sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = "ai.bookmark.Bookmark-AI";/PRODUCT_BUNDLE_IDENTIFIER = ai.bookmark.safari;/g' "safari-xcode/Bookmark AI/Bookmark AI.xcodeproj/project.pbxproj"`
+  3. `cd "safari-xcode/Bookmark AI" && xcodebuild -project "Bookmark AI.xcodeproj" -scheme "Bookmark AI" -configuration Debug build` (default sign-to-run-locally; do NOT pass CODE_SIGNING_REQUIRED=NO)
+  4. `open ~/Library/Developer/Xcode/DerivedData/Bookmark_AI-*/Build/Products/Debug/"Bookmark AI.app"` — running it once registers the extension.
+  5. In Safari: Settings → Advanced → "Show features for web developers", then Develop →
+     "Allow Unsigned Extensions" (re-arm after each Safari restart), then Settings →
+     Extensions → enable Bookmark AI. `safari-xcode/` is gitignored (generated).
 
 ## 4. Desktop (native SDK — GUI session required)
 
