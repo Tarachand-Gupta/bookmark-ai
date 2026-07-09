@@ -20,14 +20,16 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
 
 ## Environment / current state
 
-- **No `GEMINI_API_KEY` set** → server uses heuristic categorization; AI search falls back to
-  full-text with `fallback: true`. Set it in `.env` (copy `.env.example`) to enable Gemini
-  `gemini-2.5-flash` categorization + `gemini-embedding-001` 768-dim embeddings. The embed
-  worker (30s sweep + kick after save) back-fills embeddings for existing rows automatically.
-- **DB**: `apps/server/data/bookmarks.db` (gitignored). Contains ~5 test bookmarks. Delete the
-  file for a clean slate; schema recreates on boot. `DATABASE_URL` accepts a `libsql://` Turso
-  URL later — query code is URL-agnostic.
-- **Git**: repo initialized, **nothing committed yet** (user hasn't asked).
+- **`GEMINI_API_KEY` is set** in the root `.env`, loaded by dependency-free loaders in
+  `apps/server/src/env.ts` and `apps/web/next.config.ts` → Gemini `gemini-2.5-flash`
+  categorization, `gemini-embedding-001` 768-dim embeddings (embed worker: 30s sweep + kick
+  after save), and the `/api/chat` agent. Without a key everything degrades to
+  heuristics/full-text with `fallback: true`.
+- **DB is Turso cloud**: `DATABASE_URL=libsql://bookmark-ai-tara.aws-ap-south-1.turso.io` +
+  `DATABASE_AUTH_TOKEN` in `.env` (manage with the `turso` CLI). The old local file
+  `apps/server/data/bookmarks.db` is a pre-migration backup — pointing `DATABASE_URL` back at
+  it restores fully-local mode; query code is URL-agnostic.
+- **Git**: pushed to GitHub `Tarachand-Gupta/bookmark-ai` (private).
 - Zig 0.16 + `@native-sdk/cli` 0.4.0 (`native` on PATH) are installed globally on this machine.
 
 ## API quick reference (all JSON, permissive CORS)
@@ -37,6 +39,10 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
 - `GET /api/search?q=…&mode=text|ai&limit=` → `{mode, results:[{bookmark,score}], fallback?}`
 - `GET /api/meta` → sidebar facets + tag rail `{categories, browsers, devices, days, tags, total}`
 - `GET /api/health` → `{ok, ai}` · `DELETE /api/bookmarks/:id` → 204
+- `POST /api/chat` — **Next.js route in `apps/web`** (not Express): AI SDK v7 agent chat.
+  Body `{messages: UIMessage[]}`; streams UI messages; tools `searchFullText`/`searchSemantic`
+  proxy `/api/search`. Import existing browser bookmarks:
+  `cd apps/server && pnpm tsx scripts/import-browser-bookmarks.ts [--apply]`.
 
 ## Hard-won gotchas (do not rediscover these)
 

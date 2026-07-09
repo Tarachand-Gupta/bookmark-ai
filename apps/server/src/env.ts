@@ -5,6 +5,8 @@ import { z } from "zod";
 const envSchema = z.object({
   PORT: z.coerce.number().int().default(4000),
   DATABASE_URL: z.string().default("file:./data/bookmarks.db"),
+  /** Required for libsql:// (Turso) URLs; unused for local file: DBs. */
+  DATABASE_AUTH_TOKEN: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
 });
 

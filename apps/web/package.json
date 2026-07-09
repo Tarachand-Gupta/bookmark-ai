@@ -9,14 +9,23 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/google": "^4.0.10",
+    "@ai-sdk/react": "^4.0.19",
     "@bookmark-ai/types": "workspace:*",
     "@bookmark-ai/ui": "workspace:*",
+    "ai": "^7.0.18",
     "class-variance-authority": "^0.7.1",
+    "cmdk": "^1.1.1",
     "lucide-react": "^0.469.0",
+    "nanoid": "^5.1.16",
     "next": "^15.5.4",
     "radix-ui": "^1.6.2",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "shiki": "^4.3.1",
+    "streamdown": "^2.5.0",
+    "use-stick-to-bottom": "^1.1.6",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.0",

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { deleteBookmark, type LibraryFilters } from "@/lib/api";
 import { useBookmarks, useHealth, useMeta, useRefresh, useSearch } from "@/hooks/use-library";
+import { AiChat } from "./ai-chat";
 import { AppSidebar } from "./app-sidebar";
 import { BookmarkGrid } from "./bookmark-grid";
 import { LibraryHeader } from "./library-header";
@@ -78,7 +79,8 @@ export function LibraryPage() {
   const meta = useMeta(refreshKey);
   const health = useHealth(refreshKey);
   const list = useBookmarks(filters, refreshKey);
-  const search = useSearch(query, mode, refreshKey);
+  // The grid always shows live full-text results; "ai" mode opens the chat panel.
+  const search = useSearch(query, "text", refreshKey);
 
   const searching = query.trim().length > 0;
   const bookmarks = searching
@@ -125,16 +127,15 @@ export function LibraryPage() {
           onAdd={() => setAddOpen(true)}
         />
         <main className="flex-1 p-4">
+          {aiActive ? (
+            <AiChat initialQuery={query} onClose={() => setMode("text")} />
+          ) : (
+            <>
           {searching && (
-            <div className="mb-4 flex flex-wrap items-baseline gap-x-2">
+            <div className="mb-4">
               <h2 className="text-lg font-semibold tracking-tight">
-                {aiActive ? "AI results" : "Results"} for “{query.trim()}”
+                Results for “{query.trim()}”
               </h2>
-              {aiActive && search.data?.fallback && (
-                <span className="text-xs text-muted-foreground">
-                  AI unavailable — showing text results
-                </span>
-              )}
             </div>
           )}
           {!searching && (
@@ -155,9 +156,7 @@ export function LibraryPage() {
             error={searching ? search.error : list.error}
             emptyHint={
               searching
-                ? mode === "ai"
-                  ? "No semantic matches. AI search needs embedded bookmarks — save a few first."
-                  : "No matches. Try different words, or Ask AI for a semantic search."
+                ? "No matches. Try different words, or Ask AI for an answer."
                 : "Save a page with the browser extension, or add a URL with the button above."
             }
             onDelete={handleDelete}
@@ -176,6 +175,8 @@ export function LibraryPage() {
                 {list.loadingMore ? "Loading…" : "Load more"}
               </Button>
             </div>
+          )}
+            </>
           )}
         </main>
       </SidebarInset>

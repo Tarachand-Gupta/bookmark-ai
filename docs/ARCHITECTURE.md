@@ -55,19 +55,26 @@ Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25
    before inventing new ones; a tag that merely repeats the category is always dropped.
    The homepage tag rail (`/api/meta` `tags`) and `?tag=` filtering ride on the same data.
 
+## Shipped from the original roadmap (2026-07-09)
+
+- **AI search chat**: `apps/web/app/api/chat/route.ts` (AI SDK v7 + Gemini) with
+  `searchFullText`/`searchSemantic` tools; UI in `components/library/ai-chat.tsx` on
+  AI Elements (`components/ai-elements/`, `response.tsx` is a local Streamdown wrapper —
+  the registry retired that component). "Ask AI" in the header opens it seeded with the
+  current query.
+- **Turso cloud**: production `DATABASE_URL` is `libsql://` + `DATABASE_AUTH_TOKEN`;
+  data migrated with embeddings intact (sqlite3 `.mode insert` dump → `turso db shell`).
+- **Browser-bookmark import (one-way)**: `apps/server/scripts/import-browser-bookmarks.ts`
+  reads Chrome's Bookmarks JSON (all profiles) + Safari's plist (needs Full Disk Access),
+  dedupes against the library, dry-run by default, `--apply` imports through the full
+  ingest pipeline with per-browser provenance.
+
 ## Deferred / roadmap
 
-- **AI search chat (next up)**: grow the one-shot "Ask AI" into a conversational panel
-  built on Vercel AI Elements + the AI SDK (Next.js route handler). The agent gets two
-  tools — full-text search and vector/RAG search over the library — decides which to
-  call, and streams an answer with cited bookmark cards.
-- **Browser-bookmark import & sync**: import existing Chrome/Safari bookmarks to populate
-  the library. A settings toggle then enables write-through: every save from our
-  extension also lands in the user's Chrome/Safari bookmarks — in a fitting existing
-  folder, or one the AI suggests/creates — so users are never locked in, while our store
-  keeps the rich copy (OG data, AI category/tags, embeddings).
+- **Write-through bookmark sync**: settings toggle so extension saves also land in
+  Chrome/Safari bookmarks — in a fitting existing folder or one the AI suggests/creates —
+  so users are never locked in while our store keeps the rich copy.
 - Client-side synced DB + on-device vector search (libSQL embedded replicas).
-- Turso cloud: set `DATABASE_URL=libsql://…` + auth token in `createDb` — no query changes.
 - Desktop: save-from-desktop, images in cards (needs Zig-side `ui.image` + ImageId
   pipeline — markup can't express images), menu-bar quick-save. (Search UI shipped
   2026-07-09 — text mode; AI-mode toggle still open.)

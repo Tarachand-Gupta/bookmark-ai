@@ -65,10 +65,13 @@ Checklist:
 - Tag chip rail above the grid (top tags + counts from `/api/meta`): a chip click filters
   via `?tag=…` and retitles the header `#tag`; clicking the active chip clears it; the
   rail hides while searching.
-- Search box: typing filters live full-text (250 ms debounce); the in-box ✨ Ask AI button
-  runs semantic search. The header title never changes — a "Results for …" / "AI results
-  for …" heading renders above the grid (plus an "AI unavailable — showing text results"
-  note when the server has no key). Typing again returns to live text results.
+- Search box: typing filters live full-text (250 ms debounce); the header title never
+  changes — a "Results for …" heading renders above the grid.
+- ✨ Ask AI opens the chat panel seeded with the query (URL gains `mode=ai`): the agent
+  runs a searchFullText/searchSemantic tool (collapsible "Completed" block listing the
+  matched bookmarks) and streams a cited answer; follow-ups submit with Enter; Close (or
+  typing in the header box) returns to the grid. Needs `GEMINI_API_KEY` — without it
+  `/api/chat` returns 503.
 - "+ Add" dialog: paste URL (scheme auto-prepended) → saves → grid+sidebar refresh.
 - Hover a card → trash icon → delete works.
 - Mobile (375px): sidebar becomes sheet via trigger; header wraps; grid is 1-col.

@@ -7,7 +7,7 @@ import { startEmbedWorker } from "./services/embeddings.js";
 async function main() {
   const env = loadEnv();
 
-  const db = createDb(env.DATABASE_URL);
+  const db = createDb(env.DATABASE_URL, env.DATABASE_AUTH_TOKEN);
   await ensureSchema(db);
 
   const gemini = env.GEMINI_API_KEY ? new GeminiClient(env.GEMINI_API_KEY) : null;
