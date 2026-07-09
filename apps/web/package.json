@@ -13,6 +13,8 @@
     "@ai-sdk/react": "^4.0.19",
     "@bookmark-ai/types": "workspace:*",
     "@bookmark-ai/ui": "workspace:*",
+    "@clerk/nextjs": "^7.5.15",
+    "@clerk/ui": "^1.25.1",
     "ai": "^7.0.18",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",

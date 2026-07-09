@@ -1,5 +1,6 @@
 "use client";
 
+import { SignInButton, SignUpButton, UserButton, useUser } from "@clerk/nextjs";
 import { Plus, Search, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,10 +19,10 @@ export interface LibraryHeaderProps {
 }
 
 /**
- * Sticky top bar: sidebar trigger, active-view title, search, add.
- * Typing searches full-text live; the in-box "Ask AI" affordance runs the
- * semantic search. The title always names the selected view — search state
- * is presented in the content area, never here.
+ * Sticky top bar: sidebar trigger, active-view title, search, add, and the
+ * Clerk account control. Typing searches full-text live; the in-box "Ask AI"
+ * affordance runs the semantic search. The title always names the selected
+ * view — search state is presented in the content area, never here.
  */
 export function LibraryHeader({
   title,
@@ -74,6 +75,41 @@ export function LibraryHeader({
           <span className="hidden sm:inline">Add</span>
         </Button>
       </div>
+
+      <AuthControls />
     </header>
+  );
+}
+
+/**
+ * Clerk account control: Sign in / Sign up (signed out) or the UserButton
+ * (signed in). Uses the client-safe `useUser` hook — this file is a client
+ * component, so the server-only `Show` component can't be used here — and
+ * renders a placeholder until Clerk loads to avoid a layout shift.
+ */
+function AuthControls() {
+  const { isLoaded, isSignedIn } = useUser();
+
+  return (
+    <div className="flex shrink-0 items-center">
+      {!isLoaded ? (
+        <div className="size-8 animate-pulse rounded-full bg-muted" aria-hidden />
+      ) : isSignedIn ? (
+        <UserButton />
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <SignInButton mode="modal">
+            <Button size="sm" variant="ghost" className="h-9">
+              Sign in
+            </Button>
+          </SignInButton>
+          <SignUpButton mode="modal">
+            <Button size="sm" variant="outline" className="hidden h-9 sm:inline-flex">
+              Sign up
+            </Button>
+          </SignUpButton>
+        </div>
+      )}
+    </div>
   );
 }

@@ -4,6 +4,9 @@
 /* Brand tokens shared across all Bookmark AI web surfaces. */
 @import "@bookmark-ai/ui/theme.css";
 
+/* Clerk components (UserButton, sign-in modal) themed to match shadcn. */
+@import "@clerk/ui/themes/shadcn.css";
+
 /* Scan the shared UI package for Tailwind classes. */
 @source "../../../packages/ui/src";
 
