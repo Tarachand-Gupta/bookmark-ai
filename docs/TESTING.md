@@ -15,24 +15,24 @@ cd apps/desktop && native check && native test   # markup+contract clean, 11/11 
 
 ```bash
 # Free the port first — a stale server serves OLD code silently:
-lsof -i :4000 -P   # kill any PID found
+lsof -i :4545 -P   # kill any PID found
 pnpm --filter @bookmark-ai/server dev
 ```
 
-Expected boot log: API on :4000, `database: file:./data/bookmarks.db`, `ai: gemini|disabled`.
+Expected boot log: API on :4545, `database: file:./data/bookmarks.db`, `ai: gemini|disabled`.
 
 ```bash
-curl -s http://localhost:4000/api/health
+curl -s http://localhost:4545/api/health
 # {"ok":true,"ai":false}   (ai:true when GEMINI_API_KEY set)
 
 # Save (exercises OG scrape + categorization; needs internet):
-curl -s -X POST http://localhost:4000/api/bookmarks -H 'content-type: application/json' \
+curl -s -X POST http://localhost:4545/api/bookmarks -H 'content-type: application/json' \
   -d '{"url":"https://github.com/vercel-labs/native","browser":"chrome","device":"laptop","os":"macOS"}'
 # → 201; bookmark.og.image + og.favicon populated, category "Development" (heuristic) with tags
 
-curl -s "http://localhost:4000/api/search?q=native+desktop&mode=text"   # ≥1 result
-curl -s "http://localhost:4000/api/search?q=native&mode=ai"             # no key → mode:"text", fallback:true
-curl -s http://localhost:4000/api/meta                                   # facet counts consistent
+curl -s "http://localhost:4545/api/search?q=native+desktop&mode=text"   # ≥1 result
+curl -s "http://localhost:4545/api/search?q=native&mode=ai"             # no key → mode:"text", fallback:true
+curl -s http://localhost:4545/api/meta                                   # facet counts consistent
 ```
 
 Vector layer without a Gemini key (synthetic embedding round-trip):
@@ -123,14 +123,14 @@ Full detail in `apps/desktop/CLAUDE.md`. Fast path:
 
 ```bash
 cd apps/desktop
-native dev -Dautomation=true &      # window opens; boot-fetches from :4000
+native dev -Dautomation=true &      # window opens; boot-fetches from :4545
 native automate wait                # ready=true + full widget snapshot
 native automate screenshot main-canvas   # deterministic PNG in .zig-cache/native-sdk-automation/
 ```
 
 Verify in the snapshot/screenshot: sidebar categories with counts; cards with site line,
 title, description, category badge, #tags, `browser · device · day`; status bar
-`N shown · M total · localhost:4000`.
+`N shown · M total · localhost:4545`.
 
 Interaction: get a category row's widget id from `native automate snapshot`
 (**the id right after `#` on the SAME line as `role=listitem`** — the trailing `parent=#…` id
@@ -146,7 +146,7 @@ Search (header field): get the textbox id from the snapshot (`role=textbox`), th
 ```bash
 native automate widget-action main-canvas <textbox-id> set_text fetch
 native automate widget-key main-canvas enter
-# header → Search "fetch"; status bar → "N result(s) · localhost:4000"
+# header → Search "fetch"; status bar → "N result(s) · localhost:4545"
 native automate widget-action main-canvas <textbox-id> set_text ""   # restores the library
 ```
 

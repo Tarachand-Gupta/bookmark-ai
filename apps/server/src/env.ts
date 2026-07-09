@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 
 const envSchema = z.object({
-  PORT: z.coerce.number().int().default(4000),
+  PORT: z.coerce.number().int().default(4545),
   DATABASE_URL: z.string().default("file:./data/bookmarks.db"),
   /** Required for libsql:// (Turso) URLs; unused for local file: DBs. */
   DATABASE_AUTH_TOKEN: z.string().optional(),

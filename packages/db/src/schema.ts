@@ -63,6 +63,22 @@ export async function ensureSchema(db: Db): Promise<void> {
     END;
   `);
 
+  // Saved browser sessions (a snapshot of open tabs). Standalone table — no
+  // FTS/vector machinery; tabs live as JSON. Idempotent, additive.
+  await db.executeMultiple(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      tabs_json  TEXT NOT NULL DEFAULT '[]',
+      tab_count  INTEGER NOT NULL DEFAULT 0,
+      browser    TEXT NOT NULL DEFAULT 'other',
+      device     TEXT NOT NULL DEFAULT 'other',
+      saved_at   TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_saved_at ON sessions(saved_at);
+  `);
+
   // ANN index for vector_top_k(). Older libSQL builds without vector support
   // would throw here; queries fall back to brute-force scans anyway.
   try {

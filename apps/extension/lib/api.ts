@@ -1,7 +1,7 @@
 import type { Bookmark, CreateBookmarkInput } from "@bookmark-ai/types";
 import { storage } from "#imports";
 
-export const DEFAULT_API_URL = "http://localhost:4000";
+export const DEFAULT_API_URL = "http://localhost:4545";
 
 /** API base URL, user-configurable from the popup settings row. */
 export const apiUrlItem = storage.defineItem<string>("local:apiUrl", {

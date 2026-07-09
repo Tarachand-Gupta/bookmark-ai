@@ -13,11 +13,12 @@ import { BookmarkGrid } from "./bookmark-grid";
 import { LibraryHeader } from "./library-header";
 import { TagChips } from "./tag-chips";
 import { ViewToggle, type LibraryView } from "./view-toggle";
+import { DateRangeFilter } from "./date-range-filter";
 import { AddBookmarkDialog } from "./add-bookmark-dialog";
 
 const VIEW_STORAGE_KEY = "bookmark-ai:view";
 
-const FILTER_KEYS = ["category", "browser", "device", "day", "tag"] as const;
+const FILTER_KEYS = ["category", "browser", "device", "day", "tag", "from", "to"] as const;
 
 /**
  * The whole library view. Facet filters live in the URL (shareable,
@@ -105,6 +106,10 @@ export function LibraryPage() {
     ? (search.data?.results.map((r) => r.bookmark) ?? null)
     : list.bookmarks;
 
+  // Group the content by relative date unless searching or a specific date
+  // filter (range or single day) is active — then show a flat, filtered list.
+  const grouped = !searching && !filters.from && !filters.to && !filters.day;
+
   const [actionError, setActionError] = useState<string | null>(null);
   const handleDelete = useCallback(
     async (id: string) => {
@@ -152,76 +157,90 @@ export function LibraryPage() {
           onAdd={() => setAddOpen(true)}
         />
         <main className="flex-1 p-4">
-          {aiActive ? (
-            <AiChat
-              initialQuery={query}
-              onClose={closeChat}
-              onFilter={(next) => {
-                closeChat();
-                setFilters(next, { clearSearch: true });
-              }}
-            />
-          ) : (
-            <>
-          <div className="mb-4 flex items-start gap-3">
-            {searching ? (
-              <h2 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">
-                Results for “{query.trim()}”
-              </h2>
-            ) : (
-              <TagChips
-                className="flex-1"
-                tags={meta.data?.tags}
-                active={filters.tag}
-                onPick={(tag) => setFilters(tag ? { tag } : {})}
+          {/* Width-capped and centered so content isn't stretched thin on
+              widescreen/desktop; full-bleed below the cap on smaller screens. */}
+          <div className="mx-auto w-full max-w-[1600px]">
+            {aiActive ? (
+              <AiChat
+                initialQuery={query}
+                onClose={closeChat}
+                onFilter={(next) => {
+                  closeChat();
+                  setFilters(next, { clearSearch: true });
+                }}
               />
+            ) : (
+              <>
+                <div className="mb-4 flex items-start gap-3">
+                  {searching ? (
+                    <h2 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">
+                      Results for “{query.trim()}”
+                    </h2>
+                  ) : (
+                    <TagChips
+                      className="flex-1"
+                      tags={meta.data?.tags}
+                      active={filters.tag}
+                      onPick={(tag) => setFilters(tag ? { tag } : {})}
+                    />
+                  )}
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                    {!searching && (
+                      <DateRangeFilter
+                        from={filters.from}
+                        to={filters.to}
+                        onChange={({ from, to }) => setFilters({ ...filters, from, to })}
+                      />
+                    )}
+                    <ViewToggle view={view} onChange={changeView} />
+                  </div>
+                </div>
+                {!searching && filters.tag && (
+                  <div className="mb-4 flex items-baseline gap-2">
+                    <h2 className="text-lg font-semibold tracking-tight">#{filters.tag}</h2>
+                    {list.total != null && (
+                      <span className="text-sm text-muted-foreground">
+                        {list.total} bookmark{list.total === 1 ? "" : "s"}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {actionError && (
+                  <p className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    Delete failed: {actionError}
+                  </p>
+                )}
+                <BookmarkGrid
+                  bookmarks={bookmarks}
+                  view={view}
+                  grouped={grouped}
+                  loading={searching ? search.loading : list.loading}
+                  error={searching ? search.error : list.error}
+                  emptyHint={
+                    searching
+                      ? "No matches. Try different words, or Ask AI for an answer."
+                      : "Save a page with the browser extension, or add a URL with the button above."
+                  }
+                  onDelete={handleDelete}
+                />
+                {!searching && list.hasMore && (
+                  <div className="mt-6 flex flex-col items-center gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Showing {list.bookmarks?.length ?? 0} of {list.total}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={list.loadMore}
+                      disabled={list.loadingMore}
+                    >
+                      {list.loadingMore ? "Loading…" : "Load more"}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
-            <ViewToggle view={view} onChange={changeView} className="ml-auto" />
           </div>
-          {!searching && filters.tag && (
-            <div className="mb-4 flex items-baseline gap-2">
-              <h2 className="text-lg font-semibold tracking-tight">#{filters.tag}</h2>
-              {list.total != null && (
-                <span className="text-sm text-muted-foreground">
-                  {list.total} bookmark{list.total === 1 ? "" : "s"}
-                </span>
-              )}
-            </div>
-          )}
-          {actionError && (
-            <p className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              Delete failed: {actionError}
-            </p>
-          )}
-          <BookmarkGrid
-            bookmarks={bookmarks}
-            view={view}
-            loading={searching ? search.loading : list.loading}
-            error={searching ? search.error : list.error}
-            emptyHint={
-              searching
-                ? "No matches. Try different words, or Ask AI for an answer."
-                : "Save a page with the browser extension, or add a URL with the button above."
-            }
-            onDelete={handleDelete}
-          />
-          {!searching && list.hasMore && (
-            <div className="mt-6 flex flex-col items-center gap-2">
-              <p className="text-xs text-muted-foreground">
-                Showing {list.bookmarks?.length ?? 0} of {list.total}
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={list.loadMore}
-                disabled={list.loadingMore}
-              >
-                {list.loadingMore ? "Loading…" : "Load more"}
-              </Button>
-            </div>
-          )}
-            </>
-          )}
         </main>
       </SidebarInset>
       <AddBookmarkDialog open={addOpen} onOpenChange={setAddOpen} onSaved={refresh} />

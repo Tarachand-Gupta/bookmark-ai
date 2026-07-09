@@ -12,11 +12,11 @@ pnpm --filter @bookmark-ai/extension check-types
 
 Layout (keep multi-file — the user explicitly banned monolith files):
 
-- `wxt.config.ts` — manifest fn (MV2/MV3-aware), permissions, `host_permissions: http://localhost:4000/*`
+- `wxt.config.ts` — manifest fn (MV2/MV3-aware), permissions, `host_permissions: http://localhost:4545/*`
 - `entrypoints/background.ts` — receives `SAVE_BOOKMARK`, POSTs to the API, replies result/error
 - `entrypoints/popup/` — `App.tsx` + `components/` (SaveCard, SavedResult, ErrorNote, SettingsRow, Spinner)
 - `lib/messages.ts` — typed popup↔background contract · `lib/api.ts` — fetch helper (API base
-  from `local:apiUrl` storage, default localhost:4000) · `lib/detect.ts` — browser via
+  from `local:apiUrl` storage, default localhost:4545) · `lib/detect.ts` — browser via
   `import.meta.env.BROWSER` build constant (+ UA brands for Edge/Arc), device/os heuristics
 - `assets/tailwind.css` — mirrors `packages/ui/src/theme.css` tokens (sync manually on retheme)
 - `scripts/generate-icons.mjs` — dependency-free PNG icon generator (`pnpm icons`)

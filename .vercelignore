@@ -1,0 +1,23 @@
+# Vercel uploads from the repo root (monorepo) but doesn't apply nested
+# .gitignore files, so exclude build artifacts / caches here. Only build
+# outputs are listed — all source and package.json files stay, so the pnpm
+# workspace graph is intact and the web app + its deps still build.
+
+# JS/TS build outputs and caches (Vercel builds fresh on its servers)
+**/.next
+**/.turbo
+**/dist
+**/.vercel
+
+# Desktop (Zig) — irrelevant to the web build, and huge
+apps/desktop/.native
+**/.zig-cache
+**/zig-out
+
+# Extension build outputs
+apps/extension/.output
+apps/extension/.wxt
+
+# Local DB files / cruft
+**/*.db
+**/.DS_Store

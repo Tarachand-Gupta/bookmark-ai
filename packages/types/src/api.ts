@@ -26,6 +26,15 @@ export const listBookmarksQuerySchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
+  /** YYYY-MM-DD inclusive bounds — a saved-day range filter (either end optional). */
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  to: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -81,3 +90,42 @@ export const metaResponseSchema = z.object({
   total: z.number(),
 });
 export type MetaResponse = z.infer<typeof metaResponseSchema>;
+
+// ── Sessions (saved snapshots of open browser tabs) ─────────────────────────
+
+/** One tab within a saved session. */
+export const sessionTabSchema = z.object({
+  url: z.string(),
+  title: z.string().default(""),
+  favIconUrl: z.string().nullish(),
+  /** Source window grouping, so a restore can rebuild the window layout. */
+  windowId: z.number().int().optional(),
+});
+export type SessionTab = z.infer<typeof sessionTabSchema>;
+
+/** POST /api/sessions — save a snapshot of the currently open tabs. */
+export const createSessionSchema = z.object({
+  name: z.string().max(200).optional(),
+  tabs: z.array(sessionTabSchema).min(1),
+  browser: browserSchema.default("other"),
+  device: deviceTypeSchema.default("other"),
+  savedAt: z.string().datetime({ offset: true }).optional(),
+});
+export type CreateSessionInput = z.infer<typeof createSessionSchema>;
+
+export const sessionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  tabs: z.array(sessionTabSchema),
+  tabCount: z.number(),
+  browser: browserSchema,
+  device: deviceTypeSchema,
+  savedAt: z.string(),
+  createdAt: z.string(),
+});
+export type Session = z.infer<typeof sessionSchema>;
+
+export const listSessionsResponseSchema = z.object({
+  sessions: z.array(sessionSchema),
+});
+export type ListSessionsResponse = z.infer<typeof listSessionsResponseSchema>;

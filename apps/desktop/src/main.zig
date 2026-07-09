@@ -19,8 +19,8 @@ const window_height: f32 = 720;
 
 /// The local Bookmark AI API (apps/server). limit=30 keeps the response
 /// far under the 256 KiB effect body cap and the view under widget budgets.
-const bookmarks_url = "http://127.0.0.1:4000/api/bookmarks?limit=30";
-const search_url_base = "http://127.0.0.1:4000/api/search";
+const bookmarks_url = "http://127.0.0.1:4545/api/bookmarks?limit=30";
+const search_url_base = "http://127.0.0.1:4545/api/search";
 const fetch_key: u64 = 1;
 const search_key: u64 = 2;
 const open_key_base: u64 = 100;
@@ -190,14 +190,14 @@ pub const Model = struct {
     pub fn statusLine(model: *const Model, arena: std.mem.Allocator) []const u8 {
         return switch (model.status) {
             .loading => if (model.awaiting == .search) "Searching…" else "Loading bookmarks…",
-            .failed => "Offline — is the Bookmark AI server running on localhost:4000?",
+            .failed => "Offline — is the Bookmark AI server running on localhost:4545?",
             .ready => if (model.search_active)
-                std.fmt.allocPrint(arena, "{d} {s} · localhost:4000", .{
+                std.fmt.allocPrint(arena, "{d} {s} · localhost:4545", .{
                     model.visibleCount(),
                     if (model.visibleCount() == 1) "result" else "results",
                 }) catch ""
             else
-                std.fmt.allocPrint(arena, "{d} shown · {d} total · localhost:4000", .{
+                std.fmt.allocPrint(arena, "{d} shown · {d} total · localhost:4545", .{
                     model.visibleCount(), model.total,
                 }) catch "",
         };
@@ -426,7 +426,7 @@ pub fn applySearchResponse(model: *Model, response: native_sdk.EffectResponse) v
     if (response.outcome == .cancelled) return; // superseded by a newer search
     if (response.outcome != .ok or response.status != 200) {
         model.status = .failed;
-        model.error_text.set("Search failed. Is the Bookmark AI server running on localhost:4000?");
+        model.error_text.set("Search failed. Is the Bookmark AI server running on localhost:4545?");
         return;
     }
     parseSearchResults(model, response.body) catch {

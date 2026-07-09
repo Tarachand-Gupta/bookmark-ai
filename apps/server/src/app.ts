@@ -5,6 +5,7 @@ import { HttpError } from "./lib/http-error.js";
 import { bookmarksRouter } from "./routes/bookmarks.js";
 import { searchRouter } from "./routes/search.js";
 import { metaRouter } from "./routes/meta.js";
+import { sessionsRouter } from "./routes/sessions.js";
 import type { GeminiClient } from "./services/gemini.js";
 
 export interface AppDeps {
@@ -24,6 +25,7 @@ export function createApp({ db, gemini, onSaved }: AppDeps): Express {
 
   app.use("/api/bookmarks", bookmarksRouter(db, gemini, onSaved));
   app.use("/api/search", searchRouter(db, gemini));
+  app.use("/api/sessions", sessionsRouter(db));
   app.use("/api", metaRouter(db, gemini !== null));
 
   app.use((_req: Request, res: Response) => {

@@ -8,6 +8,7 @@ import {
   BookmarkListItem,
 } from "@bookmark-ai/ui/components/bookmark-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { groupBookmarksByDate } from "@/lib/date-groups";
 import type { LibraryView } from "./view-toggle";
 
 export interface BookmarkGridProps {
@@ -17,9 +18,14 @@ export interface BookmarkGridProps {
   error: string | null;
   emptyHint: string;
   onDelete: (id: string) => void;
+  /**
+   * Group into relative date buckets (Today / Yesterday / …). Turned off while
+   * searching or when a date-range filter is applied.
+   */
+  grouped?: boolean;
 }
 
-/** The bookmark collection in one of three layouts: card grid, list rows, compact lines. */
+/** The bookmark collection in one of three layouts, optionally grouped by date. */
 export function BookmarkGrid({
   bookmarks,
   view,
@@ -27,13 +33,15 @@ export function BookmarkGrid({
   error,
   emptyHint,
   onDelete,
+  grouped,
 }: BookmarkGridProps) {
   if (error) {
     return (
       <div className="flex flex-col items-center gap-2 py-20 text-center">
         <p className="font-medium">Could not reach the Bookmark AI server</p>
         <p className="max-w-sm text-sm text-muted-foreground">
-          {error}. Make sure the API is running (<code>pnpm --filter @bookmark-ai/server dev</code>).
+          {error}. Make sure the API is running (<code>pnpm --filter @bookmark-ai/server dev</code>
+          ).
         </p>
       </div>
     );
@@ -55,10 +63,40 @@ export function BookmarkGrid({
     );
   }
 
+  if (grouped) {
+    const groups = groupBookmarksByDate(bookmarks);
+    return (
+      <div className="space-y-8">
+        {groups.map((g) => (
+          <section key={g.key}>
+            <div className="mb-3 flex items-baseline gap-2">
+              <h3 className="text-sm font-semibold tracking-tight">{g.label}</h3>
+              <span className="text-xs tabular-nums text-muted-foreground">{g.items.length}</span>
+            </div>
+            <ItemLayout items={g.items} view={view} onDelete={onDelete} />
+          </section>
+        ))}
+      </div>
+    );
+  }
+
+  return <ItemLayout items={bookmarks} view={view} onDelete={onDelete} />;
+}
+
+/** Renders a set of bookmarks in the chosen layout — shared by flat + grouped modes. */
+function ItemLayout({
+  items,
+  view,
+  onDelete,
+}: {
+  items: Bookmark[];
+  view: LibraryView;
+  onDelete: (id: string) => void;
+}) {
   if (view === "list") {
     return (
       <div className="flex flex-col gap-3">
-        {bookmarks.map((b) => (
+        {items.map((b) => (
           <BookmarkListItem key={b.id} bookmark={b} onDelete={onDelete} />
         ))}
       </div>
@@ -68,7 +106,7 @@ export function BookmarkGrid({
   if (view === "compact") {
     return (
       <div className="divide-y overflow-hidden rounded-xl border bg-card">
-        {bookmarks.map((b) => (
+        {items.map((b) => (
           <BookmarkCompactRow key={b.id} bookmark={b} onDelete={onDelete} />
         ))}
       </div>
@@ -77,7 +115,7 @@ export function BookmarkGrid({
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-      {bookmarks.map((b) => (
+      {items.map((b) => (
         <BookmarkCard key={b.id} bookmark={b} onDelete={onDelete} />
       ))}
     </div>

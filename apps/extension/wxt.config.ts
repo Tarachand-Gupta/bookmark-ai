@@ -11,7 +11,7 @@ export default defineConfig({
     description:
       "Save the current tab to Bookmark AI for automatic categorization and tagging.",
     permissions: ["activeTab", "tabs", "storage"],
-    host_permissions: ["http://localhost:4000/*"],
+    host_permissions: ["http://localhost:4545/*"],
     ...(browser === "firefox" && {
       browser_specific_settings: {
         gecko: {

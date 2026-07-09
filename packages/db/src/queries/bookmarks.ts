@@ -1,4 +1,10 @@
-import type { Bookmark, ListBookmarksQuery, MetaResponse, OpenGraph, Source } from "@bookmark-ai/types";
+import type {
+  Bookmark,
+  ListBookmarksQuery,
+  MetaResponse,
+  OpenGraph,
+  Source,
+} from "@bookmark-ai/types";
 import type { Db } from "../client";
 import { BOOKMARK_COLUMNS, rowToBookmark } from "../rows";
 
@@ -107,6 +113,15 @@ export async function listBookmarks(
     where.push("saved_day = ?");
     args.push(q.day);
   }
+  // saved_day is YYYY-MM-DD text, so lexicographic compare is chronological.
+  if (q.from) {
+    where.push("saved_day >= ?");
+    args.push(q.from);
+  }
+  if (q.to) {
+    where.push("saved_day <= ?");
+    args.push(q.to);
+  }
   if (q.tag) {
     // tags_json is a JSON array of lowercased strings.
     where.push("EXISTS (SELECT 1 FROM json_each(bookmarks.tags_json) WHERE json_each.value = ?)");
@@ -135,10 +150,18 @@ export async function listBookmarks(
 /** Facet counts that drive every client's sidebar. */
 export async function getMeta(db: Db): Promise<MetaResponse> {
   const [categories, browsers, devices, days, tags, total] = await Promise.all([
-    db.execute("SELECT category AS name, count(*) AS count FROM bookmarks GROUP BY category ORDER BY count DESC, name"),
-    db.execute("SELECT browser AS name, count(*) AS count FROM bookmarks GROUP BY browser ORDER BY count DESC"),
-    db.execute("SELECT device AS name, count(*) AS count FROM bookmarks GROUP BY device ORDER BY count DESC"),
-    db.execute("SELECT saved_day AS day, count(*) AS count FROM bookmarks GROUP BY saved_day ORDER BY day DESC LIMIT 30"),
+    db.execute(
+      "SELECT category AS name, count(*) AS count FROM bookmarks GROUP BY category ORDER BY count DESC, name",
+    ),
+    db.execute(
+      "SELECT browser AS name, count(*) AS count FROM bookmarks GROUP BY browser ORDER BY count DESC",
+    ),
+    db.execute(
+      "SELECT device AS name, count(*) AS count FROM bookmarks GROUP BY device ORDER BY count DESC",
+    ),
+    db.execute(
+      "SELECT saved_day AS day, count(*) AS count FROM bookmarks GROUP BY saved_day ORDER BY day DESC LIMIT 30",
+    ),
     db.execute(
       "SELECT json_each.value AS name, count(*) AS count FROM bookmarks, json_each(bookmarks.tags_json) GROUP BY json_each.value ORDER BY count DESC, name LIMIT 24",
     ),

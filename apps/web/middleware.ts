@@ -1,12 +1,15 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// Clerk runs on every route so auth state is available everywhere (server and
-// client), but no route is force-protected: the app's own header shows
-// Sign in / Sign up when signed out and a UserButton when signed in. The
-// bookmark library stays publicly viewable. To gate specific routes later,
-// switch to `clerkMiddleware(async (auth) => { await auth.protect() })` with a
-// route matcher.
-export default clerkMiddleware();
+// The app can't be used without logging in first: every route except the auth
+// pages requires a signed-in user. Unauthenticated requests are redirected to
+// the sign-in page (401 for API routes) by auth.protect().
+const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
+
+export default clerkMiddleware(async (auth, request) => {
+  if (!isPublicRoute(request)) {
+    await auth.protect();
+  }
+});
 
 export const config = {
   matcher: [

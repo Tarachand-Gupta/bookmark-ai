@@ -26,7 +26,7 @@ semantic ("AI") search alongside classic full-text search.
 pnpm install
 
 # 1. API + database (SQLite file at apps/server/data/bookmarks.db)
-pnpm --filter @bookmark-ai/server dev        # http://localhost:4000
+pnpm --filter @bookmark-ai/server dev        # http://localhost:4545
 
 # 2. Web app
 pnpm --filter @bookmark-ai/web dev           # http://localhost:3000

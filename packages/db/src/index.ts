@@ -17,3 +17,10 @@ export {
   listUnembedded,
   type Scored,
 } from "./queries/search";
+export {
+  createSession,
+  listSessions,
+  getSession,
+  deleteSession,
+  type InsertSession,
+} from "./queries/sessions";

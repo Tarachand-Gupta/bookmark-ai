@@ -37,3 +37,5 @@ next-env.d.ts
 
 # safari xcode output
 apps/extension/safari-xcode/
+.vercel
+.env*

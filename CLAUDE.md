@@ -8,7 +8,7 @@ extension. Everything is verified working as of 2026-07-09; see `docs/TESTING.md
 
 | Path | What | Dev command |
 | --- | --- | --- |
-| `apps/server` | Express API :4000, libSQL file DB, OG scrape, Gemini categorize+embed, FTS+vector search | `pnpm --filter @bookmark-ai/server dev` |
+| `apps/server` | Express API :4545, libSQL file DB, OG scrape, Gemini categorize+embed, FTS+vector search | `pnpm --filter @bookmark-ai/server dev` |
 | `apps/web` | Next.js 15 + shadcn sidebar shell :3000 | `pnpm --filter @bookmark-ai/web dev` |
 | `apps/extension` | WXT + React popup → chrome-mv3 / firefox-mv2 / safari-mv2 | `pnpm --filter @bookmark-ai/extension dev` (chrome) |
 | `apps/desktop` | zero-native (vercel-labs/native) Zig app — **see `apps/desktop/CLAUDE.md`** | `cd apps/desktop && native dev` |
@@ -48,8 +48,8 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
 
 1. **No `.js` extensions in relative imports** anywhere in `packages/*` — Next's webpack can't
    resolve `./foo.js` → `foo.tsx`. Extensionless only. tsconfigs use `moduleResolution: Bundler`.
-2. **Port 4000 stale process**: the server runs as `node`, so `pkill -f tsx` misses it. Use
-   `lsof -i :4000 -P` and kill the PID before restarting, or you get EADDRINUSE while the OLD
+2. **Port 4545 stale process**: the server runs as `node`, so `pkill -f tsx` misses it. Use
+   `lsof -i :4545 -P` and kill the PID before restarting, or you get EADDRINUSE while the OLD
    code keeps serving (very confusing).
 3. **shadcn CLI appends duplicate theme tokens** to `apps/web/app/globals.css` when adding
    components. Brand tokens live ONLY in `packages/ui/src/theme.css` — delete whatever the CLI

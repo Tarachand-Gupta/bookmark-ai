@@ -17,7 +17,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const API = process.env.BOOKMARK_API_URL ?? "http://localhost:4000";
+const API = process.env.BOOKMARK_API_URL ?? "http://localhost:4545";
 
 const args = new Map<string, string>(
   process.argv.slice(2).map((a) => {

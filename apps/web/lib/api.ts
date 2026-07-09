@@ -8,7 +8,7 @@ import type {
   SearchResponse,
 } from "@bookmark-ai/types";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4545";
 
 export interface LibraryFilters {
   category?: string;
@@ -16,6 +16,9 @@ export interface LibraryFilters {
   device?: string;
   day?: string;
   tag?: string;
+  /** Inclusive YYYY-MM-DD range bounds (date-range filter). */
+  from?: string;
+  to?: string;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
