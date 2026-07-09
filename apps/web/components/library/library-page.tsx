@@ -35,16 +35,19 @@ export function LibraryPage() {
   }, [searchParams]);
 
   const setFilters = useCallback(
-    (next: LibraryFilters) => {
+    (next: LibraryFilters, opts?: { clearSearch?: boolean }) => {
       const params = new URLSearchParams();
       for (const key of FILTER_KEYS) {
         if (next[key]) params.set(key, next[key]!);
       }
-      // Search state rides along so a facet click doesn't wipe it from the URL.
-      const q = searchParams.get("q");
-      const m = searchParams.get("mode");
-      if (q) params.set("q", q);
-      if (m) params.set("mode", m);
+      // Search state rides along so a facet click doesn't wipe it from the URL —
+      // except when the caller is deliberately leaving search (e.g. chat "jump to library").
+      if (!opts?.clearSearch) {
+        const q = searchParams.get("q");
+        const m = searchParams.get("mode");
+        if (q) params.set("q", q);
+        if (m) params.set("mode", m);
+      }
       // push (not replace) so each facet change is a history entry — back button
       // walks the filter states, as docs/TESTING.md promises.
       router.push(params.size ? `${pathname}?${params}` : pathname, { scroll: false });
@@ -106,6 +109,13 @@ export function LibraryPage() {
   const title = viewTitle(filters);
   const aiActive = mode === "ai";
 
+  // Leaving the chat must also drop the query, or the grid lands on stale
+  // (possibly empty) text results instead of the library.
+  const closeChat = useCallback(() => {
+    setMode("text");
+    setQuery("");
+  }, []);
+
   return (
     <SidebarProvider>
       <AppSidebar
@@ -128,7 +138,14 @@ export function LibraryPage() {
         />
         <main className="flex-1 p-4">
           {aiActive ? (
-            <AiChat initialQuery={query} onClose={() => setMode("text")} />
+            <AiChat
+              initialQuery={query}
+              onClose={closeChat}
+              onFilter={(next) => {
+                closeChat();
+                setFilters(next, { clearSearch: true });
+              }}
+            />
           ) : (
             <>
           {searching && (
@@ -144,6 +161,16 @@ export function LibraryPage() {
               active={filters.tag}
               onPick={(tag) => setFilters(tag ? { tag } : {})}
             />
+          )}
+          {!searching && filters.tag && (
+            <div className="mb-4 flex items-baseline gap-2">
+              <h2 className="text-lg font-semibold tracking-tight">#{filters.tag}</h2>
+              {list.total != null && (
+                <span className="text-sm text-muted-foreground">
+                  {list.total} bookmark{list.total === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
           )}
           {actionError && (
             <p className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -185,12 +212,13 @@ export function LibraryPage() {
   );
 }
 
+// Tags are deliberately absent: a tag is a filter presented in the content area
+// (chip rail + "#tag" heading), so the top bar keeps naming the selected view.
 function viewTitle(filters: LibraryFilters): string {
   if (filters.category) return filters.category;
   if (filters.browser) return `Saved from ${capitalize(filters.browser)}`;
   if (filters.device) return `Saved on ${capitalize(filters.device)}`;
   if (filters.day) return `Saved ${filters.day}`;
-  if (filters.tag) return `#${filters.tag}`;
   return "All bookmarks";
 }
 

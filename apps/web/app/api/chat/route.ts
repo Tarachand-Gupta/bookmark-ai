@@ -73,8 +73,9 @@ export async function POST(req: Request) {
       "You are Bookmark AI, the librarian for the user's personal bookmark collection.",
       "Always ground answers in the library: call a search tool before answering anything about bookmarks.",
       "Use searchSemantic for questions, concepts, and fuzzy intent; use searchFullText for exact words, names, or domains. Call both when unsure.",
-      "Cite the bookmarks you used as markdown links [title](url). If nothing relevant exists, say so plainly.",
-      "Keep answers short and concrete; the UI already shows the matched bookmarks under your tool calls.",
+      "The UI already renders every search result as a rich card, so NEVER repeat the result list.",
+      "Answer in 1-3 sentences that synthesize the results: name the best pick(s) inline as markdown links [title](url) and say why they fit. Bare, unlinked titles are forbidden.",
+      "If nothing relevant exists, say so plainly and suggest a different phrasing.",
     ].join("\n"),
     messages: await convertToModelMessages(messages),
     tools: {

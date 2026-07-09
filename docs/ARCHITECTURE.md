@@ -60,8 +60,11 @@ Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25
 - **AI search chat**: `apps/web/app/api/chat/route.ts` (AI SDK v7 + Gemini) with
   `searchFullText`/`searchSemantic` tools; UI in `components/library/ai-chat.tsx` on
   AI Elements (`components/ai-elements/`, `response.tsx` is a local Streamdown wrapper —
-  the registry retired that component). "Ask AI" in the header opens it seeded with the
-  current query.
+  the registry retired that component; it disables Streamdown's link-safety modal so
+  citations are real anchors). "Ask AI" in the header opens it seeded with the current
+  query. Tool calls render as a status strip + always-visible bookmark cards with
+  actions (open, copy link, category/tag chips that jump to the filtered library);
+  closing the chat clears the query so the user lands back on the library.
 - **Turso cloud**: production `DATABASE_URL` is `libsql://` + `DATABASE_AUTH_TOKEN`;
   data migrated with embeddings intact (sqlite3 `.mode insert` dump → `turso db shell`).
 - **Browser-bookmark import (one-way)**: `apps/server/scripts/import-browser-bookmarks.ts`

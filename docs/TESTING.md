@@ -63,15 +63,19 @@ Checklist:
 - A view with >100 bookmarks shows "Showing 100 of N" + a Load more button that appends
   the next page (server pages via `limit`/`offset`; search results are capped separately).
 - Tag chip rail above the grid (top tags + counts from `/api/meta`): a chip click filters
-  via `?tag=…` and retitles the header `#tag`; clicking the active chip clears it; the
-  rail hides while searching.
+  via `?tag=…` and shows a `#tag · N bookmarks` heading in the content area — the header
+  title stays on the selected view; clicking the active chip clears it; the rail hides
+  while searching.
 - Search box: typing filters live full-text (250 ms debounce); the header title never
   changes — a "Results for …" heading renders above the grid.
-- ✨ Ask AI opens the chat panel seeded with the query (URL gains `mode=ai`): the agent
-  runs a searchFullText/searchSemantic tool (collapsible "Completed" block listing the
-  matched bookmarks) and streams a cited answer; follow-ups submit with Enter; Close (or
-  typing in the header box) returns to the grid. Needs `GEMINI_API_KEY` — without it
-  `/api/chat` returns 503.
+- ✨ Ask AI opens the chat panel seeded with the query (URL gains `mode=ai`): each tool
+  call renders a status strip ("Full-text search / Semantic search · "query" · N matches")
+  over always-visible bookmark cards — favicon, title, domain — description, % match
+  (semantic only), clickable category/tag chips that jump back to the filtered library,
+  and Copy-link + Open buttons; the streamed answer cites picks as markdown links.
+  Follow-ups submit with Enter. Close (or typing in the header box) returns to the grid
+  AND clears the search text — the header box must be empty and the URL free of `q`/`mode`.
+  Needs `GEMINI_API_KEY` — without it `/api/chat` returns 503.
 - "+ Add" dialog: paste URL (scheme auto-prepended) → saves → grid+sidebar refresh.
 - Hover a card → trash icon → delete works.
 - Mobile (375px): sidebar becomes sheet via trigger; header wraps; grid is 1-col.

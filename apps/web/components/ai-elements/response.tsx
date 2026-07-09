@@ -17,6 +17,9 @@ export const Response = memo(function Response({ children, className }: Response
   return (
     <Streamdown
       className={cn("size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
+      // Citation links point at the user's own saved bookmarks — render real
+      // anchors instead of Streamdown's confirm-before-open safety modal.
+      linkSafety={{ enabled: false }}
     >
       {children}
     </Streamdown>
