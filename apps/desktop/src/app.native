@@ -1,0 +1,91 @@
+<!-- Bookmark AI desktop — sidebar of AI categories + bookmark cards.
+     Hot-reloads in dev: edit while `native dev` runs.
+     Validate with: native markup check src/app.native -->
+<column gap="0">
+  <row gap="0" grow="1">
+
+    <!-- Sidebar: library + AI category facets -->
+    <column width="240" background="surface" padding="12" gap="10">
+      <row gap="8" cross="center">
+        <icon name="save" foreground="accent"/>
+        <text><span weight="bold">Bookmark AI</span></text>
+      </row>
+      <list gap="2">
+        <list-item icon="archive" selected="{allSelected}" on-press="show_all">All bookmarks</list-item>
+      </list>
+      <text foreground="text_muted">Categories</text>
+      <scroll grow="1">
+        <list gap="2">
+          <for each="cats" key="name" as="c">
+            <list-item icon="folder" selected="{c.selected}" on-press="pick_category:{c.name}">{c.label}</list-item>
+          </for>
+        </list>
+      </scroll>
+      <row gap="6" cross="center">
+        <icon name="check-circle" foreground="success" width="14" height="14"/>
+        <text foreground="text_muted">AI organization</text>
+      </row>
+    </column>
+
+    <separator/>
+
+    <!-- Main: header + card list -->
+    <column grow="1" gap="0">
+      <row gap="8" cross="center" padding="12">
+        <text grow="1"><span weight="bold" scale="1.25">{headerTitle}</span></text>
+        <button size="sm" variant="ghost" icon="refresh-cw" label="Refresh" on-press="refresh"></button>
+      </row>
+      <separator/>
+
+      <if test="{isLoading}">
+        <row main="center" padding="40"><spinner/></row>
+      </if>
+
+      <if test="{hasFailed}">
+        <column gap="10" padding="32" cross="center">
+          <icon name="alert" foreground="destructive"/>
+          <text foreground="text_muted" wrap="true" text-alignment="center">{errorText}</text>
+          <button variant="secondary" on-press="refresh">Try again</button>
+        </column>
+      </if>
+
+      <if test="{showEmpty}">
+        <column gap="6" padding="40" cross="center">
+          <text><span weight="bold">No bookmarks yet</span></text>
+          <text foreground="text_muted" wrap="true" text-alignment="center">Save a page with the browser extension or the web app, then refresh.</text>
+        </column>
+      </if>
+
+      <if test="{showList}">
+        <scroll grow="1">
+          <column gap="10" padding="14">
+            <for each="rows" key="index" as="b">
+              <card on-press="open_bookmark:{b.index}" label="{b.title}">
+                <column gap="6" padding="14">
+                  <text foreground="text_muted">{b.site_line}</text>
+                  <text><span weight="bold">{b.title}</span></text>
+                  <if test="{b.has_description}">
+                    <text wrap="true" foreground="text_muted">{b.description}</text>
+                  </if>
+                  <row gap="10" cross="center">
+                    <badge>{b.category}</badge>
+                    <if test="{b.has_tags}">
+                      <text foreground="text_muted">{b.tags}</text>
+                    </if>
+                    <spacer grow="1"/>
+                    <text foreground="text_muted">{b.meta}</text>
+                  </row>
+                </column>
+                <context-menu>
+                  <menu-item on-press="open_bookmark:{b.index}">Open in Browser</menu-item>
+                </context-menu>
+              </card>
+            </for>
+          </column>
+        </scroll>
+      </if>
+    </column>
+  </row>
+
+  <status-bar>{statusLine}</status-bar>
+</column>

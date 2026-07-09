@@ -1,0 +1,19 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Brand tokens shared across all Bookmark AI web surfaces. */
+@import "@bookmark-ai/ui/theme.css";
+
+/* Scan the shared UI package for Tailwind classes. */
+@source "../../../packages/ui/src";
+
+@custom-variant dark (&:is(.dark *));
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
