@@ -12,17 +12,14 @@ import {
   Folder,
   Globe,
   Laptop,
+  Layers,
   Library,
   Monitor,
   Smartphone,
   Sparkles,
   Tablet,
 } from "lucide-react";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -64,6 +61,10 @@ export interface AppSidebarProps {
   aiEnabled: boolean | null;
   filters: LibraryFilters;
   onFilterChange: (filters: LibraryFilters) => void;
+  /** Whether the Sessions view (not the library) is showing. */
+  sessionsActive?: boolean;
+  sessionCount?: number | null;
+  onShowSessions?: () => void;
 }
 
 /**
@@ -71,7 +72,15 @@ export interface AppSidebarProps {
  * Selecting a facet swaps the whole filter (one facet active at a time keeps
  * the mental model simple); selecting it again clears it.
  */
-export function AppSidebar({ meta, aiEnabled, filters, onFilterChange }: AppSidebarProps) {
+export function AppSidebar({
+  meta,
+  aiEnabled,
+  filters,
+  onFilterChange,
+  sessionsActive,
+  sessionCount,
+  onShowSessions,
+}: AppSidebarProps) {
   const { setOpenMobile } = useSidebar();
   const [allCategories, setAllCategories] = useState(false);
 
@@ -88,11 +97,7 @@ export function AppSidebar({ meta, aiEnabled, filters, onFilterChange }: AppSide
       ? categories
       : categories
           .slice(0, VISIBLE_CATEGORIES)
-          .concat(
-            categories
-              .slice(VISIBLE_CATEGORIES)
-              .filter((c) => c.name === filters.category),
-          );
+          .concat(categories.slice(VISIBLE_CATEGORIES).filter((c) => c.name === filters.category));
 
   return (
     <Sidebar>
@@ -115,11 +120,27 @@ export function AppSidebar({ meta, aiEnabled, filters, onFilterChange }: AppSide
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton isActive={noFilter} onClick={() => select({})}>
+                <SidebarMenuButton
+                  isActive={noFilter && !sessionsActive}
+                  onClick={() => select({})}
+                >
                   <Library aria-hidden />
                   <span>All bookmarks</span>
                 </SidebarMenuButton>
                 {meta ? <SidebarMenuBadge>{meta.total}</SidebarMenuBadge> : null}
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={!!sessionsActive}
+                  onClick={() => {
+                    onShowSessions?.();
+                    setOpenMobile(false);
+                  }}
+                >
+                  <Layers aria-hidden />
+                  <span>Sessions</span>
+                </SidebarMenuButton>
+                {sessionCount != null ? <SidebarMenuBadge>{sessionCount}</SidebarMenuBadge> : null}
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
@@ -131,9 +152,7 @@ export function AppSidebar({ meta, aiEnabled, filters, onFilterChange }: AppSide
               <SidebarMenuItem key={c.name}>
                 <SidebarMenuButton
                   isActive={filters.category === c.name}
-                  onClick={() =>
-                    select(filters.category === c.name ? {} : { category: c.name })
-                  }
+                  onClick={() => select(filters.category === c.name ? {} : { category: c.name })}
                 >
                   <Folder aria-hidden />
                   <span>{c.name}</span>
@@ -149,11 +168,11 @@ export function AppSidebar({ meta, aiEnabled, filters, onFilterChange }: AppSide
                 >
                   <ChevronDown
                     aria-hidden
-                    className={allCategories ? "rotate-180 transition-transform" : "transition-transform"}
+                    className={
+                      allCategories ? "rotate-180 transition-transform" : "transition-transform"
+                    }
                   />
-                  <span>
-                    {allCategories ? "Show less" : `View all (${categories.length})`}
-                  </span>
+                  <span>{allCategories ? "Show less" : `View all (${categories.length})`}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
@@ -173,9 +192,7 @@ export function AppSidebar({ meta, aiEnabled, filters, onFilterChange }: AppSide
                 <SidebarMenuItem key={b.name}>
                   <SidebarMenuButton
                     isActive={filters.browser === b.name}
-                    onClick={() =>
-                      select(filters.browser === b.name ? {} : { browser: b.name })
-                    }
+                    onClick={() => select(filters.browser === b.name ? {} : { browser: b.name })}
                   >
                     <Icon aria-hidden />
                     <span className="capitalize">{b.name}</span>
@@ -228,7 +245,11 @@ export function AppSidebar({ meta, aiEnabled, filters, onFilterChange }: AppSide
       <SidebarFooter>
         <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
           <Sparkles className="size-3.5" aria-hidden />
-          {aiEnabled === null ? "Connecting…" : aiEnabled ? "AI organization on" : "AI off — heuristics"}
+          {aiEnabled === null
+            ? "Connecting…"
+            : aiEnabled
+              ? "AI organization on"
+              : "AI off — heuristics"}
         </div>
       </SidebarFooter>
     </Sidebar>
@@ -264,7 +285,9 @@ function formatDayLabel(day: string): string {
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
   const sameDay = (a: Date, b: Date) =>
-    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
   if (sameDay(date, today)) return "Today";
   if (sameDay(date, yesterday)) return "Yesterday";
   return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });

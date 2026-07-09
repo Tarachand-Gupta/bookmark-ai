@@ -1,8 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Bookmark, HealthResponse, MetaResponse, SearchMode, SearchResponse } from "@bookmark-ai/types";
-import { getHealth, getMeta, listBookmarks, searchBookmarks, type LibraryFilters } from "@/lib/api";
+import type {
+  Bookmark,
+  HealthResponse,
+  ListSessionsResponse,
+  MetaResponse,
+  SearchMode,
+  SearchResponse,
+} from "@bookmark-ai/types";
+import {
+  getHealth,
+  getMeta,
+  getSessions,
+  listBookmarks,
+  searchBookmarks,
+  type LibraryFilters,
+} from "@/lib/api";
 
 interface AsyncState<T> {
   data: T | null;
@@ -46,6 +60,10 @@ export function useHealth(refreshKey: number): AsyncState<HealthResponse> {
   return useAsync((signal) => getHealth(signal), [refreshKey]);
 }
 
+export function useSessions(refreshKey: number): AsyncState<ListSessionsResponse> {
+  return useAsync((signal) => getSessions(signal), [refreshKey]);
+}
+
 const PAGE_SIZE = 100;
 
 export interface BookmarkListState {
@@ -86,7 +104,13 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
           if (err.name === "AbortError") return;
           setState((s) =>
             offset === 0
-              ? { bookmarks: null, total: 0, loading: false, loadingMore: false, error: err.message }
+              ? {
+                  bookmarks: null,
+                  total: 0,
+                  loading: false,
+                  loadingMore: false,
+                  error: err.message,
+                }
               : // Keep the loaded pages; the button stays visible as the retry affordance.
                 { ...s, loadingMore: false },
           );
@@ -114,7 +138,11 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
 
 const EMPTY_SEARCH: SearchResponse = { mode: "text", results: [] };
 
-export function useSearch(q: string, mode: SearchMode, refreshKey: number): AsyncState<SearchResponse> {
+export function useSearch(
+  q: string,
+  mode: SearchMode,
+  refreshKey: number,
+): AsyncState<SearchResponse> {
   const trimmed = q.trim();
   return useAsync(
     async (signal) => {

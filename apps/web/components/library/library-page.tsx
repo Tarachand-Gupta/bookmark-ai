@@ -5,8 +5,15 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { SearchMode } from "@bookmark-ai/types";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { deleteBookmark, type LibraryFilters } from "@/lib/api";
-import { useBookmarks, useHealth, useMeta, useRefresh, useSearch } from "@/hooks/use-library";
+import { deleteBookmark, deleteSession, type LibraryFilters } from "@/lib/api";
+import {
+  useBookmarks,
+  useHealth,
+  useMeta,
+  useRefresh,
+  useSearch,
+  useSessions,
+} from "@/hooks/use-library";
 import { AiChat } from "./ai-chat";
 import { AppSidebar } from "./app-sidebar";
 import { BookmarkGrid } from "./bookmark-grid";
@@ -14,6 +21,7 @@ import { LibraryHeader } from "./library-header";
 import { TagChips } from "./tag-chips";
 import { ViewToggle, type LibraryView } from "./view-toggle";
 import { DateRangeFilter } from "./date-range-filter";
+import { SessionsView } from "./sessions-view";
 import { AddBookmarkDialog } from "./add-bookmark-dialog";
 
 const VIEW_STORAGE_KEY = "bookmark-ai:view";
@@ -83,8 +91,12 @@ export function LibraryPage() {
     const timer = setTimeout(() => {
       const params = new URLSearchParams(searchParams);
       const trimmed = query.trim();
-      if (trimmed) params.set("q", trimmed);
-      else params.delete("q");
+      if (trimmed) {
+        params.set("q", trimmed);
+        params.delete("section"); // starting a search leaves the Sessions view
+      } else {
+        params.delete("q");
+      }
       if (mode === "ai") params.set("mode", mode);
       else params.delete("mode");
       const next = params.size ? `${pathname}?${params}` : pathname;
@@ -100,6 +112,11 @@ export function LibraryPage() {
   const list = useBookmarks(filters, refreshKey);
   // The grid always shows live full-text results; "ai" mode opens the chat panel.
   const search = useSearch(query, "text", refreshKey);
+  const sessions = useSessions(refreshKey);
+
+  // Saved sessions are a distinct section, keyed off ?section=sessions so the
+  // extension can deep-link into it right after saving a session.
+  const sessionsActive = searchParams.get("section") === "sessions";
 
   const searching = query.trim().length > 0;
   const bookmarks = searching
@@ -125,8 +142,28 @@ export function LibraryPage() {
     [refresh],
   );
 
+  const showSessions = useCallback(() => {
+    setQuery("");
+    setMode("text");
+    router.push(`${pathname}?section=sessions`, { scroll: false });
+  }, [router, pathname]);
+
+  const handleSessionDelete = useCallback(
+    async (id: string) => {
+      setActionError(null);
+      try {
+        await deleteSession(id);
+      } catch (err) {
+        setActionError((err as Error).message);
+      } finally {
+        refresh();
+      }
+    },
+    [refresh],
+  );
+
   // The title always names the selected view; search presents in the content area.
-  const title = viewTitle(filters);
+  const title = sessionsActive ? "Sessions" : viewTitle(filters);
   const aiActive = mode === "ai";
 
   // Leaving the chat must also drop the query, or the grid lands on stale
@@ -143,6 +180,9 @@ export function LibraryPage() {
         aiEnabled={health.data ? health.data.ai : health.error ? false : null}
         filters={filters}
         onFilterChange={setFilters}
+        sessionsActive={sessionsActive}
+        sessionCount={sessions.data?.sessions.length ?? null}
+        onShowSessions={showSessions}
       />
       <SidebarInset>
         <LibraryHeader
@@ -169,6 +209,18 @@ export function LibraryPage() {
                   setFilters(next, { clearSearch: true });
                 }}
               />
+            ) : sessionsActive ? (
+              <>
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold tracking-tight">Saved sessions</h2>
+                </div>
+                <SessionsView
+                  sessions={sessions.data?.sessions ?? null}
+                  loading={sessions.loading}
+                  error={sessions.error}
+                  onDelete={handleSessionDelete}
+                />
+              </>
             ) : (
               <>
                 <div className="mb-4 flex items-start gap-3">

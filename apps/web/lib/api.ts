@@ -3,6 +3,7 @@ import type {
   CreateBookmarkInput,
   HealthResponse,
   ListBookmarksResponse,
+  ListSessionsResponse,
   MetaResponse,
   SearchMode,
   SearchResponse,
@@ -73,6 +74,16 @@ export function createBookmark(input: CreateBookmarkInput): Promise<{ bookmark: 
 
 export function deleteBookmark(id: string): Promise<void> {
   return fetch(`${API_URL}/api/bookmarks/${id}`, { method: "DELETE" }).then((res) => {
+    if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
+  });
+}
+
+export function getSessions(signal?: AbortSignal): Promise<ListSessionsResponse> {
+  return request<ListSessionsResponse>("/api/sessions", { signal });
+}
+
+export function deleteSession(id: string): Promise<void> {
+  return fetch(`${API_URL}/api/sessions/${id}`, { method: "DELETE" }).then((res) => {
     if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
   });
 }
