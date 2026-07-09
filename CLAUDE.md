@@ -30,6 +30,16 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
   `apps/server/data/bookmarks.db` is a pre-migration backup — pointing `DATABASE_URL` back at
   it restores fully-local mode; query code is URL-agnostic.
 - **Git**: pushed to GitHub `Tarachand-Gupta/bookmark-ai` (private).
+- **Auth (Clerk)**: `apps/web` requires login — `middleware.ts` `auth.protect()`s every route
+  except `/sign-in` and `/sign-up`. Dev-instance keys live in `apps/web/.env.local` (gitignored)
+  and work on any origin; a production Clerk instance (needs a custom domain) is not set up yet.
+  Because of the gate, headless/preview browser testing of app content needs a signed-in session.
+- **Deployment**: web is **live on Vercel** (`bookmark-ai-theta.vercel.app`) — project Root
+  Directory `apps/web`, install filtered to `pnpm … --filter @bookmark-ai/web...`, a root
+  `.vercelignore` excludes build caches. Env on Vercel: Clerk keys + `GEMINI_API_KEY` set;
+  `NEXT_PUBLIC_API_URL` still needs the Render URL. The server deploys to **Render** via
+  `render.yaml` (blueprint) — **not yet connected** (needs the user's Render account). API port
+  is **4545** (was 4000).
 - Zig 0.16 + `@native-sdk/cli` 0.4.0 (`native` on PATH) are installed globally on this machine.
 
 ## API quick reference (all JSON, permissive CORS)
@@ -39,6 +49,7 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
 - `GET /api/search?q=…&mode=text|ai&limit=` → `{mode, results:[{bookmark,score}], fallback?}`
 - `GET /api/meta` → sidebar facets + tag rail `{categories, browsers, devices, days, tags, total}`
 - `GET /api/health` → `{ok, ai}` · `DELETE /api/bookmarks/:id` → 204
+- `POST /api/sessions` — body `{name?, tabs:[{url,title?,favIconUrl?,windowId?}], browser?, device?, savedAt?}` → `201 {session}` (a saved browser-tab snapshot). `GET /api/sessions` → `{sessions}` · `DELETE /api/sessions/:id` → 204
 - `POST /api/chat` — **Next.js route in `apps/web`** (not Express): AI SDK v7 agent chat.
   Body `{messages: UIMessage[]}`; streams UI messages; tools `searchFullText`/`searchSemantic`
   proxy `/api/search`. Import existing browser bookmarks:
