@@ -25,7 +25,7 @@ native skills get automation  # driving/verifying the running app
 
 ```bash
 native check    # markup + typed model contract + app.zon (contract refreshed by `native test`)
-native test     # 8 tests must pass
+native test     # 11 tests must pass
 native build    # ReleaseFast → zig-out/bin/bookmark-ai
 ```
 
@@ -59,6 +59,11 @@ widget — a naive "last #number" regex clicks the container and nothing happens
 - Filtering: `pick_category: []const u8` copies into `model.filter`; the view derives
   everything (`rows`, `cats`, `statusLine`, bools) via pub fns on Model — **derive, don't
   store**; formatted strings go into the per-build arena.
+- Search: the header `<search-field>` mirrors edits into `model.search_buffer`
+  (`query_changed: canvas.TextInputEvent`); Enter (`run_search`) fetches
+  `/api/search?mode=text&limit=30&q=…` (key=2, percent-encoded by `buildSearchUrl`) →
+  `.search_loaded` → `applySearchResponse`. `model.awaiting` guards stale/cancelled
+  terminals; emptying the field (typing or the built-in ✕) restores the library list.
 
 ## SDK rules that bit us (respect them)
 
@@ -84,8 +89,9 @@ widget — a naive "last #number" regex clicks the container and nothing happens
 
 - New UI state → Model field/fn + markup binding + a test in `tests.zig` (copy the
   `buildTree`/`expectByText` pattern; run `native test` so the typed contract refreshes).
-- Search UI would be: `<search-field on-input="query_changed" on-submit="run_search"/>`,
-  `query_changed: canvas.TextInputEvent` Msg, fx.fetch to `/api/search`, results reuse `rows`.
+- Search UI is implemented exactly on that pattern (`startSearch`/`applySearchResponse` in
+  main.zig, the header `<search-field>` in app.native) — an AI-mode toggle would add a mode
+  field + `mode=ai` in `buildSearchUrl` and surface the response's `fallback` flag.
 - Images in cards require the Zig-builder view path (`canvas.Ui`) + runtime image
   registration — a bigger lift; see the native-ui skill's Images section.
 - Packaging a distributable .app: `native build && native package --target macos`.

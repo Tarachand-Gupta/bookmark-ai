@@ -8,7 +8,7 @@ fails, the regression is real. Commands assume repo root unless noted.
 ```bash
 pnpm install
 pnpm turbo build check-types        # 9 tasks; server "no output files" warning is cosmetic
-cd apps/desktop && native check && native test   # markup+contract clean, 8/8 tests
+cd apps/desktop && native check && native test   # markup+contract clean, 11/11 tests
 ```
 
 ## 1. Server + database
@@ -111,6 +111,15 @@ is a different widget!), then:
 ```bash
 native automate widget-click main-canvas <id>
 # status bar → "1 shown · M total", header → category name
+```
+
+Search (header field): get the textbox id from the snapshot (`role=textbox`), then
+
+```bash
+native automate widget-action main-canvas <textbox-id> set_text fetch
+native automate widget-key main-canvas enter
+# header → Search "fetch"; status bar → "N result(s) · localhost:4000"
+native automate widget-action main-canvas <textbox-id> set_text ""   # restores the library
 ```
 
 Server down → cards replaced by error panel + "Try again" button; status bar says Offline.

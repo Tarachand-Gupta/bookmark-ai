@@ -115,7 +115,7 @@ test "category filter narrows the rows and derives facet counts" {
     const filtered = model.rows(arena);
     try testing.expectEqual(@as(usize, 1), filtered.len);
     try testing.expectEqualStrings("Design file", filtered[0].title);
-    try testing.expectEqualStrings("Design", model.headerTitle());
+    try testing.expectEqualStrings("Design", model.headerTitle(arena));
 }
 
 test "the markup builds against every model state" {
@@ -163,6 +163,62 @@ test "pressing a category row dispatches the typed filter message" {
     tree = try buildTree(arena, &model);
     _ = try expectByText(tree.root, .text, "Design file");
     try testing.expectEqual(@as(usize, 1), model.rows(arena).len);
+}
+
+const sample_search_body =
+    \\{"mode":"text","results":[
+    \\  {"bookmark":{"id":"c","url":"https://developer.mozilla.org/fetch","domain":"developer.mozilla.org",
+    \\   "title":"Fetch API","description":"Interface for fetching resources.",
+    \\   "og":{"siteName":"MDN Web Docs"},
+    \\   "source":{"browser":"chrome","device":"laptop","savedAt":"2026-07-09T10:47:28.871Z"},
+    \\   "category":"Docs & Reference","tags":["developer"],"createdAt":"x","embedded":true},
+    \\   "score":2.14}
+    \\]}
+;
+
+test "a search response fills the model as results" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    var model = loadedModel();
+    main.applySearchResponse(&model, .{ .key = 2, .outcome = .ok, .status = 200, .body = sample_search_body });
+
+    try testing.expect(model.search_active);
+    try testing.expectEqual(@as(u16, 1), model.bookmark_count);
+    try testing.expectEqualStrings("Fetch API", model.bookmarks[0].title.slice());
+    try testing.expectEqualStrings("1 result · localhost:4000", model.statusLine(arena));
+
+    // A cancelled terminal (superseded search) must not disturb the model.
+    main.applySearchResponse(&model, .{ .key = 2, .outcome = .cancelled });
+    try testing.expect(model.search_active);
+    try testing.expectEqual(@as(u16, 1), model.bookmark_count);
+}
+
+test "buildSearchUrl percent-encodes the query" {
+    var buf: [640]u8 = undefined;
+    const url = try main.buildSearchUrl(&buf, "zig lang! ünïcode");
+    try testing.expectEqualStrings(
+        "http://127.0.0.1:4000/api/search?mode=text&limit=30&q=zig+lang%21+%C3%BCn%C3%AFcode",
+        url,
+    );
+}
+
+test "the markup builds in the search state" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    var model = loadedModel();
+    main.applySearchResponse(&model, .{ .key = 2, .outcome = .ok, .status = 200, .body = sample_search_body });
+    var tree = try buildTree(arena, &model);
+    _ = try expectByText(tree.root, .text, "Fetch API");
+    _ = try expectByText(tree.root, .status_bar, "1 result · localhost:4000");
+
+    // No matches: the empty state speaks search, not onboarding.
+    main.applySearchResponse(&model, .{ .key = 2, .outcome = .ok, .status = 200, .body = "{\"mode\":\"text\",\"results\":[]}" });
+    tree = try buildTree(arena, &model);
+    _ = try expectByText(tree.root, .text, "No matches");
 }
 
 test "the view lays out through the canvas engine" {

@@ -33,6 +33,7 @@
     <column grow="1" gap="0">
       <row gap="8" cross="center" padding="12">
         <text grow="1"><span weight="bold" scale="1.25">{headerTitle}</span></text>
+        <search-field size="sm" width="240" placeholder="Search bookmarks…" text="{searchText}" on-input="query_changed" on-submit="run_search"/>
         <button size="sm" variant="ghost" icon="refresh-cw" label="Refresh" on-press="refresh"></button>
       </row>
       <separator/>
@@ -51,8 +52,8 @@
 
       <if test="{showEmpty}">
         <column gap="6" padding="40" cross="center">
-          <text><span weight="bold">No bookmarks yet</span></text>
-          <text foreground="text_muted" wrap="true" text-alignment="center">Save a page with the browser extension or the web app, then refresh.</text>
+          <text><span weight="bold">{emptyTitle}</span></text>
+          <text foreground="text_muted" wrap="true" text-alignment="center">{emptyHint}</text>
         </column>
       </if>
 

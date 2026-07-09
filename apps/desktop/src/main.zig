@@ -20,7 +20,9 @@ const window_height: f32 = 720;
 /// The local Bookmark AI API (apps/server). limit=30 keeps the response
 /// far under the 256 KiB effect body cap and the view under widget budgets.
 const bookmarks_url = "http://127.0.0.1:4000/api/bookmarks?limit=30";
+const search_url_base = "http://127.0.0.1:4000/api/search";
 const fetch_key: u64 = 1;
+const search_key: u64 = 2;
 const open_key_base: u64 = 100;
 
 const max_bookmarks = 30;
@@ -92,6 +94,9 @@ const BookmarkItem = struct {
 
 const LoadStatus = enum { loading, ready, failed };
 
+/// Which fetch the last load was for — guards late/stale terminal Msgs.
+const LoadKind = enum { list, search };
+
 pub const Msg = union(enum) {
     refresh,
     loaded: native_sdk.EffectResponse,
@@ -100,9 +105,15 @@ pub const Msg = union(enum) {
     open_bookmark: i64,
     /// Terminal Msg for the `open <url>` spawn; nothing to do on success.
     opened: native_sdk.EffectExit,
+    /// Every text edit in the header search field (elm-style mirror).
+    query_changed: canvas.TextInputEvent,
+    /// Enter in the search field — run the query against /api/search.
+    run_search,
+    /// Terminal Msg for the search fetch.
+    search_loaded: native_sdk.EffectResponse,
 
     /// Effect-delivered tags — never dispatched from markup.
-    pub const view_unbound = .{ "loaded", "opened" };
+    pub const view_unbound = .{ "loaded", "opened", "search_loaded" };
 };
 
 pub const Model = struct {
@@ -110,8 +121,10 @@ pub const Model = struct {
     /// iterated through the derived `rows`/`cats` views, `error_text`
     /// binds through the `errorText` accessor, and the scalar state
     /// (`bookmark_count`/`total`/`filter`/`status`) only feeds derived
-    /// views like `statusLine`/`rows`/`cats` and the state booleans.
-    pub const view_unbound = .{ "bookmarks", "error_text", "bookmark_count", "total", "filter", "status" };
+    /// views like `statusLine`/`rows`/`cats` and the state booleans; the
+    /// search state (`search_buffer`/`search_active`/`awaiting`) feeds
+    /// `searchText`/`headerTitle`/`statusLine` and the empty-state fns.
+    pub const view_unbound = .{ "bookmarks", "error_text", "bookmark_count", "total", "filter", "status", "search_buffer", "search_active", "awaiting" };
 
     bookmarks: [max_bookmarks]BookmarkItem = @splat(.{}),
     bookmark_count: u16 = 0,
@@ -120,6 +133,11 @@ pub const Model = struct {
     filter: Str(40) = .{},
     status: LoadStatus = .loading,
     error_text: Str(160) = .{},
+    /// Header search field state (markup binds the `searchText` fn).
+    search_buffer: canvas.TextBuffer(80) = .{},
+    /// True while `bookmarks` holds /api/search results, not the library.
+    search_active: bool = false,
+    awaiting: LoadKind = .list,
 
     // ------------------------------------------------------- view bindings
 
@@ -147,17 +165,41 @@ pub const Model = struct {
         return model.error_text.slice();
     }
 
-    pub fn headerTitle(model: *const Model) []const u8 {
+    pub fn searchText(model: *const Model) []const u8 {
+        return model.search_buffer.text();
+    }
+
+    pub fn emptyTitle(model: *const Model) []const u8 {
+        return if (model.search_active) "No matches" else "No bookmarks yet";
+    }
+
+    pub fn emptyHint(model: *const Model) []const u8 {
+        return if (model.search_active)
+            "Try different words, or clear the search to browse the library."
+        else
+            "Save a page with the browser extension or the web app, then refresh.";
+    }
+
+    pub fn headerTitle(model: *const Model, arena: std.mem.Allocator) []const u8 {
+        if (model.search_active) {
+            return std.fmt.allocPrint(arena, "Search \"{s}\"", .{model.search_buffer.text()}) catch "Search";
+        }
         return if (model.filter.isEmpty()) "All bookmarks" else model.filter.slice();
     }
 
     pub fn statusLine(model: *const Model, arena: std.mem.Allocator) []const u8 {
         return switch (model.status) {
-            .loading => "Loading bookmarks…",
+            .loading => if (model.awaiting == .search) "Searching…" else "Loading bookmarks…",
             .failed => "Offline — is the Bookmark AI server running on localhost:4000?",
-            .ready => std.fmt.allocPrint(arena, "{d} shown · {d} total · localhost:4000", .{
-                model.visibleCount(), model.total,
-            }) catch "",
+            .ready => if (model.search_active)
+                std.fmt.allocPrint(arena, "{d} {s} · localhost:4000", .{
+                    model.visibleCount(),
+                    if (model.visibleCount() == 1) "result" else "results",
+                }) catch ""
+            else
+                std.fmt.allocPrint(arena, "{d} shown · {d} total · localhost:4000", .{
+                    model.visibleCount(), model.total,
+                }) catch "",
         };
     }
 
@@ -256,11 +298,19 @@ const Effects = BookmarksApp.Effects;
 pub fn update(model: *Model, msg: Msg, fx: *Effects) void {
     switch (msg) {
         .refresh => startLoad(model, fx),
-        .loaded => |response| applyResponse(model, response),
+        .loaded => |response| if (model.awaiting == .list) applyResponse(model, response),
         .pick_category => |name| model.filter.set(name),
         .show_all => model.filter.clear(),
         .open_bookmark => |index| openBookmark(model, fx, index),
         .opened => {},
+        .query_changed => |edit| {
+            model.search_buffer.apply(edit);
+            // The field's built-in clear (x / Escape) empties the text —
+            // restore the library instead of showing stale results.
+            if (model.search_active and model.search_buffer.text().len == 0) startLoad(model, fx);
+        },
+        .run_search => startSearch(model, fx),
+        .search_loaded => |response| if (model.awaiting == .search) applySearchResponse(model, response),
     }
 }
 
@@ -272,12 +322,70 @@ pub fn boot(model: *Model, fx: *Effects) void {
 fn startLoad(model: *Model, fx: *Effects) void {
     model.status = .loading;
     model.error_text.clear();
+    model.search_active = false;
+    model.search_buffer.clear();
+    model.awaiting = .list;
     fx.fetch(.{
         .key = fetch_key,
         .url = bookmarks_url,
         .timeout_ms = 10_000,
         .on_response = Effects.responseMsg(.loaded),
     });
+}
+
+fn startSearch(model: *Model, fx: *Effects) void {
+    const query = model.search_buffer.text();
+    if (query.len == 0) {
+        startLoad(model, fx);
+        return;
+    }
+    model.status = .loading;
+    model.error_text.clear();
+    model.awaiting = .search;
+    var url_buf: [640]u8 = undefined;
+    const url = buildSearchUrl(&url_buf, query) catch {
+        model.status = .failed;
+        model.error_text.set("That search is too long to send.");
+        return;
+    };
+    fx.cancel(search_key); // replace any in-flight search on rapid re-submit
+    fx.fetch(.{
+        .key = search_key,
+        .url = url,
+        .timeout_ms = 10_000,
+        .on_response = Effects.responseMsg(.search_loaded),
+    });
+}
+
+/// Build the /api/search URL, percent-encoding the query (pub for tests).
+pub fn buildSearchUrl(buf: []u8, query: []const u8) ![]const u8 {
+    const prefix = search_url_base ++ "?mode=text&limit=30&q=";
+    if (prefix.len > buf.len) return error.QueryTooLong;
+    @memcpy(buf[0..prefix.len], prefix);
+    var len: usize = prefix.len;
+    const hex = "0123456789ABCDEF";
+    for (query) |c| {
+        switch (c) {
+            'A'...'Z', 'a'...'z', '0'...'9', '-', '_', '.', '~' => {
+                if (len + 1 > buf.len) return error.QueryTooLong;
+                buf[len] = c;
+                len += 1;
+            },
+            ' ' => {
+                if (len + 1 > buf.len) return error.QueryTooLong;
+                buf[len] = '+';
+                len += 1;
+            },
+            else => {
+                if (len + 3 > buf.len) return error.QueryTooLong;
+                buf[len] = '%';
+                buf[len + 1] = hex[c >> 4];
+                buf[len + 2] = hex[c & 0x0F];
+                len += 3;
+            },
+        }
+    }
+    return buf[0..len];
 }
 
 fn openBookmark(model: *Model, fx: *Effects, index: i64) void {
@@ -313,6 +421,22 @@ pub fn applyResponse(model: *Model, response: native_sdk.EffectResponse) void {
     };
 }
 
+/// Pure and directly testable: fold one search fetch outcome into the model.
+pub fn applySearchResponse(model: *Model, response: native_sdk.EffectResponse) void {
+    if (response.outcome == .cancelled) return; // superseded by a newer search
+    if (response.outcome != .ok or response.status != 200) {
+        model.status = .failed;
+        model.error_text.set("Search failed. Is the Bookmark AI server running on localhost:4000?");
+        return;
+    }
+    parseSearchResults(model, response.body) catch {
+        model.status = .failed;
+        model.error_text.set("Could not read the search response.");
+        return;
+    };
+    model.search_active = true;
+}
+
 // ------------------------------------------------------------ JSON intake
 
 fn parseBookmarks(model: *Model, body: []const u8) !void {
@@ -329,31 +453,7 @@ fn parseBookmarks(model: *Model, body: []const u8) !void {
     for (list.array.items) |item| {
         if (model.bookmark_count >= max_bookmarks) break;
         if (item != .object) continue;
-        const obj = item.object;
-        const b = &model.bookmarks[model.bookmark_count];
-        b.* = .{};
-
-        b.url.set(getString(obj, "url"));
-        b.title.set(getString(obj, "title"));
-        b.description.set(getString(obj, "description"));
-        b.domain.set(getString(obj, "domain"));
-        b.category.set(getString(obj, "category"));
-
-        if (obj.get("source")) |source| if (source == .object) {
-            b.browser.set(getString(source.object, "browser"));
-            b.device.set(getString(source.object, "device"));
-            const saved_at = getString(source.object, "savedAt");
-            b.day.set(saved_at[0..@min(saved_at.len, 10)]);
-        };
-
-        if (obj.get("og")) |og| if (og == .object) {
-            b.site.set(getString(og.object, "siteName"));
-        };
-
-        if (obj.get("tags")) |tags| if (tags == .array) {
-            setTagsLine(&b.tags, tags.array.items);
-        };
-
+        fillItem(&model.bookmarks[model.bookmark_count], item.object);
         model.bookmark_count += 1;
     }
 
@@ -363,6 +463,55 @@ fn parseBookmarks(model: *Model, body: []const u8) !void {
     } else model.bookmark_count;
 
     model.status = .ready;
+}
+
+/// /api/search wraps each bookmark as {bookmark, score}; unwrap and reuse
+/// the same field intake as the list endpoint.
+fn parseSearchResults(model: *Model, body: []const u8) !void {
+    var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const root = try std.json.parseFromSliceLeaky(std.json.Value, arena, body, .{});
+    if (root != .object) return error.BadShape;
+    const list = root.object.get("results") orelse return error.BadShape;
+    if (list != .array) return error.BadShape;
+
+    model.bookmark_count = 0;
+    for (list.array.items) |item| {
+        if (model.bookmark_count >= max_bookmarks) break;
+        if (item != .object) continue;
+        const bookmark = item.object.get("bookmark") orelse continue;
+        if (bookmark != .object) continue;
+        fillItem(&model.bookmarks[model.bookmark_count], bookmark.object);
+        model.bookmark_count += 1;
+    }
+    model.total = model.bookmark_count;
+    model.status = .ready;
+}
+
+fn fillItem(b: *BookmarkItem, obj: std.json.ObjectMap) void {
+    b.* = .{};
+    b.url.set(getString(obj, "url"));
+    b.title.set(getString(obj, "title"));
+    b.description.set(getString(obj, "description"));
+    b.domain.set(getString(obj, "domain"));
+    b.category.set(getString(obj, "category"));
+
+    if (obj.get("source")) |source| if (source == .object) {
+        b.browser.set(getString(source.object, "browser"));
+        b.device.set(getString(source.object, "device"));
+        const saved_at = getString(source.object, "savedAt");
+        b.day.set(saved_at[0..@min(saved_at.len, 10)]);
+    };
+
+    if (obj.get("og")) |og| if (og == .object) {
+        b.site.set(getString(og.object, "siteName"));
+    };
+
+    if (obj.get("tags")) |tags| if (tags == .array) {
+        setTagsLine(&b.tags, tags.array.items);
+    };
 }
 
 fn getString(obj: std.json.ObjectMap, key: []const u8) []const u8 {

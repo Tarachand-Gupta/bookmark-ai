@@ -55,8 +55,9 @@ Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25
 
 - Client-side synced DB + on-device vector search (libSQL embedded replicas).
 - Turso cloud: set `DATABASE_URL=libsql://…` + auth token in `createDb` — no query changes.
-- Desktop: search UI, save-from-desktop, images in cards (needs Zig-side `ui.image` +
-  ImageId pipeline — markup can't express images), menu-bar quick-save.
+- Desktop: save-from-desktop, images in cards (needs Zig-side `ui.image` + ImageId
+  pipeline — markup can't express images), menu-bar quick-save. (Search UI shipped
+  2026-07-09 — text mode; AI-mode toggle still open.)
 - Extension: context-menu "save link", options page, Arc-specific detection polish.
 - Auth/multi-user (everything is single-user local today).
 - Initial git commit (user hasn't asked yet).
