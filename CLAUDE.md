@@ -38,11 +38,15 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
   `apps/extension/CLAUDE.md`), and the instance's `allowed_origins` is now an explicit RESTRICTION
   list (extension id + localhost:3000 + 127.0.0.1:3000 + vercel.app alias) — keep the web origins
   in it when adding new ones.
-- **Deployment**: web is **live on Vercel** (`bookmark-ai-theta.vercel.app`) — project Root
-  Directory `apps/web`, install filtered to `pnpm … --filter @bookmark-ai/web...`, a root
-  `.vercelignore` excludes build caches. Env on Vercel: Clerk keys + `GEMINI_API_KEY` set;
-  `NEXT_PUBLIC_API_URL` still needs the Render URL. The server deploys to **Render** via
-  `render.yaml` (blueprint) — **not yet connected** (needs the user's Render account). API port
+- **Deployment (fully live, E2E-verified 2026-07-10)**: web on Vercel
+  (`bookmark-ai-theta.vercel.app`) — project Root Directory `apps/web`, install filtered to
+  `pnpm … --filter @bookmark-ai/web...`, a root `.vercelignore` excludes build caches. Vercel env:
+  Clerk keys + `GEMINI_API_KEY` + `NEXT_PUBLIC_API_URL=https://bookmark-ai-server.onrender.com`.
+  Server is **live on Render**: service `bookmark-ai-server` (`srv-d98flodaeets73fse1f0`,
+  free tier — cold-starts after idle, first request can take ~50s), auto-deploys on push to
+  `main`, build `corepack enable && pnpm install --prod=false`, managed via API with
+  `RENDER_API_KEY` in root `.env` (the committed `render.yaml` is reference only — the service
+  was created via API, not blueprint). API port
   is **4545** (was 4000).
 - Zig 0.16 + `@native-sdk/cli` 0.4.0 (`native` on PATH) are installed globally on this machine.
 
