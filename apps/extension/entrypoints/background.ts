@@ -27,8 +27,8 @@ async function handleSaveBookmark(message: SaveBookmarkMessage): Promise<SaveBoo
 
 async function handleSaveSession(message: SaveSessionMessage): Promise<SaveSessionResult> {
   try {
-    const tabs = await gatherOpenTabs();
-    if (tabs.length === 0) throw new Error("No open tabs to save.");
+    const tabs = await gatherOpenTabs(message.windowId);
+    if (tabs.length === 0) throw new Error("No open tabs in this window to save.");
     const src = detectSource();
     const session = await saveSession({
       name: message.name,
@@ -37,9 +37,9 @@ async function handleSaveSession(message: SaveSessionMessage): Promise<SaveSessi
       device: src.device,
       savedAt: src.savedAt,
     });
-    // Saved successfully — only now is it safe to close the windows + open the app.
+    // Saved successfully — only now is it safe to close the window + open the app.
     const webUrl = await getWebBaseUrl();
-    await closeWindowsAndOpen(`${webUrl}/?section=sessions`);
+    await closeWindowsAndOpen(`${webUrl}/?section=sessions`, message.windowId);
     return { ok: true, session };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

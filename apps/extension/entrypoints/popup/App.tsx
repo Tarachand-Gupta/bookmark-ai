@@ -28,9 +28,10 @@ export default function App() {
         setTab({ url: active.url, title: active.title, favIconUrl: active.favIconUrl });
       }
     });
-    // Count restorable tabs across all windows for the session button label.
+    // Count restorable tabs in THIS window for the session button label —
+    // sessions are per-window, other windows are left alone.
     void browser.tabs
-      .query({})
+      .query({ currentWindow: true })
       .then((tabs) => setTabCount(tabs.filter((t) => t.url && /^https?:/i.test(t.url)).length));
     void getWebBaseUrl().then(setWebUrl);
   }, []);
@@ -59,9 +60,12 @@ export default function App() {
     if (status === "savingSession") return;
     setStatus("savingSession");
     setError(null);
-    const result = await requestSaveSession();
+    // Scope the session to the popup's window; the background can't resolve
+    // "current window" reliably from its own context.
+    const win = await browser.windows.getCurrent();
+    const result = await requestSaveSession({ windowId: win.id });
     if (result.ok) {
-      // The background script now closes the windows and opens the web app;
+      // The background script now closes this window and opens the web app;
       // the popup disappears with its window.
       window.close();
     } else {

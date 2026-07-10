@@ -1,8 +1,23 @@
 import { browser } from "wxt/browser";
 import type { SessionTab } from "@bookmark-ai/types";
 
-/** Collect every open http(s) tab across all normal windows as session tabs. */
-export async function gatherOpenTabs(): Promise<SessionTab[]> {
+/**
+ * Collect open http(s) tabs as session tabs — from one window when `windowId`
+ * is given (the popup's window: sessions are per-window), otherwise from every
+ * normal window.
+ */
+export async function gatherOpenTabs(windowId?: number): Promise<SessionTab[]> {
+  if (windowId != null) {
+    const tabs = await browser.tabs.query({ windowId });
+    return tabs
+      .filter((t) => t.url && /^https?:/i.test(t.url))
+      .map((t) => ({
+        url: t.url!,
+        title: t.title ?? "",
+        favIconUrl: t.favIconUrl,
+        windowId,
+      }));
+  }
   const windows = await browser.windows.getAll({ populate: true });
   const tabs: SessionTab[] = [];
   for (const win of windows) {
@@ -21,13 +36,24 @@ export async function gatherOpenTabs(): Promise<SessionTab[]> {
 }
 
 /**
- * Open `url` in a fresh window, then close every other normal window. The new
- * window is created first so the browser is never left with zero windows
- * (which would quit it). Called only after the session has been safely saved.
+ * Open `url` in a fresh window, then close the saved window — just `windowId`
+ * when given, every other normal window otherwise. The new window is created
+ * first so the browser is never left with zero windows (which would quit it).
+ * Called only after the session has been safely saved.
  */
-export async function closeWindowsAndOpen(url: string): Promise<void> {
-  const existing = await browser.windows.getAll({ populate: false });
+export async function closeWindowsAndOpen(url: string, windowId?: number): Promise<void> {
   const keep = await browser.windows.create({ url });
+  if (windowId != null) {
+    if (windowId !== keep?.id) {
+      try {
+        await browser.windows.remove(windowId);
+      } catch {
+        // window already closed — ignore
+      }
+    }
+    return;
+  }
+  const existing = await browser.windows.getAll({ populate: false });
   for (const win of existing) {
     if (win.id != null && win.id !== keep?.id) {
       try {

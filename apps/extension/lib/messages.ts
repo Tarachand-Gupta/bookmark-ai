@@ -15,6 +15,9 @@ export interface SaveBookmarkMessage {
 export interface SaveSessionMessage {
   type: typeof SAVE_SESSION;
   name?: string;
+  /** Scope the session to this window (the popup's); background contexts
+   * cannot resolve "current window" reliably themselves. */
+  windowId?: number;
 }
 
 export type SaveBookmarkResult = { ok: true; bookmark: Bookmark } | { ok: false; error: string };
@@ -43,9 +46,11 @@ export function requestSaveBookmark(url: string, title?: string): Promise<SaveBo
   return browser.runtime.sendMessage(message) as Promise<SaveBookmarkResult>;
 }
 
-/** Popup-side helper: save the whole window session (background then closes the
- * windows and opens the web app). */
-export function requestSaveSession(name?: string): Promise<SaveSessionResult> {
-  const message: SaveSessionMessage = { type: SAVE_SESSION, name };
+/** Popup-side helper: save the popup's window as a session (background then
+ * closes that window and opens the web app). */
+export function requestSaveSession(
+  options: { windowId?: number; name?: string } = {},
+): Promise<SaveSessionResult> {
+  const message: SaveSessionMessage = { type: SAVE_SESSION, ...options };
   return browser.runtime.sendMessage(message) as Promise<SaveSessionResult>;
 }
