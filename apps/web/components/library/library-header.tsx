@@ -1,15 +1,27 @@
 "use client";
 
 import { SignInButton, SignUpButton, UserButton, useUser } from "@clerk/nextjs";
-import { Search, Sparkles, X } from "lucide-react";
+import { ChevronRight, Search, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
+/** The active facet shown as the second breadcrumb segment. */
+export interface HeaderCrumb {
+  label: string;
+  Icon: React.ElementType;
+}
+
 export interface LibraryHeaderProps {
+  /** Breadcrumb root — "All bookmarks" (or "Sessions"). */
   title: string;
+  /** Active facet (category/browser/device/day); null at the root. */
+  crumb?: HeaderCrumb | null;
+  /** Clicking the root while a facet is active clears it. */
+  onRootClick?: () => void;
   query: string;
   /** True while the AI chat panel is open. */
   aiActive: boolean;
@@ -26,6 +38,8 @@ export interface LibraryHeaderProps {
  */
 export function LibraryHeader({
   title,
+  crumb,
+  onRootClick,
   query,
   aiActive,
   onQueryChange,
@@ -35,7 +49,30 @@ export function LibraryHeader({
     <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b bg-background/95 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="mr-1 hidden !h-4 sm:block" />
-      <h1 className="mr-auto truncate text-sm font-medium sm:text-base">{title}</h1>
+      {/* Breadcrumb: root view, then the active facet with its icon — so a
+          category/browser/device view always says where you are. */}
+      <nav aria-label="Breadcrumb" className="mr-auto flex min-w-0 items-center gap-1">
+        {crumb ? (
+          <button
+            type="button"
+            onClick={onRootClick}
+            className="shrink-0 truncate text-sm text-muted-foreground transition-colors hover:text-foreground sm:text-base"
+          >
+            {title}
+          </button>
+        ) : (
+          <h1 className="truncate text-sm font-medium sm:text-base">{title}</h1>
+        )}
+        {crumb && (
+          <>
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium sm:text-base">
+              <crumb.Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="truncate">{crumb.label}</span>
+            </span>
+          </>
+        )}
+      </nav>
 
       <div className="order-last flex w-full items-center gap-2 sm:order-none sm:w-auto">
         <div className="relative flex-1 sm:w-80 sm:flex-none">
@@ -74,6 +111,7 @@ export function LibraryHeader({
         </Button>
       </div>
 
+      <ThemeToggle />
       <AuthControls />
     </header>
   );

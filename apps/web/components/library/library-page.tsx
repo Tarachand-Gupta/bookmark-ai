@@ -3,6 +3,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { SearchMode } from "@bookmark-ai/types";
+import {
+  CalendarDays,
+  Chrome,
+  Compass,
+  Flame,
+  Folder,
+  Globe,
+  Laptop,
+  Monitor,
+  Smartphone,
+  Tablet,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { deleteBookmark, deleteSession, type LibraryFilters } from "@/lib/api";
@@ -17,7 +29,7 @@ import {
 import { AiChat } from "./ai-chat";
 import { AppSidebar } from "./app-sidebar";
 import { BookmarkGrid } from "./bookmark-grid";
-import { LibraryHeader } from "./library-header";
+import { LibraryHeader, type HeaderCrumb } from "./library-header";
 import { TagChips } from "./tag-chips";
 import { ViewToggle, type LibraryView } from "./view-toggle";
 import { DateRangeFilter } from "./date-range-filter";
@@ -162,8 +174,9 @@ export function LibraryPage() {
     [refresh],
   );
 
-  // The title always names the selected view; search presents in the content area.
-  const title = sessionsActive ? "Sessions" : viewTitle(filters);
+  // Breadcrumb: root view + the active facet; search presents in the content area.
+  const crumb = sessionsActive ? null : headerCrumb(filters);
+  const title = sessionsActive ? "Sessions" : "All bookmarks";
   const aiActive = mode === "ai";
 
   // Leaving the chat must also drop the query, or the grid lands on stale
@@ -188,6 +201,8 @@ export function LibraryPage() {
       <SidebarInset>
         <LibraryHeader
           title={title}
+          crumb={crumb}
+          onRootClick={() => setFilters({})}
           query={query}
           aiActive={aiActive}
           onQueryChange={(q) => {
@@ -278,6 +293,7 @@ export function LibraryPage() {
                           key={session.id}
                           session={session}
                           onDelete={handleSessionDelete}
+                          highlight={query}
                         />
                       ))}
                     </div>
@@ -327,14 +343,33 @@ export function LibraryPage() {
   );
 }
 
+const CRUMB_BROWSER_ICONS: Record<string, React.ElementType> = {
+  chrome: Chrome,
+  firefox: Flame,
+  safari: Compass,
+  edge: Globe,
+  arc: Globe,
+  other: Globe,
+};
+
+const CRUMB_DEVICE_ICONS: Record<string, React.ElementType> = {
+  desktop: Monitor,
+  laptop: Laptop,
+  mobile: Smartphone,
+  tablet: Tablet,
+  other: Monitor,
+};
+
 // Tags are deliberately absent: a tag is a filter presented in the content area
 // (chip rail + "#tag" heading), so the top bar keeps naming the selected view.
-function viewTitle(filters: LibraryFilters): string {
-  if (filters.category) return filters.category;
-  if (filters.browser) return `Saved from ${capitalize(filters.browser)}`;
-  if (filters.device) return `Saved on ${capitalize(filters.device)}`;
-  if (filters.day) return `Saved ${filters.day}`;
-  return "All bookmarks";
+function headerCrumb(filters: LibraryFilters): HeaderCrumb | null {
+  if (filters.category) return { label: filters.category, Icon: Folder };
+  if (filters.browser)
+    return { label: capitalize(filters.browser), Icon: CRUMB_BROWSER_ICONS[filters.browser] ?? Globe };
+  if (filters.device)
+    return { label: capitalize(filters.device), Icon: CRUMB_DEVICE_ICONS[filters.device] ?? Monitor };
+  if (filters.day) return { label: filters.day, Icon: CalendarDays };
+  return null;
 }
 
 function capitalize(s: string): string {

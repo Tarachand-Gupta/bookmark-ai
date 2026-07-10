@@ -61,11 +61,19 @@ export function SessionsView({ sessions, loading, error, onDelete }: SessionsVie
 export function SessionCard({
   session,
   onDelete,
+  highlight,
 }: {
   session: Session;
   onDelete: (id: string) => void;
+  /** Search query — tabs whose title/url contain it get a subtle tint. */
+  highlight?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const q = highlight?.trim().toLowerCase() ?? "";
+  const isMatch = (t: Session["tabs"][number]) =>
+    q.length > 0 && (t.title.toLowerCase().includes(q) || t.url.toLowerCase().includes(q));
+  const matchCount = q ? session.tabs.filter(isMatch).length : 0;
+  // In search results, open with the matches visible instead of folded away.
+  const [open, setOpen] = useState(matchCount > 0);
 
   // Best-effort "restore": open each tab. A true multi-tab new window is only
   // possible from the extension (chrome.windows.create) — browsers block it here.
@@ -111,28 +119,42 @@ export function SessionCard({
           aria-hidden
         />
         {open ? "Hide tabs" : `Show ${session.tabCount} tab${session.tabCount === 1 ? "" : "s"}`}
+        {matchCount > 0 && (
+          <span className="ml-auto font-normal">
+            {matchCount} match{matchCount === 1 ? "" : "es"}
+          </span>
+        )}
       </button>
 
       {open && (
         <ul className="divide-y border-t">
-          {session.tabs.map((t, i) => (
-            <li key={`${t.url}-${i}`}>
-              <a
-                href={t.url}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="flex items-center gap-2 px-4 py-2 text-sm transition-colors hover:bg-muted/50"
-              >
-                <TabIcon favIconUrl={t.favIconUrl} />
-                <span className="line-clamp-1 flex-1 [overflow-wrap:anywhere]">
-                  {t.title || t.url}
-                </span>
-                <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-                  {domainOf(t.url)}
-                </span>
-              </a>
-            </li>
-          ))}
+          {session.tabs.map((t, i) => {
+            const matched = isMatch(t);
+            return (
+              <li key={`${t.url}-${i}`}>
+                <a
+                  href={t.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors hover:bg-muted/50 ${
+                    matched ? "bg-primary/5" : ""
+                  }`}
+                >
+                  <TabIcon favIconUrl={t.favIconUrl} />
+                  <span
+                    className={`line-clamp-1 flex-1 [overflow-wrap:anywhere] ${
+                      matched ? "font-medium" : ""
+                    }`}
+                  >
+                    {t.title || t.url}
+                  </span>
+                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+                    {domainOf(t.url)}
+                  </span>
+                </a>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
