@@ -28,6 +28,7 @@ import {
 } from "@/hooks/use-library";
 import { AiChat } from "./ai-chat";
 import { AppSidebar } from "./app-sidebar";
+import { ChatPanel } from "./chat-panel";
 import { BookmarkGrid } from "./bookmark-grid";
 import { LibraryHeader, type HeaderCrumb } from "./library-header";
 import { TagChips } from "./tag-chips";
@@ -179,11 +180,10 @@ export function LibraryPage() {
   const title = sessionsActive ? "Sessions" : "All bookmarks";
   const aiActive = mode === "ai";
 
-  // Leaving the chat must also drop the query, or the grid lands on stale
-  // (possibly empty) text results instead of the library.
+  // The chat is a side panel now — the library stays live next to it, so
+  // closing it keeps the current search instead of wiping it.
   const closeChat = useCallback(() => {
     setMode("text");
-    setQuery("");
   }, []);
 
   return (
@@ -205,26 +205,15 @@ export function LibraryPage() {
           onRootClick={() => setFilters({})}
           query={query}
           aiActive={aiActive}
-          onQueryChange={(q) => {
-            setQuery(q);
-            setMode("text"); // typing always returns to live full-text search
-          }}
-          onAskAi={() => setMode("ai")}
+          onQueryChange={setQuery}
+          onAskAi={() => setMode(aiActive ? "text" : "ai")}
         />
-        <main className="flex-1 p-4">
+        <div className="flex min-w-0 flex-1 items-stretch">
+        <main className="min-w-0 flex-1 p-4">
           {/* Width-capped and centered so content isn't stretched thin on
               widescreen/desktop; full-bleed below the cap on smaller screens. */}
           <div className="mx-auto w-full max-w-7xl">
-            {aiActive ? (
-              <AiChat
-                initialQuery={query}
-                onClose={closeChat}
-                onFilter={(next) => {
-                  closeChat();
-                  setFilters(next, { clearSearch: true });
-                }}
-              />
-            ) : sessionsActive ? (
+            {sessionsActive ? (
               <>
                 <div className="mb-4">
                   <h2 className="text-lg font-semibold tracking-tight">Saved sessions</h2>
@@ -337,6 +326,16 @@ export function LibraryPage() {
             )}
           </div>
         </main>
+        <ChatPanel open={aiActive}>
+          <AiChat
+            initialQuery={query}
+            onClose={closeChat}
+            // The library is visible beside the chat, so filtering keeps the
+            // conversation open — the facet just applies next to it.
+            onFilter={(next) => setFilters(next, { clearSearch: true })}
+          />
+        </ChatPanel>
+        </div>
       </SidebarInset>
       <AddBookmarkDialog open={addOpen} onOpenChange={setAddOpen} onSaved={refresh} />
     </SidebarProvider>

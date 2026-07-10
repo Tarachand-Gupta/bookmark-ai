@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type ToolUIPart } from "ai";
-import { Check, Copy, ExternalLink, Folder, Globe, Search, Sparkles, X } from "lucide-react";
+import { Check, Copy, ExternalLink, Folder, Globe, Layers, Search, Sparkles, X } from "lucide-react";
 import {
   Conversation,
   ConversationContent,
@@ -40,6 +40,20 @@ interface SearchToolOutput {
   modeUsed: string;
   fallback: boolean;
   results: BookmarkHit[];
+}
+
+interface SessionHit {
+  id: string;
+  name: string;
+  tabCount: number;
+  browser: string;
+  savedAt: string;
+  tabs: { title: string; url: string }[];
+}
+
+interface SessionsToolOutput {
+  total: number;
+  sessions: SessionHit[];
 }
 
 export interface AiChatProps {
@@ -80,7 +94,9 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
   };
 
   return (
-    <div className="flex h-[calc(100vh-8.5rem)] min-h-[24rem] flex-col overflow-hidden rounded-xl border bg-card">
+    // Fills whatever shell it's mounted in (ChatPanel provides the chrome);
+    // min-h-0 keeps the conversation area scrolling instead of the page.
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-card">
       <div className="flex items-center justify-between border-b px-3 py-2">
         <p className="flex items-center gap-1.5 text-sm font-medium">
           <Sparkles className="size-4" aria-hidden />
@@ -118,6 +134,10 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
                     return (
                       <SearchToolCall key={tool.toolCallId} part={tool} onFilter={onFilter} />
                     );
+                  }
+                  if (part.type === "tool-listSessions") {
+                    const tool = part as ToolUIPart;
+                    return <SessionsToolCall key={tool.toolCallId} part={tool} />;
                   }
                   return null;
                 })}
@@ -198,6 +218,83 @@ function SearchToolCall({
           onFilter={onFilter}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * One listSessions invocation: status strip + the saved sessions with their
+ * first tabs, visually distinct (Layers icon) from bookmark results.
+ */
+function SessionsToolCall({ part }: { part: ToolUIPart }) {
+  const input = part.input as { query?: string } | undefined;
+  const output = part.output as SessionsToolOutput | undefined;
+  const running = part.state === "input-streaming" || part.state === "input-available";
+  const failed = part.state === "output-error";
+  const count = output?.sessions.length ?? 0;
+
+  return (
+    <div className="not-prose mb-1 w-full overflow-hidden rounded-lg border bg-background">
+      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs">
+        <Layers className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="shrink-0 font-medium">Saved sessions</span>
+        {input?.query && (
+          <span className="line-clamp-1 min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
+            “{input.query}”
+          </span>
+        )}
+        <span className="ml-auto shrink-0 text-muted-foreground">
+          {running ? (
+            <span className="flex items-center gap-1.5">
+              <Loader size={12} />
+              Loading…
+            </span>
+          ) : failed ? (
+            <span className="text-destructive">failed</span>
+          ) : (
+            `${count} session${count === 1 ? "" : "s"}`
+          )}
+        </span>
+      </div>
+      {failed && <p className="px-3 py-2 text-xs text-destructive">{part.errorText}</p>}
+      {output &&
+        (count === 0 ? (
+          <p className="px-3 py-2 text-xs text-muted-foreground">No saved sessions found.</p>
+        ) : (
+          <ul className="divide-y">
+            {output.sessions.map((s) => (
+              <li key={s.id} className="px-3 py-2.5">
+                <div className="flex items-baseline gap-2">
+                  <span className="line-clamp-1 min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
+                    {s.name}
+                  </span>
+                  <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                    {s.tabCount} tab{s.tabCount === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <ul className="mt-1 space-y-0.5">
+                  {s.tabs.slice(0, 5).map((t, i) => (
+                    <li key={`${t.url}-${i}`}>
+                      <a
+                        href={t.url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="line-clamp-1 text-xs text-muted-foreground hover:text-foreground hover:underline [overflow-wrap:anywhere]"
+                      >
+                        {t.title || t.url}
+                      </a>
+                    </li>
+                  ))}
+                  {s.tabs.length > 5 && (
+                    <li className="text-[10px] text-muted-foreground">
+                      +{s.tabCount - 5} more tab{s.tabCount - 5 === 1 ? "" : "s"}
+                    </li>
+                  )}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        ))}
     </div>
   );
 }

@@ -11,6 +11,52 @@ const searchInput = z.object({
   limit: z.number().int().min(1).max(20).default(8),
 });
 
+const listSessionsInput = z.object({
+  query: z
+    .string()
+    .optional()
+    .describe("Optional text filter — matches session names and tab titles/URLs"),
+  limit: z.number().int().min(1).max(50).default(20),
+});
+
+interface ApiSession {
+  id: string;
+  name: string;
+  tabCount: number;
+  browser: string;
+  device: string;
+  savedAt: string;
+  tabs: { url: string; title: string }[];
+}
+
+/** Newest-first saved sessions, optionally filtered by substring. */
+async function runListSessions(query: string | undefined, limit: number) {
+  const res = await fetch(`${API_URL}/api/sessions`);
+  if (!res.ok) throw new Error(`Session list failed (${res.status})`);
+  const data = (await res.json()) as { sessions: ApiSession[] };
+  const q = query?.trim().toLowerCase();
+  const filtered = q
+    ? data.sessions.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          s.tabs.some(
+            (t) => (t.title ?? "").toLowerCase().includes(q) || t.url.toLowerCase().includes(q),
+          ),
+      )
+    : data.sessions;
+  return {
+    total: filtered.length,
+    sessions: filtered.slice(0, limit).map((s) => ({
+      id: s.id,
+      name: s.name,
+      tabCount: s.tabCount,
+      browser: s.browser,
+      savedAt: s.savedAt,
+      tabs: s.tabs.slice(0, 15).map((t) => ({ title: t.title, url: t.url })),
+    })),
+  };
+}
+
 /** Both tools proxy the Express API so the agent and the UI share one search stack. */
 async function runSearch(query: string, mode: "text" | "ai", limit: number) {
   const params = new URLSearchParams({ q: query, mode, limit: String(limit) });
@@ -92,6 +138,7 @@ export async function POST(req: Request) {
       "Always ground answers in the library: call a search tool before answering anything about bookmarks.",
       "Use searchSemantic for questions, concepts, and fuzzy intent; use searchFullText for exact words, names, or domains. Call both when unsure.",
       "Search results can also include the user's saved browser sessions (named snapshots of open tabs) under `sessions` — when one matches the question, mention it by name and what it contains.",
+      "For any question about saved sessions themselves (listing them, what was in one, when tabs were saved), call listSessions — with a text filter when the user narrows it down.",
       "The UI already renders every search result as a rich card, so NEVER repeat the result list.",
       "Answer in 1-3 sentences that synthesize the results: name the best pick(s) inline as markdown links [title](url) and say why they fit. Bare, unlinked titles are forbidden.",
       "If nothing relevant exists, say so plainly and suggest a different phrasing.",
@@ -109,6 +156,12 @@ export async function POST(req: Request) {
           "Semantic vector (RAG) search over the user's saved bookmarks. Best for natural-language questions and concepts.",
         inputSchema: searchInput,
         execute: ({ query, limit }) => runSearch(query, "ai", limit),
+      }),
+      listSessions: tool({
+        description:
+          "List the user's saved browser sessions (named snapshots of open tabs), newest first, optionally filtered by text. Use for any question about saved sessions.",
+        inputSchema: listSessionsInput,
+        execute: ({ query, limit }) => runListSessions(query, limit),
       }),
     },
     stopWhen: stepCountIs(5),
