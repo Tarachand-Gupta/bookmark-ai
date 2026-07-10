@@ -58,7 +58,13 @@ export function SessionsView({ sessions, loading, error, onDelete }: SessionsVie
   );
 }
 
-function SessionCard({ session, onDelete }: { session: Session; onDelete: (id: string) => void }) {
+export function SessionCard({
+  session,
+  onDelete,
+}: {
+  session: Session;
+  onDelete: (id: string) => void;
+}) {
   const [open, setOpen] = useState(false);
 
   // Best-effort "restore": open each tab. A true multi-tab new window is only

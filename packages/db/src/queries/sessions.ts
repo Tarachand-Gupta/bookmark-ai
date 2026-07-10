@@ -48,6 +48,33 @@ export async function deleteSession(db: Db, id: string): Promise<boolean> {
   return rs.rowsAffected > 0;
 }
 
+/**
+ * Case-insensitive substring search over session names and tab text (titles +
+ * URLs live in tabs_json). Sessions are capped at 200 rows, so LIKE is plenty;
+ * a name hit outranks a tabs-only hit.
+ */
+export async function searchSessions(
+  db: Db,
+  q: string,
+  limit: number,
+): Promise<{ session: Session; score: number }[]> {
+  // Escape LIKE wildcards in user text; \ is the escape char below.
+  const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`);
+  const pattern = `%${escaped}%`;
+  const rs = await db.execute({
+    sql: `SELECT *, (name LIKE ? ESCAPE '\\') AS name_hit
+          FROM sessions
+          WHERE name LIKE ? ESCAPE '\\' OR tabs_json LIKE ? ESCAPE '\\'
+          ORDER BY name_hit DESC, saved_at DESC
+          LIMIT ?`,
+    args: [pattern, pattern, pattern, limit],
+  });
+  return rs.rows.map((r) => {
+    const row = r as unknown as Record<string, unknown>;
+    return { session: rowToSession(row), score: Number(row.name_hit) ? 2 : 1 };
+  });
+}
+
 function rowToSession(row: Record<string, unknown>): Session {
   const tabs = parseTabs(row.tabs_json);
   return {

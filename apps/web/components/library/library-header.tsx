@@ -1,7 +1,7 @@
 "use client";
 
 import { SignInButton, SignUpButton, UserButton, useUser } from "@clerk/nextjs";
-import { Plus, Search, Sparkles } from "lucide-react";
+import { Search, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -11,18 +11,18 @@ import { cn } from "@/lib/utils";
 export interface LibraryHeaderProps {
   title: string;
   query: string;
-  /** True while the shown results came from an explicit "Ask AI". */
+  /** True while the AI chat panel is open. */
   aiActive: boolean;
   onQueryChange: (q: string) => void;
   onAskAi: () => void;
-  onAdd: () => void;
 }
 
 /**
- * Sticky top bar: sidebar trigger, active-view title, search, add, and the
- * Clerk account control. Typing searches full-text live; the in-box "Ask AI"
- * affordance runs the semantic search. The title always names the selected
- * view — search state is presented in the content area, never here.
+ * Sticky top bar: sidebar trigger, active-view title, search, the standalone
+ * Ask AI button, and the Clerk account control. Typing searches full-text
+ * live (with an in-box clear ×); Ask AI opens the chat panel — it is its own
+ * surface, deliberately not a search-box mode. The title always names the
+ * selected view — search state is presented in the content area, never here.
  */
 export function LibraryHeader({
   title,
@@ -30,7 +30,6 @@ export function LibraryHeader({
   aiActive,
   onQueryChange,
   onAskAi,
-  onAdd,
 }: LibraryHeaderProps) {
   return (
     <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b bg-background/95 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -47,32 +46,31 @@ export function LibraryHeader({
           <Input
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Search bookmarks…"
-            className="h-9 pl-8 pr-[4.75rem]"
-            aria-label="Search bookmarks"
+            placeholder="Search bookmarks & sessions…"
+            className={cn("h-9 pl-8", query ? "pr-8" : "pr-3")}
+            aria-label="Search bookmarks and sessions"
           />
-          <button
-            type="button"
-            onClick={onAskAi}
-            disabled={!query.trim()}
-            aria-pressed={aiActive}
-            aria-label="Ask AI"
-            className={cn(
-              "absolute right-1 top-1/2 inline-flex h-7 -translate-y-1/2 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
-              aiActive
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              !query.trim() && "pointer-events-none opacity-40",
-            )}
-          >
-            <Sparkles className="size-3.5" aria-hidden />
-            Ask AI
-          </button>
+          {query && (
+            <button
+              type="button"
+              onClick={() => onQueryChange("")}
+              aria-label="Clear search"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          )}
         </div>
 
-        <Button size="sm" className="h-9" onClick={onAdd}>
-          <Plus aria-hidden />
-          <span className="hidden sm:inline">Add</span>
+        <Button
+          size="sm"
+          variant={aiActive ? "default" : "outline"}
+          className="h-9"
+          onClick={onAskAi}
+          aria-pressed={aiActive}
+        >
+          <Sparkles aria-hidden />
+          <span className="hidden sm:inline">Ask AI</span>
         </Button>
       </div>
 

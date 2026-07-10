@@ -15,6 +15,7 @@ import {
   Layers,
   Library,
   Monitor,
+  Plus,
   Smartphone,
   Sparkles,
   Tablet,
@@ -65,6 +66,8 @@ export interface AppSidebarProps {
   sessionsActive?: boolean;
   sessionCount?: number | null;
   onShowSessions?: () => void;
+  /** Opens the add-bookmark dialog (the + next to the branding). */
+  onAdd?: () => void;
 }
 
 /**
@@ -80,6 +83,7 @@ export function AppSidebar({
   sessionsActive,
   sessionCount,
   onShowSessions,
+  onAdd,
 }: AppSidebarProps) {
   const { setOpenMobile } = useSidebar();
   const [allCategories, setAllCategories] = useState(false);
@@ -106,12 +110,25 @@ export function AppSidebar({
           <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Bookmark className="size-4" aria-hidden />
           </div>
-          <div className="grid leading-tight">
+          <div className="grid min-w-0 flex-1 leading-tight">
             <span className="font-semibold">Bookmark AI</span>
             <span className="text-xs text-muted-foreground">
               {meta ? `${meta.total} saved` : "—"}
             </span>
           </div>
+          {onAdd && (
+            // Deliberately quiet next to the black brand mark: white fill,
+            // hairline border, soft shadow — same treatment as the search input.
+            <button
+              type="button"
+              onClick={onAdd}
+              aria-label="Add bookmark"
+              title="Add bookmark"
+              className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background shadow-sm transition-colors hover:bg-muted"
+            >
+              <Plus className="size-4" aria-hidden />
+            </button>
+          )}
         </div>
       </SidebarHeader>
 

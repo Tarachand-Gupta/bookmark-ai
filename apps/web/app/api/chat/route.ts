@@ -32,6 +32,16 @@ async function runSearch(query: string, mode: "text" | "ai", limit: number) {
         og: { favicon?: string | null };
       };
     }[];
+    sessionResults?: {
+      score: number;
+      session: {
+        id: string;
+        name: string;
+        tabCount: number;
+        savedAt: string;
+        tabs: { url: string; title: string }[];
+      };
+    }[];
   };
   return {
     modeUsed: data.mode,
@@ -46,6 +56,14 @@ async function runSearch(query: string, mode: "text" | "ai", limit: number) {
       tags: b.tags,
       favicon: b.og?.favicon ?? null,
       score: Math.round(score * 1000) / 1000,
+    })),
+    // Saved browser sessions whose name or tab text matched the query.
+    sessions: (data.sessionResults ?? []).map(({ session: s }) => ({
+      id: s.id,
+      name: s.name,
+      tabCount: s.tabCount,
+      savedAt: s.savedAt,
+      tabs: s.tabs.slice(0, 10).map((t) => ({ title: t.title, url: t.url })),
     })),
   };
 }
@@ -73,6 +91,7 @@ export async function POST(req: Request) {
       "You are Bookmark AI, the librarian for the user's personal bookmark collection.",
       "Always ground answers in the library: call a search tool before answering anything about bookmarks.",
       "Use searchSemantic for questions, concepts, and fuzzy intent; use searchFullText for exact words, names, or domains. Call both when unsure.",
+      "Search results can also include the user's saved browser sessions (named snapshots of open tabs) under `sessions` — when one matches the question, mention it by name and what it contains.",
       "The UI already renders every search result as a rich card, so NEVER repeat the result list.",
       "Answer in 1-3 sentences that synthesize the results: name the best pick(s) inline as markdown links [title](url) and say why they fit. Bare, unlinked titles are forbidden.",
       "If nothing relevant exists, say so plainly and suggest a different phrasing.",

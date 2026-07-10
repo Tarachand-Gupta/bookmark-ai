@@ -21,7 +21,7 @@ import { LibraryHeader } from "./library-header";
 import { TagChips } from "./tag-chips";
 import { ViewToggle, type LibraryView } from "./view-toggle";
 import { DateRangeFilter } from "./date-range-filter";
-import { SessionsView } from "./sessions-view";
+import { SessionCard, SessionsView } from "./sessions-view";
 import { AddBookmarkDialog } from "./add-bookmark-dialog";
 
 const VIEW_STORAGE_KEY = "bookmark-ai:view";
@@ -183,6 +183,7 @@ export function LibraryPage() {
         sessionsActive={sessionsActive}
         sessionCount={sessions.data?.sessions.length ?? null}
         onShowSessions={showSessions}
+        onAdd={() => setAddOpen(true)}
       />
       <SidebarInset>
         <LibraryHeader
@@ -194,7 +195,6 @@ export function LibraryPage() {
             setMode("text"); // typing always returns to live full-text search
           }}
           onAskAi={() => setMode("ai")}
-          onAdd={() => setAddOpen(true)}
         />
         <main className="flex-1 p-4">
           {/* Width-capped and centered so content isn't stretched thin on
@@ -261,6 +261,33 @@ export function LibraryPage() {
                   <p className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                     Delete failed: {actionError}
                   </p>
+                )}
+                {/* Matching saved sessions surface above bookmark results,
+                    under their own labeled heading so the two kinds read apart. */}
+                {searching && (search.data?.sessionResults?.length ?? 0) > 0 && (
+                  <section className="mb-6">
+                    <div className="mb-3 flex items-baseline gap-2">
+                      <h3 className="text-sm font-semibold tracking-tight">Sessions</h3>
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {search.data!.sessionResults!.length}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                      {search.data!.sessionResults!.map(({ session }) => (
+                        <SessionCard
+                          key={session.id}
+                          session={session}
+                          onDelete={handleSessionDelete}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-6 mb-3 flex items-baseline gap-2">
+                      <h3 className="text-sm font-semibold tracking-tight">Bookmarks</h3>
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {search.data?.results.length ?? 0}
+                      </span>
+                    </div>
+                  </section>
                 )}
                 <BookmarkGrid
                   bookmarks={bookmarks}

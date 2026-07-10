@@ -24,5 +24,6 @@ export {
   listSessions,
   getSession,
   deleteSession,
+  searchSessions,
   type InsertSession,
 } from "./queries/sessions";
