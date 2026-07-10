@@ -3,3 +3,6 @@ node_modules/
 .wxt/
 .turbo/
 .env*
+!.env.example
+# CRX private key — its public half is committed in wxt.config.ts
+.keys/

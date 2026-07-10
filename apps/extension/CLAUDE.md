@@ -12,7 +12,9 @@ pnpm --filter @bookmark-ai/extension check-types
 
 Layout (keep multi-file — the user explicitly banned monolith files):
 
-- `wxt.config.ts` — manifest fn (MV2/MV3-aware), permissions, `host_permissions: http://localhost:4545/*`
+- `wxt.config.ts` — manifest fn (MV2/MV3-aware), permissions (`cookies` is for Clerk),
+  `host_permissions: http://localhost/*` (ports are ignored in match patterns — covers API
+  :4545 AND web :3000) + Clerk frontend API, and the pinned CRX `key` (chrome-only)
 - `entrypoints/background.ts` — receives `SAVE_BOOKMARK`, POSTs to the API, replies result/error
 - `entrypoints/popup/` — `App.tsx` + `components/` (SaveCard, SavedResult, ErrorNote, SettingsRow, Spinner)
 - `lib/messages.ts` — typed popup↔background contract · `lib/api.ts` — fetch helper (API base
@@ -20,6 +22,20 @@ Layout (keep multi-file — the user explicitly banned monolith files):
   `import.meta.env.BROWSER` build constant (+ UA brands for Edge/Arc), device/os heuristics
 - `assets/tailwind.css` — mirrors `packages/ui/src/theme.css` tokens (sync manually on retheme)
 - `scripts/generate-icons.mjs` — dependency-free PNG icon generator (`pnpm icons`)
+
+Auth (Clerk, syncHost pattern):
+- The popup does NOT host sign-in UI (OAuth is unsupported in extension popups). Instead
+  `ClerkProvider` in `entrypoints/popup/main.tsx` gets `syncHost` → the extension mirrors the
+  session the user creates on the **web app** (sign in at localhost:3000; popup shows the user).
+- `lib/clerk.ts` — publishable key + sync host (public values, baked-in defaults, overridable
+  via `apps/extension/.env`, see `.env.example`). `AuthStatus.tsx` renders avatar/name/sign-out
+  or a "Sign in ↗" button that opens `<webUrl>/sign-in`.
+- **Stable extension id** `ffhbgpgebpmofjkehpjcemepbgcmoelp` comes from the `key` in
+  wxt.config.ts (private key: `.keys/crx-key.pem`, gitignored). That id is registered in the
+  Clerk instance's `allowed_origins` (PATCH /v1/instance) together with localhost:3000 /
+  127.0.0.1:3000 / bookmark-ai-theta.vercel.app — if the key ever changes, re-register or
+  extension auth silently breaks. Don't remove the web origins: allowed_origins is a
+  RESTRICTION list once set (null = allow all).
 
 Gotchas:
 - Types come from `@bookmark-ai/types` (workspace). tsconfig extends `.wxt/tsconfig.json`

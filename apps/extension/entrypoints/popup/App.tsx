@@ -3,6 +3,7 @@ import { browser } from "wxt/browser";
 import type { Bookmark } from "@bookmark-ai/types";
 import { getWebBaseUrl, DEFAULT_WEB_URL } from "@/lib/api";
 import { requestSaveBookmark, requestSaveSession } from "@/lib/messages";
+import { AuthStatus } from "./components/AuthStatus";
 import { ErrorNote } from "./components/ErrorNote";
 import { SaveCard, type TabInfo } from "./components/SaveCard";
 import { SavedResult } from "./components/SavedResult";
@@ -115,9 +116,10 @@ export default function App() {
 
       {status === "error" && error && <ErrorNote message={error} />}
 
+      <SettingsRow />
+
       <footer className="mt-1 flex items-center justify-between gap-2 border-t pt-2">
-        {/* User name goes here once extension Clerk login lands (see #37). */}
-        <SettingsRow />
+        <AuthStatus webUrl={webUrl} />
         <button
           type="button"
           onClick={openWebsite}

@@ -34,6 +34,10 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
   except `/sign-in` and `/sign-up`. Dev-instance keys live in `apps/web/.env.local` (gitignored)
   and work on any origin; a production Clerk instance (needs a custom domain) is not set up yet.
   Because of the gate, headless/preview browser testing of app content needs a signed-in session.
+  The **extension** mirrors the web session via Clerk `syncHost` (no in-popup sign-in — see
+  `apps/extension/CLAUDE.md`), and the instance's `allowed_origins` is now an explicit RESTRICTION
+  list (extension id + localhost:3000 + 127.0.0.1:3000 + vercel.app alias) — keep the web origins
+  in it when adding new ones.
 - **Deployment**: web is **live on Vercel** (`bookmark-ai-theta.vercel.app`) — project Root
   Directory `apps/web`, install filtered to `pnpm … --filter @bookmark-ai/web...`, a root
   `.vercelignore` excludes build caches. Env on Vercel: Clerk keys + `GEMINI_API_KEY` set;
