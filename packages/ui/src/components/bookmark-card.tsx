@@ -236,7 +236,14 @@ export function BookmarkCompactRow({ bookmark: b, onDelete, className }: Bookmar
       <span className="hidden w-40 shrink-0 truncate text-xs text-muted-foreground md:inline">
         {b.domain}
       </span>
-      <CategoryBadge category={b.category} className="hidden sm:inline-flex" />
+      {/* Fixed width so the domain column left of it lines up across rows
+          (variable chip widths were shifting it); outline = light look — the
+          filled black chip stays card/list-only. */}
+      <CategoryBadge
+        category={b.category}
+        variant="outline"
+        className="hidden w-32 sm:inline-flex"
+      />
       <span
         className="hidden shrink-0 text-muted-foreground lg:inline-flex"
         title={`Saved from ${browser.label}`}
@@ -264,11 +271,19 @@ export function BookmarkCompactRow({ bookmark: b, onDelete, className }: Bookmar
 }
 
 /** Category and tags share a chip look; the icon tells them apart at a glance. */
-function CategoryBadge({ category, className }: { category: string; className?: string }) {
+function CategoryBadge({
+  category,
+  className,
+  variant,
+}: {
+  category: string;
+  className?: string;
+  variant?: React.ComponentProps<typeof Badge>["variant"];
+}) {
   return (
-    <Badge className={className} title={`Category: ${category}`}>
-      <Folder className="size-3" aria-hidden />
-      {category}
+    <Badge variant={variant} className={className} title={`Category: ${category}`}>
+      <Folder className="size-3 shrink-0" aria-hidden />
+      <span className="truncate">{category}</span>
     </Badge>
   );
 }
@@ -292,8 +307,36 @@ function CardImage({
   initialClassName?: string;
 }) {
   const [failed, setFailed] = React.useState(false);
+  const [faviconFailed, setFaviconFailed] = React.useState(false);
   if (!b.og.image || failed) {
-    // Graceful hero fallback: muted panel with the domain's initial.
+    // Hero fallback 1: the favicon, blown up and heavily blurred as ambient
+    // backdrop (the blur hides the upscaling), with a crisp copy centered.
+    if (b.og.favicon && !faviconFailed) {
+      return (
+        <div
+          className={cn(
+            "relative flex aspect-[1.91/1] w-full items-center justify-center overflow-hidden bg-muted",
+            className,
+          )}
+        >
+          <img
+            src={b.og.favicon}
+            alt=""
+            aria-hidden
+            loading="lazy"
+            onError={() => setFaviconFailed(true)}
+            className="absolute inset-0 h-full w-full scale-150 object-cover opacity-50 blur-2xl"
+          />
+          <img
+            src={b.og.favicon}
+            alt=""
+            loading="lazy"
+            className="relative size-10 rounded-lg shadow-sm"
+          />
+        </div>
+      );
+    }
+    // Hero fallback 2: muted panel with the domain's initial.
     return (
       <div
         className={cn(
