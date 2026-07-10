@@ -68,6 +68,33 @@ export async function insertBookmark(db: Db, b: InsertBookmark): Promise<Bookmar
   return saved;
 }
 
+export interface BookmarkContent {
+  title: string;
+  description: string | null;
+  og: OpenGraph;
+  category: string;
+  tags: string[];
+}
+
+/**
+ * Post-save enrichment update: replace the scraped/AI content of an existing
+ * row and clear its embedding so the embed worker re-embeds the new text.
+ * Source fields (browser, device, savedAt…) are untouched.
+ */
+export async function updateBookmarkContent(
+  db: Db,
+  id: string,
+  c: BookmarkContent,
+): Promise<Bookmark | null> {
+  await db.execute({
+    sql: `UPDATE bookmarks
+          SET title = ?, description = ?, og_json = ?, category = ?, tags_json = ?, embedding = NULL
+          WHERE id = ?`,
+    args: [c.title, c.description, JSON.stringify(c.og), c.category, JSON.stringify(c.tags), id],
+  });
+  return getBookmark(db, id);
+}
+
 export async function getBookmark(db: Db, id: string): Promise<Bookmark | null> {
   const rs = await db.execute({
     sql: `SELECT ${BOOKMARK_COLUMNS} FROM bookmarks WHERE id = ?`,

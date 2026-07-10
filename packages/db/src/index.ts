@@ -2,6 +2,7 @@ export { createDb, type Db } from "./client";
 export { ensureSchema, EMBEDDING_DIM } from "./schema";
 export {
   insertBookmark,
+  updateBookmarkContent,
   getBookmark,
   getBookmarkByUrl,
   deleteBookmark,
@@ -9,6 +10,7 @@ export {
   getMeta,
   listTagCounts,
   type InsertBookmark,
+  type BookmarkContent,
 } from "./queries/bookmarks";
 export {
   searchFullText,

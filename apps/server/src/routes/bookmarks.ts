@@ -3,7 +3,7 @@ import { createBookmarkSchema, listBookmarksQuerySchema } from "@bookmark-ai/typ
 import { deleteBookmark, getBookmark, listBookmarks, type Db } from "@bookmark-ai/db";
 import { asyncHandler } from "../lib/async-handler.js";
 import { badRequest, notFound } from "../lib/http-error.js";
-import { ingestBookmark } from "../services/ingest.js";
+import { enrichBookmark, saveBookmarkFast } from "../services/ingest.js";
 import type { GeminiClient } from "../services/gemini.js";
 
 export function bookmarksRouter(
@@ -18,9 +18,17 @@ export function bookmarksRouter(
     asyncHandler(async (req, res) => {
       const parsed = createBookmarkSchema.safeParse(req.body);
       if (!parsed.success) throw badRequest(parsed.error.issues[0]?.message ?? "Invalid body");
-      const bookmark = await ingestBookmark(db, gemini, parsed.data);
-      onSaved(); // kick the embed worker
+      // Instant save → 201; OG scrape + AI categorization enrich the row
+      // afterwards (clients see the richer tags on their next fetch).
+      const bookmark = await saveBookmarkFast(db, parsed.data);
       res.status(201).json({ bookmark });
+      void enrichBookmark(db, gemini, bookmark.id, parsed.data)
+        .catch((err: Error) =>
+          console.warn(`[enrich] ${bookmark.url}: ${err.message} — keeping instant-save data`),
+        )
+        // Kick the embed worker either way: enrichment cleared the embedding,
+        // and even a failed enrichment leaves heuristic text worth embedding.
+        .finally(() => onSaved());
     }),
   );
 

@@ -73,7 +73,7 @@ async function aiCategorize(
   const prompt = [
     "Categorize this bookmarked web page.",
     `Pick exactly one category from: ${CATEGORIES.join(", ")}.`,
-    "Also produce 2-5 short lowercase topic tags (single words or two-word phrases).",
+    "Also produce 4-8 short lowercase topic tags (single words or two-word phrases). Be comprehensive: cover the subject matter, the content type (e.g. article, video, tool, docs, course), and key technologies, products, or people when relevant.",
     "Reuse the existing library tags below whenever they fit; invent a new tag only when none covers the page. Never use the category itself as a tag.",
     existingTags.length
       ? `Existing library tags (tag:count): ${existingTags.map((t) => `${t.name}:${t.count}`).join(", ")}`
@@ -93,7 +93,7 @@ async function aiCategorize(
     type: "object",
     properties: {
       category: { type: "string", enum: [...CATEGORIES] },
-      tags: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 5 },
+      tags: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 8 },
     },
     required: ["category", "tags"],
   });
@@ -104,7 +104,7 @@ async function aiCategorize(
   const tags = (result.tags ?? [])
     .map((t) => t.toLowerCase().trim())
     .filter((t) => t.length > 0 && t.length <= 32)
-    .slice(0, 5);
+    .slice(0, 8);
   return { category, tags };
 }
 

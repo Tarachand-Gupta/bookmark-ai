@@ -199,7 +199,7 @@ export function LibraryPage() {
         <main className="flex-1 p-4">
           {/* Width-capped and centered so content isn't stretched thin on
               widescreen/desktop; full-bleed below the cap on smaller screens. */}
-          <div className="mx-auto w-full max-w-[1600px]">
+          <div className="mx-auto w-full max-w-7xl">
             {aiActive ? (
               <AiChat
                 initialQuery={query}

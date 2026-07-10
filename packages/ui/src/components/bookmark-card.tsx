@@ -139,17 +139,20 @@ export function BookmarkListItem({ bookmark: b, onDelete, className }: BookmarkC
         className,
       )}
     >
+      {/* The thumbnail is absolutely positioned so a tall source image (e.g. a
+          portrait poster) can never inflate the row height — the text column
+          alone sets it and the image crops to fit. */}
       <a
         href={b.url}
         target="_blank"
         rel="noreferrer noopener"
         aria-label={b.title}
         tabIndex={-1}
-        className="hidden w-44 shrink-0 self-stretch sm:block"
+        className="relative hidden w-44 shrink-0 self-stretch sm:block"
       >
         <CardImage
           bookmark={b}
-          className="aspect-auto h-full w-full"
+          className="absolute inset-0 aspect-auto h-full w-full"
           initialClassName="text-2xl"
         />
       </a>
@@ -236,14 +239,13 @@ export function BookmarkCompactRow({ bookmark: b, onDelete, className }: Bookmar
       <span className="hidden w-40 shrink-0 truncate text-xs text-muted-foreground md:inline">
         {b.domain}
       </span>
-      {/* Fixed width so the domain column left of it lines up across rows
-          (variable chip widths were shifting it); outline = light look — the
-          filled black chip stays card/list-only. */}
-      <CategoryBadge
-        category={b.category}
-        variant="outline"
-        className="hidden w-32 sm:inline-flex"
-      />
+      {/* Fixed-width SLOT so the domain column left of it lines up across rows
+          (variable chip widths were shifting it); inside it the chip hugs its
+          content, left-aligned. Outline = light look — the filled black chip
+          stays card/list-only. */}
+      <span className="hidden w-32 shrink-0 sm:block">
+        <CategoryBadge category={b.category} variant="outline" className="max-w-full" />
+      </span>
       <span
         className="hidden shrink-0 text-muted-foreground lg:inline-flex"
         title={`Saved from ${browser.label}`}
