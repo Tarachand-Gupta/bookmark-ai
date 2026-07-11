@@ -5,6 +5,23 @@ import { browser } from "wxt/browser";
 
 export const SAVE_BOOKMARK = "SAVE_BOOKMARK" as const;
 export const SAVE_SESSION = "SAVE_SESSION" as const;
+/** External contract: sent by the WEB APP (externally_connectable origins)
+ * to restore a saved session as one new window with all its tabs. */
+export const RESTORE_SESSION = "RESTORE_SESSION" as const;
+
+export interface RestoreSessionMessage {
+  type: typeof RESTORE_SESSION;
+  urls: string[];
+}
+
+export function isRestoreSessionMessage(message: unknown): message is RestoreSessionMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as RestoreSessionMessage).type === RESTORE_SESSION &&
+    Array.isArray((message as RestoreSessionMessage).urls)
+  );
+}
 
 export interface SaveBookmarkMessage {
   type: typeof SAVE_BOOKMARK;

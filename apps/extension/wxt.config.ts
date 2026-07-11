@@ -28,7 +28,16 @@ export default defineConfig({
       // Clerk frontend API (dev instance) — the extension talks to it directly.
       "https://darling-baboon-13.clerk.accounts.dev/*",
     ],
-    ...(browser === "chrome" && { key: CRX_PUBLIC_KEY }),
+    ...(browser === "chrome" && {
+      key: CRX_PUBLIC_KEY,
+      // Lets the web app hand off "restore session" — a page on these origins
+      // may message the extension (background onMessageExternal), which opens
+      // one window containing every tab. window.open can't do this (popup
+      // blockers allow a single tab per click).
+      externally_connectable: {
+        matches: ["http://localhost/*", "https://bookmark-ai-theta.vercel.app/*"],
+      },
+    }),
     ...(browser === "firefox" && {
       browser_specific_settings: {
         gecko: {

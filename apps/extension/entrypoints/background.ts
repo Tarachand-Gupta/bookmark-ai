@@ -4,6 +4,7 @@ import { createBookmark, getWebBaseUrl, saveSession } from "@/lib/api";
 import { detectSource } from "@/lib/detect";
 import { closeWindowsAndOpen, gatherOpenTabs } from "@/lib/session";
 import {
+  isRestoreSessionMessage,
   isSaveBookmarkMessage,
   isSaveSessionMessage,
   type SaveBookmarkMessage,
@@ -47,6 +48,25 @@ async function handleSaveSession(message: SaveSessionMessage): Promise<SaveSessi
 }
 
 export default defineBackground(() => {
+  // Web-app handoff (origins allowed via manifest externally_connectable):
+  // restore a saved session as ONE new window holding every tab — something
+  // the page itself can't do (popup blockers allow one window.open per click).
+  browser.runtime.onMessageExternal?.addListener(
+    (message: unknown, _sender, sendResponse: (response: { ok: boolean }) => void) => {
+      if (!isRestoreSessionMessage(message)) return undefined;
+      const urls = message.urls.filter((u) => /^https?:/i.test(u)).slice(0, 100);
+      if (urls.length === 0) {
+        sendResponse({ ok: false });
+        return undefined;
+      }
+      browser.windows
+        .create({ url: urls })
+        .then(() => sendResponse({ ok: true }))
+        .catch(() => sendResponse({ ok: false }));
+      return true; // async sendResponse
+    },
+  );
+
   browser.runtime.onMessage.addListener(
     (
       message: unknown,

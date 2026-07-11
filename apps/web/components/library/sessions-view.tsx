@@ -5,6 +5,7 @@ import type { Session } from "@bookmark-ai/types";
 import { ChevronDown, ExternalLink, Globe, Layers, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { restoreSessionViaExtension } from "@/lib/extension-bridge";
 
 export interface SessionsViewProps {
   sessions: Session[] | null;
@@ -74,11 +75,25 @@ export function SessionCard({
   const matchCount = q ? session.tabs.filter(isMatch).length : 0;
   // In search results, open with the matches visible instead of folded away.
   const [open, setOpen] = useState(matchCount > 0);
+  const [openAllNote, setOpenAllNote] = useState<string | null>(null);
 
-  // Best-effort "restore": open each tab. A true multi-tab new window is only
-  // possible from the extension (chrome.windows.create) — browsers block it here.
-  const openAll = () => {
-    for (const t of session.tabs) window.open(t.url, "_blank", "noopener,noreferrer");
+  // Restore: prefer the extension — it opens ONE new window with every tab.
+  // The page-side fallback (window.open per tab) gets popup-blocked after the
+  // first tab, so when that happens we say so instead of failing silently.
+  const openAll = async () => {
+    const urls = session.tabs.map((t) => t.url).filter((u) => /^https?:/i.test(u));
+    if (urls.length === 0) return;
+    setOpenAllNote(null);
+    if (await restoreSessionViaExtension(urls)) return;
+    let opened = 0;
+    for (const u of urls) {
+      if (window.open(u, "_blank", "noopener,noreferrer")) opened++;
+    }
+    if (opened < urls.length) {
+      setOpenAllNote(
+        `Your pop-up blocker let ${opened} of ${urls.length} tabs through. Allow pop-ups for this site, or install the Bookmark AI extension to restore sessions in one window.`,
+      );
+    }
   };
 
   return (
@@ -94,7 +109,12 @@ export function SessionCard({
             {formatWhen(session.savedAt)}
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={openAll} disabled={session.tabs.length === 0}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void openAll()}
+          disabled={session.tabs.length === 0}
+        >
           <ExternalLink className="size-3.5" aria-hidden />
           Open all
         </Button>
@@ -107,6 +127,12 @@ export function SessionCard({
           <Trash2 className="size-4" aria-hidden />
         </button>
       </div>
+
+      {openAllNote && (
+        <p className="border-t bg-amber-500/10 px-4 py-2 text-xs text-amber-700 dark:text-amber-400">
+          {openAllNote}
+        </p>
+      )}
 
       <button
         type="button"
