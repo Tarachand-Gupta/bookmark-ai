@@ -68,31 +68,40 @@ export function ChatPanel({ open, children }: { open: boolean; children: React.R
   // docked mode with the stored fraction — corrected on the next tick.
   const w = viewportW ?? 1280;
   const mode: PanelMode = w < 640 ? "full" : w * MAX_FRACTION < MIN_PX ? "overlay" : "side";
-
-  if (mode === "full") {
-    return <div className="fixed inset-0 z-40 bg-card">{children}</div>;
-  }
-
-  if (mode === "overlay") {
-    return (
-      <div className="fixed inset-y-0 right-0 z-40 w-[min(26rem,92vw)] border-l bg-card shadow-2xl">
-        {children}
-      </div>
-    );
-  }
-
   const width = Math.max(MIN_PX, Math.round(fraction * w));
+
+  // ONE stable element tree across all three modes (classes/styles vary) —
+  // separate JSX branches would remount `children` when a window resize
+  // crosses a mode boundary and wipe the conversation mid-chat.
+  const modeClass =
+    mode === "full"
+      ? "fixed inset-0 z-40 bg-card"
+      : mode === "overlay"
+        ? "fixed inset-y-0 right-0 z-40 w-[min(26rem,92vw)] border-l bg-card shadow-2xl"
+        : "relative shrink-0 border-l bg-card";
+
   return (
-    <aside className="relative shrink-0 border-l bg-card" style={{ width }}>
-      {/* Drag handle on the panel's left edge. */}
+    <aside className={modeClass} style={mode === "side" ? { width } : undefined}>
+      {/* Drag handle on the panel's left edge — docked mode only. */}
       <div
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize chat panel"
         onPointerDown={onPointerDown}
-        className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize transition-colors hover:bg-primary/20 active:bg-primary/30"
+        className={
+          mode === "side"
+            ? "absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize transition-colors hover:bg-primary/20 active:bg-primary/30"
+            : "hidden"
+        }
       />
-      <div className="sticky" style={{ top: HEADER_PX, height: `calc(100vh - ${HEADER_PX}px)` }}>
+      <div
+        className={mode === "side" ? "sticky" : "h-full"}
+        style={
+          mode === "side"
+            ? { top: HEADER_PX, height: `calc(100vh - ${HEADER_PX}px)` }
+            : undefined
+        }
+      >
         {children}
       </div>
     </aside>
