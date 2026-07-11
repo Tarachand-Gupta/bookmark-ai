@@ -22,7 +22,12 @@ interface ExternalChrome {
   };
 }
 
-export function restoreSessionViaExtension(urls: string[]): Promise<boolean> {
+export type RestoreMode = "window" | "group";
+
+export function restoreSessionViaExtension(
+  urls: string[],
+  options: { mode?: RestoreMode; name?: string } = {},
+): Promise<boolean> {
   return new Promise((resolve) => {
     const chrome = (window as { chrome?: ExternalChrome }).chrome;
     if (!chrome?.runtime?.sendMessage) {
@@ -39,11 +44,15 @@ export function restoreSessionViaExtension(urls: string[]): Promise<boolean> {
     // No response (extension installed but old version / handler missing).
     const timer = setTimeout(() => settle(false), 800);
     try {
-      chrome.runtime.sendMessage(EXTENSION_ID, { type: "RESTORE_SESSION", urls }, (response) => {
-        clearTimeout(timer);
-        // lastError = extension not installed / origin not allowed.
-        settle(!chrome.runtime?.lastError && response?.ok === true);
-      });
+      chrome.runtime.sendMessage(
+        EXTENSION_ID,
+        { type: "RESTORE_SESSION", urls, mode: options.mode ?? "window", name: options.name },
+        (response) => {
+          clearTimeout(timer);
+          // lastError = extension not installed / origin not allowed.
+          settle(!chrome.runtime?.lastError && response?.ok === true);
+        },
+      );
     } catch {
       clearTimeout(timer);
       settle(false);

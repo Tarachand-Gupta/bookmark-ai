@@ -7,6 +7,7 @@ import {
   isRestoreSessionMessage,
   isSaveBookmarkMessage,
   isSaveSessionMessage,
+  type RestoreSessionMessage,
   type SaveBookmarkMessage,
   type SaveBookmarkResult,
   type SaveSessionMessage,
@@ -47,21 +48,60 @@ async function handleSaveSession(message: SaveSessionMessage): Promise<SaveSessi
   }
 }
 
+// Tab-group APIs are Chrome ≥89; webextension-polyfill types don't know them.
+interface TabGroupApis {
+  tabs: {
+    group?: (options: { tabIds: number[] }) => Promise<number>;
+  };
+  tabGroups?: {
+    update: (groupId: number, props: { title?: string; color?: string }) => Promise<unknown>;
+  };
+}
+
+/** Open the urls as a titled tab group in `windowId` (the sender's window). */
+async function openAsTabGroup(
+  urls: string[],
+  windowId: number | undefined,
+  name: string | undefined,
+): Promise<{ ok: boolean }> {
+  const api = browser as unknown as TabGroupApis;
+  if (!api.tabs.group) return { ok: false }; // Firefox/Safari: no tab groups
+  const tabs = [];
+  for (const url of urls) {
+    // Sequential so the group keeps the session's tab order.
+    tabs.push(await browser.tabs.create({ windowId, url, active: false }));
+  }
+  const tabIds = tabs.map((t) => t.id).filter((id): id is number => typeof id === "number");
+  const groupId = await api.tabs.group({ tabIds });
+  try {
+    await api.tabGroups?.update(groupId, { title: name || "Restored session", color: "blue" });
+  } catch {
+    // Group exists even if titling fails (missing tabGroups permission).
+  }
+  return { ok: true };
+}
+
+async function handleRestoreSession(
+  message: RestoreSessionMessage,
+  senderWindowId: number | undefined,
+): Promise<{ ok: boolean }> {
+  const urls = message.urls.filter((u) => /^https?:/i.test(u)).slice(0, 100);
+  if (urls.length === 0) return { ok: false };
+  if (message.mode === "group") return openAsTabGroup(urls, senderWindowId, message.name);
+  await browser.windows.create({ url: urls });
+  return { ok: true };
+}
+
 export default defineBackground(() => {
   // Web-app handoff (origins allowed via manifest externally_connectable):
   // restore a saved session as ONE new window holding every tab — something
-  // the page itself can't do (popup blockers allow one window.open per click).
+  // the page itself can't do (popup blockers allow one window.open per click)
+  // — or, in "group" mode, as a titled tab group in the user's own window.
   browser.runtime.onMessageExternal?.addListener(
-    (message: unknown, _sender, sendResponse: (response: { ok: boolean }) => void) => {
+    (message: unknown, sender, sendResponse: (response: { ok: boolean }) => void) => {
       if (!isRestoreSessionMessage(message)) return undefined;
-      const urls = message.urls.filter((u) => /^https?:/i.test(u)).slice(0, 100);
-      if (urls.length === 0) {
-        sendResponse({ ok: false });
-        return undefined;
-      }
-      browser.windows
-        .create({ url: urls })
-        .then(() => sendResponse({ ok: true }))
+      handleRestoreSession(message, sender.tab?.windowId)
+        .then(sendResponse)
         .catch(() => sendResponse({ ok: false }));
       return true; // async sendResponse
     },

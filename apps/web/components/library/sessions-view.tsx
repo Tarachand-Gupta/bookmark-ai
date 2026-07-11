@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import type { Session } from "@bookmark-ai/types";
-import { ChevronDown, ExternalLink, Globe, Layers, Trash2 } from "lucide-react";
+import { AppWindow, ChevronDown, Globe, Layers, SquareStack, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { restoreSessionViaExtension } from "@/lib/extension-bridge";
+import { restoreSessionViaExtension, type RestoreMode } from "@/lib/extension-bridge";
 
 export interface SessionsViewProps {
   sessions: Session[] | null;
@@ -77,14 +77,21 @@ export function SessionCard({
   const [open, setOpen] = useState(matchCount > 0);
   const [openAllNote, setOpenAllNote] = useState<string | null>(null);
 
-  // Restore: prefer the extension — it opens ONE new window with every tab.
-  // The page-side fallback (window.open per tab) gets popup-blocked after the
-  // first tab, so when that happens we say so instead of failing silently.
-  const openAll = async () => {
+  // Restore: prefer the extension — it opens every tab as ONE new window or
+  // as a titled tab group in this window. The page-side fallback (window.open
+  // per tab) gets popup-blocked after the first tab, so when that happens we
+  // say so instead of failing silently; tab groups have no page-side fallback.
+  const openAll = async (mode: RestoreMode) => {
     const urls = session.tabs.map((t) => t.url).filter((u) => /^https?:/i.test(u));
     if (urls.length === 0) return;
     setOpenAllNote(null);
-    if (await restoreSessionViaExtension(urls)) return;
+    if (await restoreSessionViaExtension(urls, { mode, name: session.name })) return;
+    if (mode === "group") {
+      setOpenAllNote(
+        "Tab groups need the Bookmark AI extension (Chrome). Install it — or reload it if it's already installed — then try again, or use “New window”.",
+      );
+      return;
+    }
     let opened = 0;
     for (const u of urls) {
       if (window.open(u, "_blank", "noopener,noreferrer")) opened++;
@@ -109,15 +116,29 @@ export function SessionCard({
             {formatWhen(session.savedAt)}
           </p>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => void openAll()}
-          disabled={session.tabs.length === 0}
-        >
-          <ExternalLink className="size-3.5" aria-hidden />
-          Open all
-        </Button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="hidden text-xs text-muted-foreground md:inline">Open all in:</span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void openAll("window")}
+            disabled={session.tabs.length === 0}
+          >
+            <AppWindow className="size-3.5" aria-hidden />
+            <span className="hidden sm:inline">New window</span>
+            <span className="sm:hidden">Window</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void openAll("group")}
+            disabled={session.tabs.length === 0}
+          >
+            <SquareStack className="size-3.5" aria-hidden />
+            <span className="hidden sm:inline">New tab group</span>
+            <span className="sm:hidden">Group</span>
+          </Button>
+        </div>
         <button
           type="button"
           onClick={() => onDelete(session.id)}

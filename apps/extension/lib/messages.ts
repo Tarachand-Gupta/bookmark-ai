@@ -6,12 +6,19 @@ import { browser } from "wxt/browser";
 export const SAVE_BOOKMARK = "SAVE_BOOKMARK" as const;
 export const SAVE_SESSION = "SAVE_SESSION" as const;
 /** External contract: sent by the WEB APP (externally_connectable origins)
- * to restore a saved session as one new window with all its tabs. */
+ * to restore a saved session — either as one new window with all its tabs,
+ * or as a named tab group in the user's current window. */
 export const RESTORE_SESSION = "RESTORE_SESSION" as const;
+
+export type RestoreMode = "window" | "group";
 
 export interface RestoreSessionMessage {
   type: typeof RESTORE_SESSION;
   urls: string[];
+  /** Defaults to "window" when omitted (older web clients don't send it). */
+  mode?: RestoreMode;
+  /** Session name — becomes the tab group title in "group" mode. */
+  name?: string;
 }
 
 export function isRestoreSessionMessage(message: unknown): message is RestoreSessionMessage {

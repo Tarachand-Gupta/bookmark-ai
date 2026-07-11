@@ -20,7 +20,14 @@ export default defineConfig({
     description:
       "Save the current tab to Bookmark AI for automatic categorization and tagging.",
     // `cookies` lets Clerk's syncHost read the web app's session cookie.
-    permissions: ["activeTab", "tabs", "storage", "cookies"],
+    // `tabGroups` (Chrome-only) lets session restore title/color the group.
+    permissions: [
+      "activeTab",
+      "tabs",
+      "storage",
+      "cookies",
+      ...(browser === "chrome" ? ["tabGroups"] : []),
+    ],
     host_permissions: [
       // Match patterns ignore ports: covers the API (:4545) and the web app
       // (:3000, Clerk syncHost) in one entry.
