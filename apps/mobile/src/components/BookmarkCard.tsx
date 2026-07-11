@@ -1,26 +1,28 @@
 import { useState } from "react";
-import { Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Bookmark } from "@bookmark-ai/types";
-import { useTheme } from "../theme";
-import { Favicon } from "./BookmarkRow";
+import { useAppTheme } from "../context/PreferencesContext";
+import { openBookmark, showBookmarkActions } from "../lib/bookmarkActions";
+import { FaviconTile } from "./BookmarkRow";
 
-/** Small card view: OG image (favicon-on-muted fallback), title, domain and
- * the category chip in the web card view's filled-primary style. */
+/** Card view: OG image (favicon-tile fallback), 15pt two-line title, domain
+ * and category chip. Tap opens, long-press shows the action sheet. */
 export function BookmarkCard({ bookmark }: { bookmark: Bookmark }) {
-  const { colors, radius } = useTheme();
+  const { colors, radius } = useAppTheme();
   const [imageFailed, setImageFailed] = useState(false);
   const image = !imageFailed ? bookmark.og.image : null;
 
   return (
     <Pressable
-      onPress={() => void Linking.openURL(bookmark.url)}
+      onPress={() => openBookmark(bookmark)}
+      onLongPress={() => showBookmarkActions(bookmark)}
       accessibilityRole="link"
       style={({ pressed }) => [
         styles.card,
         {
           backgroundColor: colors.card,
           borderColor: colors.border,
-          borderRadius: radius.lg,
+          borderRadius: radius.xl,
           opacity: pressed ? 0.85 : 1,
         },
       ]}
@@ -34,7 +36,7 @@ export function BookmarkCard({ bookmark }: { bookmark: Bookmark }) {
             resizeMode="cover"
           />
         ) : (
-          <Favicon url={bookmark.og.favicon} size={32} />
+          <FaviconTile url={bookmark.og.favicon} size={44} />
         )}
       </View>
       <View style={styles.body}>
@@ -45,9 +47,7 @@ export function BookmarkCard({ bookmark }: { bookmark: Bookmark }) {
           <Text numberOfLines={1} style={[styles.domain, { color: colors.mutedForeground }]}>
             {bookmark.domain}
           </Text>
-          <View
-            style={[styles.badge, { backgroundColor: colors.primary, borderRadius: radius.sm }]}
-          >
+          <View style={[styles.badge, { backgroundColor: colors.primary, borderRadius: 999 }]}>
             <Text numberOfLines={1} style={[styles.badgeText, { color: colors.primaryForeground }]}>
               {bookmark.category}
             </Text>
@@ -63,22 +63,21 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
-    // Web card elevation: shadow-sm.
     shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
   media: {
-    aspectRatio: 1.91,
+    aspectRatio: 1.6,
     alignItems: "center",
     justifyContent: "center",
   },
-  body: { gap: 6, padding: 10 },
-  title: { fontSize: 13.5, fontWeight: "600", lineHeight: 18, minHeight: 36 },
-  metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 },
-  domain: { flexShrink: 1, fontSize: 11 },
-  badge: { maxWidth: "55%", paddingHorizontal: 6, paddingVertical: 2 },
-  badgeText: { fontSize: 10, fontWeight: "500" },
+  body: { gap: 8, padding: 12 },
+  title: { fontSize: 15, fontWeight: "600", lineHeight: 20, minHeight: 40, letterSpacing: -0.2 },
+  metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  domain: { flexShrink: 1, fontSize: 12 },
+  badge: { maxWidth: "60%", paddingHorizontal: 8, paddingVertical: 3 },
+  badgeText: { fontSize: 11, fontWeight: "600" },
 });

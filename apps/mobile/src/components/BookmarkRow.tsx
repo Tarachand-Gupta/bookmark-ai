@@ -1,65 +1,82 @@
 import { useState } from "react";
-import { Image, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Bookmark } from "@bookmark-ai/types";
-import { useTheme } from "../theme";
+import { useAppTheme } from "../context/PreferencesContext";
+import { openBookmark, showBookmarkActions } from "../lib/bookmarkActions";
 
-/** Single-line view: favicon · title · domain — the mobile twin of the web
- * app's compact row. */
-export function BookmarkRow({ bookmark }: { bookmark: Bookmark }) {
-  const { colors } = useTheme();
+/** List row at iOS scale: 36pt icon tile (Settings-style), 17pt title,
+ * domain subtitle. Tap opens, long-press shows the action sheet. */
+export function BookmarkRow({ bookmark, last }: { bookmark: Bookmark; last?: boolean }) {
+  const { colors } = useAppTheme();
   return (
     <Pressable
-      onPress={() => void Linking.openURL(bookmark.url)}
+      onPress={() => openBookmark(bookmark)}
+      onLongPress={() => showBookmarkActions(bookmark)}
       accessibilityRole="link"
-      style={({ pressed }) => [
-        styles.row,
-        { borderBottomColor: colors.border, backgroundColor: pressed ? colors.muted : "transparent" },
-      ]}
+      style={({ pressed }) => [{ backgroundColor: pressed ? colors.muted : "transparent" }]}
     >
-      <Favicon url={bookmark.og.favicon} />
-      <Text numberOfLines={1} style={[styles.title, { color: colors.foreground }]}>
-        {bookmark.title}
-      </Text>
-      <Text numberOfLines={1} style={[styles.domain, { color: colors.mutedForeground }]}>
-        {bookmark.domain}
-      </Text>
+      <View style={styles.inner}>
+        <FaviconTile url={bookmark.og.favicon} />
+        <View style={[styles.textCol, !last && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+          <Text numberOfLines={1} style={[styles.title, { color: colors.foreground }]}>
+            {bookmark.title}
+          </Text>
+          <Text numberOfLines={1} style={[styles.domain, { color: colors.mutedForeground }]}>
+            {bookmark.domain}
+          </Text>
+        </View>
+      </View>
     </Pressable>
   );
 }
 
-export function Favicon({ url, size = 16 }: { url?: string | null; size?: number }) {
-  const { colors } = useTheme();
+export function FaviconTile({ url, size = 36 }: { url?: string | null; size?: number }) {
+  const { colors, radius } = useAppTheme();
   const [failed, setFailed] = useState(false);
-  if (!url || failed) {
-    return (
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 4,
-          backgroundColor: colors.muted,
-        }}
-      />
-    );
-  }
   return (
-    <Image
-      source={{ uri: url }}
-      onError={() => setFailed(true)}
-      style={{ width: size, height: size, borderRadius: size / 4 }}
-    />
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius.md,
+        backgroundColor: colors.muted,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {url && !failed ? (
+        <Image
+          source={{ uri: url }}
+          onError={() => setFailed(true)}
+          style={{ width: size * 0.55, height: size * 0.55, borderRadius: 4 }}
+        />
+      ) : (
+        <View
+          style={{
+            width: size * 0.4,
+            height: size * 0.4,
+            borderRadius: size * 0.2,
+            backgroundColor: colors.border,
+          }}
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
+  inner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 4,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 12,
+    paddingLeft: 20,
   },
-  title: { flex: 1, fontSize: 15, fontWeight: "500" },
-  domain: { fontSize: 12, maxWidth: 110 },
+  textCol: {
+    flex: 1,
+    gap: 2,
+    paddingVertical: 11,
+    paddingRight: 20,
+  },
+  title: { fontSize: 17, fontWeight: "500", letterSpacing: -0.2 },
+  domain: { fontSize: 13 },
 });

@@ -3,6 +3,7 @@
     "name": "Bookmark AI",
     "slug": "bookmark-ai",
     "version": "0.1.0",
+    "scheme": "bookmarkai",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
