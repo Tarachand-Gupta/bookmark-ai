@@ -1,8 +1,13 @@
 import { createDb, ensureSchema } from "@bookmark-ai/db";
 import { loadEnv } from "./env.js";
 import { createApp } from "./app.js";
+import { DEFAULT_AUTHORIZED_PARTIES } from "./auth.js";
 import { GeminiClient } from "./services/gemini.js";
 import { startEmbedWorker } from "./services/embeddings.js";
+
+function splitCsv(value: string | undefined): string[] {
+  return (value ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+}
 
 async function main() {
   const env = loadEnv();
@@ -17,13 +22,24 @@ async function main() {
     );
   }
 
+  const authorizedParties = splitCsv(env.CLERK_AUTHORIZED_PARTIES);
   const embedWorker = startEmbedWorker(gemini, db);
-  const app = createApp({ db, gemini, onSaved: embedWorker.kick });
+  const app = createApp({
+    db,
+    gemini,
+    onSaved: embedWorker.kick,
+    auth: {
+      jwtKey: env.CLERK_JWT_KEY,
+      authorizedParties: authorizedParties.length > 0 ? authorizedParties : DEFAULT_AUTHORIZED_PARTIES,
+      allowedUserIds: new Set(splitCsv(env.CLERK_ALLOWED_USER_IDS)),
+    },
+  });
 
   const server = app.listen(env.PORT, () => {
     console.log(`[server] bookmark-ai API on http://localhost:${env.PORT}`);
     console.log(`[server] database: ${env.DATABASE_URL}`);
     console.log(`[server] ai: ${gemini ? "gemini" : "disabled"}`);
+    console.log(`[server] auth: ${env.CLERK_JWT_KEY ? "clerk (enforced)" : "OPEN (local mode)"}`);
   });
 
   const shutdown = () => {

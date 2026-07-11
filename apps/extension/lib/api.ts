@@ -29,13 +29,28 @@ export async function getWebBaseUrl(): Promise<string> {
   return (value || DEFAULT_WEB_URL).trim().replace(/\/+$/, "");
 }
 
+/** The background script registers Clerk's token getter here — keeps this
+ * module importable from the popup without pulling in background-only Clerk
+ * code. Unset/null token → request goes out unauthenticated (fine for the
+ * open local server; the deployed server 401s it). */
+let authTokenProvider: (() => Promise<string | null>) | null = null;
+
+export function setAuthTokenProvider(provider: () => Promise<string | null>): void {
+  authTokenProvider = provider;
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await authTokenProvider?.().catch(() => null);
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const base = await getApiBaseUrl();
   let res: Response;
   try {
     res = await fetch(`${base}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify(body),
     });
   } catch {

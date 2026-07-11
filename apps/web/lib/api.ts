@@ -22,10 +22,38 @@ export interface LibraryFilters {
   to?: string;
 }
 
+interface ClerkGlobal {
+  loaded?: boolean;
+  session?: { getToken: () => Promise<string | null> } | null;
+}
+
+/** Clerk session JWT for the API. window.Clerk is the documented non-hook
+ * escape hatch — this module is called outside React components. Null when
+ * signed out or during SSR; the open local server accepts the tokenless
+ * request, the auth-enforcing deployed server 401s it. */
+async function getAuthToken(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  const w = window as Window & { Clerk?: ClerkGlobal };
+  // Clerk loads async after hydration; the first data fetches can race it.
+  for (let i = 0; i < 40 && !w.Clerk?.loaded; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  try {
+    return (await w.Clerk?.session?.getToken()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getAuthToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
+    headers: { "content-type": "application/json", ...(await authHeaders()), ...init?.headers },
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -72,18 +100,22 @@ export function createBookmark(input: CreateBookmarkInput): Promise<{ bookmark: 
   });
 }
 
-export function deleteBookmark(id: string): Promise<void> {
-  return fetch(`${API_URL}/api/bookmarks/${id}`, { method: "DELETE" }).then((res) => {
-    if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
+export async function deleteBookmark(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/bookmarks/${id}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
   });
+  if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
 }
 
 export function getSessions(signal?: AbortSignal): Promise<ListSessionsResponse> {
   return request<ListSessionsResponse>("/api/sessions", { signal });
 }
 
-export function deleteSession(id: string): Promise<void> {
-  return fetch(`${API_URL}/api/sessions/${id}`, { method: "DELETE" }).then((res) => {
-    if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
+export async function deleteSession(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/sessions/${id}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
   });
+  if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
 }

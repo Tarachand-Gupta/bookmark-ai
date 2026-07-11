@@ -50,7 +50,16 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
   is **4545** (was 4000).
 - Zig 0.16 + `@native-sdk/cli` 0.4.0 (`native` on PATH) are installed globally on this machine.
 
-## API quick reference (all JSON, permissive CORS)
+## API quick reference (all JSON)
+
+**Auth**: with `CLERK_JWT_KEY` set (Render has it), every `/api` route except `/api/health`
+requires `Authorization: Bearer <Clerk session JWT>` — networkless verification in
+`apps/server/src/auth.ts`, azp allowlist `CLERK_AUTHORIZED_PARTIES`, user allowlist
+`CLERK_ALLOWED_USER_IDS` (Tara = `user_3GIhPt5Na3tYRP3XaPPU3PpI55e`). Unset (local dev) =
+open + permissive CORS, for the desktop app / curl / import script. Clients attach tokens:
+web `apps/web/lib/api.ts` (window.Clerk), chat route via `auth().getToken()`, extension
+background via `createClerkClient` from `@clerk/chrome-extension/background`. Rate limit:
+120 req/min/IP (health exempt).
 
 - `POST /api/bookmarks` — body `CreateBookmarkInput` `{url, title?, browser?, device?, deviceName?, os?, savedAt?}` (`browser`/`device` default to `"other"` when omitted) → `201 {bookmark}`. Upserts by URL (re-save updates + clears embedding).
 - `GET /api/bookmarks?category=&browser=&device=&day=YYYY-MM-DD&tag=&limit=&offset=` → `{bookmarks, total}`

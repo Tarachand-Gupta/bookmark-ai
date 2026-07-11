@@ -6,12 +6,17 @@ Ordered so that items later in the list depend on items earlier in it.
 
 ## 1. Web + API hardening (do this first — the stores will ask about it)
 
-- [ ] **Lock down the API.** `apps/server` is currently unauthenticated with permissive CORS —
-      anyone with the Render URL can read/write/delete bookmarks. Before calling anything
-      "production": verify a Clerk session JWT in an Express middleware (networkless
-      verification against the instance JWKS; web + extension already carry Clerk sessions),
-      restrict CORS to the known origins (web domain, extension origin), and add basic rate
-      limiting. This is the single biggest production blocker.
+- [x] **API auth (done 2026-07-12).** Every `/api` route except `/api/health` requires a
+      Clerk session JWT when `CLERK_JWT_KEY` (instance PEM public key) is set — networkless
+      verification in `apps/server/src/auth.ts`, `azp` checked against
+      `CLERK_AUTHORIZED_PARTIES`, user pinned via `CLERK_ALLOWED_USER_IDS`. Unset = open
+      local mode (desktop/import/curl). Render has all three set.
+- [x] **CORS allowlist (done 2026-07-12).** With auth enforced, browser origins are
+      restricted to the authorized parties (+ extension schemes); local mode stays permissive.
+      **Re-check when origins change**: new web domain, new extension id, or a prod Clerk
+      instance all require updating `CLERK_AUTHORIZED_PARTIES` on Render.
+- [x] **Rate limiting (done 2026-07-12).** 120 req/min/IP (health + preflight exempt),
+      `trust proxy` set for Render.
 - [ ] **Buy a domain.** A production Clerk instance requires one (dev keys can't be used —
       they're origin-promiscuous and show the "development keys" warning). The domain also
       replaces `bookmark-ai-theta.vercel.app`.

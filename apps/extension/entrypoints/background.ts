@@ -1,6 +1,8 @@
 import { defineBackground } from "#imports";
 import { browser } from "wxt/browser";
-import { createBookmark, getWebBaseUrl, saveSession } from "@/lib/api";
+import { createClerkClient } from "@clerk/chrome-extension/background";
+import { createBookmark, getWebBaseUrl, saveSession, setAuthTokenProvider } from "@/lib/api";
+import { CLERK_PUBLISHABLE_KEY, CLERK_SYNC_HOST } from "@/lib/clerk";
 import { detectSource } from "@/lib/detect";
 import { closeWindowsAndOpen, gatherOpenTabs } from "@/lib/session";
 import {
@@ -13,6 +15,21 @@ import {
   type SaveSessionMessage,
   type SaveSessionResult,
 } from "@/lib/messages";
+
+/** Clerk session JWT (same syncHost session the popup shows). Null when
+ * signed out or Clerk is unreachable — saves still work against the open
+ * local server; the auth-enforcing deployed server rejects them. */
+async function getSessionToken(): Promise<string | null> {
+  try {
+    const clerk = await createClerkClient({
+      publishableKey: CLERK_PUBLISHABLE_KEY,
+      syncHost: CLERK_SYNC_HOST,
+    });
+    return (await clerk.session?.getToken()) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 async function handleSaveBookmark(message: SaveBookmarkMessage): Promise<SaveBookmarkResult> {
   try {
@@ -93,6 +110,8 @@ async function handleRestoreSession(
 }
 
 export default defineBackground(() => {
+  setAuthTokenProvider(getSessionToken);
+
   // Web-app handoff (origins allowed via manifest externally_connectable):
   // restore a saved session as ONE new window holding every tab — something
   // the page itself can't do (popup blockers allow one window.open per click)

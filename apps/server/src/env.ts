@@ -8,6 +8,15 @@ const envSchema = z.object({
   /** Required for libsql:// (Turso) URLs; unused for local file: DBs. */
   DATABASE_AUTH_TOKEN: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
+  /** Clerk instance PEM public key. Set → API requires Clerk session JWTs
+   * (networkless verification); unset → open local mode. Single-line PEM
+   * with \n escapes is fine. */
+  CLERK_JWT_KEY: z.string().optional(),
+  /** Comma-separated azp/CORS origin allowlist; defaults to the known
+   * web + extension origins (see auth.ts). */
+  CLERK_AUTHORIZED_PARTIES: z.string().optional(),
+  /** Comma-separated Clerk user ids allowed to use the API. */
+  CLERK_ALLOWED_USER_IDS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
