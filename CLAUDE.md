@@ -12,6 +12,7 @@ extension. Everything is verified working as of 2026-07-09; see `docs/TESTING.md
 | `apps/web` | Next.js 15 + shadcn sidebar shell :3000 | `pnpm --filter @bookmark-ai/web dev` |
 | `apps/extension` | WXT + React popup → chrome-mv3 / firefox-mv2 / safari-mv2 | `pnpm --filter @bookmark-ai/extension dev` (chrome) |
 | `apps/desktop` | zero-native (vercel-labs/native) Zig app — **see `apps/desktop/CLAUDE.md`** | `cd apps/desktop && native dev` |
+| `apps/mobile` | Expo SDK 57 iOS/iPad app (tabs, filter sheet, Clerk sign-in, local/prod server switch); Android untested (no toolchain) | `cd apps/mobile && npx expo run:ios` + `npx expo start` |
 | `packages/types` | Zod schemas = THE api contract (`CreateBookmarkInput`, `Bookmark`, search/meta responses) | — |
 | `packages/db` | libSQL client, schema (FTS5 triggers + F32_BLOB(768) vector), query modules | — |
 | `packages/ui` | `src/theme.css` = single branding source (shadcn neutral) + shared `BookmarkCard` | — |

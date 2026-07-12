@@ -7,18 +7,33 @@ import type {
 } from "@bookmark-ai/types";
 
 /**
- * API client — same contract as apps/web/lib/api.ts. The iOS simulator can
- * reach the host's localhost directly; the Android emulator sees the host as
- * 10.0.2.2. Override with EXPO_PUBLIC_API_URL (e.g. the Render URL — which
- * requires auth, so wire a token provider first).
+ * API client — same contract as apps/web/lib/api.ts. Two selectable servers:
+ * the open local one (iOS simulator reaches the host's localhost directly;
+ * the Android emulator sees it as 10.0.2.2) and the deployed Render API,
+ * which requires the Clerk bearer token. EXPO_PUBLIC_API_URL overrides both.
  */
-const DEFAULT_API_URL = Platform.OS === "android" ? "http://10.0.2.2:4545" : "http://localhost:4545";
+export const LOCAL_API_URL =
+  Platform.OS === "android" ? "http://10.0.2.2:4545" : "http://localhost:4545";
+export const PROD_API_URL = "https://bookmark-ai-server.onrender.com";
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL;
+export type ServerTarget = "local" | "production";
 
-/** Clerk (Expo SDK) plugs in here once mobile auth lands — mirrors the
- * extension's setAuthTokenProvider pattern. Null → unauthenticated request,
- * which the open local server accepts and the deployed server 401s. */
+// Owned by PreferencesContext (persisted there); mirrored here so the
+// data layer stays hook-free.
+let serverTarget: ServerTarget = "local";
+
+export function setServerTarget(target: ServerTarget): void {
+  serverTarget = target;
+}
+
+export function getApiUrl(): string {
+  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
+  return serverTarget === "production" ? PROD_API_URL : LOCAL_API_URL;
+}
+
+/** Clerk session token (registered from the ClerkProvider tree). Null →
+ * unauthenticated request, which the open local server accepts and the
+ * deployed server 401s. */
 let authTokenProvider: (() => Promise<string | null>) | null = null;
 
 export function setAuthTokenProvider(provider: () => Promise<string | null>): void {
@@ -31,7 +46,7 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${getApiUrl()}${path}`, {
     signal,
     headers: { "content-type": "application/json", ...(await authHeaders()) },
   });

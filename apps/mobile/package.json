@@ -4,15 +4,21 @@
   "main": "index.ts",
   "dependencies": {
     "@bookmark-ai/types": "workspace:*",
+    "@clerk/clerk-expo": "^2.19.31",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.4",
+    "expo-auth-session": "~57.0.2",
     "expo-clipboard": "~57.0.0",
+    "expo-crypto": "~57.0.0",
     "expo-haptics": "~57.0.0",
+    "expo-secure-store": "~57.0.0",
     "expo-status-bar": "~57.0.0",
     "expo-symbols": "~57.0.0",
+    "expo-web-browser": "~57.0.0",
     "react": "19.2.3",
     "react-native": "0.86.0",
-    "react-native-safe-area-context": "~5.7.0"
+    "react-native-safe-area-context": "~5.7.0",
+    "swr": "2.3.4"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

@@ -1,20 +1,58 @@
 import { useEffect, useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { Linking, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Linking, LogBox, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
+import { setAuthTokenProvider } from "./src/api";
 import { PreferencesProvider, useAppTheme } from "./src/context/PreferencesContext";
+import { CLERK_PUBLISHABLE_KEY, tokenCache } from "./src/lib/clerk";
 import { TabBar, type TabKey } from "./src/navigation/TabBar";
 import { LibraryScreen } from "./src/screens/LibraryScreen";
 import { SearchScreen } from "./src/screens/SearchScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
+import { SignInScreen } from "./src/screens/SignInScreen";
+
+// Expected while on the dev Clerk instance (same note silenced in the
+// extension popup); a production instance removes it for real.
+LogBox.ignoreLogs([/Clerk has been loaded with development keys/]);
 
 export default function App() {
   return (
-    <PreferencesProvider>
-      <SafeAreaProvider>
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
+      <PreferencesProvider>
+        <SafeAreaProvider>
+          <Gate />
+        </SafeAreaProvider>
+      </PreferencesProvider>
+    </ClerkProvider>
+  );
+}
+
+/** Auth gate: splash while Clerk restores the session, sign-in when there is
+ * none, the app otherwise. Also feeds the session token to the API client. */
+function Gate() {
+  const { colors, dark } = useAppTheme();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+
+  useEffect(() => {
+    setAuthTokenProvider(() => getToken());
+  }, [getToken]);
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      {!isLoaded ? (
+        <View style={styles.splash}>
+          <ActivityIndicator color={colors.mutedForeground} />
+        </View>
+      ) : !isSignedIn ? (
+        <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.body}>
+          <SignInScreen />
+        </SafeAreaView>
+      ) : (
         <Shell />
-      </SafeAreaProvider>
-    </PreferencesProvider>
+      )}
+      <StatusBar style={dark ? "light" : "dark"} />
+    </View>
   );
 }
 
@@ -23,7 +61,6 @@ export default function App() {
 const INITIAL = process.env.EXPO_PUBLIC_INITIAL_TAB;
 
 function Shell() {
-  const { colors, dark } = useAppTheme();
   const [tab, setTab] = useState<TabKey>(
     INITIAL === "search" || INITIAL === "settings" ? INITIAL : "library",
   );
@@ -49,7 +86,7 @@ function Shell() {
 
   // Screens stay mounted so tab switches keep scroll position and state.
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
+    <>
       <SafeAreaView edges={["top", "left", "right"]} style={styles.body}>
         <View style={[styles.screen, tab !== "library" && styles.hidden]}>
           <LibraryScreen filterSheetOpen={filterSheetOpen} onFilterSheetChange={setFilterSheetOpen} />
@@ -62,8 +99,7 @@ function Shell() {
         </View>
       </SafeAreaView>
       <TabBar tab={tab} onChange={setTab} />
-      <StatusBar style={dark ? "light" : "dark"} />
-    </View>
+    </>
   );
 }
 
@@ -72,4 +108,5 @@ const styles = StyleSheet.create({
   body: { flex: 1 },
   screen: { flex: 1 },
   hidden: { display: "none" },
+  splash: { flex: 1, alignItems: "center", justifyContent: "center" },
 });
