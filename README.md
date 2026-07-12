@@ -1,31 +1,85 @@
 # Bookmark AI
 
 Save bookmarks from any browser, on any device — organized automatically by AI and
-browsable everywhere: web, native desktop, and a cross-browser extension.
+browsable everywhere: **web**, **iOS/iPad**, a **native desktop app**, and a
+**cross-browser extension**.
 
-Every save captures the page's **Open Graph data** (title, description, preview image,
-site, favicon) plus **provenance**: which browser it came from, which device, and the
-day it was saved. An AI pass categorizes and tags each bookmark; embeddings power
-semantic ("AI") search alongside classic full-text search.
+Every save captures the page's Open Graph data (title, description, preview image, site,
+favicon) plus provenance: which browser, which device, which day. An AI pass categorizes
+and tags each bookmark; embeddings power semantic ("AI") search next to classic full-text
+search. You can also snapshot every open tab as a **session** and restore it later as a
+new window or a tab group.
 
-## Layout (Turborepo + pnpm)
+## The big picture
 
-| Path | What it is |
-| --- | --- |
-| `apps/server` | Express API — OG scraping, Gemini categorization + embeddings, libSQL (Turso) file DB with FTS5 + native vector search |
-| `apps/web` | Next.js + shadcn/ui — responsive app shell with sidebar facets, bookmark card grid, text/AI search |
-| `apps/extension` | WXT + React — one codebase compiled to Chrome (MV3), Firefox (MV2), and Safari |
-| `apps/desktop` | Native SDK (vercel-labs/native, Zig) — native-rendered sidebar + bookmark cards fed by the same API |
-| `packages/types` | Zod schemas — the single API contract shared by every surface |
-| `packages/db` | libSQL client, schema (FTS5 triggers, F32_BLOB vector column), query modules |
-| `packages/ui` | Shared branding tokens (`theme.css`) + presentational components (`BookmarkCard`) |
+```
+   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+   │   Web app   │  │  Extension  │  │  Mobile app │  │   Desktop   │
+   │  Next.js 15 │  │ WXT (Chrome │  │  Expo / RN  │  │  Zig native │
+   │   (Vercel)  │  │ FF, Safari) │  │  iOS + iPad │  │    (macOS)  │
+   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+          │    Clerk JWT   │    Clerk JWT   │   Clerk JWT    │ (local only)
+          ▼                ▼                ▼                ▼
+   ┌──────────────────────────────────────────────────────────────────┐
+   │                    Express API  (apps/server)                    │
+   │   auth → rate limit → routes:  bookmarks · search · meta ·       │
+   │                                sessions · health                 │
+   │                                                                  │
+   │   save pipeline:  scrape OG data → AI categorize + tag →         │
+   │                   embed (async worker, self-healing 30s sweep)   │
+   └───────────┬───────────────────────────────┬──────────────────────┘
+               │                               │
+               ▼                               ▼
+   ┌───────────────────────┐       ┌───────────────────────┐
+   │   libSQL / Turso DB   │       │     Google Gemini     │
+   │  FTS5 full-text index │       │  2.5-flash categorize │
+   │  768-dim vector col   │       │  gemini-embedding-001 │
+   └───────────────────────┘       └───────────────────────┘
+```
+
+One rule keeps every surface thin: **clients only construct a `CreateBookmarkInput` and
+POST it**. The server owns scraping, categorization, and embedding, so saves are instant
+from the client's point of view and all four UIs stay simple.
+
+## Repo layout (Turborepo + pnpm workspaces)
+
+| Path | What it is | README |
+| --- | --- | --- |
+| `apps/server` | Express API :4545 — scraping, AI, search, auth, rate limiting | [apps/server/README.md](apps/server/README.md) |
+| `apps/web` | Next.js 15 + shadcn/ui web app :3000, Clerk-gated, AI chat | [apps/web/README.md](apps/web/README.md) |
+| `apps/extension` | WXT + React popup → Chrome MV3, Firefox MV2, Safari | [apps/extension/README.md](apps/extension/README.md) |
+| `apps/desktop` | Native SDK (vercel-labs/native, Zig) macOS app | [apps/desktop/README.md](apps/desktop/README.md) |
+| `apps/mobile` | Expo (React Native) iOS/iPad app, native iOS design | [apps/mobile/README.md](apps/mobile/README.md) |
+| `packages/types` | Zod schemas — **the** API contract every surface shares | [packages/types/README.md](packages/types/README.md) |
+| `packages/db` | libSQL client, schema, query modules (FTS5 + vectors) | [packages/db/README.md](packages/db/README.md) |
+| `packages/ui` | Design tokens (`theme.css`) + shared React components | [packages/ui/README.md](packages/ui/README.md) |
+
+### How the apps share code (and why `@bookmark-ai/…` shows up inside `node_modules`)
+
+The three `packages/*` folders are real npm packages — they have names like
+`@bookmark-ai/types` — but they are **never published to the internet**. The root
+`pnpm-workspace.yaml` declares them as *workspace packages*, and each app depends on them
+with the version `"workspace:*"` in its `package.json`.
+
+When `pnpm install` runs, it doesn't download those packages — it creates **symlinks**:
+
+```
+apps/extension/node_modules/@bookmark-ai/types  →  packages/types   (symlink, not a copy)
+apps/web/node_modules/@bookmark-ai/ui           →  packages/ui      (symlink, not a copy)
+```
+
+So if you browse an app's `node_modules` and find Bookmark AI source (or this repo's
+README) in there — that's your own `packages/*` code showing through a symlink. Editing
+`packages/types/src/…` instantly updates every app that imports it; there is no publish
+or copy step. That's the whole point: one schema change in `packages/types` and the
+server, web app, extension, and mobile app all get the new type at once.
 
 ## Quick start
 
 ```bash
 pnpm install
 
-# 1. API + database (SQLite file at apps/server/data/bookmarks.db)
+# 1. API (needs .env — see "Environment" below)
 pnpm --filter @bookmark-ai/server dev        # http://localhost:4545
 
 # 2. Web app
@@ -38,42 +92,51 @@ pnpm --filter @bookmark-ai/extension build:safari     # → .output/safari-mv2
 
 # 4. Desktop (needs Zig 0.16 + @native-sdk/cli)
 cd apps/desktop && native dev
+
+# 5. Mobile (needs Xcode; Android needs JDK + Android SDK)
+cd apps/mobile && npx expo run:ios       # build + install on simulator
+npx expo start                           # Metro bundler
 ```
 
-Build/typecheck everything: `pnpm build` · `pnpm check-types` · desktop tests: `cd apps/desktop && native test`
+Whole-repo: `pnpm build` (never while the web dev server is running) ·
+`pnpm check-types` · desktop tests: `cd apps/desktop && native test`.
 
-### AI features
+## Environment
 
-Set `GEMINI_API_KEY` (see `.env.example`) in the server's environment to enable:
+Secrets live in the **gitignored** root `.env` (server + scripts) and
+`apps/web/.env.local` (web). Never commit them.
 
-- **Categorization + tags** via `gemini-2.5-flash` (falls back to domain/keyword heuristics without a key)
-- **Semantic search** via `gemini-embedding-001` (768-dim vectors in libSQL's native
-  vector column; AI search falls back to full-text without a key)
+| Variable | Where | What |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | `.env` | Enables AI categorization, embeddings, and AI search. Without it everything degrades gracefully to heuristics/full-text (`fallback: true`). |
+| `DATABASE_URL` + `DATABASE_AUTH_TOKEN` | `.env` | Turso cloud libSQL. Point `DATABASE_URL` at a local `file:` path for fully-local mode — query code is URL-agnostic. |
+| `CLERK_JWT_KEY`, `CLERK_AUTHORIZED_PARTIES`, `CLERK_ALLOWED_USER_IDS` | server (Render) | Turn on API auth enforcement. Unset locally = open API for desktop app / curl / scripts. |
+| Clerk publishable + secret keys | `apps/web/.env.local` | Web sign-in. The publishable key is also baked into the extension and mobile app (public by design). |
+| `NEXT_PUBLIC_API_URL` | web env | Where the web app finds the API (Vercel points it at Render). |
 
-### Loading the extension
+## Authentication (Clerk)
 
-- **Chrome / Edge / Arc**: `chrome://extensions` → Developer mode → *Load unpacked* → `apps/extension/.output/chrome-mv3`
-- **Firefox**: `about:debugging` → This Firefox → *Load Temporary Add-on* → `apps/extension/.output/firefox-mv2/manifest.json`
-- **Safari**: `xcrun safari-web-extension-converter apps/extension/.output/safari-mv2 --app-name "Bookmark AI"`, then run the generated Xcode project
+- **Web**: every route is gated by `middleware.ts` except sign-in/sign-up.
+- **Extension**: no in-popup sign-in — it mirrors the web app's session via Clerk's
+  `syncHost` (sign in on the web app once; the extension picks it up).
+- **Mobile**: native sign-in screen (Google SSO or emailed code); the session lives in
+  the iOS keychain.
+- **API**: with `CLERK_JWT_KEY` set, every `/api` route except `/api/health` requires
+  `Authorization: Bearer <session JWT>`, verified **networklessly** (public key only —
+  the server never holds the Clerk secret). Plus a CORS origin allowlist and a
+  120 req/min/IP rate limit. Without the key (local dev) the API is open on purpose.
 
-## For AI agents / contributors
+## Deployment (live)
 
-- `CLAUDE.md` — repo-wide agent guide (state, gotchas, where features go)
-- `docs/TESTING.md` — full verification playbook for every surface
-- `docs/ARCHITECTURE.md` — data flow + design decisions + roadmap
-- `apps/desktop/CLAUDE.md`, `apps/extension/CLAUDE.md` — surface-specific guides
+| Surface | Where | How it deploys |
+| --- | --- | --- |
+| Web | Vercel — `bookmark-ai-theta.vercel.app` | `vercel --prod` (project root dir = `apps/web`) |
+| API | Render — `bookmark-ai-server.onrender.com` | auto-deploys on push to `main` (free tier: cold-starts after idle, first request can take ~50 s) |
+| DB | Turso (`aws-ap-south-1`) | managed; `turso` CLI |
 
-## Architecture notes
+## Docs
 
-- **One contract**: clients construct `CreateBookmarkInput` (`packages/types`); the server
-  owns scraping, categorization, and embedding, so saves stay fast and clients stay thin.
-- **Search**: `GET /api/search?q=…&mode=text|ai`. `text` = FTS5 (bm25), `ai` = cosine
-  similarity over embeddings via `vector_distance_cos`. AI mode degrades to text
-  transparently (`fallback: true`) when embeddings are unavailable.
-- **Embed worker**: embeddings are written asynchronously after each save and swept
-  every 30 s, so transient AI failures self-heal.
-- **Database**: file-based libSQL today; point `DATABASE_URL` at a `libsql://` Turso URL
-  later without touching query code. Client-side sync/vector replicas can layer on next.
-- **Branding**: `packages/ui/src/theme.css` is the single source of design tokens
-  (currently shadcn neutral); the desktop app follows the OS light/dark appearance with
-  the Native SDK's stock tokens.
+- [`CLAUDE.md`](CLAUDE.md) — agent/contributor guide: current state, hard-won gotchas, where features go
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — data flow + design decisions + roadmap
+- [`docs/TESTING.md`](docs/TESTING.md) — full verification playbook for every surface
+- [`docs/PRODUCTION.md`](docs/PRODUCTION.md) — store-submission + production checklist (web, extension stores, mobile)
