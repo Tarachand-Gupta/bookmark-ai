@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, Linking, LogBox, StyleSheet, View } from "react-native";
+import { BlurTargetView } from "expo-blur";
 import {
   initialWindowMetrics,
   SafeAreaProvider,
@@ -97,24 +98,30 @@ function Shell() {
     return () => sub.remove();
   }, []);
 
+  // Android's frosted tab bar samples this wrapper (expo-blur blurTarget);
+  // it's a plain passthrough view on iOS.
+  const blurTargetRef = useRef<View>(null);
+
   // Screens stay mounted so tab switches keep scroll position and state.
   return (
     <>
-      <SafeAreaView edges={["top", "left", "right"]} style={styles.body}>
-        <View style={[styles.screen, tab !== "library" && styles.hidden]}>
-          <LibraryScreen filterSheetOpen={filterSheetOpen} onFilterSheetChange={setFilterSheetOpen} />
-        </View>
-        <View style={[styles.screen, tab !== "sessions" && styles.hidden]}>
-          <SessionsScreen />
-        </View>
-        <View style={[styles.screen, tab !== "search" && styles.hidden]}>
-          <SearchScreen />
-        </View>
-        <View style={[styles.screen, tab !== "settings" && styles.hidden]}>
-          <SettingsScreen />
-        </View>
-      </SafeAreaView>
-      <TabBar tab={tab} onChange={setTab} />
+      <BlurTargetView ref={blurTargetRef} style={styles.body}>
+        <SafeAreaView edges={["top", "left", "right"]} style={styles.body}>
+          <View style={[styles.screen, tab !== "library" && styles.hidden]}>
+            <LibraryScreen filterSheetOpen={filterSheetOpen} onFilterSheetChange={setFilterSheetOpen} />
+          </View>
+          <View style={[styles.screen, tab !== "sessions" && styles.hidden]}>
+            <SessionsScreen />
+          </View>
+          <View style={[styles.screen, tab !== "search" && styles.hidden]}>
+            <SearchScreen />
+          </View>
+          <View style={[styles.screen, tab !== "settings" && styles.hidden]}>
+            <SettingsScreen />
+          </View>
+        </SafeAreaView>
+      </BlurTargetView>
+      <TabBar tab={tab} onChange={setTab} blurTarget={blurTargetRef} />
     </>
   );
 }

@@ -1,6 +1,7 @@
-import { useRef } from "react";
+import { useRef, type RefObject } from "react";
 import {
   Animated,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -114,7 +115,16 @@ export function useTabBarScroll() {
  * the OS has it; a frosted blur capsule everywhere else (iOS 18, Android) so
  * the design reads the same on every OS version.
  */
-export function TabBar({ tab, onChange }: { tab: TabKey; onChange: (tab: TabKey) => void }) {
+export function TabBar({
+  tab,
+  onChange,
+  blurTarget,
+}: {
+  tab: TabKey;
+  onChange: (tab: TabKey) => void;
+  /** Android live-blur source (a BlurTargetView wrapping the screens). */
+  blurTarget?: RefObject<View | null>;
+}) {
   const { colors, dark } = useAppTheme();
   const insets = useSafeAreaInsets();
 
@@ -170,12 +180,19 @@ export function TabBar({ tab, onChange }: { tab: TabKey; onChange: (tab: TabKey)
           <BlurView
             intensity={90}
             tint={dark ? "systemChromeMaterialDark" : "systemChromeMaterialLight"}
+            // Android: RenderNode-based live blur of the screen content
+            // (falls back to the translucent fill below Android 12)
+            blurMethod="dimezisBlurViewSdk31Plus"
+            blurTarget={blurTarget}
             style={[
               styles.bar,
               styles.frosted,
               {
                 borderColor: colors.border,
-                backgroundColor: dark ? "rgba(18,18,18,0.55)" : "rgba(252,252,252,0.6)",
+                // Android gets real blur behind, so its overlay is lighter
+                backgroundColor: dark
+                  ? `rgba(18,18,18,${Platform.OS === "android" ? 0.35 : 0.55})`
+                  : `rgba(252,252,252,${Platform.OS === "android" ? 0.35 : 0.6})`,
               },
             ]}
           >
