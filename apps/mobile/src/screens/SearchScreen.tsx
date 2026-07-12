@@ -13,13 +13,14 @@ import { SegmentedControl } from "../components/SegmentedControl";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 import { useSearch } from "../hooks/useSearch";
-import { useTabBarClearance } from "../navigation/TabBar";
+import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 
 /** Search tab: iOS search field with clear ✕, Text/AI segmented switch,
  * results as standard rows. */
 export function SearchScreen() {
   const { colors, radius } = useAppTheme();
   const tabBarClearance = useTabBarClearance();
+  const onScroll = useTabBarScroll();
   const search = useSearch();
   const hasQuery = search.query.trim().length > 0;
 
@@ -66,6 +67,8 @@ export function SearchScreen() {
         )}
         keyboardDismissMode="on-drag"
         onScrollBeginDrag={Keyboard.dismiss}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={{ paddingBottom: tabBarClearance }}
         ListEmptyComponent={
           <View style={styles.empty}>

@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, Linking, LogBox, StyleSheet, View } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import {
+  initialWindowMetrics,
+  SafeAreaProvider,
+  SafeAreaView,
+} from "react-native-safe-area-context";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { setAuthTokenProvider } from "./src/api";
 import { PreferencesProvider, useAppTheme } from "./src/context/PreferencesContext";
@@ -20,7 +24,9 @@ export default function App() {
   return (
     <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
       <PreferencesProvider>
-        <SafeAreaProvider>
+        {/* initialMetrics avoids the Android first-frame zero-inset flash
+            (Settings title rendered under the status bar on first mount). */}
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
           <Gate />
         </SafeAreaProvider>
       </PreferencesProvider>

@@ -20,7 +20,7 @@ import { Symbol } from "../components/Symbol";
 import { useAppTheme, usePreferences } from "../context/PreferencesContext";
 import { useLibrary, type LibraryState } from "../hooks/useLibrary";
 import { groupByDay } from "../lib/dayGroups";
-import { useTabBarClearance } from "../navigation/TabBar";
+import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 
 const QUICK_CHIP_LIMIT = 5;
 
@@ -36,6 +36,7 @@ export function LibraryScreen({
   const { colors } = useAppTheme();
   const { viewMode, setViewMode } = usePreferences();
   const tabBarClearance = useTabBarClearance();
+  const onScroll = useTabBarScroll();
   const lib = useLibrary();
   const sections = useMemo(() => groupByDay(lib.bookmarks), [lib.bookmarks]);
 
@@ -102,6 +103,8 @@ export function LibraryScreen({
           refreshControl={refreshControl}
           onEndReached={lib.loadMore}
           onEndReachedThreshold={0.4}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           contentContainerStyle={{ paddingBottom: tabBarClearance }}
         />
       ) : (
@@ -116,7 +119,9 @@ export function LibraryScreen({
           refreshControl={refreshControl}
           onEndReached={lib.loadMore}
           onEndReachedThreshold={0.4}
-          contentContainerStyle={[styles.gridContent, { paddingBottom: tabBarClearance }]}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          contentContainerStyle={{ paddingBottom: tabBarClearance }}
         />
       )}
       <FilterSheet
@@ -201,7 +206,6 @@ function QuickFilters({ lib, onOpenSheet }: { lib: LibraryState; onOpenSheet: ()
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  gridContent: { paddingHorizontal: 20 },
   header: { gap: 14, paddingTop: 8, paddingBottom: 4, paddingHorizontal: 20 },
   titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   largeTitle: { fontSize: 34, fontWeight: "700", letterSpacing: 0.2 },
@@ -231,7 +235,9 @@ const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 6,
   },
-  cardRow: { gap: 12, marginBottom: 12 },
+  // horizontal padding lives here (not on the list container) so the shared
+  // header keeps identical insets in list and grid view
+  cardRow: { gap: 12, marginBottom: 12, paddingHorizontal: 20 },
   empty: { alignItems: "center", gap: 8, paddingVertical: 72, paddingHorizontal: 20 },
   emptyTitle: { fontSize: 17, fontWeight: "600" },
   emptyBody: { fontSize: 15, maxWidth: 300, textAlign: "center", lineHeight: 20 },

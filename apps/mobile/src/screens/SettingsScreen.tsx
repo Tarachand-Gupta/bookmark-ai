@@ -19,7 +19,7 @@ import {
   type ThemePreference,
 } from "../context/PreferencesContext";
 import { useLibrary } from "../hooks/useLibrary";
-import { useTabBarClearance } from "../navigation/TabBar";
+import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 
 const WEB_URL = "https://bookmark-ai-theta.vercel.app";
 
@@ -43,6 +43,7 @@ export function SettingsScreen() {
   const { signOut } = useClerk();
   const { meta, refresh } = useLibrary();
   const tabBarClearance = useTabBarClearance();
+  const onScroll = useTabBarScroll();
   const [avatarFailed, setAvatarFailed] = useState(false);
 
   const name = user?.fullName || user?.username || "Signed in";
@@ -64,6 +65,8 @@ export function SettingsScreen() {
     <ScrollView
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
     >
       <Text style={[styles.largeTitle, { color: colors.foreground }]}>Settings</Text>
 

@@ -1,4 +1,13 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import * as Haptics from "expo-haptics";
 import type { MetaResponse } from "@bookmark-ai/types";
 import type { LibraryFilters } from "../api";
@@ -38,7 +47,15 @@ export function FilterSheet({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={[styles.sheet, { backgroundColor: colors.background }]}>
+      {/* pageSheet is iOS-only; on Android the modal is fullscreen, so pad
+          the header below the status bar. */}
+      <View
+        style={[
+          styles.sheet,
+          { backgroundColor: colors.background },
+          Platform.OS === "android" && { paddingTop: StatusBar.currentHeight ?? 0 },
+        ]}
+      >
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <Pressable
             onPress={activeCount > 0 ? onClear : undefined}

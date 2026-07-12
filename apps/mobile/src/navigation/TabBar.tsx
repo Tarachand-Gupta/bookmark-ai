@@ -1,4 +1,13 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useRef } from "react";
+import {
+  Animated,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
@@ -41,6 +50,7 @@ const TABS: {
 
 const BAR_HEIGHT = 64;
 const BAR_GAP = 16; // gap between bar bottom and safe-area/home indicator
+const COLLAPSED_SCALE = 0.84;
 
 function bottomOffset(insetBottom: number): number {
   return Math.max(insetBottom, BAR_GAP);
@@ -53,11 +63,49 @@ export function useTabBarClearance(): number {
   return bottomOffset(insets.bottom) + BAR_HEIGHT + 20;
 }
 
+// Instagram-style shrink: one shared animated scale for the single tab bar.
+const barScale = new Animated.Value(1);
+// Keep the bottom edge anchored while scaling (default origin is the center).
+const barShift = barScale.interpolate({
+  inputRange: [COLLAPSED_SCALE, 1],
+  outputRange: [(BAR_HEIGHT * (1 - COLLAPSED_SCALE)) / 2, 0],
+});
+let barCollapsed = false;
+
+function setBarCollapsed(next: boolean) {
+  if (barCollapsed === next) return;
+  barCollapsed = next;
+  Animated.spring(barScale, {
+    toValue: next ? COLLAPSED_SCALE : 1,
+    useNativeDriver: true,
+    speed: 18,
+    bounciness: 5,
+  }).start();
+}
+
+/**
+ * Scroll handler for screens: shrink the tab bar while scrolling down,
+ * restore it on scroll-up or near the top. Attach to any scrollable:
+ * `onScroll={useTabBarScroll()} scrollEventThrottle={16}`.
+ */
+export function useTabBarScroll() {
+  const lastY = useRef(0);
+  return (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    const dy = y - lastY.current;
+    lastY.current = y;
+    if (y <= 24) setBarCollapsed(false);
+    else if (dy > 4) setBarCollapsed(true);
+    else if (dy < -4) setBarCollapsed(false);
+  };
+}
+
 /**
  * Floating tab bar, iOS 26 style: a detached capsule hovering above the home
- * indicator. Real Liquid Glass (UIGlassEffect) where the OS has it; a frosted
- * blur capsule everywhere else (iOS 18, Android) so the design reads the same
- * on every OS version.
+ * indicator, sized to its content (fixed-width items, not stretched), that
+ * scales down while the user scrolls. Real Liquid Glass (UIGlassEffect) where
+ * the OS has it; a frosted blur capsule everywhere else (iOS 18, Android) so
+ * the design reads the same on every OS version.
  */
 export function TabBar({ tab, onChange }: { tab: TabKey; onChange: (tab: TabKey) => void }) {
   const { colors, dark } = useAppTheme();
@@ -72,32 +120,29 @@ export function TabBar({ tab, onChange }: { tab: TabKey; onChange: (tab: TabKey)
         onPress={() => {
           if (!active) {
             void Haptics.selectionAsync();
+            setBarCollapsed(false); // switching tabs always restores the bar
             onChange(key);
           }
         }}
         accessibilityRole="tab"
         accessibilityState={{ selected: active }}
-        style={styles.tab}
+        style={[
+          styles.tab,
+          active && {
+            backgroundColor: dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.07)",
+          },
+        ]}
       >
-        <View
-          style={[
-            styles.tabInner,
-            active && {
-              backgroundColor: dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.07)",
-            },
-          ]}
-        >
-          <Symbol
-            name={active ? activeSymbol : symbol}
-            size={22}
-            color={color}
-            fallback={fallback}
-            weight={active ? "semibold" : "regular"}
-          />
-          <Text style={[styles.label, { color, fontWeight: active ? "600" : "500" }]}>
-            {label}
-          </Text>
-        </View>
+        <Symbol
+          name={active ? activeSymbol : symbol}
+          size={22}
+          color={color}
+          fallback={fallback}
+          weight={active ? "semibold" : "regular"}
+        />
+        <Text style={[styles.label, { color, fontWeight: active ? "600" : "500" }]}>
+          {label}
+        </Text>
       </Pressable>
     );
   });
@@ -107,7 +152,9 @@ export function TabBar({ tab, onChange }: { tab: TabKey; onChange: (tab: TabKey)
       pointerEvents="box-none"
       style={[styles.wrap, { bottom: bottomOffset(insets.bottom) }]}
     >
-      <View style={styles.shadow}>
+      <Animated.View
+        style={[styles.shadow, { transform: [{ translateY: barShift }, { scale: barScale }] }]}
+      >
         {isLiquidGlassAvailable() ? (
           <GlassView glassEffectStyle="regular" style={styles.bar}>
             {items}
@@ -116,7 +163,6 @@ export function TabBar({ tab, onChange }: { tab: TabKey; onChange: (tab: TabKey)
           <BlurView
             intensity={90}
             tint={dark ? "systemChromeMaterialDark" : "systemChromeMaterialLight"}
-            experimentalBlurMethod="dimezisBlurView"
             style={[
               styles.bar,
               styles.frosted,
@@ -129,7 +175,7 @@ export function TabBar({ tab, onChange }: { tab: TabKey; onChange: (tab: TabKey)
             {items}
           </BlurView>
         )}
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -137,13 +183,11 @@ export function TabBar({ tab, onChange }: { tab: TabKey; onChange: (tab: TabKey)
 const styles = StyleSheet.create({
   wrap: {
     position: "absolute",
-    left: 16,
-    right: 16,
-    alignItems: "center",
+    left: 0,
+    right: 0,
+    alignItems: "center", // the capsule hugs its content, centered
   },
   shadow: {
-    width: "100%",
-    maxWidth: 420, // keeps the capsule sane on iPad
     borderRadius: BAR_HEIGHT / 2,
     shadowColor: "#000",
     shadowOpacity: 0.18,
@@ -158,18 +202,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 8,
+    gap: 4,
   },
   frosted: {
     borderWidth: StyleSheet.hairlineWidth,
   },
-  tab: { flex: 1, alignItems: "center", justifyContent: "center" },
-  tabInner: {
+  // Fixed-size items with uniform insets — the pill highlight keeps the same
+  // distance from the capsule's rounded ends on every tab.
+  tab: {
+    width: 92,
+    height: 48,
     alignItems: "center",
+    justifyContent: "center",
     gap: 2,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    minWidth: 72,
+    // concrete radius: Android renders huge (999) radii as sharp corners here
+    borderRadius: 24,
   },
   label: { fontSize: 10 },
 });

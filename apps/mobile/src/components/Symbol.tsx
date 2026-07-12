@@ -1,8 +1,35 @@
 import { Platform, Text } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
 
-/** SF Symbol on iOS; plain-text glyph fallback elsewhere (Android build has
- * no SF Symbols — pass a `fallback` character). */
+/** SF Symbol name → Ionicons equivalent for Android (Ionicons' visual
+ * language is iOS-flavored, so the two platforms read the same). */
+const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  bookmark: "bookmark-outline",
+  "bookmark.fill": "bookmark",
+  "books.vertical": "library-outline",
+  "books.vertical.fill": "library",
+  checkmark: "checkmark",
+  "chevron.right": "chevron-forward",
+  cloud: "cloud-outline",
+  gearshape: "settings-outline",
+  "gearshape.fill": "settings",
+  globe: "globe-outline",
+  laptopcomputer: "laptop-outline",
+  "line.3.horizontal.decrease": "filter",
+  "list.bullet": "list",
+  magnifyingglass: "search",
+  "person.fill": "person",
+  "questionmark.circle": "help-circle-outline",
+  "rectangle.portrait.and.arrow.right": "log-out-outline",
+  safari: "compass-outline",
+  sparkles: "sparkles",
+  "square.grid.2x2": "grid-outline",
+  "xmark.circle.fill": "close-circle",
+};
+
+/** SF Symbol on iOS; the mapped Ionicons glyph on Android (text character as
+ * a last resort for unmapped names — add new names to ANDROID_ICONS). */
 export function Symbol({
   name,
   size = 20,
@@ -17,6 +44,10 @@ export function Symbol({
   weight?: SymbolViewProps["weight"];
 }) {
   if (Platform.OS !== "ios") {
+    const ionName = typeof name === "string" ? ANDROID_ICONS[name] : undefined;
+    if (ionName) {
+      return <Ionicons name={ionName} size={size} color={color} />;
+    }
     return <Text style={{ fontSize: size * 0.9, color }}>{fallback}</Text>;
   }
   return (
