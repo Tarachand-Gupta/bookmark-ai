@@ -13,6 +13,7 @@ import { CLERK_PUBLISHABLE_KEY, tokenCache } from "./src/lib/clerk";
 import { TabBar, type TabKey } from "./src/navigation/TabBar";
 import { LibraryScreen } from "./src/screens/LibraryScreen";
 import { SearchScreen } from "./src/screens/SearchScreen";
+import { SessionsScreen } from "./src/screens/SessionsScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SignInScreen } from "./src/screens/SignInScreen";
 
@@ -66,21 +67,23 @@ function Gate() {
   );
 }
 
-// Dev/screenshot affordance: EXPO_PUBLIC_INITIAL_TAB=search|settings|filters
+// Dev/screenshot affordance: EXPO_PUBLIC_INITIAL_TAB=sessions|search|settings|filters
 // (inlined at bundle time; unset in normal use).
 const INITIAL = process.env.EXPO_PUBLIC_INITIAL_TAB;
 
 function Shell() {
   const [tab, setTab] = useState<TabKey>(
-    INITIAL === "search" || INITIAL === "settings" ? INITIAL : "library",
+    INITIAL === "sessions" || INITIAL === "search" || INITIAL === "settings"
+      ? INITIAL
+      : "library",
   );
   const [filterSheetOpen, setFilterSheetOpen] = useState(INITIAL === "filters");
 
-  // Deep links: bookmarkai://tab/<library|search|settings>, bookmarkai://filters
+  // Deep links: bookmarkai://tab/<library|sessions|search|settings>, bookmarkai://filters
   useEffect(() => {
     const handle = (url: string | null) => {
       if (!url) return;
-      const match = /(?:tab\/)?(library|search|settings|filters)\/?$/.exec(url);
+      const match = /(?:tab\/)?(library|sessions|search|settings|filters)\/?$/.exec(url);
       if (!match) return;
       if (match[1] === "filters") {
         setTab("library");
@@ -100,6 +103,9 @@ function Shell() {
       <SafeAreaView edges={["top", "left", "right"]} style={styles.body}>
         <View style={[styles.screen, tab !== "library" && styles.hidden]}>
           <LibraryScreen filterSheetOpen={filterSheetOpen} onFilterSheetChange={setFilterSheetOpen} />
+        </View>
+        <View style={[styles.screen, tab !== "sessions" && styles.hidden]}>
+          <SessionsScreen />
         </View>
         <View style={[styles.screen, tab !== "search" && styles.hidden]}>
           <SearchScreen />

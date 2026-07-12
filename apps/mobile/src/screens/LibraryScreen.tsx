@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { AddBookmarkSheet } from "../components/AddBookmarkSheet";
 import {
   ActivityIndicator,
   FlatList,
@@ -38,20 +39,38 @@ export function LibraryScreen({
   const tabBarClearance = useTabBarClearance();
   const onScroll = useTabBarScroll();
   const lib = useLibrary();
+  const [addOpen, setAddOpen] = useState(false);
   const sections = useMemo(() => groupByDay(lib.bookmarks), [lib.bookmarks]);
 
   const header = (
     <View style={styles.header}>
       <View style={styles.titleRow}>
         <Text style={[styles.largeTitle, { color: colors.foreground }]}>Library</Text>
-        <SegmentedControl
-          segments={[
-            { value: "list", symbol: "list.bullet", fallback: "☰" },
-            { value: "cards", symbol: "square.grid.2x2", fallback: "▦" },
-          ]}
-          value={viewMode}
-          onChange={setViewMode}
-        />
+        <View style={styles.titleActions}>
+          <Pressable
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setAddOpen(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Add bookmark"
+            hitSlop={6}
+            style={({ pressed }) => [
+              styles.addButton,
+              { backgroundColor: pressed ? colors.border : colors.muted },
+            ]}
+          >
+            <Symbol name="plus" size={19} color={colors.foreground} fallback="＋" weight="semibold" />
+          </Pressable>
+          <SegmentedControl
+            segments={[
+              { value: "list", symbol: "list.bullet", fallback: "☰" },
+              { value: "cards", symbol: "square.grid.2x2", fallback: "▦" },
+            ]}
+            value={viewMode}
+            onChange={setViewMode}
+          />
+        </View>
       </View>
       <QuickFilters lib={lib} onOpenSheet={() => onFilterSheetChange(true)} />
       <Text style={[styles.count, { color: colors.mutedForeground }]}>
@@ -132,6 +151,16 @@ export function LibraryScreen({
         onFilter={lib.setFilter}
         onClear={lib.clearFilters}
       />
+      <AddBookmarkSheet
+        visible={addOpen}
+        onClose={() => setAddOpen(false)}
+        onSaved={() => {
+          lib.refresh();
+          // the server scrapes the page's title/preview just after the save
+          // returns — pick those up without a manual pull-to-refresh
+          setTimeout(lib.refresh, 4000);
+        }}
+      />
     </View>
   );
 }
@@ -208,6 +237,14 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   header: { gap: 14, paddingTop: 8, paddingBottom: 4, paddingHorizontal: 20 },
   titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  titleActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  addButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   largeTitle: { fontSize: 34, fontWeight: "700", letterSpacing: 0.2 },
   rail: { flexDirection: "row", gap: 8, paddingRight: 20 },
   filterPill: {

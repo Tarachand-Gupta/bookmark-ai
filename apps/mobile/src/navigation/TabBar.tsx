@@ -16,7 +16,7 @@ import type { SymbolViewProps } from "expo-symbols";
 import { useAppTheme } from "../context/PreferencesContext";
 import { Symbol } from "../components/Symbol";
 
-export type TabKey = "library" | "search" | "settings";
+export type TabKey = "library" | "sessions" | "search" | "settings";
 
 const TABS: {
   key: TabKey;
@@ -31,6 +31,13 @@ const TABS: {
     symbol: "books.vertical",
     activeSymbol: "books.vertical.fill",
     fallback: "▤",
+  },
+  {
+    key: "sessions",
+    label: "Sessions",
+    symbol: "square.stack",
+    activeSymbol: "square.stack.fill",
+    fallback: "▣",
   },
   {
     key: "search",
@@ -208,9 +215,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   // Fixed-size items with uniform insets — the pill highlight keeps the same
-  // distance from the capsule's rounded ends on every tab.
+  // distance from the capsule's rounded ends on every tab. 82pt × 4 tabs
+  // still fits the narrowest iPhone (375pt).
   tab: {
-    width: 92,
+    width: 82,
     height: 48,
     alignItems: "center",
     justifyContent: "center",

@@ -5,6 +5,7 @@ import { SymbolView, type SymbolViewProps } from "expo-symbols";
 /** SF Symbol name → Ionicons equivalent for Android (Ionicons' visual
  * language is iOS-flavored, so the two platforms read the same). */
 const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  "arrow.up.right": "open-outline",
   bookmark: "bookmark-outline",
   "bookmark.fill": "bookmark",
   "books.vertical": "library-outline",
@@ -12,6 +13,7 @@ const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   checkmark: "checkmark",
   "chevron.right": "chevron-forward",
   cloud: "cloud-outline",
+  "doc.on.clipboard": "clipboard-outline",
   gearshape: "settings-outline",
   "gearshape.fill": "settings",
   globe: "globe-outline",
@@ -20,11 +22,14 @@ const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   "list.bullet": "list",
   magnifyingglass: "search",
   "person.fill": "person",
+  plus: "add",
   "questionmark.circle": "help-circle-outline",
   "rectangle.portrait.and.arrow.right": "log-out-outline",
   safari: "compass-outline",
   sparkles: "sparkles",
   "square.grid.2x2": "grid-outline",
+  "square.stack": "albums-outline",
+  "square.stack.fill": "albums",
   "xmark.circle.fill": "close-circle",
 };
 

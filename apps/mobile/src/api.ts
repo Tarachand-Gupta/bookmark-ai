@@ -1,6 +1,9 @@
 import { Platform } from "react-native";
 import type {
+  Bookmark,
+  CreateBookmarkInput,
   ListBookmarksResponse,
+  ListSessionsResponse,
   MetaResponse,
   SearchMode,
   SearchResponse,
@@ -45,15 +48,27 @@ async function authHeaders(): Promise<Record<string, string>> {
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
-async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
+interface RequestOptions {
+  method?: "GET" | "POST" | "DELETE";
+  body?: unknown;
+  signal?: AbortSignal;
+}
+
+async function request<T>(
+  path: string,
+  { method = "GET", body, signal }: RequestOptions = {},
+): Promise<T> {
   const res = await fetch(`${getApiUrl()}${path}`, {
+    method,
     signal,
     headers: { "content-type": "application/json", ...(await authHeaders()) },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `Request failed (${res.status})`);
+    const errBody = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(errBody?.error ?? `Request failed (${res.status})`);
   }
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -74,11 +89,11 @@ export function listBookmarks(
   }
   params.set("limit", String(page.limit));
   params.set("offset", String(page.offset));
-  return request<ListBookmarksResponse>(`/api/bookmarks?${params}`, signal);
+  return request<ListBookmarksResponse>(`/api/bookmarks?${params}`, { signal });
 }
 
 export function getMeta(signal?: AbortSignal): Promise<MetaResponse> {
-  return request<MetaResponse>("/api/meta", signal);
+  return request<MetaResponse>("/api/meta", { signal });
 }
 
 export function searchBookmarks(
@@ -87,5 +102,18 @@ export function searchBookmarks(
   signal?: AbortSignal,
 ): Promise<SearchResponse> {
   const params = new URLSearchParams({ q, mode });
-  return request<SearchResponse>(`/api/search?${params}`, signal);
+  return request<SearchResponse>(`/api/search?${params}`, { signal });
+}
+
+/** Save a URL — the server scrapes OG data, categorizes, and embeds it. */
+export function createBookmark(input: CreateBookmarkInput): Promise<{ bookmark: Bookmark }> {
+  return request<{ bookmark: Bookmark }>("/api/bookmarks", { method: "POST", body: input });
+}
+
+export function listSessions(signal?: AbortSignal): Promise<ListSessionsResponse> {
+  return request<ListSessionsResponse>("/api/sessions", { signal });
+}
+
+export function deleteSession(id: string): Promise<void> {
+  return request<void>(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
