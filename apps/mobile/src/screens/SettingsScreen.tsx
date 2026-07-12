@@ -19,6 +19,7 @@ import {
   type ThemePreference,
 } from "../context/PreferencesContext";
 import { useLibrary } from "../hooks/useLibrary";
+import { useTabBarClearance } from "../navigation/TabBar";
 
 const WEB_URL = "https://bookmark-ai-theta.vercel.app";
 
@@ -41,6 +42,7 @@ export function SettingsScreen() {
   const { user } = useUser();
   const { signOut } = useClerk();
   const { meta, refresh } = useLibrary();
+  const tabBarClearance = useTabBarClearance();
   const [avatarFailed, setAvatarFailed] = useState(false);
 
   const name = user?.fullName || user?.username || "Signed in";
@@ -61,7 +63,7 @@ export function SettingsScreen() {
   return (
     <ScrollView
       style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
     >
       <Text style={[styles.largeTitle, { color: colors.foreground }]}>Settings</Text>
 
@@ -229,7 +231,7 @@ function GroupRow({
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 48 },
+  content: { padding: 20 },
   largeTitle: { fontSize: 34, fontWeight: "700", letterSpacing: 0.2, paddingTop: 8 },
   profile: { alignItems: "center", gap: 4, paddingVertical: 24 },
   avatar: {

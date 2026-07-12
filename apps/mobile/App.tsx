@@ -28,6 +28,10 @@ export default function App() {
   );
 }
 
+// Dev-only QA affordance: lets headless test agents past the sign-in gate to
+// exercise the UI against the open local server. Ignored in release builds.
+const SKIP_AUTH = __DEV__ && process.env.EXPO_PUBLIC_SKIP_AUTH === "1";
+
 /** Auth gate: splash while Clerk restores the session, sign-in when there is
  * none, the app otherwise. Also feeds the session token to the API client. */
 function Gate() {
@@ -40,11 +44,11 @@ function Gate() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {!isLoaded ? (
+      {!isLoaded && !SKIP_AUTH ? (
         <View style={styles.splash}>
           <ActivityIndicator color={colors.mutedForeground} />
         </View>
-      ) : !isSignedIn ? (
+      ) : !isSignedIn && !SKIP_AUTH ? (
         <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.body}>
           <SignInScreen />
         </SafeAreaView>

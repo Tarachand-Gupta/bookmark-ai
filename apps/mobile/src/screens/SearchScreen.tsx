@@ -13,11 +13,13 @@ import { SegmentedControl } from "../components/SegmentedControl";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 import { useSearch } from "../hooks/useSearch";
+import { useTabBarClearance } from "../navigation/TabBar";
 
 /** Search tab: iOS search field with clear ✕, Text/AI segmented switch,
  * results as standard rows. */
 export function SearchScreen() {
   const { colors, radius } = useAppTheme();
+  const tabBarClearance = useTabBarClearance();
   const search = useSearch();
   const hasQuery = search.query.trim().length > 0;
 
@@ -64,7 +66,7 @@ export function SearchScreen() {
         )}
         keyboardDismissMode="on-drag"
         onScrollBeginDrag={Keyboard.dismiss}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={{ paddingBottom: tabBarClearance }}
         ListEmptyComponent={
           <View style={styles.empty}>
             {hasQuery && !search.searching ? (
@@ -118,7 +120,6 @@ const styles = StyleSheet.create({
   },
   input: { flex: 1, fontSize: 17, paddingVertical: 11 },
   modeRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  listContent: { paddingBottom: 24 },
   count: { fontSize: 13, paddingHorizontal: 20, paddingVertical: 8 },
   empty: { alignItems: "center", gap: 8, paddingVertical: 72, paddingHorizontal: 24 },
   emptyTitle: { fontSize: 17, fontWeight: "600" },

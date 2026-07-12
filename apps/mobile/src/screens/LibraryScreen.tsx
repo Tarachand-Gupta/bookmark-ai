@@ -20,6 +20,7 @@ import { Symbol } from "../components/Symbol";
 import { useAppTheme, usePreferences } from "../context/PreferencesContext";
 import { useLibrary, type LibraryState } from "../hooks/useLibrary";
 import { groupByDay } from "../lib/dayGroups";
+import { useTabBarClearance } from "../navigation/TabBar";
 
 const QUICK_CHIP_LIMIT = 5;
 
@@ -34,6 +35,7 @@ export function LibraryScreen({
 }) {
   const { colors } = useAppTheme();
   const { viewMode, setViewMode } = usePreferences();
+  const tabBarClearance = useTabBarClearance();
   const lib = useLibrary();
   const sections = useMemo(() => groupByDay(lib.bookmarks), [lib.bookmarks]);
 
@@ -100,7 +102,7 @@ export function LibraryScreen({
           refreshControl={refreshControl}
           onEndReached={lib.loadMore}
           onEndReachedThreshold={0.4}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={{ paddingBottom: tabBarClearance }}
         />
       ) : (
         <FlatList
@@ -114,7 +116,7 @@ export function LibraryScreen({
           refreshControl={refreshControl}
           onEndReached={lib.loadMore}
           onEndReachedThreshold={0.4}
-          contentContainerStyle={styles.gridContent}
+          contentContainerStyle={[styles.gridContent, { paddingBottom: tabBarClearance }]}
         />
       )}
       <FilterSheet
@@ -199,8 +201,7 @@ function QuickFilters({ lib, onOpenSheet }: { lib: LibraryState; onOpenSheet: ()
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  listContent: { paddingBottom: 24 },
-  gridContent: { paddingBottom: 24, paddingHorizontal: 20 },
+  gridContent: { paddingHorizontal: 20 },
   header: { gap: 14, paddingTop: 8, paddingBottom: 4, paddingHorizontal: 20 },
   titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   largeTitle: { fontSize: 34, fontWeight: "700", letterSpacing: 0.2 },
