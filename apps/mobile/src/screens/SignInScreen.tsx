@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -25,6 +25,16 @@ export function SignInScreen() {
   const { colors, radius } = useAppTheme();
   const { startSSOFlow } = useSSO();
   const { signIn, setActive, isLoaded } = useSignIn();
+
+  // Android: pre-warm the custom tab so the SSO browser opens instantly
+  // and reliably (Clerk's recommendation for Expo on Android).
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    void WebBrowser.warmUpAsync();
+    return () => {
+      void WebBrowser.coolDownAsync();
+    };
+  }, []);
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [phase, setPhase] = useState<"email" | "code">("email");
@@ -45,15 +55,67 @@ export function SignInScreen() {
     setError(null);
     setBusy(true);
     try {
-      const { createdSessionId, setActive: activate } = await startSSOFlow({
+      const {
+        createdSessionId,
+        setActive: activate,
+        signIn: ssoSignIn,
+        signUp: ssoSignUp,
+      } = await startSSOFlow({
         strategy: "oauth_google",
         redirectUrl: AuthSession.makeRedirectUri(),
       });
+
+      // Happy path: Clerk minted a session directly.
       if (createdSessionId && activate) {
         await activate({ session: createdSessionId });
-      } else {
-        setBusy(false); // user closed the browser / extra steps required
+        return;
       }
+
+      // Google verified fine but Clerk stopped in a "transferable" state —
+      // the account exists but the attempt arrived on the other object
+      // (sign-up vs sign-in). Finish it on the right one.
+      if (activate && ssoSignUp?.verifications.externalAccount.status === "transferable") {
+        const res = await ssoSignIn?.create({ transfer: true });
+        if (res?.status === "complete" && res.createdSessionId) {
+          await activate({ session: res.createdSessionId });
+          return;
+        }
+      }
+      if (activate && ssoSignIn?.firstFactorVerification.status === "transferable") {
+        const res = await ssoSignUp?.create({ transfer: true });
+        if (res?.status === "complete" && res.createdSessionId) {
+          await activate({ session: res.createdSessionId });
+          return;
+        }
+      }
+      // First Google sign-in creates the account; when nothing is actually
+      // missing, one empty update completes it.
+      if (
+        activate &&
+        ssoSignUp?.status === "missing_requirements" &&
+        ssoSignUp.missingFields.length === 0
+      ) {
+        const res = await ssoSignUp.update({});
+        if (res.status === "complete" && res.createdSessionId) {
+          await activate({ session: res.createdSessionId });
+          return;
+        }
+      }
+
+      // User closed the browser: no states to report, just stop quietly.
+      if (!ssoSignIn && !ssoSignUp) {
+        setBusy(false);
+        return;
+      }
+      // Anything else: never fail silently — name the states.
+      console.warn(
+        `[sso] unresolved: signIn=${ssoSignIn?.status ?? "-"} signUp=${ssoSignUp?.status ?? "-"}`,
+      );
+      setError(
+        `Google sign-in didn't finish (${ssoSignIn?.status ?? ssoSignUp?.status ?? "unknown"}). ` +
+          "Try again, or use the email code below.",
+      );
+      setBusy(false);
     } catch (err) {
       failed(err);
     }
