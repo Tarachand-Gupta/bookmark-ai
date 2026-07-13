@@ -199,7 +199,7 @@ test "buildSearchUrl percent-encodes the query" {
     var buf: [640]u8 = undefined;
     const url = try main.buildSearchUrl(&buf, "zig lang! ünïcode");
     try testing.expectEqualStrings(
-        "http://127.0.0.1:4545/api/search?mode=text&limit=30&q=zig+lang%21+%C3%BCn%C3%AFcode",
+        "http://127.0.0.1:4545/api/search?mode=hybrid&limit=30&q=zig+lang%21+%C3%BCn%C3%AFcode",
         url,
     );
 }

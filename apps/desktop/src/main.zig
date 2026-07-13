@@ -359,7 +359,7 @@ fn startSearch(model: *Model, fx: *Effects) void {
 
 /// Build the /api/search URL, percent-encoding the query (pub for tests).
 pub fn buildSearchUrl(buf: []u8, query: []const u8) ![]const u8 {
-    const prefix = search_url_base ++ "?mode=text&limit=30&q=";
+    const prefix = search_url_base ++ "?mode=hybrid&limit=30&q=";
     if (prefix.len > buf.len) return error.QueryTooLong;
     @memcpy(buf[0..prefix.len], prefix);
     var len: usize = prefix.len;
