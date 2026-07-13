@@ -154,7 +154,15 @@ export function LibraryPage() {
       : null
     : list.bookmarks;
   const [showRelated, setShowRelated] = useState(false);
-  useEffect(() => setShowRelated(false), [query]);
+  // Two result kinds → two tabs (Bookmarks default); only shown when
+  // sessions actually matched.
+  const [resultsTab, setResultsTab] = useState<"bookmarks" | "sessions">("bookmarks");
+  useEffect(() => {
+    setShowRelated(false);
+    setResultsTab("bookmarks");
+  }, [query]);
+  const sessionMatches = search.data?.sessionResults ?? [];
+  const showingSessionsTab = resultsTab === "sessions" && sessionMatches.length > 0;
 
   // Group the content by relative date unless searching or a specific date
   // filter (range or single day) is active — then show a flat, filtered list.
@@ -286,34 +294,44 @@ export function LibraryPage() {
                     Delete failed: {actionError}
                   </p>
                 )}
-                {/* Matching saved sessions surface above bookmark results,
-                    under their own labeled heading so the two kinds read apart. */}
-                {searching && (search.data?.sessionResults?.length ?? 0) > 0 && (
-                  <section className="mb-6">
-                    <div className="mb-3 flex items-baseline gap-2">
-                      <h3 className="text-sm font-semibold tracking-tight">Sessions</h3>
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        {search.data!.sessionResults!.length}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-3">
-                      {search.data!.sessionResults!.map(({ session }) => (
-                        <SessionCard
-                          key={session.id}
-                          session={session}
-                          onDelete={handleSessionDelete}
-                          highlight={query}
-                        />
-                      ))}
-                    </div>
-                    <div className="mt-6 mb-3 flex items-baseline gap-2">
-                      <h3 className="text-sm font-semibold tracking-tight">Bookmarks</h3>
-                      <span className="text-xs tabular-nums text-muted-foreground">
+                {/* Both result kinds matched → a tab per kind, Bookmarks first. */}
+                {searching && sessionMatches.length > 0 && (
+                  <div className="mb-4 flex items-center gap-1.5">
+                    <Button
+                      variant={showingSessionsTab ? "ghost" : "secondary"}
+                      size="sm"
+                      onClick={() => setResultsTab("bookmarks")}
+                    >
+                      Bookmarks
+                      <span className="ml-1 tabular-nums text-muted-foreground">
                         {bookmarks?.length ?? 0}
                       </span>
-                    </div>
-                  </section>
+                    </Button>
+                    <Button
+                      variant={showingSessionsTab ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => setResultsTab("sessions")}
+                    >
+                      Sessions
+                      <span className="ml-1 tabular-nums text-muted-foreground">
+                        {sessionMatches.length}
+                      </span>
+                    </Button>
+                  </div>
                 )}
+                {showingSessionsTab && searching ? (
+                  <div className="flex flex-col gap-3">
+                    {sessionMatches.map(({ session }) => (
+                      <SessionCard
+                        key={session.id}
+                        session={session}
+                        onDelete={handleSessionDelete}
+                        highlight={query}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <>
                 {searching && noExact && (bookmarks?.length ?? 0) > 0 && (
                   <p className="mb-3 text-sm text-muted-foreground">
                     No exact matches — showing the closest results by meaning.
@@ -371,6 +389,8 @@ export function LibraryPage() {
                       </div>
                     )}
                   </section>
+                )}
+                  </>
                 )}
                 {!searching && list.hasMore && (
                   <div className="mt-6 flex flex-col items-center gap-2">

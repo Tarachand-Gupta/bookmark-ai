@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { Session } from "@bookmark-ai/types";
+import { useEffect, useMemo, useState } from "react";
+import type { Session, SessionTab } from "@bookmark-ai/types";
 import { AppWindow, ChevronDown, Globe, Layers, SquareStack, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -173,38 +173,103 @@ export function SessionCard({
         )}
       </button>
 
-      {open && (
-        <ul className="divide-y border-t">
-          {session.tabs.map((t, i) => {
-            const matched = isMatch(t);
-            return (
-              <li key={`${t.url}-${i}`}>
-                <a
-                  href={t.url}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors hover:bg-muted/50 ${
-                    matched ? "bg-primary/5" : ""
-                  }`}
-                >
-                  <TabIcon favIconUrl={t.favIconUrl} />
-                  <span
-                    className={`line-clamp-1 flex-1 [overflow-wrap:anywhere] ${
-                      matched ? "font-medium" : ""
-                    }`}
-                  >
-                    {t.title || t.url}
-                  </span>
-                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-                    {domainOf(t.url)}
-                  </span>
-                </a>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      {open && <TabList session={session} isMatch={isMatch} matchCount={matchCount} q={q} />}
     </div>
+  );
+}
+
+type TabListRow =
+  | { kind: "tab"; tab: SessionTab; index: number }
+  | { kind: "fold"; start: number; tabs: SessionTab[] };
+
+/** The expanded tab list. During a search, non-matching tabs fold away into
+ * git-diff-style "N more tabs" rows that expand per run. */
+function TabList({
+  session,
+  isMatch,
+  matchCount,
+  q,
+}: {
+  session: Session;
+  isMatch: (t: SessionTab) => boolean;
+  matchCount: number;
+  q: string;
+}) {
+  // Runs of non-matching tabs collapse between the matches (like unchanged
+  // lines in a diff). No matches (session matched by name) → nothing folds.
+  const rows = useMemo<TabListRow[]>(() => {
+    if (matchCount === 0) {
+      return session.tabs.map((tab, index) => ({ kind: "tab", tab, index }));
+    }
+    const out: TabListRow[] = [];
+    let run: SessionTab[] = [];
+    session.tabs.forEach((tab, index) => {
+      if (isMatch(tab)) {
+        if (run.length > 0) {
+          out.push({ kind: "fold", start: index - run.length, tabs: run });
+          run = [];
+        }
+        out.push({ kind: "tab", tab, index });
+      } else {
+        run.push(tab);
+      }
+    });
+    if (run.length > 0) {
+      out.push({ kind: "fold", start: session.tabs.length - run.length, tabs: run });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.tabs, matchCount, q]);
+
+  // Per-run reveal, keyed by the run's starting tab index; new query refolds.
+  const [revealed, setRevealed] = useState<Set<number>>(new Set());
+  useEffect(() => setRevealed(new Set()), [q]);
+
+  const tabRow = (t: SessionTab, i: number, matched: boolean) => (
+    <li key={`${t.url}-${i}`}>
+      <a
+        href={t.url}
+        target="_blank"
+        rel="noreferrer noopener"
+        className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors hover:bg-muted/50 ${
+          matched ? "bg-primary/5" : ""
+        }`}
+      >
+        <TabIcon favIconUrl={t.favIconUrl} />
+        <span
+          className={`line-clamp-1 flex-1 [overflow-wrap:anywhere] ${matched ? "font-medium" : ""}`}
+        >
+          {t.title || t.url}
+        </span>
+        <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+          {domainOf(t.url)}
+        </span>
+      </a>
+    </li>
+  );
+
+  return (
+    <ul className="divide-y border-t">
+      {rows.map((row) => {
+        if (row.kind === "tab") return tabRow(row.tab, row.index, matchCount > 0 && isMatch(row.tab));
+        if (revealed.has(row.start)) {
+          return row.tabs.map((t, j) => tabRow(t, row.start + j, false));
+        }
+        return (
+          <li key={`fold-${row.start}`}>
+            <button
+              type="button"
+              onClick={() => setRevealed((prev) => new Set(prev).add(row.start))}
+              className="flex w-full items-center justify-center gap-2 bg-muted/30 px-4 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            >
+              <span aria-hidden>⋯</span>
+              {row.tabs.length} more tab{row.tabs.length === 1 ? "" : "s"}
+              <span aria-hidden>⋯</span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

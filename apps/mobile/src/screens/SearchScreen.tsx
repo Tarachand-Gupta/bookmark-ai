@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Keyboard,
   Pressable,
   SectionList,
@@ -12,6 +13,8 @@ import {
 import * as Haptics from "expo-haptics";
 import type { Bookmark } from "@bookmark-ai/types";
 import { BookmarkRow } from "../components/BookmarkRow";
+import { SegmentedControl } from "../components/SegmentedControl";
+import { SessionCard } from "../components/SessionCard";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 import { useSearch } from "../hooks/useSearch";
@@ -28,7 +31,12 @@ export function SearchScreen() {
   const hasQuery = search.query.trim().length > 0;
 
   const [showRelated, setShowRelated] = useState(false);
-  useEffect(() => setShowRelated(false), [search.query]);
+  // Both result kinds → a tab per kind, Bookmarks default.
+  const [resultsTab, setResultsTab] = useState<"bookmarks" | "sessions">("bookmarks");
+  useEffect(() => {
+    setShowRelated(false);
+    setResultsTab("bookmarks");
+  }, [search.query]);
 
   // No keyword hits → the closest semantic matches ARE the results.
   const noExact = search.matches.length === 0 && search.related.length > 0;
@@ -38,6 +46,10 @@ export function SearchScreen() {
   if (search.matches.length > 0) sections.push({ key: "matches", data: search.matches });
   if (search.related.length > 0)
     sections.push({ key: "related", data: relatedVisible ? search.related : [] });
+
+  const hasSessionResults = hasQuery && search.sessions.length > 0;
+  const showingSessions = hasSessionResults && resultsTab === "sessions";
+  const bookmarkCount = noExact ? search.related.length : search.matches.length;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -72,8 +84,37 @@ export function SearchScreen() {
             )}
           </View>
         )}
+        {hasSessionResults && (
+          <SegmentedControl
+            segments={[
+              { value: "bookmarks", label: `Bookmarks · ${bookmarkCount}` },
+              { value: "sessions", label: `Sessions · ${search.sessions.length}` },
+            ]}
+            value={resultsTab}
+            onChange={setResultsTab}
+          />
+        )}
       </View>
 
+      {showingSessions ? (
+        <FlatList
+          data={search.sessions}
+          keyExtractor={(s) => s.id}
+          keyboardDismissMode="on-drag"
+          onScrollBeginDrag={Keyboard.dismiss}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          contentContainerStyle={{ paddingTop: 12, paddingBottom: tabBarClearance }}
+          renderItem={({ item }) => (
+            <SessionCard
+              session={item}
+              matchQuery={search.query}
+              // open on the matches, like a diff opens on its hunks
+              initialExpanded
+            />
+          )}
+        />
+      ) : (
       <SectionList
         sections={sections}
         keyExtractor={(b) => b.id}
@@ -152,6 +193,7 @@ export function SearchScreen() {
           </View>
         }
       />
+      )}
     </View>
   );
 }

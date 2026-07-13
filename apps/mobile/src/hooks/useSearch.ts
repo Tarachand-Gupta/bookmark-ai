@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Bookmark } from "@bookmark-ai/types";
+import type { Bookmark, Session } from "@bookmark-ai/types";
 import { searchBookmarks } from "../api";
 import { usePreferences } from "../context/PreferencesContext";
 
@@ -10,6 +10,8 @@ export interface SearchState {
   matches: Bookmark[];
   /** Semantic-only results — shown behind a "related" toggle. */
   related: Bookmark[];
+  /** Saved sessions whose name/tabs match — their own results tab. */
+  sessions: Session[];
   searching: boolean;
   /** True when the server blended without embeddings (keyword-only results). */
   keywordOnly: boolean;
@@ -23,6 +25,7 @@ export function useSearch(): SearchState {
   const [query, setQuery] = useState("");
   const [matches, setMatches] = useState<Bookmark[]>([]);
   const [related, setRelated] = useState<Bookmark[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [searching, setSearching] = useState(false);
   const [keywordOnly, setKeywordOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +37,7 @@ export function useSearch(): SearchState {
     if (!q) {
       setMatches([]);
       setRelated([]);
+      setSessions([]);
       setSearching(false);
       setKeywordOnly(false);
       setError(null);
@@ -48,6 +52,7 @@ export function useSearch(): SearchState {
           if (runId.current !== id) return;
           setMatches(data.results.filter((r) => r.exact).map((r) => r.bookmark));
           setRelated(data.results.filter((r) => !r.exact).map((r) => r.bookmark));
+          setSessions(data.sessionResults?.map((r) => r.session) ?? []);
           setKeywordOnly(data.fallback === true);
           setError(null);
         })
@@ -61,5 +66,5 @@ export function useSearch(): SearchState {
     return () => clearTimeout(timer);
   }, [query, serverTarget]);
 
-  return { query, setQuery, matches, related, searching, keywordOnly, error };
+  return { query, setQuery, matches, related, sessions, searching, keywordOnly, error };
 }
