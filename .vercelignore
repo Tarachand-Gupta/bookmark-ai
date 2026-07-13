@@ -18,6 +18,12 @@ apps/desktop/.native
 apps/extension/.output
 apps/extension/.wxt
 
+# Mobile — generated native projects (expo prebuild) + caches; never part
+# of the web build, and tens of thousands of files (Pods, gradle output)
+apps/mobile/ios
+apps/mobile/android
+apps/mobile/.expo
+
 # Local DB files / cruft
 **/*.db
 **/.DS_Store
