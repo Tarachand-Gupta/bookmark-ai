@@ -62,7 +62,9 @@ export function SignInScreen() {
         signUp: ssoSignUp,
       } = await startSSOFlow({
         strategy: "oauth_google",
-        redirectUrl: AuthSession.makeRedirectUri(),
+        // Explicit path so the URL is deterministic — it must exactly match
+        // an entry in the Clerk instance's native redirect_urls allowlist.
+        redirectUrl: AuthSession.makeRedirectUri({ path: "sso-callback" }),
       });
 
       // Happy path: Clerk minted a session directly.
