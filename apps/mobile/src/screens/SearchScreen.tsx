@@ -1,27 +1,43 @@
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Keyboard,
   Pressable,
+  SectionList,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import * as Haptics from "expo-haptics";
+import type { Bookmark } from "@bookmark-ai/types";
 import { BookmarkRow } from "../components/BookmarkRow";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 import { useSearch } from "../hooks/useSearch";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 
-/** Search tab: one iOS search field — results blend keyword and semantic
- * matches server-side (hybrid RRF), most relevant first, as you type. */
+/** Search tab: one iOS search field — hybrid results arrive sectioned:
+ * exact keyword matches up top, semantic "related" results behind a toggle
+ * so a single search never reads as a wall of results. */
 export function SearchScreen() {
   const { colors, radius } = useAppTheme();
   const tabBarClearance = useTabBarClearance();
   const onScroll = useTabBarScroll();
   const search = useSearch();
   const hasQuery = search.query.trim().length > 0;
+
+  const [showRelated, setShowRelated] = useState(false);
+  useEffect(() => setShowRelated(false), [search.query]);
+
+  // No keyword hits → the closest semantic matches ARE the results.
+  const noExact = search.matches.length === 0 && search.related.length > 0;
+  const relatedVisible = noExact || showRelated;
+
+  const sections: { key: "matches" | "related"; data: Bookmark[] }[] = [];
+  if (search.matches.length > 0) sections.push({ key: "matches", data: search.matches });
+  if (search.related.length > 0)
+    sections.push({ key: "related", data: relatedVisible ? search.related : [] });
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -58,12 +74,53 @@ export function SearchScreen() {
         )}
       </View>
 
-      <FlatList
-        data={search.results}
+      <SectionList
+        sections={sections}
         keyExtractor={(b) => b.id}
-        renderItem={({ item, index }) => (
-          <BookmarkRow bookmark={item} last={index === search.results.length - 1} />
+        renderItem={({ item, index, section }) => (
+          <BookmarkRow bookmark={item} last={index === section.data.length - 1} />
         )}
+        renderSectionHeader={({ section }) =>
+          section.key === "matches" ? (
+            <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
+              {search.matches.length} MATCH{search.matches.length === 1 ? "" : "ES"}
+            </Text>
+          ) : noExact ? (
+            <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
+              NO EXACT MATCHES — CLOSEST BY MEANING
+            </Text>
+          ) : (
+            <Pressable
+              onPress={() => {
+                void Haptics.selectionAsync();
+                setShowRelated((v) => !v);
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showRelated }}
+              style={({ pressed }) => [
+                styles.relatedToggle,
+                {
+                  backgroundColor: pressed ? colors.muted : colors.card,
+                  borderColor: colors.border,
+                  borderRadius: radius.lg,
+                },
+              ]}
+            >
+              <Text style={{ fontSize: 15, fontWeight: "500", color: colors.foreground }}>
+                {showRelated
+                  ? "Hide related results"
+                  : `Show ${search.related.length} related result${search.related.length === 1 ? "" : "s"}`}
+              </Text>
+              <Symbol
+                name={showRelated ? "chevron.up" : "chevron.down"}
+                size={13}
+                color={colors.mutedForeground}
+                fallback={showRelated ? "⌃" : "⌄"}
+              />
+            </Pressable>
+          )
+        }
+        stickySectionHeadersEnabled={false}
         keyboardDismissMode="on-drag"
         onScrollBeginDrag={Keyboard.dismiss}
         onScroll={onScroll}
@@ -94,13 +151,6 @@ export function SearchScreen() {
             ) : null}
           </View>
         }
-        ListHeaderComponent={
-          hasQuery && !search.searching && search.results.length > 0 ? (
-            <Text style={[styles.count, { color: colors.mutedForeground }]}>
-              {search.results.length} result{search.results.length === 1 ? "" : "s"}
-            </Text>
-          ) : null
-        }
       />
     </View>
   );
@@ -119,7 +169,24 @@ const styles = StyleSheet.create({
   input: { flex: 1, fontSize: 17, paddingVertical: 11 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 20 },
   statusText: { fontSize: 13 },
-  count: { fontSize: 13, paddingHorizontal: 20, paddingVertical: 8 },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    letterSpacing: 0.4,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 6,
+  },
+  relatedToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 20,
+    marginHorizontal: 20,
+    paddingVertical: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   empty: { alignItems: "center", gap: 8, paddingVertical: 72, paddingHorizontal: 24 },
   emptyTitle: { fontSize: 17, fontWeight: "600" },
   emptyBody: { fontSize: 15, maxWidth: 320, textAlign: "center", lineHeight: 20 },

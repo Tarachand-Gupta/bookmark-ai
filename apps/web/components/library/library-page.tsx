@@ -133,9 +133,28 @@ export function LibraryPage() {
   const sessionsActive = searchParams.get("section") === "sessions";
 
   const searching = query.trim().length > 0;
+  // Hybrid results arrive sectioned: keyword hits (exact) up top, semantic
+  // "related" matches behind a toggle so one search isn't a wall of results.
+  const searchResults = search.data?.results ?? null;
+  const exactMatches = useMemo(
+    () => searchResults?.filter((r) => r.exact).map((r) => r.bookmark) ?? null,
+    [searchResults],
+  );
+  const relatedMatches = useMemo(
+    () => searchResults?.filter((r) => !r.exact).map((r) => r.bookmark) ?? null,
+    [searchResults],
+  );
+  // No keyword hits at all → the closest semantic matches ARE the results.
+  const noExact = searchResults != null && (exactMatches?.length ?? 0) === 0;
   const bookmarks = searching
-    ? (search.data?.results.map((r) => r.bookmark) ?? null)
+    ? searchResults
+      ? noExact
+        ? relatedMatches
+        : exactMatches
+      : null
     : list.bookmarks;
+  const [showRelated, setShowRelated] = useState(false);
+  useEffect(() => setShowRelated(false), [query]);
 
   // Group the content by relative date unless searching or a specific date
   // filter (range or single day) is active — then show a flat, filtered list.
@@ -290,10 +309,15 @@ export function LibraryPage() {
                     <div className="mt-6 mb-3 flex items-baseline gap-2">
                       <h3 className="text-sm font-semibold tracking-tight">Bookmarks</h3>
                       <span className="text-xs tabular-nums text-muted-foreground">
-                        {search.data?.results.length ?? 0}
+                        {bookmarks?.length ?? 0}
                       </span>
                     </div>
                   </section>
+                )}
+                {searching && noExact && (bookmarks?.length ?? 0) > 0 && (
+                  <p className="mb-3 text-sm text-muted-foreground">
+                    No exact matches — showing the closest results by meaning.
+                  </p>
                 )}
                 <BookmarkGrid
                   bookmarks={bookmarks}
@@ -308,6 +332,46 @@ export function LibraryPage() {
                   }
                   onDelete={handleDelete}
                 />
+                {searching && !noExact && (relatedMatches?.length ?? 0) > 0 && (
+                  <section className="mt-8">
+                    {showRelated ? (
+                      <>
+                        <div className="mb-3 flex items-baseline justify-between gap-2">
+                          <div className="flex items-baseline gap-2">
+                            <h3 className="text-sm font-semibold tracking-tight">
+                              Related results
+                            </h3>
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {relatedMatches!.length}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              · matched by meaning, not exact words
+                            </span>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => setShowRelated(false)}>
+                            Hide
+                          </Button>
+                        </div>
+                        <BookmarkGrid
+                          bookmarks={relatedMatches}
+                          view={view}
+                          grouped={false}
+                          loading={false}
+                          error={null}
+                          emptyHint=""
+                          onDelete={handleDelete}
+                        />
+                      </>
+                    ) : (
+                      <div className="flex justify-center">
+                        <Button variant="outline" size="sm" onClick={() => setShowRelated(true)}>
+                          Show {relatedMatches!.length} related result
+                          {relatedMatches!.length === 1 ? "" : "s"}
+                        </Button>
+                      </div>
+                    )}
+                  </section>
+                )}
                 {!searching && list.hasMore && (
                   <div className="mt-6 flex flex-col items-center gap-2">
                     <p className="text-xs text-muted-foreground">

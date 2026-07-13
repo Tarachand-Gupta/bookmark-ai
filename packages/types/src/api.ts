@@ -96,6 +96,9 @@ export const searchResultSchema = z.object({
   bookmark: bookmarkSchema,
   /** FTS rank or vector similarity, higher is better. */
   score: z.number(),
+  /** Hybrid mode only: true when the keyword (full-text) list found this
+   * result — clients section these as "matches" vs "related". */
+  exact: z.boolean().optional(),
 });
 export type SearchResult = z.infer<typeof searchResultSchema>;
 

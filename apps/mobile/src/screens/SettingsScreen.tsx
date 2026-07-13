@@ -18,7 +18,6 @@ import {
   usePreferences,
   type ThemePreference,
 } from "../context/PreferencesContext";
-import { useLibrary } from "../hooks/useLibrary";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 
 const WEB_URL = "https://bookmark-ai-theta.vercel.app";
@@ -41,7 +40,6 @@ export function SettingsScreen() {
   const { themePreference, setThemePreference, serverTarget, setServerTarget } = usePreferences();
   const { user } = useUser();
   const { signOut } = useClerk();
-  const { meta, refresh } = useLibrary();
   const tabBarClearance = useTabBarClearance();
   const onScroll = useTabBarScroll();
   const [avatarFailed, setAvatarFailed] = useState(false);
@@ -61,10 +59,8 @@ export function SettingsScreen() {
     ]);
   };
 
-  const pickServer = (target: ServerTarget) => {
-    setServerTarget(target);
-    refresh(); // reload against the newly selected API
-  };
+  // Every data hook refetches on serverTarget change — no manual reload.
+  const pickServer = (target: ServerTarget) => setServerTarget(target);
 
   return (
     <ScrollView
@@ -96,11 +92,6 @@ export function SettingsScreen() {
         {email.length > 0 && (
           <Text style={[styles.profileMeta, { color: colors.mutedForeground }]}>{email}</Text>
         )}
-        <Text style={[styles.profileMeta, { color: colors.mutedForeground }]}>
-          {meta
-            ? `${meta.total} bookmarks · ${meta.categories.length} categories · ${meta.tags.length} tags`
-            : "Loading library stats…"}
-        </Text>
       </View>
 
       <GroupLabel>Appearance</GroupLabel>

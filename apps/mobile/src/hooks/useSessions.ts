@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@bookmark-ai/types";
 import { deleteSession, listSessions } from "../api";
+import { usePreferences } from "../context/PreferencesContext";
 
 export interface SessionsState {
   sessions: Session[];
@@ -13,6 +14,7 @@ export interface SessionsState {
 
 /** The Sessions tab's data story — same load/refresh pattern as useLibrary. */
 export function useSessions(): SessionsState {
+  const { serverTarget } = usePreferences(); // switching servers refetches
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -39,7 +41,7 @@ export function useSessions(): SessionsState {
           setRefreshing(false);
         }
       });
-  }, [reloadKey]);
+  }, [reloadKey, serverTarget]);
 
   const refresh = useCallback(() => {
     setRefreshing(true);

@@ -5,6 +5,8 @@ import { BOOKMARK_COLUMNS, rowToBookmark } from "../rows";
 export interface Scored {
   bookmark: Bookmark;
   score: number;
+  /** Set by mergeHybrid: the keyword (FTS) list found this result. */
+  exact?: boolean;
 }
 
 /**
@@ -65,11 +67,16 @@ export function mergeHybrid(
   const K = 60;
   const merged = new Map<string, Scored>();
   for (const list of [textResults, vectorResults]) {
+    const exact = list === textResults;
     list.forEach(({ bookmark }, index) => {
       const contribution = 1 / (K + index + 1);
       const existing = merged.get(bookmark.id);
-      if (existing) existing.score += contribution;
-      else merged.set(bookmark.id, { bookmark, score: contribution });
+      if (existing) {
+        existing.score += contribution;
+        if (exact) existing.exact = true;
+      } else {
+        merged.set(bookmark.id, { bookmark, score: contribution, exact });
+      }
     });
   }
   return [...merged.values()].sort((a, b) => b.score - a.score).slice(0, limit);

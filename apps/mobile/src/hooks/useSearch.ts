@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { Bookmark } from "@bookmark-ai/types";
 import { searchBookmarks } from "../api";
+import { usePreferences } from "../context/PreferencesContext";
 
 export interface SearchState {
   query: string;
   setQuery: (q: string) => void;
-  results: Bookmark[];
+  /** Keyword (exact) hits — always shown. */
+  matches: Bookmark[];
+  /** Semantic-only results — shown behind a "related" toggle. */
+  related: Bookmark[];
   searching: boolean;
   /** True when the server blended without embeddings (keyword-only results). */
   keywordOnly: boolean;
@@ -13,10 +17,12 @@ export interface SearchState {
 }
 
 /** Debounced hybrid search — one box, keyword + semantic blended server-side
- * (Reciprocal Rank Fusion), most relevant first. The Search tab's data story. */
+ * (Reciprocal Rank Fusion) and sectioned into exact matches vs related. */
 export function useSearch(): SearchState {
+  const { serverTarget } = usePreferences();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Bookmark[]>([]);
+  const [matches, setMatches] = useState<Bookmark[]>([]);
+  const [related, setRelated] = useState<Bookmark[]>([]);
   const [searching, setSearching] = useState(false);
   const [keywordOnly, setKeywordOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +32,8 @@ export function useSearch(): SearchState {
     const id = ++runId.current;
     const q = query.trim();
     if (!q) {
-      setResults([]);
+      setMatches([]);
+      setRelated([]);
       setSearching(false);
       setKeywordOnly(false);
       setError(null);
@@ -39,7 +46,8 @@ export function useSearch(): SearchState {
       searchBookmarks(q, "hybrid")
         .then((data) => {
           if (runId.current !== id) return;
-          setResults(data.results.map((r) => r.bookmark));
+          setMatches(data.results.filter((r) => r.exact).map((r) => r.bookmark));
+          setRelated(data.results.filter((r) => !r.exact).map((r) => r.bookmark));
           setKeywordOnly(data.fallback === true);
           setError(null);
         })
@@ -51,7 +59,7 @@ export function useSearch(): SearchState {
         });
     }, 350);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, serverTarget]);
 
-  return { query, setQuery, results, searching, keywordOnly, error };
+  return { query, setQuery, matches, related, searching, keywordOnly, error };
 }

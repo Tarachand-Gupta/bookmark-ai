@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Bookmark, MetaResponse } from "@bookmark-ai/types";
 import { getMeta, listBookmarks, type LibraryFilters } from "../api";
+import { usePreferences } from "../context/PreferencesContext";
 
 const PAGE_SIZE = 30;
 
@@ -22,6 +23,7 @@ export interface LibraryState {
 /** The Library tab's data story: meta facets + filtered, paginated list.
  * (Search lives in its own tab — see useSearch.) */
 export function useLibrary(): LibraryState {
+  const { serverTarget } = usePreferences(); // switching servers refetches
   const [meta, setMeta] = useState<MetaResponse | null>(null);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [total, setTotal] = useState(0);
@@ -39,7 +41,7 @@ export function useLibrary(): LibraryState {
     getMeta()
       .then(setMeta)
       .catch(() => {});
-  }, [reloadKey]);
+  }, [reloadKey, serverTarget]);
 
   useEffect(() => {
     const id = ++loadId.current;
@@ -61,7 +63,7 @@ export function useLibrary(): LibraryState {
           setRefreshing(false);
         }
       });
-  }, [filters, reloadKey]);
+  }, [filters, reloadKey, serverTarget]);
 
   const refresh = useCallback(() => {
     setRefreshing(true);
