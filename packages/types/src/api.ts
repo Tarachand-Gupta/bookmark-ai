@@ -80,7 +80,8 @@ export const listSessionsResponseSchema = z.object({
 });
 export type ListSessionsResponse = z.infer<typeof listSessionsResponseSchema>;
 
-export const searchModeSchema = z.enum(["text", "ai"]);
+/** `hybrid` blends full-text and semantic rankings (Reciprocal Rank Fusion). */
+export const searchModeSchema = z.enum(["text", "ai", "hybrid"]);
 export type SearchMode = z.infer<typeof searchModeSchema>;
 
 /** GET /api/search query params. */

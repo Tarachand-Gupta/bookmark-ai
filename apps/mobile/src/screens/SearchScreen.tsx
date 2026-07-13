@@ -9,14 +9,13 @@ import {
   View,
 } from "react-native";
 import { BookmarkRow } from "../components/BookmarkRow";
-import { SegmentedControl } from "../components/SegmentedControl";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 import { useSearch } from "../hooks/useSearch";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 
-/** Search tab: iOS search field with clear ✕, Text/AI segmented switch,
- * results as standard rows. */
+/** Search tab: one iOS search field — results blend keyword and semantic
+ * matches server-side (hybrid RRF), most relevant first, as you type. */
 export function SearchScreen() {
   const { colors, radius } = useAppTheme();
   const tabBarClearance = useTabBarClearance();
@@ -46,17 +45,17 @@ export function SearchScreen() {
             </Pressable>
           )}
         </View>
-        <View style={styles.modeRow}>
-          <SegmentedControl
-            segments={[
-              { value: "text", label: "Keyword" },
-              { value: "ai", label: "AI · Semantic" },
-            ]}
-            value={search.mode}
-            onChange={search.setMode}
-          />
-          {search.searching && <ActivityIndicator size="small" color={colors.mutedForeground} />}
-        </View>
+        {(search.searching || (hasQuery && search.keywordOnly)) && (
+          <View style={styles.statusRow}>
+            {search.searching ? (
+              <ActivityIndicator size="small" color={colors.mutedForeground} />
+            ) : (
+              <Text style={[styles.statusText, { color: colors.mutedForeground }]}>
+                Keyword matches only — AI ranking is unavailable right now.
+              </Text>
+            )}
+          </View>
+        )}
       </View>
 
       <FlatList
@@ -79,10 +78,7 @@ export function SearchScreen() {
                   {search.error ? "Search failed" : "No matches"}
                 </Text>
                 <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>
-                  {search.error ??
-                    (search.mode === "text"
-                      ? "Try AI · Semantic — it matches meaning, not just words."
-                      : "Try different phrasing.")}
+                  {search.error ?? "Try different words or phrasing."}
                 </Text>
               </>
             ) : !hasQuery ? (
@@ -92,8 +88,7 @@ export function SearchScreen() {
                   Search your library
                 </Text>
                 <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>
-                  Keyword finds exact words. AI · Semantic understands questions like “that tool
-                  for tracing LLM calls”.
+                  Exact words and meaning both count — try “that tool for tracing LLM calls”.
                 </Text>
               </>
             ) : null}
@@ -122,7 +117,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   input: { flex: 1, fontSize: 17, paddingVertical: 11 },
-  modeRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 20 },
+  statusText: { fontSize: 13 },
   count: { fontSize: 13, paddingHorizontal: 20, paddingVertical: 8 },
   empty: { alignItems: "center", gap: 8, paddingVertical: 72, paddingHorizontal: 24 },
   emptyTitle: { fontSize: 17, fontWeight: "600" },

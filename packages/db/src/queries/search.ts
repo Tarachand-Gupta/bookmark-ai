@@ -51,6 +51,30 @@ export async function searchVector(db: Db, embedding: number[], limit: number): 
   }));
 }
 
+/**
+ * Blend a full-text and a semantic result list with Reciprocal Rank Fusion:
+ * score(d) = Σ 1/(K + rank_in_list). Rank-based, so the incomparable bm25
+ * and cosine scales never fight; documents found by BOTH lists rise to the
+ * top, and K=60 (the standard constant) keeps single-list hits competitive.
+ */
+export function mergeHybrid(
+  textResults: Scored[],
+  vectorResults: Scored[],
+  limit: number,
+): Scored[] {
+  const K = 60;
+  const merged = new Map<string, Scored>();
+  for (const list of [textResults, vectorResults]) {
+    list.forEach(({ bookmark }, index) => {
+      const contribution = 1 / (K + index + 1);
+      const existing = merged.get(bookmark.id);
+      if (existing) existing.score += contribution;
+      else merged.set(bookmark.id, { bookmark, score: contribution });
+    });
+  }
+  return [...merged.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
 /** Store the embedding for a bookmark (marks it searchable by AI). */
 export async function storeEmbedding(db: Db, id: string, embedding: number[]): Promise<void> {
   await db.execute({

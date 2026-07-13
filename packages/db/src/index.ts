@@ -13,6 +13,7 @@ export {
   type BookmarkContent,
 } from "./queries/bookmarks";
 export {
+  mergeHybrid,
   searchFullText,
   searchVector,
   storeEmbedding,

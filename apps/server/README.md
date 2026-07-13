@@ -22,15 +22,17 @@ Saves **upsert by URL**: re-saving updates the row and clears the embedding for 
 | --- | --- |
 | `POST /api/bookmarks` | body = `CreateBookmarkInput` → `201 {bookmark}` |
 | `GET /api/bookmarks?category=&browser=&device=&day=&tag=&limit=&offset=` | `{bookmarks, total}` |
-| `GET /api/search?q=&mode=text\|ai&limit=` | `{mode, results: [{bookmark, score}], fallback?}` |
+| `GET /api/search?q=&mode=text\|ai\|hybrid&limit=` | `{mode, results: [{bookmark, score}], fallback?}` |
 | `GET /api/meta` | facet counts for sidebars/filters `{categories, browsers, devices, days, tags, total}` |
 | `POST /api/sessions` / `GET /api/sessions` / `DELETE /api/sessions/:id` | saved browser-tab snapshots |
 | `DELETE /api/bookmarks/:id` | `204` |
 | `GET /api/health` | `{ok, ai}` — never requires auth |
 
 Search modes: `text` = SQLite FTS5 (bm25 ranking), `ai` = cosine similarity over the
-vector column (`vector_distance_cos`), degrading to text transparently when embeddings
-are unavailable.
+vector column (`vector_distance_cos`), `hybrid` = both lists blended with Reciprocal
+Rank Fusion (keyword hits and meaning-level matches compete on rank; what both lists
+agree on rises to the top). `ai` and `hybrid` degrade to text transparently
+(`fallback: true`) when embeddings are unavailable.
 
 ## Auth, CORS, rate limiting (`src/auth.ts`, `src/app.ts`)
 
