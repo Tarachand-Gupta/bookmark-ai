@@ -46,7 +46,12 @@ export function SettingsScreen() {
   const onScroll = useTabBarScroll();
   const [avatarFailed, setAvatarFailed] = useState(false);
 
-  const name = user?.fullName || user?.username || "Signed in";
+  // user is null only in the dev auth-bypass session (EXPO_PUBLIC_SKIP_AUTH);
+  // a real session always has a user by the time the Shell renders.
+  const signedIn = user != null;
+  const name = signedIn
+    ? user.fullName || user.username || user.primaryEmailAddress?.emailAddress || "Signed in"
+    : "Not signed in";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
 
   const confirmSignOut = () => {
@@ -146,14 +151,24 @@ export function SettingsScreen() {
 
       <GroupLabel>Account</GroupLabel>
       <Group>
-        <GroupRow
-          first
-          symbol="rectangle.portrait.and.arrow.right"
-          label="Sign Out"
-          destructive
-          onPress={confirmSignOut}
-        />
+        {signedIn ? (
+          <GroupRow
+            first
+            symbol="rectangle.portrait.and.arrow.right"
+            label="Sign Out"
+            destructive
+            onPress={confirmSignOut}
+          />
+        ) : (
+          <GroupRow first symbol="person.fill" label="Developer session" detail="no account" />
+        )}
       </Group>
+      {!signedIn && (
+        <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
+          This build was started with the sign-in gate bypassed (EXPO_PUBLIC_SKIP_AUTH — dev
+          only). Restart the dev server without the flag to use the real sign-in flow.
+        </Text>
+      )}
     </ScrollView>
   );
 }
