@@ -101,7 +101,9 @@ export function searchBookmarks(
   mode: SearchMode,
   signal?: AbortSignal,
 ): Promise<SearchResponse> {
-  const params = new URLSearchParams({ q, mode });
+  // 40 (schema max 50): hybrid unions two retrieval pipelines — give the
+  // blend room; relevance decays down the list.
+  const params = new URLSearchParams({ q, mode, limit: "40" });
   return request<SearchResponse>(`/api/search?${params}`, { signal });
 }
 

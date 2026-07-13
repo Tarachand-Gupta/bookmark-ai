@@ -64,7 +64,7 @@ background via `createClerkClient` from `@clerk/chrome-extension/background`. Ra
 
 - `POST /api/bookmarks` — body `CreateBookmarkInput` `{url, title?, browser?, device?, deviceName?, os?, savedAt?}` (`browser`/`device` default to `"other"` when omitted) → `201 {bookmark}`. Upserts by URL (re-save updates + clears embedding).
 - `GET /api/bookmarks?category=&browser=&device=&day=YYYY-MM-DD&tag=&limit=&offset=` → `{bookmarks, total}`
-- `GET /api/search?q=…&mode=text|ai|hybrid&limit=` → `{mode, results:[{bookmark,score}], fallback?}` (`hybrid` = RRF blend of FTS + vector lists; mobile uses it exclusively)
+- `GET /api/search?q=…&mode=text|ai|hybrid&limit=` → `{mode, results:[{bookmark,score}], fallback?}` (`hybrid` = RRF blend of FTS + vector lists; the web grid and mobile both use it, limit 40)
 - `GET /api/meta` → sidebar facets + tag rail `{categories, browsers, devices, days, tags, total}`
 - `GET /api/health` → `{ok, ai}` · `DELETE /api/bookmarks/:id` → 204
 - `POST /api/sessions` — body `{name?, tabs:[{url,title?,favIconUrl?,windowId?}], browser?, device?, savedAt?}` → `201 {session}` (a saved browser-tab snapshot). `GET /api/sessions` → `{sessions}` · `DELETE /api/sessions/:id` → 204

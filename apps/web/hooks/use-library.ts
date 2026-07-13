@@ -147,8 +147,9 @@ export function useSearch(
   return useAsync(
     async (signal) => {
       if (!trimmed) return EMPTY_SEARCH;
-      // Small debounce so we do not hammer the API while typing.
-      await new Promise((r) => setTimeout(r, 250));
+      // Debounce: hybrid search embeds the query server-side, so don't
+      // spend a Gemini call on every keystroke.
+      await new Promise((r) => setTimeout(r, 350));
       if (signal.aborted) throw new DOMException("aborted", "AbortError");
       return searchBookmarks(trimmed, mode, signal);
     },

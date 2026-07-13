@@ -123,8 +123,9 @@ export function LibraryPage() {
   const meta = useMeta(refreshKey);
   const health = useHealth(refreshKey);
   const list = useBookmarks(filters, refreshKey);
-  // The grid always shows live full-text results; "ai" mode opens the chat panel.
-  const search = useSearch(query, "text", refreshKey);
+  // The grid shows hybrid results (keyword + semantic lists fused with RRF,
+  // most relevant first); "ai" mode opens the chat panel on top of that.
+  const search = useSearch(query, "hybrid", refreshKey);
   const sessions = useSessions(refreshKey);
 
   // Saved sessions are a distinct section, keyed off ?section=sessions so the
