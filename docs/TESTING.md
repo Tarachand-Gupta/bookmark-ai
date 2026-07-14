@@ -35,6 +35,16 @@ curl -s "http://localhost:4545/api/search?q=native&mode=ai"             # no key
 curl -s http://localhost:4545/api/meta                                   # facet counts consistent
 ```
 
+Deployed API (no local server needed — hits the live Vercel deployment):
+
+```bash
+curl -s https://bookmark-ai.cloud/api/health
+# {"ok":true,"ai":true}   — public, no auth required
+
+curl -s https://bookmark-ai.cloud/api/bookmarks
+# {"error":"Missing or invalid bearer token"}   — 401, needs a Clerk session JWT
+```
+
 Vector layer without a Gemini key (synthetic embedding round-trip):
 
 ```bash

@@ -2,8 +2,7 @@ import { createDb, ensureSchema } from "@bookmark-ai/db";
 import { loadEnv } from "./env.js";
 import { createApp } from "./app.js";
 import { DEFAULT_AUTHORIZED_PARTIES } from "./auth.js";
-import { GeminiClient } from "./services/gemini.js";
-import { startEmbedWorker } from "./services/embeddings.js";
+import { GeminiClient, startEmbedWorker } from "@bookmark-ai/engine";
 
 function splitCsv(value: string | undefined): string[] {
   return (value ?? "").split(",").map((s) => s.trim()).filter(Boolean);

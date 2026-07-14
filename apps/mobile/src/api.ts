@@ -12,12 +12,13 @@ import type {
 /**
  * API client — same contract as apps/web/lib/api.ts. Two selectable servers:
  * the open local one (iOS simulator reaches the host's localhost directly;
- * the Android emulator sees it as 10.0.2.2) and the deployed Render API,
- * which requires the Clerk bearer token. EXPO_PUBLIC_API_URL overrides both.
+ * the Android emulator sees it as 10.0.2.2) and the deployed API — Next.js
+ * route handlers on the web app's Vercel domain — which requires the Clerk
+ * bearer token. EXPO_PUBLIC_API_URL overrides both.
  */
 export const LOCAL_API_URL =
   Platform.OS === "android" ? "http://10.0.2.2:4545" : "http://localhost:4545";
-export const PROD_API_URL = "https://bookmark-ai-server.onrender.com";
+export const PROD_API_URL = "https://bookmark-ai.cloud";
 
 export type ServerTarget = "local" | "production";
 

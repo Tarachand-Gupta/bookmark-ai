@@ -10,7 +10,8 @@ lists, long-press action sheets, and haptics.
 The app is Clerk-gated like the web app: Google SSO or an emailed one-time code. The
 session token is stored in the iOS keychain (SecureStore) and attached to every API
 request. **Settings → Server** switches between the open local dev API and the deployed
-Render API (which verifies the token on every request).
+API at `bookmark-ai.cloud` (Next.js route handlers in `apps/web`, which verify the token
+on every request).
 
 ## Layout
 

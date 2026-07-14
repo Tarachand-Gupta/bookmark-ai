@@ -1,5 +1,5 @@
 import type { OpenGraph } from "@bookmark-ai/types";
-import type { GeminiClient } from "./gemini.js";
+import type { GeminiClient } from "./gemini";
 
 /** Curated category vocabulary — keeps the sidebar tidy and predictable. */
 export const CATEGORIES = [

@@ -1,20 +1,22 @@
 # Bookmark AI — Agent Guide
 
-Save bookmarks from any browser → local Express API scrapes Open Graph data, AI-categorizes,
-embeds → browse/search in a Next.js web app, a native (Zig) desktop app, and a cross-browser
-extension. Everything is verified working as of 2026-07-09; see `docs/TESTING.md` to re-verify.
+Save bookmarks from any browser → the API (Next.js route handlers in `apps/web`, deployed on
+Vercel; Express in `apps/server` for local/desktop mode) scrapes Open Graph data,
+AI-categorizes, embeds → browse/search in the web app, a native (Zig) desktop app, an Expo
+mobile app, and a cross-browser extension. See `docs/TESTING.md` to re-verify.
 
 ## Monorepo map (Turborepo + pnpm, Node ≥20)
 
 | Path | What | Dev command |
 | --- | --- | --- |
-| `apps/server` | Express API :4545, libSQL file DB, OG scrape, Gemini categorize+embed, FTS+vector search | `pnpm --filter @bookmark-ai/server dev` |
-| `apps/web` | Next.js 15 + shadcn sidebar shell :3000 | `pnpm --filter @bookmark-ai/web dev` |
+| `apps/web` | Next.js 15 + shadcn sidebar shell :3000 — **also serves the API** (`app/api/*` route handlers, deployed as Vercel functions) | `pnpm --filter @bookmark-ai/web dev` |
+| `apps/server` | Express :4545 — LOCAL-ONLY companion (desktop app, curl, import script); same engine, open auth. Not deployed anywhere | `pnpm --filter @bookmark-ai/server dev` |
 | `apps/extension` | WXT + React popup → chrome-mv3 / firefox-mv2 / safari-mv2 | `pnpm --filter @bookmark-ai/extension dev` (chrome) |
-| `apps/desktop` | zero-native (vercel-labs/native) Zig app — **see `apps/desktop/CLAUDE.md`** | `cd apps/desktop && native dev` |
-| `apps/mobile` | Expo SDK 57 iOS/iPad app (tabs, filter sheet, Clerk sign-in, local/prod server switch); Android untested (no toolchain) | `cd apps/mobile && npx expo run:ios` + `npx expo start` |
+| `apps/desktop` | zero-native (vercel-labs/native) Zig app — **see `apps/desktop/CLAUDE.md`**; talks to local Express only | `cd apps/desktop && native dev` |
+| `apps/mobile` | Expo SDK 57 iOS/iPad/Android app (tabs, filter sheet, Clerk sign-in incl. Google SSO, local/prod server switch, glass tab bar) | `cd apps/mobile && npx expo run:ios` + `npx expo start` |
 | `packages/types` | Zod schemas = THE api contract (`CreateBookmarkInput`, `Bookmark`, search/meta responses) | — |
 | `packages/db` | libSQL client, schema (FTS5 triggers + F32_BLOB(768) vector), query modules | — |
+| `packages/engine` | Shared API logic: OG scrape, Gemini categorize/embed, `performSearch` (RRF hybrid), `saveBookmarkFast`/`enrichBookmark`, `embedPending` sweep. Express and the Next routes are thin adapters over it | — |
 | `packages/ui` | `src/theme.css` = single branding source (shadcn neutral) + shared `BookmarkCard` | — |
 
 Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && native test`.
@@ -23,44 +25,48 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
 
 - **`GEMINI_API_KEY` is set** in the root `.env`, loaded by dependency-free loaders in
   `apps/server/src/env.ts` and `apps/web/next.config.ts` → Gemini `gemini-2.5-flash`
-  categorization, `gemini-embedding-001` 768-dim embeddings (embed worker: 30s sweep + kick
-  after save), and the `/api/chat` agent. Without a key everything degrades to
-  heuristics/full-text with `fallback: true`.
+  categorization, `gemini-embedding-001` 768-dim embeddings, and the `/api/chat` agent.
+  Embedding runs post-save: Express uses a 30s worker sweep; the Next routes use `after()`
+  plus a daily Vercel cron (`/api/cron/embed`, `CRON_SECRET`-gated, see `apps/web/vercel.json`).
+  Without a key everything degrades to heuristics/full-text with `fallback: true`.
 - **DB is Turso cloud**: `DATABASE_URL=libsql://bookmark-ai-tara.aws-ap-south-1.turso.io` +
   `DATABASE_AUTH_TOKEN` in `.env` (manage with the `turso` CLI). The old local file
   `apps/server/data/bookmarks.db` is a pre-migration backup — pointing `DATABASE_URL` back at
   it restores fully-local mode; query code is URL-agnostic.
 - **Git**: pushed to GitHub `Tarachand-Gupta/bookmark-ai` (private).
-- **Auth (Clerk)**: `apps/web` requires login — `middleware.ts` `auth.protect()`s every route
-  except `/sign-in` and `/sign-up`. Dev-instance keys live in `apps/web/.env.local` (gitignored)
-  and work on any origin; a production Clerk instance (needs a custom domain) is not set up yet.
-  Because of the gate, headless/preview browser testing of app content needs a signed-in session.
-  The **extension** mirrors the web session via Clerk `syncHost` (no in-popup sign-in — see
-  `apps/extension/CLAUDE.md`), and the instance's `allowed_origins` is now an explicit RESTRICTION
-  list (extension id + localhost:3000 + 127.0.0.1:3000 + vercel.app alias) — keep the web origins
-  in it when adding new ones.
-- **Deployment (fully live, E2E-verified 2026-07-10)**: web on Vercel
-  (`bookmark-ai-theta.vercel.app`) — project Root Directory `apps/web`, install filtered to
-  `pnpm … --filter @bookmark-ai/web...`, a root `.vercelignore` excludes build caches. Vercel env:
-  Clerk keys + `GEMINI_API_KEY` + `NEXT_PUBLIC_API_URL=https://bookmark-ai-server.onrender.com`.
-  Server is **live on Render**: service `bookmark-ai-server` (`srv-d98flodaeets73fse1f0`,
-  free tier — cold-starts after idle, first request can take ~50s), auto-deploys on push to
-  `main`, build `corepack enable && pnpm install --prod=false`, managed via API with
-  `RENDER_API_KEY` in root `.env` (the committed `render.yaml` is reference only — the service
-  was created via API, not blueprint). API port
-  is **4545** (was 4000).
+- **Auth (Clerk)**: `apps/web` requires login — `middleware.ts` `auth.protect()`s every PAGE
+  except `/sign-in` and `/sign-up`; `/api` routes self-protect via `lib/server/require-user.ts`
+  (clean 401 JSON; Bearer or cookie). Middleware also handles API CORS (extension schemes +
+  known web origins) and sets `authorizedParties`. Dev-instance keys live in
+  `apps/web/.env.local` (gitignored); a production Clerk instance is possible now that
+  `bookmark-ai.cloud` exists but is not set up. Because of the gate, headless/preview browser
+  testing of app content needs a signed-in session. The **extension** mirrors the web session
+  via Clerk `syncHost` (no in-popup sign-in — see `apps/extension/CLAUDE.md`), and the
+  instance's `allowed_origins` is an explicit RESTRICTION list (extension id + localhost:3000 +
+  127.0.0.1:3000 + vercel.app alias + bookmark-ai.cloud apex/www) — keep the web origins in it
+  when adding new ones.
+- **Deployment (single Vercel deployment — frontend + API)**: production domain
+  **`https://bookmark-ai.cloud`** (plus `bookmark-ai-theta.vercel.app` alias). Project Root
+  Directory `apps/web`, install filtered to `pnpm … --filter @bookmark-ai/web...`, root
+  `.vercelignore` excludes build caches, generated mobile dirs, AND all `.env*` files (see
+  gotcha 9). Vercel env: Clerk keys + `GEMINI_API_KEY` + `DATABASE_URL` + `DATABASE_AUTH_TOKEN`
+  + `CLERK_ALLOWED_USER_IDS` + `CRON_SECRET` (no `NEXT_PUBLIC_API_URL` — the web app calls its
+  own origin). The old **Render** service `bookmark-ai-server` (`srv-d98flodaeets73fse1f0`) is
+  SUSPENDED — kept only as rollback; `render.yaml` is historical reference. Local API port
+  is **4545** (Express).
 - Zig 0.16 + `@native-sdk/cli` 0.4.0 (`native` on PATH) are installed globally on this machine.
 
 ## API quick reference (all JSON)
 
-**Auth**: with `CLERK_JWT_KEY` set (Render has it), every `/api` route except `/api/health`
-requires `Authorization: Bearer <Clerk session JWT>` — networkless verification in
-`apps/server/src/auth.ts`, azp allowlist `CLERK_AUTHORIZED_PARTIES`, user allowlist
-`CLERK_ALLOWED_USER_IDS` (Tara = `user_3GIhPt5Na3tYRP3XaPPU3PpI55e`). Unset (local dev) =
-open + permissive CORS, for the desktop app / curl / import script. Clients attach tokens:
-web `apps/web/lib/api.ts` (window.Clerk), chat route via `auth().getToken()`, extension
-background via `createClerkClient` from `@clerk/chrome-extension/background`. Rate limit:
-120 req/min/IP (health exempt).
+The API is served from TWO places with the same contract: **deployed** = Next route handlers
+under `apps/web/app/api/*` at `https://bookmark-ai.cloud/api/*` (Clerk auth enforced via
+`requireUser()` — Bearer session JWT or browser cookie — plus `CLERK_ALLOWED_USER_IDS`
+allowlist, Tara = `user_3GIhPt5Na3tYRP3XaPPU3PpI55e`); **local** = Express `apps/server` on
+:4545, which runs OPEN when `CLERK_JWT_KEY` is unset (desktop app / curl / import script).
+Clients attach tokens: web `apps/web/lib/api.ts` (window.Clerk, same-origin `/api`),
+extension background via `createClerkClient` from `@clerk/chrome-extension/background`
+(popup API URL setting must point at `https://bookmark-ai.cloud`), mobile via Clerk Expo.
+Both adapters delegate to `packages/engine` — change behavior THERE, not in the adapters.
 
 - `POST /api/bookmarks` — body `CreateBookmarkInput` `{url, title?, browser?, device?, deviceName?, os?, savedAt?}` (`browser`/`device` default to `"other"` when omitted) → `201 {bookmark}`. Upserts by URL (re-save updates + clears embedding).
 - `GET /api/bookmarks?category=&browser=&device=&day=YYYY-MM-DD&tag=&limit=&offset=` → `{bookmarks, total}`
@@ -68,10 +74,10 @@ background via `createClerkClient` from `@clerk/chrome-extension/background`. Ra
 - `GET /api/meta` → sidebar facets + tag rail `{categories, browsers, devices, days, tags, total}`
 - `GET /api/health` → `{ok, ai}` · `DELETE /api/bookmarks/:id` → 204
 - `POST /api/sessions` — body `{name?, tabs:[{url,title?,favIconUrl?,windowId?}], browser?, device?, savedAt?}` → `201 {session}` (a saved browser-tab snapshot). `GET /api/sessions` → `{sessions}` · `DELETE /api/sessions/:id` → 204
-- `POST /api/chat` — **Next.js route in `apps/web`** (not Express): AI SDK v7 agent chat.
-  Body `{messages: UIMessage[]}`; streams UI messages; tools `searchFullText`/`searchSemantic`
-  proxy `/api/search`. Import existing browser bookmarks:
-  `cd apps/server && pnpm tsx scripts/import-browser-bookmarks.ts [--apply]`.
+- `POST /api/chat` — **Next.js-only route** (no Express equivalent): AI SDK v7 agent chat.
+  Body `{messages: UIMessage[]}`; streams UI messages; tools `searchFullText`/`searchSemantic`/
+  `listSessions` call `packages/engine` directly (no HTTP hop). Import existing browser
+  bookmarks: `cd apps/server && pnpm tsx scripts/import-browser-bookmarks.ts [--apply]`.
 
 ## Hard-won gotchas (do not rediscover these)
 
@@ -95,6 +101,14 @@ background via `createClerkClient` from `@clerk/chrome-extension/background`. Ra
 8. Never run `pnpm turbo build` (it runs `next build`) while the web dev server is up — the
    prod build clobbers `.next` and the dev server serves webpack-runtime 500s until you
    `rm -rf apps/web/.next` and restart it.
+9. **Never let `.env` files reach a Vercel upload.** `vercel --prod` uploads the working tree,
+   and `apps/web/next.config.ts` reads the root `.env` at build time — a stale
+   `NEXT_PUBLIC_API_URL` in it got INLINED into the production client bundle once (deployed app
+   called localhost:4545). `.vercelignore` now excludes `.env*`; keep it that way.
+10. **`@libsql/client` must be a direct dependency of `apps/web`** even though `packages/db`
+    owns it: Next's `serverExternalPackages` can only externalize packages the app itself can
+    resolve (pnpm isolation), otherwise webpack tries to bundle the native `libsql` bindings
+    and the build fails on its README/LICENSE files.
 
 ## Adding features — where things go
 

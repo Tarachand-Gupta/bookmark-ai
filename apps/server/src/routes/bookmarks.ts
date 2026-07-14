@@ -3,8 +3,7 @@ import { createBookmarkSchema, listBookmarksQuerySchema } from "@bookmark-ai/typ
 import { deleteBookmark, getBookmark, listBookmarks, type Db } from "@bookmark-ai/db";
 import { asyncHandler } from "../lib/async-handler.js";
 import { badRequest, notFound } from "../lib/http-error.js";
-import { enrichBookmark, saveBookmarkFast } from "../services/ingest.js";
-import type { GeminiClient } from "../services/gemini.js";
+import { enrichBookmark, saveBookmarkFast, type GeminiClient } from "@bookmark-ai/engine";
 
 export function bookmarksRouter(
   db: Db,

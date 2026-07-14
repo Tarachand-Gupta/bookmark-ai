@@ -27,3 +27,10 @@ apps/mobile/.expo
 # Local DB files / cruft
 **/*.db
 **/.DS_Store
+
+# Env files must NEVER ride along in the upload: secrets stay local, and
+# next.config.ts would inline NEXT_PUBLIC_* values from the root .env into
+# the client bundle at build time (deployed env comes from Vercel env vars).
+.env
+**/.env
+**/.env.*

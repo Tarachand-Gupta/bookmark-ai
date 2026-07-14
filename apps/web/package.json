@@ -11,9 +11,12 @@
   "dependencies": {
     "@ai-sdk/google": "^4.0.10",
     "@ai-sdk/react": "^4.0.19",
+    "@bookmark-ai/db": "workspace:*",
+    "@bookmark-ai/engine": "workspace:*",
     "@bookmark-ai/types": "workspace:*",
     "@bookmark-ai/ui": "workspace:*",
     "@clerk/nextjs": "^7.5.15",
+    "@libsql/client": "^0.15.0",
     "@clerk/ui": "^1.25.1",
     "ai": "^7.0.18",
     "class-variance-authority": "^0.7.1",

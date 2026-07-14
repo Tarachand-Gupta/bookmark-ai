@@ -1,0 +1,28 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { deleteSession, getSession } from "@bookmark-ai/db";
+import { getApiContext } from "@/lib/server/context";
+import { requireUser } from "@/lib/server/require-user";
+
+type Params = { params: Promise<{ id: string }> };
+
+export async function GET(_req: NextRequest, { params }: Params) {
+  const denied = await requireUser();
+  if (denied) return denied;
+  const { db, ready } = getApiContext();
+  await ready;
+
+  const session = await getSession(db, (await params).id);
+  if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  return NextResponse.json({ session });
+}
+
+export async function DELETE(_req: NextRequest, { params }: Params) {
+  const denied = await requireUser();
+  if (denied) return denied;
+  const { db, ready } = getApiContext();
+  await ready;
+
+  const deleted = await deleteSession(db, (await params).id);
+  if (!deleted) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  return new NextResponse(null, { status: 204 });
+}

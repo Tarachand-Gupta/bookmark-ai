@@ -7,9 +7,9 @@ import {
   updateBookmarkContent,
   type Db,
 } from "@bookmark-ai/db";
-import type { GeminiClient } from "./gemini.js";
-import { scrapeOpenGraph } from "./og.js";
-import { categorize, heuristicCategorize } from "./categorize.js";
+import type { GeminiClient } from "./gemini";
+import { scrapeOpenGraph } from "./og";
+import { categorize, heuristicCategorize } from "./categorize";
 
 /**
  * Instant save: persist immediately with a no-network heuristic category so

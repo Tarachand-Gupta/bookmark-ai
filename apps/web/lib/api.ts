@@ -9,7 +9,9 @@ import type {
   SearchResponse,
 } from "@bookmark-ai/types";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4545";
+/** Same-origin by default — the API lives in this Next.js app's /api routes.
+ * Set NEXT_PUBLIC_API_URL only to point at a separately hosted API. */
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export interface LibraryFilters {
   category?: string;

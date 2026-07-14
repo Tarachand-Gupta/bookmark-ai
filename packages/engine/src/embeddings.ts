@@ -1,6 +1,6 @@
 import type { Bookmark } from "@bookmark-ai/types";
 import { EMBEDDING_DIM, listUnembedded, storeEmbedding, type Db } from "@bookmark-ai/db";
-import type { GeminiClient } from "./gemini.js";
+import type { GeminiClient } from "./gemini";
 
 /** Text representation of a bookmark fed to the embedding model. */
 export function bookmarkToEmbeddingText(b: Bookmark): string {
@@ -28,8 +28,29 @@ export async function embedBookmark(gemini: GeminiClient, db: Db, b: Bookmark): 
 }
 
 /**
+ * One-shot sweep: embed up to `limit` bookmarks that have no vector yet.
+ * Per-bookmark failures are logged and skipped so one bad row can't stall
+ * the rest. Returns how many were embedded.
+ */
+export async function embedPending(gemini: GeminiClient, db: Db, limit = 10): Promise<number> {
+  const pending = await listUnembedded(db, limit);
+  let embedded = 0;
+  for (const b of pending) {
+    try {
+      await embedBookmark(gemini, db, b);
+      embedded++;
+      console.log(`[embed] ${b.id} ${b.domain}`);
+    } catch (err) {
+      console.warn(`[embed] failed for ${b.id}: ${(err as Error).message}`);
+    }
+  }
+  return embedded;
+}
+
+/**
  * Background embed worker: sweeps for bookmarks without vectors. Runs right
  * after every save and on an interval, so transient Gemini failures self-heal.
+ * (Long-running processes only — serverless callers use embedPending.)
  */
 export function startEmbedWorker(
   gemini: GeminiClient | null,
@@ -50,15 +71,7 @@ export function startEmbedWorker(
     }
     running = true;
     try {
-      const pending = await listUnembedded(db, 10);
-      for (const b of pending) {
-        try {
-          await embedBookmark(gemini, db, b);
-          console.log(`[embed] ${b.id} ${b.domain}`);
-        } catch (err) {
-          console.warn(`[embed] failed for ${b.id}: ${(err as Error).message}`);
-        }
-      }
+      await embedPending(gemini, db, 10);
     } catch (err) {
       // sweep runs unawaited from setInterval/kick — never let it reject.
       console.warn(`[embed] sweep failed: ${(err as Error).message}`);

@@ -8,7 +8,7 @@ import { bookmarksRouter } from "./routes/bookmarks.js";
 import { searchRouter } from "./routes/search.js";
 import { metaRouter } from "./routes/meta.js";
 import { sessionsRouter } from "./routes/sessions.js";
-import type { GeminiClient } from "./services/gemini.js";
+import type { GeminiClient } from "@bookmark-ai/engine";
 
 export interface AppDeps {
   db: Db;

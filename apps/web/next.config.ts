@@ -17,7 +17,15 @@ try {
 }
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@bookmark-ai/ui", "@bookmark-ai/types"],
+  transpilePackages: [
+    "@bookmark-ai/ui",
+    "@bookmark-ai/types",
+    "@bookmark-ai/db",
+    "@bookmark-ai/engine",
+  ],
+  // @libsql/client ships native bindings for file: URLs — keep it out of the
+  // webpack bundle and let Node resolve it at runtime.
+  serverExternalPackages: ["@libsql/client", "libsql"],
   images: {
     // OG images come from arbitrary bookmarked sites.
     remotePatterns: [{ protocol: "https", hostname: "**" }, { protocol: "http", hostname: "**" }],

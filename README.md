@@ -20,14 +20,17 @@ new window or a tab group.
    └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
           │    Clerk JWT   │    Clerk JWT   │   Clerk JWT    │ (local only)
           ▼                ▼                ▼                ▼
-   ┌──────────────────────────────────────────────────────────────────┐
-   │                    Express API  (apps/server)                    │
-   │   auth → rate limit → routes:  bookmarks · search · meta ·       │
-   │                                sessions · health                 │
-   │                                                                  │
-   │   save pipeline:  scrape OG data → AI categorize + tag →         │
-   │                   embed (async worker, self-healing 30s sweep)   │
-   └───────────┬───────────────────────────────┬──────────────────────┘
+   ┌───────────────────────────────────────────────────────────────────────┐
+   │                                                                       │
+   │ Next.js API routes  (apps/web/app/api/*)  —  bookmark-ai.cloud/api    │
+   │ requireUser() auth (cookie/JWT) → middleware CORS → routes:           │
+   │ bookmarks · search · meta · sessions · health · cron/embed            │
+   │                                                                       │
+   │ local-mode alternative: Express API  (apps/server :4545)              │
+   │ open, unauthenticated — for desktop app · curl · import script        │
+   │                                                                       │
+   │ both call → packages/engine:  scrape OG → categorize → embed → search │
+   └───────────┬───────────────────────────────┬───────────────────────────┘
                │                               │
                ▼                               ▼
    ┌───────────────────────┐       ┌───────────────────────┐
@@ -38,19 +41,20 @@ new window or a tab group.
 ```
 
 One rule keeps every surface thin: **clients only construct a `CreateBookmarkInput` and
-POST it**. The server owns scraping, categorization, and embedding, so saves are instant
+POST it**. The API owns scraping, categorization, and embedding, so saves are instant
 from the client's point of view and all four UIs stay simple.
 
 ## Repo layout (Turborepo + pnpm workspaces)
 
 | Path | What it is | README |
 | --- | --- | --- |
-| `apps/server` | Express API :4545 — scraping, AI, search, auth, rate limiting | [apps/server/README.md](apps/server/README.md) |
-| `apps/web` | Next.js 15 + shadcn/ui web app :3000, Clerk-gated, AI chat | [apps/web/README.md](apps/web/README.md) |
+| `apps/web` | Next.js 15 + shadcn/ui web app :3000, Clerk-gated, AI chat — **and the deployed API** (`app/api/*`) | [apps/web/README.md](apps/web/README.md) |
+| `apps/server` | Express API :4545 — **local-only** companion for the desktop app, curl, and the import script | [apps/server/README.md](apps/server/README.md) |
 | `apps/extension` | WXT + React popup → Chrome MV3, Firefox MV2, Safari | [apps/extension/README.md](apps/extension/README.md) |
 | `apps/desktop` | Native SDK (vercel-labs/native, Zig) macOS app | [apps/desktop/README.md](apps/desktop/README.md) |
 | `apps/mobile` | Expo (React Native) iOS/iPad app, native iOS design | [apps/mobile/README.md](apps/mobile/README.md) |
 | `packages/types` | Zod schemas — **the** API contract every surface shares | [packages/types/README.md](packages/types/README.md) |
+| `packages/engine` | Shared save/search pipeline — scrape, categorize, embed, search — used by both `apps/web`'s API routes and `apps/server` | [packages/engine/README.md](packages/engine/README.md) |
 | `packages/db` | libSQL client, schema, query modules (FTS5 + vectors) | [packages/db/README.md](packages/db/README.md) |
 | `packages/ui` | Design tokens (`theme.css`) + shared React components | [packages/ui/README.md](packages/ui/README.md) |
 
@@ -108,11 +112,13 @@ Secrets live in the **gitignored** root `.env` (server + scripts) and
 
 | Variable | Where | What |
 | --- | --- | --- |
-| `GEMINI_API_KEY` | `.env` | Enables AI categorization, embeddings, and AI search. Without it everything degrades gracefully to heuristics/full-text (`fallback: true`). |
-| `DATABASE_URL` + `DATABASE_AUTH_TOKEN` | `.env` | Turso cloud libSQL. Point `DATABASE_URL` at a local `file:` path for fully-local mode — query code is URL-agnostic. |
-| `CLERK_JWT_KEY`, `CLERK_AUTHORIZED_PARTIES`, `CLERK_ALLOWED_USER_IDS` | server (Render) | Turn on API auth enforcement. Unset locally = open API for desktop app / curl / scripts. |
-| Clerk publishable + secret keys | `apps/web/.env.local` | Web sign-in. The publishable key is also baked into the extension and mobile app (public by design). |
-| `NEXT_PUBLIC_API_URL` | web env | Where the web app finds the API (Vercel points it at Render). |
+| `GEMINI_API_KEY` | `.env`, also Vercel env | Enables AI categorization, embeddings, and AI search. Without it everything degrades gracefully to heuristics/full-text (`fallback: true`). |
+| `DATABASE_URL` + `DATABASE_AUTH_TOKEN` | `.env`, also Vercel env | Turso cloud libSQL — the deployed API and local dev share the same database. Point `DATABASE_URL` at a local `file:` path for fully-local mode — query code is URL-agnostic. |
+| `CLERK_ALLOWED_USER_IDS` | Vercel env (deployed) | User allowlist enforced by `requireUser()` in `apps/web` — `403` for anyone else. |
+| `CLERK_JWT_KEY`, `CLERK_AUTHORIZED_PARTIES`, `CLERK_ALLOWED_USER_IDS` | `apps/server` env, unset locally | Same allowlist idea for the local-only Express server. Unset by default = open API, for the desktop app / curl / import script. |
+| Clerk publishable + secret keys | `apps/web/.env.local`, also Vercel env | Web sign-in. The publishable key is also baked into the extension and mobile app (public by design). |
+| `NEXT_PUBLIC_API_URL` | web env (optional) | Only needed to point the web client at a separately hosted API — unset everywhere today, so `lib/api.ts` defaults to same-origin `/api` (the deployed API lives in this same Next.js app). |
+| `CRON_SECRET` | Vercel env | Authenticates Vercel Cron's daily hit to `GET /api/cron/embed` (`apps/web/vercel.json`, schedule `30 3 * * *`) — Vercel supplies it automatically. |
 
 ## Authentication (Clerk)
 
@@ -121,18 +127,25 @@ Secrets live in the **gitignored** root `.env` (server + scripts) and
   `syncHost` (sign in on the web app once; the extension picks it up).
 - **Mobile**: native sign-in screen (Google SSO or emailed code); the session lives in
   the iOS keychain.
-- **API**: with `CLERK_JWT_KEY` set, every `/api` route except `/api/health` requires
-  `Authorization: Bearer <session JWT>`, verified **networklessly** (public key only —
-  the server never holds the Clerk secret). Plus a CORS origin allowlist and a
-  120 req/min/IP rate limit. Without the key (local dev) the API is open on purpose.
+- **API**: the deployed API (`apps/web/app/api/*`) self-protects per route via
+  `requireUser()` — a Clerk session (cookie or `Authorization: Bearer` JWT) plus the
+  `CLERK_ALLOWED_USER_IDS` allowlist, `401`/`403` JSON on failure; `middleware.ts` only
+  gates pages, and separately handles API CORS (known web origins + any
+  browser-extension scheme, `OPTIONS` → `204`). No rate limiter deployed — Clerk auth +
+  the user allowlist are the gate, with Vercel's platform DDoS protection in front. The
+  local Express server (`apps/server`) still does its own `CLERK_JWT_KEY` networkless
+  verification + a 120 req/min/IP limiter, but runs open by default.
 
 ## Deployment (live)
 
 | Surface | Where | How it deploys |
 | --- | --- | --- |
-| Web | Vercel — `bookmark-ai-theta.vercel.app` | `vercel --prod` (project root dir = `apps/web`) |
-| API | Render — `bookmark-ai-server.onrender.com` | auto-deploys on push to `main` (free tier: cold-starts after idle, first request can take ~50 s) |
+| Web + API | Vercel — [bookmark-ai.cloud](https://bookmark-ai.cloud) (alias: `bookmark-ai-theta.vercel.app`) | one deployment for both — `vercel --prod` (project root dir = `apps/web`) |
 | DB | Turso (`aws-ap-south-1`) | managed; `turso` CLI |
+
+The API formerly ran as a standalone Express service on Render
+(`bookmark-ai-server.onrender.com`); that service is now suspended — kept only as a
+rollback path, not part of the live deployment.
 
 ## Docs
 

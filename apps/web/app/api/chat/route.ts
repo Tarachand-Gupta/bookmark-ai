@@ -1,20 +1,12 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { auth } from "@clerk/nextjs/server";
 import { convertToModelMessages, stepCountIs, streamText, tool, type UIMessage } from "ai";
 import { z } from "zod";
+import { listSessions } from "@bookmark-ai/db";
+import { performSearch } from "@bookmark-ai/engine";
+import { getApiContext } from "@/lib/server/context";
+import { requireUser } from "@/lib/server/require-user";
 
 export const maxDuration = 60;
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4545";
-
-/** The user's Clerk session JWT for the Express API. Fetched per tool call —
- * session tokens expire after 60s and a chat stream can outlive that. */
-type TokenGetter = () => Promise<string | null>;
-
-async function apiHeaders(getToken: TokenGetter): Promise<Record<string, string>> {
-  const token = await getToken().catch(() => null);
-  return token ? { authorization: `Bearer ${token}` } : {};
-}
 
 const searchInput = z.object({
   query: z.string().min(1).describe("The search query to run against the bookmark library"),
@@ -29,31 +21,21 @@ const listSessionsInput = z.object({
   limit: z.number().int().min(1).max(50).default(20),
 });
 
-interface ApiSession {
-  id: string;
-  name: string;
-  tabCount: number;
-  browser: string;
-  device: string;
-  savedAt: string;
-  tabs: { url: string; title: string }[];
-}
-
 /** Newest-first saved sessions, optionally filtered by substring. */
-async function runListSessions(getToken: TokenGetter, query: string | undefined, limit: number) {
-  const res = await fetch(`${API_URL}/api/sessions`, { headers: await apiHeaders(getToken) });
-  if (!res.ok) throw new Error(`Session list failed (${res.status})`);
-  const data = (await res.json()) as { sessions: ApiSession[] };
+async function runListSessions(query: string | undefined, limit: number) {
+  const { db, ready } = getApiContext();
+  await ready;
+  const sessions = await listSessions(db);
   const q = query?.trim().toLowerCase();
   const filtered = q
-    ? data.sessions.filter(
+    ? sessions.filter(
         (s) =>
           s.name.toLowerCase().includes(q) ||
           s.tabs.some(
             (t) => (t.title ?? "").toLowerCase().includes(q) || t.url.toLowerCase().includes(q),
           ),
       )
-    : data.sessions;
+    : sessions;
   return {
     total: filtered.length,
     sessions: filtered.slice(0, limit).map((s) => ({
@@ -67,40 +49,12 @@ async function runListSessions(getToken: TokenGetter, query: string | undefined,
   };
 }
 
-/** Both tools proxy the Express API so the agent and the UI share one search stack. */
-async function runSearch(getToken: TokenGetter, query: string, mode: "text" | "ai", limit: number) {
-  const params = new URLSearchParams({ q: query, mode, limit: String(limit) });
-  const res = await fetch(`${API_URL}/api/search?${params}`, {
-    headers: await apiHeaders(getToken),
-  });
-  if (!res.ok) throw new Error(`Bookmark search failed (${res.status})`);
-  const data = (await res.json()) as {
-    mode: string;
-    fallback?: boolean;
-    results: {
-      score: number;
-      bookmark: {
-        id: string;
-        title: string;
-        url: string;
-        domain: string;
-        description: string | null;
-        category: string;
-        tags: string[];
-        og: { favicon?: string | null };
-      };
-    }[];
-    sessionResults?: {
-      score: number;
-      session: {
-        id: string;
-        name: string;
-        tabCount: number;
-        savedAt: string;
-        tabs: { url: string; title: string }[];
-      };
-    }[];
-  };
+/** Both tools call the shared search engine directly — the agent and the UI
+ * share one search stack without an HTTP hop. */
+async function runSearch(query: string, mode: "text" | "ai", limit: number) {
+  const { db, gemini, ready } = getApiContext();
+  await ready;
+  const data = await performSearch(db, gemini, { q: query, mode, limit });
   return {
     modeUsed: data.mode,
     fallback: data.fallback ?? false,
@@ -127,6 +81,8 @@ async function runSearch(getToken: TokenGetter, query: string, mode: "text" | "a
 }
 
 export async function POST(req: Request) {
+  const denied = await requireUser();
+  if (denied) return denied;
   if (!process.env.GEMINI_API_KEY) {
     return Response.json(
       { error: "GEMINI_API_KEY is not configured — AI chat is unavailable." },
@@ -134,9 +90,6 @@ export async function POST(req: Request) {
     );
   }
   const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
-  // Tool calls hit the Express API as the signed-in user (middleware already
-  // guarantees a session on this route).
-  const { getToken } = await auth();
   // The client transport pins the body to { messages }, but accept the
   // last-message-only shape too so default transports keep working.
   const body = (await req.json()) as { messages?: UIMessage[]; message?: UIMessage };
@@ -164,19 +117,19 @@ export async function POST(req: Request) {
         description:
           "Keyword/full-text (BM25) search over the user's saved bookmarks. Best for exact words, product names, or domains.",
         inputSchema: searchInput,
-        execute: ({ query, limit }) => runSearch(getToken, query, "text", limit),
+        execute: ({ query, limit }) => runSearch(query, "text", limit),
       }),
       searchSemantic: tool({
         description:
           "Semantic vector (RAG) search over the user's saved bookmarks. Best for natural-language questions and concepts.",
         inputSchema: searchInput,
-        execute: ({ query, limit }) => runSearch(getToken, query, "ai", limit),
+        execute: ({ query, limit }) => runSearch(query, "ai", limit),
       }),
       listSessions: tool({
         description:
           "List the user's saved browser sessions (named snapshots of open tabs), newest first, optionally filtered by text. Use for any question about saved sessions.",
         inputSchema: listSessionsInput,
-        execute: ({ query, limit }) => runListSessions(getToken, query, limit),
+        execute: ({ query, limit }) => runListSessions(query, limit),
       }),
     },
     stopWhen: stepCountIs(5),

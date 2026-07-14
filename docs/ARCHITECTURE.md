@@ -6,21 +6,28 @@
  Chrome/Firefox/Safari         Web app            Desktop (Zig)
  extension popup               Add dialog         refresh/boot
         │                         │                    │
-        └────── POST /api/bookmarks (CreateBookmarkInput) ──────┐
+        │                         │  (same origin)     │  (local only)
+        └── POST bookmark-ai.cloud/api/bookmarks ──┐    └── POST 127.0.0.1:4545/api/bookmarks
+                                                    ▼                          │
+                                    apps/web/app/api/*  (Next.js, deployed)    ▼
+                                                    │              apps/server (Express, local-only)
+                                                    └──────────┬───────────────┘
                                                                 ▼
-                                              apps/server ingest pipeline
-                                     1. scrapeOpenGraph(url)   (services/og.ts)
-                                     2. categorize(page)       (services/categorize.ts)
-                                     3. insertBookmark (upsert by URL)
-                                     4. embed worker (async)   (services/embeddings.ts)
+                                              packages/engine (shared pipeline)
+                                     1. scrapeOpenGraph(url)         (og.ts)
+                                     2. categorize(page)             (categorize.ts)
+                                     3. saveBookmarkFast (upsert by URL, ingest.ts)
+                                     4. embed — after()+cron (deployed) or
+                                        startEmbedWorker (local)      (embeddings.ts)
                                                                 │
-                                                    libSQL file DB (Turso-ready)
+                                                    libSQL DB (Turso in production)
                                           bookmarks table · FTS5 (trigger-synced)
                                           · embedding F32_BLOB(768)
 ```
 
 Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25;
-`ai` → embed query → `vector_distance_cos` ORDER BY), `/api/meta` (sidebar facets).
+`ai` → embed query → `vector_distance_cos` ORDER BY; `hybrid` → RRF of both), `/api/meta`
+(sidebar facets) — all via `packages/engine`'s `performSearch`, on both adapters.
 
 ## Key decisions (user-confirmed)
 
@@ -28,16 +35,17 @@ Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25
    The originally-envisioned client-side vector DB with sync is DEFERRED (next step:
    libSQL embedded replicas / sync to push data into clients).
 2. **Gemini** (`gemini-2.5-flash` categorize, `gemini-embedding-001` embed at
-   `outputDimensionality:768`, re-normalized in `services/gemini.ts` since Gemini only
-   pre-normalizes 3072-dim). "GNI embedding" in the original brief = Gemini.
-   Provider is swappable: only `services/gemini.ts` + `EMBEDDING_DIM` in
+   `outputDimensionality:768`, re-normalized in `packages/engine/src/gemini.ts` since
+   Gemini only pre-normalizes 3072-dim). "GNI embedding" in the original brief = Gemini.
+   Provider is swappable: only `packages/engine/src/gemini.ts` + `EMBEDDING_DIM` in
    `packages/db/src/schema.ts` care (changing dims requires re-embedding + column DDL).
 3. **Graceful degradation everywhere**: no API key → heuristic categorization
    (domain/keyword rules) + text-only search with `fallback: true`; OG scrape failure →
    bookmark still saves; Gemini failure during search → text fallback; embed failures
-   self-heal via the 30 s sweep.
-4. **Saves are fast**: embedding is async (worker kicked after each save), so POST
-   latency ≈ OG fetch + categorize only.
+   self-heal via the local server's 30 s sweep or the deployed API's daily cron.
+4. **Saves are fast**: embedding is async — the local Express server kicks a worker after
+   each save; the deployed Next.js API fires an `after()` instead — so POST latency ≈
+   OG fetch + categorize only either way.
 5. **Upsert by URL**: re-saving updates metadata/provenance and nulls the embedding for
    re-embed. Intentional — no duplicate cards.
 6. **One contract**: every client builds `CreateBookmarkInput` from `packages/types` and
@@ -48,8 +56,8 @@ Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25
    (kept duplicated deliberately to avoid a build-order coupling — sync manually when
    retheming). Desktop uses the native SDK's stock tokens which follow OS light/dark.
    User plans to retheme later — do it in theme.css first.
-8. **Category vocabulary is closed** (`CATEGORIES` in `services/categorize.ts`) so the
-   sidebar stays tidy; Gemini is schema-constrained to it. Extend the list there.
+8. **Category vocabulary is closed** (`CATEGORIES` in `packages/engine/src/categorize.ts`)
+   so the sidebar stays tidy; Gemini is schema-constrained to it. Extend the list there.
 9. **Tags converge on a shared vocabulary**: at save time the AI tagger receives the
    existing tags with usage counts (`listTagCounts`) and is instructed to reuse them
    before inventing new ones; a tag that merely repeats the category is always dropped.
@@ -84,15 +92,20 @@ Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25
 - Extension: context-menu "save link", options page, Arc-specific detection polish.
 - Auth/multi-user (everything is single-user local today).
 
-## Server internals worth knowing
+## Engine + adapter internals worth knowing
 
-- `src/app.ts` wires routers with injected deps (`db`, `gemini`, `onSaved` = embed-worker
-  kick) — add new routes in `src/routes/` and compose there. Errors: throw `HttpError`
-  (`lib/http-error.ts`); async routes wrap in `asyncHandler` (Express 4 doesn't catch
-  rejections).
-- OG scraper is dependency-free regex-over-meta-tags with 10 s timeout, 512 KB cap,
-  attribute-order-agnostic, entity decoding, relative→absolute URL resolution, favicon
-  fallback to `/favicon.ico`. It never throws.
+- `packages/engine` has no HTTP framework dependency — that's what lets the Express
+  server and the Next.js route handlers both sit on top of it as thin adapters instead of
+  forking the save/search logic.
+- `apps/server/src/app.ts` (local-only) wires routers with injected deps (`db`, `gemini`,
+  `onSaved` = embed-worker kick) — add new local-only routes in `src/routes/` there.
+  Errors: throw `HttpError` (`lib/http-error.ts`); async routes wrap in `asyncHandler`
+  (Express 4 doesn't catch rejections). The deployed side has no equivalent wiring file —
+  each `apps/web/app/api/*/route.ts` calls `getApiContext()` and `packages/engine`
+  directly.
+- OG scraper (`packages/engine/src/og.ts`) is dependency-free regex-over-meta-tags with
+  10 s timeout, 512 KB cap, attribute-order-agnostic, entity decoding,
+  relative→absolute URL resolution, favicon fallback to `/favicon.ico`. It never throws.
 - FTS5 external-content-free design: separate `bookmarks_fts` table synced by three
   triggers (see `packages/db/src/schema.ts`); `id` column is UNINDEXED.
 - Vector search is a brute-force `vector_distance_cos` scan (fine ≤ ~10k rows). An ANN
