@@ -140,7 +140,7 @@ test "the markup builds against every model state" {
     _ = try expectByText(tree.root, .text, "vercel-labs/native");
     _ = try expectByText(tree.root, .badge, "Development");
     _ = try expectByText(tree.root, .list_item, "Design  (1)");
-    _ = try expectByText(tree.root, .status_bar, "2 shown · 42 total · localhost:4545");
+    _ = try expectByText(tree.root, .status_bar, "2 shown · 42 total · localhost:3000");
 }
 
 test "pressing a category row dispatches the typed filter message" {
@@ -187,7 +187,7 @@ test "a search response fills the model as results" {
     try testing.expect(model.search_active);
     try testing.expectEqual(@as(u16, 1), model.bookmark_count);
     try testing.expectEqualStrings("Fetch API", model.bookmarks[0].title.slice());
-    try testing.expectEqualStrings("1 result · localhost:4545", model.statusLine(arena));
+    try testing.expectEqualStrings("1 result · localhost:3000", model.statusLine(arena));
 
     // A cancelled terminal (superseded search) must not disturb the model.
     main.applySearchResponse(&model, .{ .key = 2, .outcome = .cancelled });
@@ -199,7 +199,7 @@ test "buildSearchUrl percent-encodes the query" {
     var buf: [640]u8 = undefined;
     const url = try main.buildSearchUrl(&buf, "zig lang! ünïcode");
     try testing.expectEqualStrings(
-        "http://127.0.0.1:4545/api/search?mode=hybrid&limit=30&q=zig+lang%21+%C3%BCn%C3%AFcode",
+        "http://127.0.0.1:3000/api/search?mode=hybrid&limit=30&q=zig+lang%21+%C3%BCn%C3%AFcode",
         url,
     );
 }
@@ -213,7 +213,7 @@ test "the markup builds in the search state" {
     main.applySearchResponse(&model, .{ .key = 2, .outcome = .ok, .status = 200, .body = sample_search_body });
     var tree = try buildTree(arena, &model);
     _ = try expectByText(tree.root, .text, "Fetch API");
-    _ = try expectByText(tree.root, .status_bar, "1 result · localhost:4545");
+    _ = try expectByText(tree.root, .status_bar, "1 result · localhost:3000");
 
     // No matches: the empty state speaks search, not onboarding.
     main.applySearchResponse(&model, .{ .key = 2, .outcome = .ok, .status = 200, .body = "{\"mode\":\"text\",\"results\":[]}" });

@@ -38,10 +38,9 @@ export function BookmarkGrid({
   if (error) {
     return (
       <div className="flex flex-col items-center gap-2 py-20 text-center">
-        <p className="font-medium">Could not reach the Bookmark AI server</p>
+        <p className="font-medium">Could not load your bookmarks</p>
         <p className="max-w-sm text-sm text-muted-foreground">
-          {error}. Make sure the API is running (<code>pnpm --filter @bookmark-ai/server dev</code>
-          ).
+          {error}. Check that you&rsquo;re signed in, then try again.
         </p>
       </div>
     );

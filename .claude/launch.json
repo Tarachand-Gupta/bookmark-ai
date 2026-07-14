@@ -6,12 +6,6 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@bookmark-ai/web", "dev"],
       "port": 3000
-    },
-    {
-      "name": "server",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@bookmark-ai/server", "dev"],
-      "port": 4545
     }
   ]
 }

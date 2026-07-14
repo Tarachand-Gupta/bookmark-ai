@@ -3,11 +3,17 @@
  * so every import goes through the full pipeline (OG scrape → AI categorize/tag
  * → embed worker).
  *
- * Usage (from apps/server, with the API running):
- *   pnpm tsx scripts/import-browser-bookmarks.ts                  # dry run (default)
- *   pnpm tsx scripts/import-browser-bookmarks.ts --apply          # actually import
- *   pnpm tsx scripts/import-browser-bookmarks.ts --source=chrome  # chrome|safari|all
- *   pnpm tsx scripts/import-browser-bookmarks.ts --apply --limit=50
+ * Usage (from apps/web, with the API running — either the local web dev server
+ * on :3000 started with DEV_OPEN_API=1, or a deployed host plus BOOKMARK_API_TOKEN):
+ *   cd apps/web && pnpm tsx scripts/import-browser-bookmarks.ts                  # dry run (default)
+ *   cd apps/web && pnpm tsx scripts/import-browser-bookmarks.ts --apply          # actually import
+ *   cd apps/web && pnpm tsx scripts/import-browser-bookmarks.ts --source=chrome  # chrome|safari|all
+ *   cd apps/web && pnpm tsx scripts/import-browser-bookmarks.ts --apply --limit=50
+ *
+ * Env: BOOKMARK_API_URL overrides the API host (default http://localhost:3000).
+ * BOOKMARK_API_TOKEN, when set, is sent as `Authorization: Bearer <token>` on
+ * every request — needed to import against production (or any host not started
+ * with DEV_OPEN_API=1).
  *
  * Safari needs Full Disk Access for your terminal; without it Safari is skipped
  * with a warning. Already-saved URLs are skipped (the library dedupes by URL).
@@ -17,7 +23,13 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const API = process.env.BOOKMARK_API_URL ?? "http://localhost:4545";
+const API = process.env.BOOKMARK_API_URL ?? "http://localhost:3000";
+
+/** Bearer sent on every request when set — lets imports run against production
+ * (or any host without DEV_OPEN_API=1). Unset → tokenless (local dev only). */
+const authHeaders: Record<string, string> = process.env.BOOKMARK_API_TOKEN
+  ? { authorization: `Bearer ${process.env.BOOKMARK_API_TOKEN}` }
+  : {};
 
 const args = new Map<string, string>(
   process.argv.slice(2).map((a) => {
@@ -99,7 +111,9 @@ function safariBookmarks(): FoundBookmark[] {
 async function libraryUrls(): Promise<Set<string>> {
   const existing = new Set<string>();
   for (let offset = 0; ; offset += 200) {
-    const res = await fetch(`${API}/api/bookmarks?limit=200&offset=${offset}`);
+    const res = await fetch(`${API}/api/bookmarks?limit=200&offset=${offset}`, {
+      headers: authHeaders,
+    });
     if (!res.ok) throw new Error(`API unreachable (${res.status}) — is the server running on ${API}?`);
     const data = (await res.json()) as { bookmarks: { url: string }[]; total: number };
     for (const b of data.bookmarks) existing.add(b.url);
@@ -141,7 +155,7 @@ async function main() {
     try {
       const res = await fetch(`${API}/api/bookmarks`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...authHeaders },
         body: JSON.stringify({
           url: f.url,
           title: f.title,

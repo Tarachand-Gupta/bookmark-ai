@@ -1,8 +1,8 @@
 //! Bookmark AI desktop — a native-rendered Native SDK app.
 //!
 //! The view lives in `app.native`; this file is the logic: `Model`, `Msg`,
-//! and `update`. Bookmarks are fetched from the local Bookmark AI server
-//! (apps/server) over the effects channel and rendered as native cards.
+//! and `update`. Bookmarks are fetched from the local Bookmark AI API (the
+//! web dev server on :3000) over the effects channel and rendered as native cards.
 
 const std = @import("std");
 const runner = @import("runner");
@@ -17,10 +17,11 @@ const canvas_label = "main-canvas";
 const window_width: f32 = 1100;
 const window_height: f32 = 720;
 
-/// The local Bookmark AI API (apps/server). limit=30 keeps the response
-/// far under the 256 KiB effect body cap and the view under widget budgets.
-const bookmarks_url = "http://127.0.0.1:4545/api/bookmarks?limit=30";
-const search_url_base = "http://127.0.0.1:4545/api/search";
+/// The local Bookmark AI API (the web dev server on :3000). limit=30 keeps
+/// the response far under the 256 KiB effect body cap and the view under
+/// widget budgets.
+const bookmarks_url = "http://127.0.0.1:3000/api/bookmarks?limit=30";
+const search_url_base = "http://127.0.0.1:3000/api/search";
 const fetch_key: u64 = 1;
 const search_key: u64 = 2;
 const open_key_base: u64 = 100;
@@ -190,14 +191,14 @@ pub const Model = struct {
     pub fn statusLine(model: *const Model, arena: std.mem.Allocator) []const u8 {
         return switch (model.status) {
             .loading => if (model.awaiting == .search) "Searching…" else "Loading bookmarks…",
-            .failed => "Offline — is the Bookmark AI server running on localhost:4545?",
+            .failed => "Offline — is the web app running on localhost:3000?",
             .ready => if (model.search_active)
-                std.fmt.allocPrint(arena, "{d} {s} · localhost:4545", .{
+                std.fmt.allocPrint(arena, "{d} {s} · localhost:3000", .{
                     model.visibleCount(),
                     if (model.visibleCount() == 1) "result" else "results",
                 }) catch ""
             else
-                std.fmt.allocPrint(arena, "{d} shown · {d} total · localhost:4545", .{
+                std.fmt.allocPrint(arena, "{d} shown · {d} total · localhost:3000", .{
                     model.visibleCount(), model.total,
                 }) catch "",
         };
@@ -404,7 +405,7 @@ pub fn applyResponse(model: *Model, response: native_sdk.EffectResponse) void {
     if (response.outcome != .ok) {
         model.status = .failed;
         model.error_text.set(switch (response.outcome) {
-            .connect_failed => "Could not connect to the Bookmark AI server. Start it with: pnpm --filter @bookmark-ai/server dev",
+            .connect_failed => "Could not connect to the Bookmark AI web app. Start it with: pnpm --filter @bookmark-ai/web dev",
             .timed_out => "The server took too long to respond.",
             else => "The request to the server failed.",
         });
@@ -426,7 +427,7 @@ pub fn applySearchResponse(model: *Model, response: native_sdk.EffectResponse) v
     if (response.outcome == .cancelled) return; // superseded by a newer search
     if (response.outcome != .ok or response.status != 200) {
         model.status = .failed;
-        model.error_text.set("Search failed. Is the Bookmark AI server running on localhost:4545?");
+        model.error_text.set("Search failed. Is the web app running on localhost:3000?");
         return;
     }
     parseSearchResults(model, response.body) catch {

@@ -25,6 +25,7 @@ apps/mobile/android
 apps/mobile/.expo
 
 # Local DB files / cruft
+data/
 **/*.db
 **/.DS_Store
 

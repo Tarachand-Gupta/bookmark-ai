@@ -29,7 +29,10 @@ native test     # 11 tests must pass
 native build    # ReleaseFast → zig-out/bin/bookmark-ai
 ```
 
-Run + drive (GUI session; start apps/server first or you'll see the offline state):
+Run + drive (GUI session; start the web dev server first — `DEV_OPEN_API=1 pnpm
+--filter @bookmark-ai/web dev` (port 3000) — or you'll see the offline state. The
+desktop app can't send auth headers, so `DEV_OPEN_API=1` tells the Next API to accept
+unauthenticated local requests):
 
 ```bash
 native dev -Dautomation=true &
@@ -48,7 +51,7 @@ widget — a naive "last #number" regex clicks the container and nothing happens
 ## How this app works (TEA)
 
 - `boot` (init_fx, runs once pre-paint) and the `refresh` Msg both call `startLoad` →
-  `fx.fetch` GET `http://127.0.0.1:4545/api/bookmarks?limit=30` (key=1, 10 s timeout) →
+  `fx.fetch` GET `http://127.0.0.1:3000/api/bookmarks?limit=30` (key=1, 10 s timeout) →
   terminal Msg `.loaded: native_sdk.EffectResponse`.
 - `applyResponse` (pub, pure, unit-tested directly) checks `outcome`/`status`, then
   `parseBookmarks` uses `std.json.parseFromSliceLeaky(std.json.Value, arena, …)` into a

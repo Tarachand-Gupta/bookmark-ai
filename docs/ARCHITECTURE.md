@@ -6,28 +6,26 @@
  Chrome/Firefox/Safari         Web app            Desktop (Zig)
  extension popup               Add dialog         refresh/boot
         │                         │                    │
-        │                         │  (same origin)     │  (local only)
-        └── POST bookmark-ai.cloud/api/bookmarks ──┐    └── POST 127.0.0.1:4545/api/bookmarks
-                                                    ▼                          │
-                                    apps/web/app/api/*  (Next.js, deployed)    ▼
-                                                    │              apps/server (Express, local-only)
-                                                    └──────────┬───────────────┘
-                                                                ▼
-                                              packages/engine (shared pipeline)
-                                     1. scrapeOpenGraph(url)         (og.ts)
-                                     2. categorize(page)             (categorize.ts)
-                                     3. saveBookmarkFast (upsert by URL, ingest.ts)
-                                     4. embed — after()+cron (deployed) or
-                                        startEmbedWorker (local)      (embeddings.ts)
-                                                                │
-                                                    libSQL DB (Turso in production)
-                                          bookmarks table · FTS5 (trigger-synced)
-                                          · embedding F32_BLOB(768)
+        │                         │  (same origin)     │  (local dev :3000)
+        └──── POST /api/bookmarks ─────┴────────────────┘
+              (bookmark-ai.cloud in prod, localhost:3000 in local dev)
+                                     │
+                     apps/web/app/api/*  (Next.js route handlers — the only adapter)
+                                     ▼
+                              packages/engine (shared pipeline)
+                     1. scrapeOpenGraph(url)         (og.ts)
+                     2. categorize(page)             (categorize.ts)
+                     3. saveBookmarkFast (upsert by URL, ingest.ts)
+                     4. embed — Next after() + daily Vercel cron   (embeddings.ts)
+                                     │
+                         libSQL DB (Turso in production)
+               bookmarks table · FTS5 (trigger-synced)
+               · embedding F32_BLOB(768)
 ```
 
 Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25;
 `ai` → embed query → `vector_distance_cos` ORDER BY; `hybrid` → RRF of both), `/api/meta`
-(sidebar facets) — all via `packages/engine`'s `performSearch`, on both adapters.
+(sidebar facets) — all via `packages/engine`'s `performSearch`.
 
 ## Key decisions (user-confirmed)
 
@@ -42,10 +40,9 @@ Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25
 3. **Graceful degradation everywhere**: no API key → heuristic categorization
    (domain/keyword rules) + text-only search with `fallback: true`; OG scrape failure →
    bookmark still saves; Gemini failure during search → text fallback; embed failures
-   self-heal via the local server's 30 s sweep or the deployed API's daily cron.
-4. **Saves are fast**: embedding is async — the local Express server kicks a worker after
-   each save; the deployed Next.js API fires an `after()` instead — so POST latency ≈
-   OG fetch + categorize only either way.
+   self-heal via the daily Vercel cron (`/api/cron/embed`) that re-sweeps null embeddings.
+4. **Saves are fast**: embedding is async — the API fires a Next `after()` once the save
+   response is sent, so POST latency ≈ OG fetch + categorize only.
 5. **Upsert by URL**: re-saving updates metadata/provenance and nulls the embedding for
    re-embed. Intentional — no duplicate cards.
 6. **One contract**: every client builds `CreateBookmarkInput` from `packages/types` and
@@ -75,10 +72,12 @@ Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25
   closing the chat clears the query so the user lands back on the library.
 - **Turso cloud**: production `DATABASE_URL` is `libsql://` + `DATABASE_AUTH_TOKEN`;
   data migrated with embeddings intact (sqlite3 `.mode insert` dump → `turso db shell`).
-- **Browser-bookmark import (one-way)**: `apps/server/scripts/import-browser-bookmarks.ts`
+- **Browser-bookmark import (one-way)**: `apps/web/scripts/import-browser-bookmarks.ts`
   reads Chrome's Bookmarks JSON (all profiles) + Safari's plist (needs Full Disk Access),
   dedupes against the library, dry-run by default, `--apply` imports through the full
-  ingest pipeline with per-browser provenance.
+  ingest pipeline with per-browser provenance. Runs against a dev server started with
+  `DEV_OPEN_API=1` (default host `http://localhost:3000`), or set `BOOKMARK_API_TOKEN` to
+  import against production.
 
 ## Deferred / roadmap
 
@@ -90,19 +89,18 @@ Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25
   pipeline — markup can't express images), menu-bar quick-save. (Search UI shipped
   2026-07-09 — text mode; AI-mode toggle still open.)
 - Extension: context-menu "save link", options page, Arc-specific detection polish.
-- Auth/multi-user (everything is single-user local today).
+- Multi-tenancy (auth shipped via Clerk; the deployment is single-user today — one Turso DB,
+  `CLERK_ALLOWED_USER_IDS` allowlist. Planned: master/control-plane DB + one Turso DB per user).
 
 ## Engine + adapter internals worth knowing
 
-- `packages/engine` has no HTTP framework dependency — that's what lets the Express
-  server and the Next.js route handlers both sit on top of it as thin adapters instead of
-  forking the save/search logic.
-- `apps/server/src/app.ts` (local-only) wires routers with injected deps (`db`, `gemini`,
-  `onSaved` = embed-worker kick) — add new local-only routes in `src/routes/` there.
-  Errors: throw `HttpError` (`lib/http-error.ts`); async routes wrap in `asyncHandler`
-  (Express 4 doesn't catch rejections). The deployed side has no equivalent wiring file —
-  each `apps/web/app/api/*/route.ts` calls `getApiContext()` and `packages/engine`
-  directly.
+- `packages/engine` has no HTTP framework dependency — that's what lets the Next.js route
+  handlers sit on top of it as a thin adapter instead of forking the save/search logic
+  (and it kept the door open when the old Express server was still a second adapter).
+- There is no central wiring file — each `apps/web/app/api/*/route.ts` calls
+  `getApiContext()` (`lib/server/context.ts`, a per-instance `{db, gemini}` singleton) and
+  `packages/engine` directly, gated by `requireUser()` (`lib/server/require-user.ts`) at
+  the top. Add a new endpoint by adding a `route.ts` under `app/api/`.
 - OG scraper (`packages/engine/src/og.ts`) is dependency-free regex-over-meta-tags with
   10 s timeout, 512 KB cap, attribute-order-agnostic, entity decoding,
   relative→absolute URL resolution, favicon fallback to `/favicon.ico`. It never throws.

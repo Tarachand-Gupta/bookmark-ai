@@ -15,9 +15,10 @@ const store = globalThis as unknown as { __bookmarkApiContext?: ApiContext };
 export function getApiContext(): ApiContext {
   if (!store.__bookmarkApiContext) {
     const db = createDb(
-      // Fallback shares the Express server's local file DB for fully-local
-      // setups; deployed instances always set DATABASE_URL.
-      process.env.DATABASE_URL ?? "file:../server/data/bookmarks.db",
+      // Fallback points at the repo-root local file DB for fully-local setups
+      // (cwd is apps/web under `next dev`); deployed instances always set
+      // DATABASE_URL.
+      process.env.DATABASE_URL ?? "file:../../data/bookmarks.db",
       process.env.DATABASE_AUTH_TOKEN,
     );
     const gemini = process.env.GEMINI_API_KEY

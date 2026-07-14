@@ -13,7 +13,6 @@ export {
   embedQuery,
   embedBookmark,
   embedPending,
-  startEmbedWorker,
 } from "./embeddings";
 export { saveBookmarkFast, enrichBookmark } from "./ingest";
 export { performSearch, type SearchParams } from "./search";

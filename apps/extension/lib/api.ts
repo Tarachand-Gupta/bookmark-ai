@@ -6,7 +6,10 @@ import type {
 } from "@bookmark-ai/types";
 import { storage } from "#imports";
 
-export const DEFAULT_API_URL = "http://localhost:4545";
+/** A freshly installed extension talks to production; developers point this at
+ * http://localhost:3000 (the web dev server, which serves the same /api) via
+ * the popup settings row. */
+export const DEFAULT_API_URL = "https://bookmark-ai.cloud";
 export const DEFAULT_WEB_URL = "http://localhost:3000";
 
 /** API base URL, user-configurable from the popup settings row. */
@@ -31,8 +34,8 @@ export async function getWebBaseUrl(): Promise<string> {
 
 /** The background script registers Clerk's token getter here — keeps this
  * module importable from the popup without pulling in background-only Clerk
- * code. Unset/null token → request goes out unauthenticated (fine for the
- * open local server; the deployed server 401s it). */
+ * code. Unset/null token → request goes out unauthenticated (the deployed
+ * default 401s it; a local dev server accepts it only with DEV_OPEN_API=1). */
 let authTokenProvider: (() => Promise<string | null>) | null = null;
 
 export function setAuthTokenProvider(provider: () => Promise<string | null>): void {

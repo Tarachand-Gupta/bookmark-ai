@@ -19,15 +19,20 @@ JSON errors instead of an HTML sign-in redirect.
 and `cron/embed` — one Vercel deployment serves both the web UI and these routes at
 [bookmark-ai.cloud](https://bookmark-ai.cloud). Each route handler is a thin adapter over
 [`packages/engine`](../../packages/engine/README.md), which owns the actual scrape /
-categorize / embed / search logic (shared with the local-only Express server in
-`apps/server`).
+categorize / embed / search logic. The same route handlers serve local dev
+(`pnpm --filter @bookmark-ai/web dev` on :3000) and production — there is no separate
+API server.
 
 - `lib/server/context.ts` — a singleton `{ db, gemini }` per warm serverless instance
   (survives dev HMR too), so routes don't reconnect on every request.
-- `lib/server/require-user.ts` — `requireUser()`: every route calls this first. Checks
-  the Clerk session (cookie or `Authorization: Bearer` JWT), an azp origin check, and the
-  `CLERK_ALLOWED_USER_IDS` allowlist — returns a `401`/`403` JSON response to short-circuit
-  with, or `null` to proceed.
+- `lib/server/require-user.ts` — `requireUser()`: every route calls this first. It
+  rate-limits (120 req / 60s per IP → `429`, `lib/server/rate-limit.ts`), then honors the
+  two open modes (`CLERK_SECRET_KEY` unset → keyless self-host; `DEV_OPEN_API=1` with
+  `NODE_ENV!=production` → dev bypass, so the tokenless Zig desktop app can hit a local
+  server that has Clerk keys), then checks the Clerk session (cookie or
+  `Authorization: Bearer` JWT), an `azp` origin check, and the `CLERK_ALLOWED_USER_IDS`
+  allowlist — returning a `401`/`403` JSON response to short-circuit with, or `null` to
+  proceed. `/api/health` is the one route that skips it.
 - `middleware.ts` also owns API CORS (it's the one thing middleware still does for
   `/api/*`): known web origins (`bookmark-ai.cloud` apex + `www`, localhost, the Vercel
   alias) plus any browser-extension scheme get `Access-Control-Allow-Origin`; `OPTIONS`
@@ -71,7 +76,18 @@ it adds after `@layer base`).
 
 ```bash
 pnpm --filter @bookmark-ai/web dev     # http://localhost:3000 — web + API together
+
+# Run the API OPEN locally (no Clerk needed) for tokenless clients — the Zig desktop app,
+# curl, and the import script below:
+DEV_OPEN_API=1 pnpm --filter @bookmark-ai/web dev
 ```
+
+`scripts/import-browser-bookmarks.ts` (moved here from the old `apps/server`) does a
+one-way import of Chrome/Safari bookmarks through the full ingest pipeline —
+`pnpm tsx scripts/import-browser-bookmarks.ts [--apply]` (dry-run without `--apply`). It
+targets `BOOKMARK_API_URL` (default `http://localhost:3000`); run the dev server with
+`DEV_OPEN_API=1`, or set `BOOKMARK_API_TOKEN` (sent as `Authorization: Bearer`) to import
+against production.
 
 Deployed on **Vercel** at [bookmark-ai.cloud](https://bookmark-ai.cloud) (alias:
 `bookmark-ai-theta.vercel.app`), project Root Directory `apps/web` — this one deployment

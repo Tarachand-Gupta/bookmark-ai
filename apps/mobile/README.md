@@ -43,8 +43,8 @@ export ANDROID_HOME=$HOME/Library/Android/sdk
 npx expo run:android
 ```
 
-The iOS simulator reaches the local API at `localhost:4545`; the Android emulator sees
-the host machine as `10.0.2.2` (handled in `src/api.ts`).
+The iOS simulator reaches the local API (the web dev server) at `localhost:3000`; the
+Android emulator sees the host machine as `10.0.2.2` (handled in `src/api.ts`).
 
 Dev-only env flags (bundle-time, ignored in release builds):
 

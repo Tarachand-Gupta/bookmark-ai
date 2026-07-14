@@ -13,12 +13,13 @@ pnpm --filter @bookmark-ai/extension check-types
 Layout (keep multi-file — the user explicitly banned monolith files):
 
 - `wxt.config.ts` — manifest fn (MV2/MV3-aware), permissions (`cookies` is for Clerk),
-  `host_permissions: http://localhost/*` (ports are ignored in match patterns — covers API
-  :4545 AND web :3000) + Clerk frontend API, and the pinned CRX `key` (chrome-only)
+  `host_permissions: http://localhost/*` (ports are ignored in match patterns — covers the
+  web dev server at localhost:3000, both Clerk syncHost and the local /api base) + Clerk
+  frontend API, and the pinned CRX `key` (chrome-only)
 - `entrypoints/background.ts` — receives `SAVE_BOOKMARK`, POSTs to the API, replies result/error
 - `entrypoints/popup/` — `App.tsx` + `components/` (SaveCard, SavedResult, ErrorNote, SettingsRow, Spinner)
 - `lib/messages.ts` — typed popup↔background contract · `lib/api.ts` — fetch helper (API base
-  from `local:apiUrl` storage, default localhost:4545) · `lib/detect.ts` — browser via
+  from `local:apiUrl` storage, default https://bookmark-ai.cloud) · `lib/detect.ts` — browser via
   `import.meta.env.BROWSER` build constant (+ UA brands for Edge/Arc), device/os heuristics
 - `assets/tailwind.css` — mirrors `packages/ui/src/theme.css` tokens (sync manually on retheme)
 - `scripts/generate-icons.mjs` — dependency-free PNG icon generator (`pnpm icons`)

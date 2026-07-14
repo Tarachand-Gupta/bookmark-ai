@@ -6,17 +6,20 @@ Ordered so that items later in the list depend on items earlier in it.
 
 ## 1. Web + API hardening (do this first — the stores will ask about it)
 
-- [x] **API auth (done 2026-07-12).** Every `/api` route except `/api/health` requires a
-      Clerk session JWT when `CLERK_JWT_KEY` (instance PEM public key) is set — networkless
-      verification in `apps/server/src/auth.ts`, `azp` checked against
-      `CLERK_AUTHORIZED_PARTIES`, user pinned via `CLERK_ALLOWED_USER_IDS`. Unset = open
-      local mode (desktop/import/curl). Render has all three set.
-- [x] **CORS allowlist (done 2026-07-12).** With auth enforced, browser origins are
-      restricted to the authorized parties (+ extension schemes); local mode stays permissive.
-      **Re-check when origins change**: new web domain, new extension id, or a prod Clerk
-      instance all require updating `CLERK_AUTHORIZED_PARTIES` on Render.
-- [x] **Rate limiting (done 2026-07-12).** 120 req/min/IP (health + preflight exempt),
-      `trust proxy` set for Render.
+- [x] **API auth (done 2026-07-12; now in the Next.js API).** Every `/api` route except
+      `/api/health` calls `requireUser()` (`apps/web/lib/server/require-user.ts`): a Clerk
+      session (browser cookie or `Authorization: Bearer` JWT, verified by `@clerk/nextjs`),
+      an `azp` origin check, and the user pinned via `CLERK_ALLOWED_USER_IDS`. Open modes:
+      `CLERK_SECRET_KEY` unset → keyless self-host; `DEV_OPEN_API=1` in dev → bypass
+      (desktop/import/curl). Vercel has the Clerk keys + allowlist set.
+- [x] **CORS allowlist (done 2026-07-12; now in `apps/web/middleware.ts`).** Browser
+      origins are restricted to the known web origins (+ extension schemes) via
+      `AUTHORIZED_PARTIES` (`apps/web/lib/authorized-parties.ts`); the bearer token is the
+      real gate. **Re-check when origins change**: a new web domain, new extension id, or a
+      prod Clerk instance all require updating that list (and Clerk's `allowed_origins`).
+- [x] **Rate limiting (done 2026-07-12; now in `apps/web/lib/server/rate-limit.ts`).**
+      120 req / 60s per client IP (health + preflight exempt). Per-instance in-memory state
+      on Vercel serverless, so it's coarse; per-user quotas come with multi-tenancy later.
 - [ ] **Buy a domain.** A production Clerk instance requires one (dev keys can't be used —
       they're origin-promiscuous and show the "development keys" warning). The domain also
       replaces `bookmark-ai-theta.vercel.app`.
@@ -28,11 +31,13 @@ Ordered so that items later in the list depend on items earlier in it.
 - [ ] **Extension config for prod**: the baked defaults in `apps/extension/lib/clerk.ts` and
       `lib/api.ts` point at the dev instance and localhost. Build store packages with
       `WXT_`-prefixed env overrides (or an `.env.production`): prod publishable key, prod
-      syncHost/web URL, Render API URL. `host_permissions` must gain the prod web domain +
+      syncHost/web URL, prod API URL (`https://bookmark-ai.cloud/api`). `host_permissions`
+      must gain the prod web domain +
       prod Clerk frontend API domain; `externally_connectable.matches` must gain the prod
       web domain.
-- [ ] **Render**: free tier cold-starts (~50s) after idle. Either upgrade to Starter (~$7/mo)
-      or accept it / add an uptime pinger. Health check is already `/api/health`.
+- [ ] **Vercel functions**: the API now runs as Vercel serverless functions in the same
+      deployment as the web app (Render is retired). Watch function execution limits and the
+      daily embed cron; `/api/health` stays the liveness check.
 - [ ] **Quotas**: Gemini API billing/limits (categorization + embeddings), Turso plan limits.
 - [ ] **Monitoring**: an uptime monitor on the web domain + `/api/health`; Vercel analytics
       optional.

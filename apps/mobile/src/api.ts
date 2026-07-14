@@ -11,13 +11,14 @@ import type {
 
 /**
  * API client — same contract as apps/web/lib/api.ts. Two selectable servers:
- * the open local one (iOS simulator reaches the host's localhost directly;
- * the Android emulator sees it as 10.0.2.2) and the deployed API — Next.js
- * route handlers on the web app's Vercel domain — which requires the Clerk
- * bearer token. EXPO_PUBLIC_API_URL overrides both.
+ * the local Next dev server (iOS simulator reaches the host's localhost
+ * directly; the Android emulator sees it as 10.0.2.2) and the deployed API —
+ * Next.js route handlers on the web app's Vercel domain. Both require the Clerk
+ * bearer token; the local dev server only accepts tokenless requests when
+ * started with DEV_OPEN_API=1. EXPO_PUBLIC_API_URL overrides both.
  */
 export const LOCAL_API_URL =
-  Platform.OS === "android" ? "http://10.0.2.2:4545" : "http://localhost:4545";
+  Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
 export const PROD_API_URL = "https://bookmark-ai.cloud";
 
 export type ServerTarget = "local" | "production";
@@ -35,9 +36,10 @@ export function getApiUrl(): string {
   return serverTarget === "production" ? PROD_API_URL : LOCAL_API_URL;
 }
 
-/** Clerk session token (registered from the ClerkProvider tree). Null →
- * unauthenticated request, which the open local server accepts and the
- * deployed server 401s. */
+/** Clerk session token (registered from the ClerkProvider tree). Mobile
+ * normally sends a token; null → unauthenticated request, which the local Next
+ * dev server accepts only when run with DEV_OPEN_API=1, and the deployed server
+ * always 401s. */
 let authTokenProvider: (() => Promise<string | null>) | null = null;
 
 export function setAuthTokenProvider(provider: () => Promise<string | null>): void {

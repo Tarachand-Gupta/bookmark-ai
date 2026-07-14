@@ -29,8 +29,8 @@ export default defineConfig({
       ...(browser === "chrome" ? ["tabGroups"] : []),
     ],
     host_permissions: [
-      // Match patterns ignore ports: covers the API (:4545) and the web app
-      // (:3000, Clerk syncHost) in one entry.
+      // Match patterns ignore ports, so this one entry covers the web dev
+      // server at localhost:3000 — both Clerk syncHost and the local /api base.
       "http://localhost/*",
       // Clerk frontend API (dev instance) — the extension talks to it directly.
       "https://darling-baboon-13.clerk.accounts.dev/*",

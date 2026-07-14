@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { AUTHORIZED_PARTIES } from "@/lib/authorized-parties";
 
 // The app can't be used without logging in first: every page except the auth
@@ -30,17 +30,28 @@ function corsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
-export default clerkMiddleware(
+// The API CORS handling, shared by both middleware variants. Returns the
+// response for an API route, or null when the request isn't one.
+function handleApiCors(request: NextRequest): NextResponse | null {
+  if (!isApiRoute(request)) return null;
+  const headers = corsHeaders(request.headers.get("origin"));
+  if (request.method === "OPTIONS") {
+    return new NextResponse(null, { status: 204, headers });
+  }
+  const response = NextResponse.next();
+  for (const [key, value] of Object.entries(headers)) response.headers.set(key, value);
+  return response;
+}
+
+// Keyless self-host mode has no Clerk keys, and clerkMiddleware throws at
+// request time without them — so pick the middleware at module load. With
+// keys: the full gate (protect() every page, self-authenticating /api). Without
+// keys: only API CORS, pages pass through unprotected (rendering the page UI
+// still needs Clerk, but that's a build/config concern documented elsewhere).
+const clerkGate = clerkMiddleware(
   async (auth, request) => {
-    if (isApiRoute(request)) {
-      const headers = corsHeaders(request.headers.get("origin"));
-      if (request.method === "OPTIONS") {
-        return new NextResponse(null, { status: 204, headers });
-      }
-      const response = NextResponse.next();
-      for (const [key, value] of Object.entries(headers)) response.headers.set(key, value);
-      return response;
-    }
+    const apiResponse = handleApiCors(request);
+    if (apiResponse) return apiResponse;
     if (!isPublicRoute(request)) {
       await auth.protect();
     }
@@ -50,6 +61,12 @@ export default clerkMiddleware(
   // with Express semantics (absent = pass, wrong = reject) lives in
   // lib/server/require-user.ts instead.
 );
+
+function keylessMiddleware(request: NextRequest): NextResponse {
+  return handleApiCors(request) ?? NextResponse.next();
+}
+
+export default process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? clerkGate : keylessMiddleware;
 
 export const config = {
   matcher: [

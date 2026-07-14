@@ -7,53 +7,52 @@ fails, the regression is real. Commands assume repo root unless noted.
 
 ```bash
 pnpm install
-pnpm turbo build check-types        # 9 tasks; server "no output files" warning is cosmetic
+pnpm turbo build check-types        # builds + typechecks every package
 cd apps/desktop && native check && native test   # markup+contract clean, 11/11 tests
 ```
 
-## 1. Server + database
+## 1. API + database
+
+The API is the web dev server (`apps/web` on :3000) — there is no separate server. Run it
+OPEN (`DEV_OPEN_API=1`) so tokenless curl works without a Clerk session:
 
 ```bash
-# Free the port first — a stale server serves OLD code silently:
-lsof -i :4545 -P   # kill any PID found
-pnpm --filter @bookmark-ai/server dev
+# Free the port first — a stale dev server serves OLD code silently:
+lsof -i :3000 -P   # kill any PID found (process is `next-server`, not tsx)
+DEV_OPEN_API=1 pnpm --filter @bookmark-ai/web dev
 ```
 
-Expected boot log: API on :4545, `database: file:./data/bookmarks.db`, `ai: gemini|disabled`.
+Boots Next on :3000; with `DATABASE_URL` unset it falls back to the repo-root
+`file:../../data/bookmarks.db`. Without `DEV_OPEN_API=1` (and with Clerk keys configured)
+these curls return `401` — that's the auth gate working; use a Clerk JWT or run open.
 
 ```bash
-curl -s http://localhost:4545/api/health
+curl -s http://localhost:3000/api/health
 # {"ok":true,"ai":false}   (ai:true when GEMINI_API_KEY set)
 
 # Save (exercises OG scrape + categorization; needs internet):
-curl -s -X POST http://localhost:4545/api/bookmarks -H 'content-type: application/json' \
+curl -s -X POST http://localhost:3000/api/bookmarks -H 'content-type: application/json' \
   -d '{"url":"https://github.com/vercel-labs/native","browser":"chrome","device":"laptop","os":"macOS"}'
 # → 201; bookmark.og.image + og.favicon populated, category "Development" (heuristic) with tags
 
-curl -s "http://localhost:4545/api/search?q=native+desktop&mode=text"   # ≥1 result
-curl -s "http://localhost:4545/api/search?q=native&mode=ai"             # no key → mode:"text", fallback:true
-curl -s http://localhost:4545/api/meta                                   # facet counts consistent
+curl -s "http://localhost:3000/api/search?q=native+desktop&mode=text"   # ≥1 result
+curl -s "http://localhost:3000/api/search?q=native&mode=ai"             # no key → mode:"text", fallback:true
+curl -s http://localhost:3000/api/meta                                   # facet counts consistent
 ```
 
 Deployed API (no local server needed — hits the live Vercel deployment):
 
 ```bash
 curl -s https://bookmark-ai.cloud/api/health
-# {"ok":true,"ai":true}   — public, no auth required
+# {"ok":true,"ai":true}   — public, the one route that skips auth
 
 curl -s https://bookmark-ai.cloud/api/bookmarks
 # {"error":"Missing or invalid bearer token"}   — 401, needs a Clerk session JWT
 ```
 
-Vector layer without a Gemini key (synthetic embedding round-trip):
-
-```bash
-cd apps/server && pnpm tsx scripts/verify-vector.ts
-# OK: vector store+search works (top score 1.0000, embedded=true)
-```
-
-With a key: save a bookmark, wait ≤30 s for `[embed] <id> <domain>` in the server log, then
-`mode=ai` must return results WITHOUT `fallback` and score by meaning, not keywords.
+With a Gemini key: save a bookmark, then the Next `after()` embeds it in the background
+(watch the dev-server log for the `[embed] <id> <domain>` line) within a second or two;
+`mode=ai` must then return results WITHOUT `fallback` and score by meaning, not keywords.
 
 Edge cases that must not 500: unreachable URL saves fine with empty OG; `q` with FTS
 operators (`"a AND (b"`) is sanitized; re-saving a URL updates instead of duplicating.
@@ -61,7 +60,7 @@ operators (`"a AND (b"`) is sanitized; re-saving a URL updates instead of duplic
 ## 2. Web app (browser/computer-use testing)
 
 ```bash
-pnpm --filter @bookmark-ai/web dev   # :3000  (server must be up)
+pnpm --filter @bookmark-ai/web dev   # :3000  (this same process serves the API)
 ```
 
 Checklist:
@@ -96,7 +95,7 @@ Checklist:
 - "+ Add" dialog: paste URL (scheme auto-prepended) → saves → grid+sidebar refresh.
 - Hover a card → trash icon → delete works.
 - Mobile (375px): sidebar becomes sheet via trigger; header wraps; grid is 1-col.
-- Server down → friendly error panel naming the dev command (not a crash).
+- API failure (e.g. DB unreachable) → friendly error panel, not a crash.
 
 ## 3. Extension (WXT)
 
@@ -129,18 +128,19 @@ All three must succeed. Live test (needs a real browser via computer use / chrom
 
 ## 4. Desktop (native SDK — GUI session required)
 
-Full detail in `apps/desktop/CLAUDE.md`. Fast path:
+Full detail in `apps/desktop/CLAUDE.md`. The desktop app talks to the local web dev server,
+so start it OPEN first: `DEV_OPEN_API=1 pnpm --filter @bookmark-ai/web dev`. Fast path:
 
 ```bash
 cd apps/desktop
-native dev -Dautomation=true &      # window opens; boot-fetches from :4545
+native dev -Dautomation=true &      # window opens; boot-fetches from :3000
 native automate wait                # ready=true + full widget snapshot
 native automate screenshot main-canvas   # deterministic PNG in .zig-cache/native-sdk-automation/
 ```
 
 Verify in the snapshot/screenshot: sidebar categories with counts; cards with site line,
 title, description, category badge, #tags, `browser · device · day`; status bar
-`N shown · M total · localhost:4545`.
+`N shown · M total · localhost:3000`.
 
 Interaction: get a category row's widget id from `native automate snapshot`
 (**the id right after `#` on the SAME line as `role=listitem`** — the trailing `parent=#…` id
@@ -156,7 +156,7 @@ Search (header field): get the textbox id from the snapshot (`role=textbox`), th
 ```bash
 native automate widget-action main-canvas <textbox-id> set_text fetch
 native automate widget-key main-canvas enter
-# header → Search "fetch"; status bar → "N result(s) · localhost:4545"
+# header → Search "fetch"; status bar → "N result(s) · localhost:3000"
 native automate widget-action main-canvas <textbox-id> set_text ""   # restores the library
 ```
 
@@ -165,8 +165,8 @@ Card click / context-menu "Open in Browser" opens the URL in the default browser
 
 ## 5. Cross-surface E2E (the money test)
 
-1. Server + web running, extension loaded.
-2. Save a page from the extension in Chrome.
+1. Web dev server running (open, on :3000 — it serves both the UI and the API), extension loaded.
+2. Save a page from the extension in Chrome (point its popup API URL at `http://localhost:3000`).
 3. Web app (:3000): bookmark appears with browser=chrome provenance.
 4. Desktop: press the refresh button (top right) → same bookmark appears natively.
 5. Search for it by a title word in both web (text mode) and `curl /api/search`.
