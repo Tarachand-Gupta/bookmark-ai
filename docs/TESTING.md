@@ -117,6 +117,10 @@ All three must succeed. Live test (needs a real browser via computer use / chrom
 - Firefox: `about:debugging` → Load Temporary Add-on → `.output/firefox-mv2/manifest.json`.
 - Safari (verified recipe — needs full Xcode):
   1. `cd apps/extension && xcrun safari-web-extension-converter .output/safari-mv2 --app-name "Bookmark AI" --bundle-identifier ai.bookmark.safari --project-location safari-xcode --macos-only --no-open --no-prompt --force`
+     Note: running the converter WITHOUT `--project-location` dumps a duplicate project with
+     placeholder `com.yourCompany.*` bundle ids into `apps/extension/Bookmark AI/` — delete it and
+     use the command above. JS/manifest-only changes need NO reconversion: the Xcode folder
+     references pick up a fresh `pnpm build:safari`, so just rebuild in Xcode.
   2. The converter mis-namespaces the APP target's bundle id (`ai.bookmark.Bookmark-AI` vs the
      appex's `ai.bookmark.safari.Extension`) and the build fails at ValidateEmbeddedBinary —
      fix: `sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = "ai.bookmark.Bookmark-AI";/PRODUCT_BUNDLE_IDENTIFIER = ai.bookmark.safari;/g' "safari-xcode/Bookmark AI/Bookmark AI.xcodeproj/project.pbxproj"`

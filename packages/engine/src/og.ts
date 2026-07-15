@@ -1,9 +1,7 @@
 import type { OpenGraph } from "@bookmark-ai/types";
+import { followRedirects, readCapped } from "./net-guard";
 
-const FETCH_TIMEOUT_MS = 10_000;
-const MAX_HTML_BYTES = 512 * 1024;
-const USER_AGENT =
-  "Mozilla/5.0 (compatible; BookmarkAI/0.1; +https://github.com/bookmark-ai) AppleWebKit/537.36";
+const MAX_HTML_BYTES = 2 * 1024 * 1024; // 2MB cap on the response body
 
 export interface ScrapeResult {
   og: OpenGraph;
@@ -14,22 +12,21 @@ export interface ScrapeResult {
 
 /**
  * Fetch a page and extract Open Graph metadata (with standard-meta and
- * <title> fallbacks). Never throws: unreachable pages yield empty OG data so
- * a bookmark can always be saved.
+ * <title> fallbacks). Never throws: unreachable OR blocked pages yield empty OG
+ * data so a bookmark can always be saved.
+ *
+ * SSRF-hardened because it fetches user-supplied URLs server-side: only
+ * http/https on default web ports, every hostname is DNS-resolved and rejected
+ * if it maps to a private/reserved address, redirects are followed manually and
+ * re-validated per hop, and the body is capped.
  */
 export async function scrapeOpenGraph(url: string): Promise<ScrapeResult> {
   const empty: ScrapeResult = { og: {}, title: null, description: null };
   let html: string;
   try {
-    const res = await fetch(url, {
-      headers: { "user-agent": USER_AGENT, accept: "text/html,application/xhtml+xml" },
-      redirect: "follow",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!res.ok) return empty;
-    const contentType = res.headers.get("content-type") ?? "";
-    if (!contentType.includes("html") && contentType !== "") return empty;
-    html = truncate(await res.text(), MAX_HTML_BYTES);
+    const fetched = await fetchHtml(url);
+    if (fetched === null) return empty;
+    html = fetched;
   } catch {
     return empty;
   }
@@ -52,6 +49,28 @@ export async function scrapeOpenGraph(url: string): Promise<ScrapeResult> {
     title: og.title ?? titleTag,
     description: og.description ?? null,
   };
+}
+
+/**
+ * Fetch HTML, following redirects manually and re-validating every hop against
+ * the SSRF policy (see {@link followRedirects}). Returns the (capped) HTML, or
+ * null for any non-HTML, error, blocked, or over-hop response. Throws only on
+ * transport errors / timeouts, which the caller treats as graceful degradation.
+ */
+async function fetchHtml(startUrl: string): Promise<string | null> {
+  const res = await followRedirects(startUrl, { accept: "text/html,application/xhtml+xml" });
+  if (res === null) return null; // redirect budget exceeded
+
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => {});
+    return null;
+  }
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("html") && contentType !== "") {
+    await res.body?.cancel().catch(() => {});
+    return null;
+  }
+  return readCapped(res, MAX_HTML_BYTES);
 }
 
 /** Collect <meta property|name="…" content="…"> pairs, attribute order agnostic. */
@@ -120,8 +139,4 @@ function decodeEntities(s: string): string {
     .replace(/&#0?39;/g, "'")
     .replace(/&#x27;/gi, "'")
     .replace(/&nbsp;/g, " ");
-}
-
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) : s;
 }

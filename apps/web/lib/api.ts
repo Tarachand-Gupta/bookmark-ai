@@ -1,12 +1,17 @@
 import type {
+  AiProvider,
   Bookmark,
   CreateBookmarkInput,
+  ExportBundle,
   HealthResponse,
   ListBookmarksResponse,
+  ListModelsResponse,
   ListSessionsResponse,
   MetaResponse,
   SearchMode,
   SearchResponse,
+  UpdateUserSettingsInput,
+  UserSettingsResponse,
 } from "@bookmark-ai/types";
 
 /** Same-origin by default — the API lives in this Next.js app's /api routes.
@@ -122,4 +127,72 @@ export async function deleteSession(id: string): Promise<void> {
     headers: await authHeaders(),
   });
   if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
+}
+
+// ── Settings ────────────────────────────────────────────────────────────────
+
+export function getSettings(signal?: AbortSignal): Promise<UserSettingsResponse> {
+  return request<UserSettingsResponse>("/api/settings", { signal });
+}
+
+/** Persist settings. Include `apiKey` only when the user typed a new one
+ * (absent = keep the stored key, "" = clear it). */
+export function updateSettings(input: UpdateUserSettingsInput): Promise<UserSettingsResponse> {
+  return request<UserSettingsResponse>("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+/** Validate a provider key by listing its models (doubles as "test connection").
+ * Sends the typed key, or omits it to reuse the stored one. */
+export function fetchAiModels(input: {
+  provider: AiProvider;
+  apiKey?: string;
+  baseUrl?: string;
+}): Promise<ListModelsResponse> {
+  return request<ListModelsResponse>("/api/settings/ai/models", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+// ── Data export / import ──────────────────────────────────────────────────────
+
+/** Download the caller's full data as a versioned, lossless bundle. The route
+ * also sets a Content-Disposition header, but the UI reads the JSON body and
+ * builds its own Blob download so it can name the file with today's date. */
+export function exportData(): Promise<ExportBundle> {
+  return request<ExportBundle>("/api/export");
+}
+
+/** Import a previously-exported bundle. Bookmarks upsert by URL (idempotent) and
+ * original timestamps are preserved. `bundle` is the parsed export object; the
+ * server re-validates and upgrades it, throwing a 400 on anything unrecognized. */
+export function importData(
+  bundle: unknown,
+): Promise<{ imported: { bookmarks: number; sessions: number } }> {
+  return request<{ imported: { bookmarks: number; sessions: number } }>("/api/import", {
+    method: "POST",
+    body: JSON.stringify(bundle),
+  });
+}
+
+// ── Account ───────────────────────────────────────────────────────────────────
+
+/** Permanently delete the signed-in account (and, via the Clerk user.deleted
+ * webhook, its tenant DB). Resolves on 202; throws a friendly message in local/
+ * open mode (400, no Clerk user to delete) or on any other failure. Raw fetch
+ * rather than `request` so we can branch on the 202/400 status codes. */
+export async function deleteAccount(): Promise<void> {
+  const res = await fetch(`${API_URL}/api/account`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
+  if (res.status === 202) return;
+  if (res.status === 400) {
+    throw new Error("Account deletion isn't available in local mode.");
+  }
+  const body = await res.json().catch(() => null);
+  throw new Error((body as { error?: string })?.error ?? `Delete failed (${res.status})`);
 }

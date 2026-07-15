@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@bookmark-ai/db": "workspace:*",
-    "@bookmark-ai/types": "workspace:*"
+    "@bookmark-ai/types": "workspace:*",
+    "undici": "^7.28.0"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

@@ -1,5 +1,24 @@
 export { createDb, type Db } from "./client";
 export { ensureSchema, EMBEDDING_DIM } from "./schema";
+export { runMigrations, TENANT_MIGRATIONS, type Migration } from "./migrations";
+export {
+  ensureMasterSchema,
+  MASTER_MIGRATIONS,
+  getTenant,
+  insertTenant,
+  deleteTenant,
+  listActiveTenants,
+  bumpUsage,
+  type Tenant,
+  type UsageField,
+} from "./master";
+export {
+  TursoPlatform,
+  TursoPlatformError,
+  type PlatformConfig,
+  type PlatformDatabase,
+  type CreateTokenOptions,
+} from "./platform";
 export {
   insertBookmark,
   updateBookmarkContent,
@@ -28,3 +47,9 @@ export {
   searchSessions,
   type InsertSession,
 } from "./queries/sessions";
+export {
+  getUserSettings,
+  upsertUserSettings,
+  type UserSettingsRow,
+  type UserSettingsPatch,
+} from "./queries/settings";

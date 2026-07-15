@@ -2,23 +2,42 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTHORIZED_PARTIES } from "@/lib/authorized-parties";
 
-// The app can't be used without logging in first: every page except the auth
-// pages requires a signed-in user. API routes are NOT protect()ed here — they
-// authenticate themselves via requireUser() (clean 401 JSON instead of a
-// redirect, and Bearer-token clients like the extension and mobile app never
-// want an HTML sign-in page). clerkMiddleware still runs on /api so auth()
-// has request context there.
-const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
+// The app itself (/app and everything else) can't be used without logging in
+// first. Public routes: the marketing home ("/", exact — /app stays protected)
+// and the auth pages. API routes are NOT protect()ed here — they authenticate
+// themselves via requireUser() (clean 401 JSON instead of a redirect, and
+// Bearer-token clients like the extension and mobile app never want an HTML
+// sign-in page). clerkMiddleware still runs on /api (and "/") so auth() has
+// request context there — the marketing page reads it to redirect signed-in
+// users straight to /app.
+const isPublicRoute = createRouteMatcher([
+  "/",
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/privacy",
+  "/terms",
+]);
 const isApiRoute = createRouteMatcher(["/api(.*)"]);
 
-// Browser CORS for the API: known web origins and any browser-extension
-// scheme (Firefox ids are per-install UUIDs, so no pinning — the bearer
-// token is the real gate). Unknown web origins get no CORS headers.
+// Browser CORS for the API: known web origins plus allowed extension origins.
+// Unknown web origins get no CORS headers.
 const CORS_WEB_ORIGINS = new Set(AUTHORIZED_PARTIES.filter((o) => o.startsWith("http")));
-const EXTENSION_SCHEME = /^(chrome|moz|safari-web)-extension:\/\//;
+
+// Extension CORS allowlist. Firefox ids are per-install UUIDs (unpinnable), so
+// any moz-extension origin is allowed — the bearer token is the real gate there.
+// But chrome-extension:// and safari-web-extension:// ids ARE stable and pinned,
+// so those must EXACTLY match our authorized extension id; otherwise an arbitrary
+// malicious extension could get CORS access to a user's session.
+const FIREFOX_EXTENSION = /^moz-extension:\/\//;
+const PINNED_EXTENSION = /^(chrome|safari-web)-extension:\/\//;
+function isAllowedExtensionOrigin(origin: string): boolean {
+  if (FIREFOX_EXTENSION.test(origin)) return true;
+  if (PINNED_EXTENSION.test(origin)) return AUTHORIZED_PARTIES.includes(origin);
+  return false;
+}
 
 function corsHeaders(origin: string | null): Record<string, string> {
-  if (!origin || (!CORS_WEB_ORIGINS.has(origin) && !EXTENSION_SCHEME.test(origin))) {
+  if (!origin || (!CORS_WEB_ORIGINS.has(origin) && !isAllowedExtensionOrigin(origin))) {
     return { vary: "Origin" };
   }
   return {

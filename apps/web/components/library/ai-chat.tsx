@@ -3,7 +3,22 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type ToolUIPart } from "ai";
-import { Check, Copy, ExternalLink, Folder, Globe, Layers, Search, Sparkles, X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import {
+  Check,
+  Copy,
+  Database,
+  ExternalLink,
+  FileText,
+  Folder,
+  Globe,
+  Layers,
+  Link2,
+  Search,
+  Sparkles,
+  X,
+} from "lucide-react";
 import {
   Conversation,
   ConversationContent,
@@ -20,26 +35,44 @@ import {
   PromptInputTextarea,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
-import { Response } from "@/components/ai-elements/response";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { LibraryFilters } from "@/lib/api";
 
 interface BookmarkHit {
   id: string;
   title: string;
   url: string;
-  domain: string;
-  description: string | null;
   category: string;
   tags: string[];
+  day: string;
   score: number;
-  favicon: string | null;
 }
 
 interface SearchToolOutput {
-  modeUsed: string;
+  mode: string;
   fallback: boolean;
   results: BookmarkHit[];
+}
+
+interface SqlToolOutput {
+  columns?: string[];
+  rows?: unknown[][];
+  rowCount?: number;
+  truncated?: boolean;
+  error?: string;
+}
+
+interface WebSearchOutput {
+  results: { title: string; url: string; snippet: string }[];
+}
+
+interface FetchUrlOutput {
+  url?: string;
+  title?: string | null;
+  text?: string;
+  truncated?: boolean;
+  error?: string;
 }
 
 interface SessionHit {
@@ -114,7 +147,7 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
             <ConversationEmptyState
               icon={<Sparkles className="size-8" aria-hidden />}
               title="Ask anything about your bookmarks"
-              description="The agent searches your library with full-text and semantic tools, then answers with citations."
+              description="The agent searches your library, runs SQL for counts and trends, and can search the web — then answers with citations."
             />
           )}
           {messages.map((message) => (
@@ -124,16 +157,33 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
               <MessageContent className={message.role === "assistant" ? "w-full" : undefined}>
                 {message.parts.map((part, i) => {
                   if (part.type === "text") {
-                    return <Response key={`${message.id}-${i}`}>{part.text}</Response>;
+                    // Assistant answers are markdown (incl. GFM tables); user
+                    // messages stay verbatim plain text.
+                    return message.role === "assistant" ? (
+                      <Markdown key={`${message.id}-${i}`}>{part.text}</Markdown>
+                    ) : (
+                      <span key={`${message.id}-${i}`} className="whitespace-pre-wrap">
+                        {part.text}
+                      </span>
+                    );
                   }
-                  if (
-                    part.type === "tool-searchFullText" ||
-                    part.type === "tool-searchSemantic"
-                  ) {
+                  if (part.type === "tool-searchBookmarks") {
                     const tool = part as ToolUIPart;
                     return (
                       <SearchToolCall key={tool.toolCallId} part={tool} onFilter={onFilter} />
                     );
+                  }
+                  if (part.type === "tool-queryDatabase") {
+                    const tool = part as ToolUIPart;
+                    return <SqlToolCall key={tool.toolCallId} part={tool} />;
+                  }
+                  if (part.type === "tool-webSearch") {
+                    const tool = part as ToolUIPart;
+                    return <WebSearchToolCall key={tool.toolCallId} part={tool} />;
+                  }
+                  if (part.type === "tool-fetchUrl") {
+                    const tool = part as ToolUIPart;
+                    return <FetchUrlToolCall key={tool.toolCallId} part={tool} />;
                   }
                   if (part.type === "tool-listSessions") {
                     const tool = part as ToolUIPart;
@@ -174,9 +224,15 @@ function SearchToolCall({
   part: ToolUIPart;
   onFilter?: (filters: LibraryFilters) => void;
 }) {
-  const semantic = part.type === "tool-searchSemantic";
-  const input = part.input as { query?: string } | undefined;
+  const input = part.input as { query?: string; mode?: string } | undefined;
   const output = part.output as SearchToolOutput | undefined;
+  const mode = output?.mode ?? input?.mode ?? "hybrid";
+  const semantic = mode === "ai" || mode === "semantic";
+  const label = semantic
+    ? "Semantic search"
+    : mode === "text"
+      ? "Full-text search"
+      : "Bookmark search";
   const running = part.state === "input-streaming" || part.state === "input-available";
   const failed = part.state === "output-error";
   const hits = output?.results.length ?? 0;
@@ -189,9 +245,7 @@ function SearchToolCall({
         ) : (
           <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         )}
-        <span className="shrink-0 font-medium">
-          {semantic ? "Semantic search" : "Full-text search"}
-        </span>
+        <span className="shrink-0 font-medium">{label}</span>
         {input?.query && (
           <span className="line-clamp-1 min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
             “{input.query}”
@@ -212,14 +266,259 @@ function SearchToolCall({
       </div>
       {failed && <p className="px-3 py-2 text-xs text-destructive">{part.errorText}</p>}
       {output && (
-        <BookmarkHits
-          hits={output.results}
-          showScore={output.modeUsed === "ai"}
-          onFilter={onFilter}
-        />
+        <BookmarkHits hits={output.results} showScore={output.mode === "ai"} onFilter={onFilter} />
       )}
     </div>
   );
+}
+
+/** One queryDatabase invocation: the SQL, then a scrollable result table (or error). */
+function SqlToolCall({ part }: { part: ToolUIPart }) {
+  const input = part.input as { sql?: string; purpose?: string } | undefined;
+  const output = part.output as SqlToolOutput | undefined;
+  const running = part.state === "input-streaming" || part.state === "input-available";
+  const failed = part.state === "output-error" || !!output?.error;
+  const rowCount = output?.rowCount ?? output?.rows?.length ?? 0;
+
+  return (
+    <div className="not-prose mb-1 w-full overflow-hidden rounded-lg border bg-background">
+      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs">
+        <Database className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="shrink-0 font-medium">SQL query</span>
+        {input?.purpose && (
+          <span className="line-clamp-1 min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
+            {input.purpose}
+          </span>
+        )}
+        <span className="ml-auto shrink-0 text-muted-foreground">
+          {running ? (
+            <span className="flex items-center gap-1.5">
+              <Loader size={12} />
+              Running…
+            </span>
+          ) : failed ? (
+            <span className="text-destructive">error</span>
+          ) : (
+            `${rowCount} row${rowCount === 1 ? "" : "s"}${output?.truncated ? " · capped" : ""}`
+          )}
+        </span>
+      </div>
+      {input?.sql && (
+        <pre className="overflow-x-auto border-b bg-muted/30 px-3 py-2 text-[11px] leading-relaxed">
+          <code>{input.sql}</code>
+        </pre>
+      )}
+      {(output?.error || (failed && part.errorText)) && (
+        <p className="px-3 py-2 text-xs text-destructive [overflow-wrap:anywhere]">
+          {output?.error ?? part.errorText}
+        </p>
+      )}
+      {output?.columns && output?.rows && (
+        <SqlResultTable columns={output.columns} rows={output.rows} />
+      )}
+    </div>
+  );
+}
+
+/** Compact, horizontally scrollable table for queryDatabase results (first 50 rows). */
+function SqlResultTable({ columns, rows }: { columns: string[]; rows: unknown[][] }) {
+  if (!rows.length) {
+    return <p className="px-3 py-2 text-xs text-muted-foreground">No rows.</p>;
+  }
+  const shown = rows.slice(0, 50);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-xs">
+        <thead>
+          <tr className="border-b bg-muted/30">
+            {columns.map((c) => (
+              <th key={c} className="px-2 py-1 text-left font-medium [overflow-wrap:anywhere]">
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((row, ri) => (
+            <tr key={ri} className="border-b last:border-0">
+              {columns.map((_, ci) => (
+                <td key={ci} className="px-2 py-1 align-top [overflow-wrap:anywhere]">
+                  {formatCell(row[ci])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length > shown.length && (
+        <p className="px-2 py-1 text-[10px] text-muted-foreground">
+          +{rows.length - shown.length} more row{rows.length - shown.length === 1 ? "" : "s"}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function formatCell(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+/** One webSearch invocation: the query + result links with snippets. */
+function WebSearchToolCall({ part }: { part: ToolUIPart }) {
+  const input = part.input as { query?: string } | undefined;
+  const output = part.output as WebSearchOutput | undefined;
+  const running = part.state === "input-streaming" || part.state === "input-available";
+  const failed = part.state === "output-error";
+  const count = output?.results.length ?? 0;
+
+  return (
+    <div className="not-prose mb-1 w-full overflow-hidden rounded-lg border bg-background">
+      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs">
+        <Globe className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="shrink-0 font-medium">Web search</span>
+        {input?.query && (
+          <span className="line-clamp-1 min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
+            “{input.query}”
+          </span>
+        )}
+        <span className="ml-auto shrink-0 text-muted-foreground">
+          {running ? (
+            <span className="flex items-center gap-1.5">
+              <Loader size={12} />
+              Searching…
+            </span>
+          ) : failed ? (
+            <span className="text-destructive">failed</span>
+          ) : (
+            `${count} result${count === 1 ? "" : "s"}`
+          )}
+        </span>
+      </div>
+      {output &&
+        (count === 0 ? (
+          <p className="px-3 py-2 text-xs text-muted-foreground">No web results.</p>
+        ) : (
+          <ul className="divide-y">
+            {output.results.map((r, i) => {
+              const href = safeHref(r.url);
+              return (
+              <li key={`${r.url}-${i}`} className="px-3 py-2">
+                {href ? (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="line-clamp-1 text-sm font-medium hover:underline [overflow-wrap:anywhere]"
+                  >
+                    {r.title}
+                  </a>
+                ) : (
+                  <span className="line-clamp-1 text-sm font-medium [overflow-wrap:anywhere]">
+                    {r.title}
+                  </span>
+                )}
+                <p className="line-clamp-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                  {hostOf(r.url)}
+                </p>
+                {r.snippet && (
+                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                    {r.snippet}
+                  </p>
+                )}
+              </li>
+              );
+            })}
+          </ul>
+        ))}
+    </div>
+  );
+}
+
+/** One fetchUrl invocation: the page title/URL + a short text preview (or error). */
+function FetchUrlToolCall({ part }: { part: ToolUIPart }) {
+  const input = part.input as { url?: string } | undefined;
+  const output = part.output as FetchUrlOutput | undefined;
+  const running = part.state === "input-streaming" || part.state === "input-available";
+  const failed = part.state === "output-error" || !!output?.error;
+  const shownUrl = output?.url ?? input?.url;
+
+  return (
+    <div className="not-prose mb-1 w-full overflow-hidden rounded-lg border bg-background">
+      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs">
+        <FileText className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="shrink-0 font-medium">Fetched page</span>
+        {shownUrl &&
+          (safeHref(shownUrl) ? (
+            <a
+              href={safeHref(shownUrl)}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="line-clamp-1 min-w-0 text-muted-foreground hover:underline [overflow-wrap:anywhere]"
+            >
+              {hostOf(shownUrl)}
+            </a>
+          ) : (
+            <span className="line-clamp-1 min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
+              {hostOf(shownUrl)}
+            </span>
+          ))}
+        <span className="ml-auto shrink-0 text-muted-foreground">
+          {running ? (
+            <span className="flex items-center gap-1.5">
+              <Loader size={12} />
+              Reading…
+            </span>
+          ) : failed ? (
+            <span className="text-destructive">error</span>
+          ) : (
+            <Link2 className="size-3.5" aria-hidden />
+          )}
+        </span>
+      </div>
+      {(output?.error || (failed && part.errorText)) && (
+        <p className="px-3 py-2 text-xs text-destructive [overflow-wrap:anywhere]">
+          {output?.error ?? part.errorText}
+        </p>
+      )}
+      {output && !output.error && (
+        <div className="px-3 py-2">
+          {output.title && <p className="text-sm font-medium [overflow-wrap:anywhere]">{output.title}</p>}
+          {output.text && (
+            <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+              {output.text.slice(0, 300)}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** hostname without a leading www., falling back to the raw string. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Guard a data-derived URL before it becomes an `href`. Returns the url only
+ * when it parses to http(s); anything else (`javascript:`, `data:`, `chrome:`,
+ * garbage) yields undefined so the caller renders plain text instead of a live
+ * link. Saved *tab* URLs are stored permissively — this render guard, not input
+ * validation, is what keeps a hostile scheme out of the DOM.
+ */
+function safeHref(url: string): string | undefined {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "http:" || protocol === "https:" ? url : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -273,18 +572,27 @@ function SessionsToolCall({ part }: { part: ToolUIPart }) {
                   </span>
                 </div>
                 <ul className="mt-1 space-y-0.5">
-                  {s.tabs.slice(0, 5).map((t, i) => (
+                  {s.tabs.slice(0, 5).map((t, i) => {
+                    const href = safeHref(t.url);
+                    return (
                     <li key={`${t.url}-${i}`}>
-                      <a
-                        href={t.url}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="line-clamp-1 text-xs text-muted-foreground hover:text-foreground hover:underline [overflow-wrap:anywhere]"
-                      >
-                        {t.title || t.url}
-                      </a>
+                      {href ? (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="line-clamp-1 text-xs text-muted-foreground hover:text-foreground hover:underline [overflow-wrap:anywhere]"
+                        >
+                          {t.title || t.url}
+                        </a>
+                      ) : (
+                        <span className="line-clamp-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                          {t.title || t.url}
+                        </span>
+                      )}
                     </li>
-                  ))}
+                    );
+                  })}
                   {s.tabs.length > 5 && (
                     <li className="text-[10px] text-muted-foreground">
                       +{s.tabCount - 5} more tab{s.tabCount - 5 === 1 ? "" : "s"}
@@ -314,29 +622,32 @@ function BookmarkHits({
   }
   return (
     <ul className="divide-y">
-      {hits.map((r) => (
+      {hits.map((r) => {
+        const href = safeHref(r.url);
+        return (
         <li
           key={r.id}
           className="flex items-start gap-2.5 px-3 py-2.5 transition-colors hover:bg-muted/50"
         >
-          {r.favicon ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={r.favicon} alt="" className="mt-0.5 size-4 shrink-0 rounded-sm" />
-          ) : (
-            <Globe className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-          )}
+          <Globe className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
               {/* line-clamp-1 (not truncate): nowrap text would set the row's
                   intrinsic min-content width and stretch the page sideways. */}
-              <a
-                href={r.url}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="line-clamp-1 min-w-0 text-sm font-medium hover:underline [overflow-wrap:anywhere]"
-              >
-                {r.title}
-              </a>
+              {href ? (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="line-clamp-1 min-w-0 text-sm font-medium hover:underline [overflow-wrap:anywhere]"
+                >
+                  {r.title}
+                </a>
+              ) : (
+                <span className="line-clamp-1 min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
+                  {r.title}
+                </span>
+              )}
               {showScore && (
                 <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
                   {Math.round(r.score * 100)}% match
@@ -344,8 +655,8 @@ function BookmarkHits({
               )}
             </div>
             <p className="line-clamp-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-              {r.domain}
-              {r.description ? ` — ${r.description}` : ""}
+              {hostOf(r.url)}
+              {r.day ? ` · ${r.day}` : ""}
             </p>
             <div className="mt-1.5 flex flex-wrap items-center gap-1">
               <button
@@ -372,20 +683,23 @@ function BookmarkHits({
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
             <CopyLinkButton url={r.url} />
-            <Button variant="ghost" size="icon" className="size-7" asChild>
-              <a
-                href={r.url}
-                target="_blank"
-                rel="noreferrer noopener"
-                aria-label={`Open ${r.title}`}
-                title="Open in new tab"
-              >
-                <ExternalLink className="size-3.5" aria-hidden />
-              </a>
-            </Button>
+            {href && (
+              <Button variant="ghost" size="icon" className="size-7" asChild>
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  aria-label={`Open ${r.title}`}
+                  title="Open in new tab"
+                >
+                  <ExternalLink className="size-3.5" aria-hidden />
+                </a>
+              </Button>
+            )}
           </div>
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }
@@ -429,5 +743,80 @@ function CopyLinkButton({ url }: { url: string }) {
         <Copy className="size-3.5" aria-hidden />
       )}
     </Button>
+  );
+}
+
+/**
+ * Assistant answers rendered as GitHub-flavored markdown (links, lists, code,
+ * and — the reason for remark-gfm — tables). Styling is applied via the
+ * `components` map with Tailwind classes so it matches the app; wide tables and
+ * code blocks scroll inside their own container instead of stretching the bubble.
+ */
+function Markdown({ children }: { children: string }) {
+  return (
+    <div className="text-sm leading-relaxed [overflow-wrap:anywhere]">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ node, ...props }) => (
+            <a
+              {...props}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="font-medium underline underline-offset-2 hover:opacity-80"
+            />
+          ),
+          p: ({ node, ...props }) => <p {...props} className="my-1.5 first:mt-0 last:mb-0" />,
+          ul: ({ node, ...props }) => (
+            <ul {...props} className="my-1.5 list-disc space-y-0.5 pl-5" />
+          ),
+          ol: ({ node, ...props }) => (
+            <ol {...props} className="my-1.5 list-decimal space-y-0.5 pl-5" />
+          ),
+          h1: ({ node, ...props }) => <h1 {...props} className="mt-3 mb-1 text-base font-semibold" />,
+          h2: ({ node, ...props }) => <h2 {...props} className="mt-3 mb-1 text-sm font-semibold" />,
+          h3: ({ node, ...props }) => <h3 {...props} className="mt-2 mb-1 text-sm font-semibold" />,
+          blockquote: ({ node, ...props }) => (
+            <blockquote {...props} className="my-1.5 border-l-2 pl-3 text-muted-foreground" />
+          ),
+          hr: ({ node, ...props }) => <hr {...props} className="my-2 border-border" />,
+          pre: ({ node, ...props }) => (
+            <pre
+              {...props}
+              className="my-2 overflow-x-auto rounded-md bg-muted p-3 text-xs leading-relaxed"
+            />
+          ),
+          code: ({ node, className, children, ...props }) => {
+            const block = /language-/.test(className ?? "");
+            return block ? (
+              <code {...props} className={className}>
+                {children}
+              </code>
+            ) : (
+              <code
+                {...props}
+                className={cn("rounded bg-muted px-1 py-0.5 text-[0.85em]", className)}
+              >
+                {children}
+              </code>
+            );
+          },
+          table: ({ node, ...props }) => (
+            <div className="my-2 overflow-x-auto">
+              <table {...props} className="w-full border-collapse text-xs" />
+            </div>
+          ),
+          thead: ({ node, ...props }) => <thead {...props} className="bg-muted/40" />,
+          th: ({ node, ...props }) => (
+            <th {...props} className="border border-border px-2 py-1 text-left font-medium" />
+          ),
+          td: ({ node, ...props }) => (
+            <td {...props} className="border border-border px-2 py-1 align-top" />
+          ),
+        }}
+      >
+        {children}
+      </ReactMarkdown>
+    </div>
   );
 }

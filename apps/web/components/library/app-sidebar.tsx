@@ -16,8 +16,8 @@ import {
   Library,
   Monitor,
   Plus,
+  Settings,
   Smartphone,
-  Sparkles,
   Tablet,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -36,6 +36,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import type { LibraryFilters } from "@/lib/api";
+import { SettingsDialog } from "./settings-dialog";
 
 /** Facet rows shown before a section needs its "View all" toggle. */
 const VISIBLE_CATEGORIES = 6;
@@ -77,7 +78,6 @@ export interface AppSidebarProps {
  */
 export function AppSidebar({
   meta,
-  aiEnabled,
   filters,
   onFilterChange,
   sessionsActive,
@@ -87,6 +87,7 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const { setOpenMobile } = useSidebar();
   const [allCategories, setAllCategories] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const select = (next: LibraryFilters) => {
     onFilterChange(next);
@@ -260,15 +261,16 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter>
-        <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
-          <Sparkles className="size-3.5" aria-hidden />
-          {aiEnabled === null
-            ? "Connecting…"
-            : aiEnabled
-              ? "AI organization on"
-              : "AI off — heuristics"}
-        </div>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={() => setSettingsOpen(true)}>
+              <Settings aria-hidden />
+              <span>Settings</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </Sidebar>
   );
 }

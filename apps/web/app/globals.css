@@ -20,3 +20,48 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* -------------------------------------------------------------------------
+ * Marketing landing — ambient background motion only.
+ * Slow, monochrome drift for the light blooms + a faint pan on the graph
+ * grid. All of it is gated behind prefers-reduced-motion, so a reduced-motion
+ * viewer gets a completely still field. Nothing here affects the /app UI.
+ * ---------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  .marketing-grid {
+    animation: marketing-grid-pan 90s linear infinite;
+  }
+  .marketing-aurora {
+    animation: marketing-drift 34s ease-in-out infinite alternate;
+  }
+  .marketing-aurora-alt {
+    animation: marketing-drift-alt 42s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes marketing-grid-pan {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 58px 116px;
+  }
+}
+
+@keyframes marketing-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(-4rem, 3rem, 0) scale(1.15);
+  }
+}
+
+@keyframes marketing-drift-alt {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(5rem, -2.5rem, 0) scale(1.2);
+  }
+}

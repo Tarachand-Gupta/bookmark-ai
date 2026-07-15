@@ -46,7 +46,11 @@ export function BookmarkGrid({
     );
   }
 
-  if (loading && !bookmarks) {
+  // While a fetch is in flight, show the skeleton whenever we have nothing
+  // fresh to render. useSearch keeps the *previous* response during the debounce
+  // + embed round-trip, and the first search inherits an empty result list — so
+  // guarding on `!bookmarks` alone flashed "No bookmarks here" for 1-3s mid-search.
+  if (loading && (!bookmarks || bookmarks.length === 0)) {
     return <LoadingSkeleton view={view} />;
   }
 

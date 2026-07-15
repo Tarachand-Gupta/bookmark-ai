@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { bookmarkSchema, browserSchema, deviceTypeSchema } from "./bookmark";
+import { bookmarkSchema, browserSchema, deviceTypeSchema, httpUrlSchema } from "./bookmark";
 
 /** POST /api/bookmarks — save a URL. OG scraping + categorization happen server-side. */
 export const createBookmarkSchema = z.object({
-  url: z.string().url(),
+  url: httpUrlSchema,
   /** Page title as seen by the client (fallback if OG scrape fails). */
   title: z.string().nullish(),
   browser: browserSchema.default("other"),
@@ -45,6 +45,10 @@ export type ListBookmarksQuery = z.infer<typeof listBookmarksQuerySchema>;
 
 /** One tab within a saved session. */
 export const sessionTabSchema = z.object({
+  // A saved session snapshots EVERY open tab, which legitimately includes
+  // browser-internal pages (chrome://, about:blank, moz-extension://…). Keep
+  // this permissive — XSS from a hostile tab URL is handled at the render layer
+  // (only http/https are emitted as clickable links; everything else is text).
   url: z.string(),
   title: z.string().default(""),
   favIconUrl: z.string().nullish(),

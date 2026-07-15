@@ -1,0 +1,174 @@
+import type { Db } from "./client";
+
+/**
+ * Dimension of stored embedding vectors. Matches Gemini's
+ * `gemini-embedding-001` with outputDimensionality=768. Lives here (with the
+ * baseline DDL that parameterizes it) and is re-exported from schema.ts.
+ */
+export const EMBEDDING_DIM = 768;
+
+/**
+ * One statement in a migration. A bare string is required (a throw aborts the
+ * whole migration and its version is NOT recorded, so it re-runs next boot). A
+ * `{ sql, tolerant: true }` statement is best-effort: if it throws it is logged
+ * and skipped so the rest of the migration — and every later migration — can
+ * still be recorded. Use `tolerant` only for optional/degrade-gracefully DDL
+ * (e.g. the libSQL vector ANN index, absent on builds without vector support).
+ */
+export type MigrationStatement = string | { sql: string; tolerant?: boolean };
+
+/** A single versioned migration. Statements run sequentially, in array order. */
+export interface Migration {
+  version: number;
+  name: string;
+  statements: MigrationStatement[];
+}
+
+/**
+ * Tiny self-managed migration runner. Turso deprecated "schema databases", so
+ * every DB tracks its own applied versions in `schema_migrations` and pending
+ * migrations are applied in ascending version order on first touch after a
+ * deploy. Each migration's statements run sequentially; the version row is
+ * recorded only after all of its NON-tolerant statements succeed. A `tolerant`
+ * statement that throws is warned-and-skipped (it never blocks the version
+ * record), so one optional DDL that a libSQL build rejects can't wedge every
+ * later migration behind a permanently-pending version. Returns the number applied.
+ */
+export async function runMigrations(db: Db, migrations: Migration[]): Promise<number> {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version    INTEGER PRIMARY KEY,
+      name       TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    )
+  `);
+
+  const done = new Set(
+    (await db.execute("SELECT version FROM schema_migrations")).rows.map((r) => Number(r.version)),
+  );
+  const pending = migrations
+    .filter((m) => !done.has(m.version))
+    .sort((a, b) => a.version - b.version);
+
+  for (const migration of pending) {
+    // executeMultiple runs a `;`-separated DDL batch (it tokenizes correctly,
+    // so trigger bodies with internal semicolons stay intact).
+    for (const statement of migration.statements) {
+      const sql = typeof statement === "string" ? statement : statement.sql;
+      const tolerant = typeof statement !== "string" && statement.tolerant === true;
+      if (tolerant) {
+        try {
+          await db.executeMultiple(sql);
+        } catch (err) {
+          console.warn(
+            `runMigrations: tolerant statement in v${migration.version} (${migration.name}) failed, continuing:`,
+            err,
+          );
+        }
+      } else {
+        await db.executeMultiple(sql);
+      }
+    }
+    await db.execute({
+      sql: "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+      args: [migration.version, migration.name, new Date().toISOString()],
+    });
+  }
+
+  return pending.length;
+}
+
+/**
+ * The tenant (per-user) schema as versioned migrations. v1 "baseline" is the
+ * ENTIRE original schema DDL — fully idempotent (`IF NOT EXISTS` everywhere) so
+ * its first run against the pre-existing production DB (which predates
+ * `schema_migrations`) is a no-op that just records version 1. Future changes =
+ * append a new Migration; never edit v1.
+ */
+export const TENANT_MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    name: "baseline",
+    statements: [
+      `
+        CREATE TABLE IF NOT EXISTS bookmarks (
+          id          TEXT PRIMARY KEY,
+          url         TEXT NOT NULL,
+          domain      TEXT NOT NULL,
+          title       TEXT NOT NULL,
+          description TEXT,
+          og_json     TEXT NOT NULL DEFAULT '{}',
+          browser     TEXT NOT NULL DEFAULT 'other',
+          device      TEXT NOT NULL DEFAULT 'other',
+          device_name TEXT,
+          os          TEXT,
+          saved_at    TEXT NOT NULL,
+          saved_day   TEXT NOT NULL,
+          category    TEXT NOT NULL DEFAULT 'Uncategorized',
+          tags_json   TEXT NOT NULL DEFAULT '[]',
+          created_at  TEXT NOT NULL,
+          embedding   F32_BLOB(${EMBEDDING_DIM})
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_saved_day ON bookmarks(saved_day);
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_category  ON bookmarks(category);
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_browser   ON bookmarks(browser);
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_device    ON bookmarks(device);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_bookmarks_url ON bookmarks(url);
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS bookmarks_fts USING fts5(
+          id UNINDEXED,
+          title,
+          description,
+          url,
+          category,
+          tags,
+          tokenize = 'porter unicode61'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS bookmarks_ai AFTER INSERT ON bookmarks BEGIN
+          INSERT INTO bookmarks_fts (id, title, description, url, category, tags)
+          VALUES (new.id, new.title, coalesce(new.description, ''), new.url, new.category, new.tags_json);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS bookmarks_ad AFTER DELETE ON bookmarks BEGIN
+          DELETE FROM bookmarks_fts WHERE id = old.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS bookmarks_au AFTER UPDATE ON bookmarks BEGIN
+          DELETE FROM bookmarks_fts WHERE id = old.id;
+          INSERT INTO bookmarks_fts (id, title, description, url, category, tags)
+          VALUES (new.id, new.title, coalesce(new.description, ''), new.url, new.category, new.tags_json);
+        END;
+      `,
+      `
+        CREATE TABLE IF NOT EXISTS sessions (
+          id         TEXT PRIMARY KEY,
+          name       TEXT NOT NULL,
+          tabs_json  TEXT NOT NULL DEFAULT '[]',
+          tab_count  INTEGER NOT NULL DEFAULT 0,
+          browser    TEXT NOT NULL DEFAULT 'other',
+          device     TEXT NOT NULL DEFAULT 'other',
+          saved_at   TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_sessions_saved_at ON sessions(saved_at);
+      `,
+      // ANN index for vector_top_k(). Needs libSQL vector support, which Turso
+      // cloud and @libsql/client (incl. file: mode) both provide. Marked
+      // `tolerant` so a libSQL build without vector support degrades to a plain
+      // (unindexed) vector scan instead of wedging this and every later migration.
+      {
+        sql: "CREATE INDEX IF NOT EXISTS idx_bookmarks_embedding ON bookmarks(libsql_vector_idx(embedding))",
+        tolerant: true,
+      },
+    ],
+  },
+  {
+    version: 2,
+    name: "user-settings",
+    statements: [
+      "CREATE TABLE IF NOT EXISTS user_settings (user_id TEXT PRIMARY KEY, ai_provider TEXT, ai_base_url TEXT, ai_api_key TEXT, ai_model TEXT, updated_at TEXT NOT NULL)",
+    ],
+  },
+];

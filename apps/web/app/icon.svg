@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!--
+    Bookmark AI favicon. Same ribbon mark as the sidebar (lucide "Bookmark"),
+    filled as a solid silhouette so it reads at 16px. Transparent background.
+    Monochrome, adapts to the OS light/dark preference: near-black on light,
+    near-white on dark (Chromium/Firefox honor prefers-color-scheme in SVG
+    favicons; Safari falls back to the default near-black fill).
+  -->
+  <style>
+    .mark { fill: #0a0a0a; }
+    @media (prefers-color-scheme: dark) {
+      .mark { fill: #fafafa; }
+    }
+  </style>
+  <path class="mark" d="M19 21 L12 17 L5 21 V5 A2 2 0 0 1 7 3 H17 A2 2 0 0 1 19 5 Z" />
+</svg>

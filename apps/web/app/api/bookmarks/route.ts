@@ -2,13 +2,12 @@ import { after, NextResponse, type NextRequest } from "next/server";
 import { createBookmarkSchema, listBookmarksQuerySchema } from "@bookmark-ai/types";
 import { listBookmarks } from "@bookmark-ai/db";
 import { embedPending, enrichBookmark, saveBookmarkFast } from "@bookmark-ai/engine";
-import { getApiContext } from "@/lib/server/context";
-import { requireUser } from "@/lib/server/require-user";
+import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
 
 export async function GET(req: NextRequest) {
-  const denied = await requireUser();
-  if (denied) return denied;
-  const { db, ready } = getApiContext();
+  const ctx = await getRequestApiContext();
+  if ("response" in ctx) return ctx.response;
+  const { db, ready } = ctx;
   await ready;
 
   const parsed = listBookmarksQuerySchema.safeParse(
@@ -24,9 +23,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = await requireUser();
-  if (denied) return denied;
-  const { db, gemini, ready } = getApiContext();
+  const ctx = await getRequestApiContext();
+  if ("response" in ctx) return ctx.response;
+  const { userId, db, gemini, ready } = ctx;
   await ready;
 
   const parsed = createBookmarkSchema.safeParse(await req.json().catch(() => null));
@@ -36,6 +35,9 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+
+  const overQuota = await enforceQuota(userId, "saves");
+  if (overQuota) return overQuota;
 
   // Instant save → 201; OG scrape + AI categorization + embedding run after
   // the response is sent (fluid compute keeps the instance alive for it).

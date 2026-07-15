@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { getMeta } from "@bookmark-ai/db";
-import { getApiContext } from "@/lib/server/context";
-import { requireUser } from "@/lib/server/require-user";
+import { getRequestApiContext } from "@/lib/server/api-context";
 
 export async function GET() {
-  const denied = await requireUser();
-  if (denied) return denied;
-  const { db, ready } = getApiContext();
+  const ctx = await getRequestApiContext();
+  if ("response" in ctx) return ctx.response;
+  const { db, ready } = ctx;
   await ready;
   return NextResponse.json(await getMeta(db));
 }

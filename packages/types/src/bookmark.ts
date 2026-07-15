@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+/**
+ * An http(s)-only URL string. Rejects `javascript:`, `data:`, `file:`, and any
+ * other scheme — validation-layer XSS defense-in-depth for URLs that later get
+ * rendered as clickable links (a render-layer guard is applied separately). All
+ * real bookmarks and saved tabs are http/https, so this rejects no valid data.
+ */
+export const httpUrlSchema = z
+  .string()
+  .url()
+  .refine((v) => /^https?:\/\//i.test(v), { message: "URL must be http(s)" });
+
 /** Browsers we detect. `other` covers anything unrecognized. */
 export const browserSchema = z.enum(["chrome", "firefox", "safari", "edge", "arc", "other"]);
 export type Browser = z.infer<typeof browserSchema>;
@@ -34,7 +45,7 @@ export type Source = z.infer<typeof sourceSchema>;
 /** A fully persisted bookmark as returned by the API. */
 export const bookmarkSchema = z.object({
   id: z.string(),
-  url: z.string().url(),
+  url: httpUrlSchema,
   domain: z.string(),
   title: z.string(),
   description: z.string().nullish(),

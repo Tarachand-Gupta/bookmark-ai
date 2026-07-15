@@ -148,11 +148,19 @@ mobile via Clerk Expo. The route handlers delegate to `packages/engine` — chan
 
 Production is **Turso cloud (libSQL/SQLite) holding REAL user data** — treat it like it.
 
-There is **NO migration framework and NO version table**. `ensureSchema` in
-`packages/db/src/schema.ts` **IS** the migration mechanism — idempotent `IF NOT EXISTS` DDL
-run at boot by the adapter (`apps/web/lib/server/context.ts`). Schema
-changes = extend it. Column adds = a guarded try/catch `ALTER TABLE … ADD COLUMN` next to it
-(idempotent: swallow the "duplicate column" error ONLY, rethrow everything else).
+There **IS** a self-managed migration runner now (`runMigrations` in
+`packages/db/src/migrations.ts`): every DB carries a `schema_migrations` version table, and
+pending versioned migrations are applied in ascending order on first touch after a deploy.
+`ensureSchema`/`ensureMasterSchema` are thin wrappers that hand the runner
+`TENANT_MIGRATIONS` (per-user DBs) / `MASTER_MIGRATIONS` (control plane). Each migration is a
+list of statements run sequentially; the version row is recorded only after ALL of that
+migration's statements succeed (per-migration all-or-nothing), so a throw leaves the version
+pending and it re-runs next boot. v1 "baseline" is fully idempotent (`IF NOT EXISTS`
+everywhere) so it's a no-op against pre-existing prod DBs — never edit v1; **append** a new
+`Migration` for any change. A statement may be a bare `string` (a throw aborts the migration)
+or `{ sql, tolerant: true }` — a tolerant statement that throws is warned-and-skipped so
+optional/degrade-gracefully DDL (e.g. the libSQL vector ANN index on builds without vector
+support) can't wedge that migration and every later one behind a permanently-pending version.
 
 1. **Additive-only for anything automated.** Allowed: `CREATE TABLE/INDEX IF NOT EXISTS` and
    `ADD COLUMN` (nullable or defaulted). NEVER `DROP` or `RENAME` a table/column holding data,
@@ -165,14 +173,17 @@ changes = extend it. Column adds = a guarded try/catch `ALTER TABLE … ADD COLU
    `turso db shell <db> ".dump" > backup.sql` — AND explicit user sign-off. Never bundle one
    silently into a feature commit.
 4. **Promote = migrate.** The schema change ships in the SAME commit as the code; prod applies
-   it on first boot via `ensureSchema`/guarded ALTERs. Never hand-run DDL against prod outside
-   this path.
-5. **Forward-pointer (planned, NOT built yet):** multi-tenant per-user Turso DBs behind a
-   master/control-plane DB. Turso's "schema database" feature is DEPRECATED for new users
-   (2026), so tenant migrations will use our own runner: a `schema_migrations` version table in
-   every tenant DB, versioned additive migrations applied per-tenant on first touch after a
-   deploy — the additive-only + backup-first rules then apply across ALL tenant DBs at once,
-   raising the stakes further.
+   it on first boot via the migration runner (`ensureSchema`). Never hand-run DDL against prod
+   outside this path.
+5. **Multi-tenant per-user Turso DBs behind a master/control-plane DB (BUILT).** Turso's
+   "schema database" feature is DEPRECATED for new users (2026), so tenant migrations use our
+   own runner (above): the additive-only + backup-first rules apply across ALL tenant DBs at
+   once, raising the stakes further. Appending a `Migration` mutates every tenant DB on their
+   next touch — treat it as a fleet-wide DDL, not a single-DB change.
+6. **Schema change to user data ⇒ bump the export format.** Any migration that adds or renames
+   a user-data column MUST also bump `SCHEMA_VERSION` in `packages/types/src/export.ts` and add
+   a `migrateExportBundle` vN→vN+1 upgrader step, so previously-exported bundles keep importing
+   losslessly. The export/import core lives in `packages/engine/src/export-import.ts`.
 
 ## Docs
 
