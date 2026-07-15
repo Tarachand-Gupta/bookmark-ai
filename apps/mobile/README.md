@@ -13,6 +13,25 @@ request. **Settings → Server** switches between the open local dev API and the
 API at `bookmark-ai.cloud` (Next.js route handlers in `apps/web`, which verify the token
 on every request).
 
+### Clerk instance
+
+The app defaults to the Clerk **production** instance (`clerk.bookmark-ai.cloud`), baked
+into `src/lib/clerk.ts` — a build mirrors accounts from the deployed web app out of the
+box. For **local development** against the dev instance, override the publishable key at
+build time, inline:
+
+```bash
+EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_ZGFybGluZy1iYWJvb24tMTMuY2xlcmsuYWNjb3VudHMuZGV2JA npx expo run:ios
+```
+
+or persist it in a gitignored `.env.local` (`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_…`).
+`EXPO_PUBLIC_*` values are inlined at bundle time, so **rebuild** after changing the key.
+
+| Instance | Publishable key |
+| --- | --- |
+| Production (default) | `pk_live_Y2xlcmsuYm9va21hcmstYWkuY2xvdWQk` |
+| Dev (local development) | `pk_test_ZGFybGluZy1iYWJvb24tMTMuY2xlcmsuYWNjb3VudHMuZGV2JA` |
+
 ## Layout
 
 | Path | What |

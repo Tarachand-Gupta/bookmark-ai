@@ -18,8 +18,8 @@ import { SessionsScreen } from "./src/screens/SessionsScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SignInScreen } from "./src/screens/SignInScreen";
 
-// Expected while on the dev Clerk instance (same note silenced in the
-// extension popup); a production instance removes it for real.
+// Only fires when the dev Clerk instance is used for local development (the
+// production default doesn't emit it); silenced to keep the log clean.
 LogBox.ignoreLogs([/Clerk has been loaded with development keys/]);
 
 export default function App() {
