@@ -6,3 +6,6 @@ node_modules/
 !.env.example
 # CRX private key — its public half is committed in wxt.config.ts
 .keys/
+# Stray Safari converter output (placeholder com.yourCompany.* bundle ids) from
+# a flag-less run — the real project is safari-xcode/ (ignored in root .gitignore).
+Bookmark AI/

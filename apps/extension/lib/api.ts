@@ -6,11 +6,12 @@ import type {
 } from "@bookmark-ai/types";
 import { storage } from "#imports";
 
-/** A freshly installed extension talks to production; developers point this at
- * http://localhost:3000 (the web dev server, which serves the same /api) via
- * the popup settings row. */
+/** A freshly installed extension talks to production; developers point the API
+ * base at http://localhost:3000 (the web dev server, which serves the same
+ * /api) via the popup settings row. The web base defaults to production too, so
+ * a fresh install's "Open website"/sign-in links never point at localhost. */
 export const DEFAULT_API_URL = "https://bookmark-ai.cloud";
-export const DEFAULT_WEB_URL = "http://localhost:3000";
+export const DEFAULT_WEB_URL = "https://bookmark-ai.cloud";
 
 /** API base URL, user-configurable from the popup settings row. */
 export const apiUrlItem = storage.defineItem<string>("local:apiUrl", {

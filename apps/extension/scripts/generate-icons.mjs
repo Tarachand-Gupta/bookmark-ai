@@ -1,5 +1,13 @@
-// Generates placeholder extension icons (rounded square + bookmark glyph)
-// as PNGs without any image-library dependency. Run: pnpm icons
+// Generates the Bookmark AI toolbar icon (dark rounded plate + white bookmark
+// ribbon) as PNGs without any image-library dependency. Run: pnpm icons
+//
+// The mark is the SAME bookmark-ribbon shape as the web favicon
+// (apps/web/app/icon.svg) and apple icon — one consistent brand mark
+// everywhere. Colors are the shadcn-neutral brand palette
+// (packages/ui/src/theme.css): near-black plate, near-white mark. A toolbar
+// icon needs a filled plate for contrast, so it's plated rather than the
+// transparent silhouette the favicon uses. Keep the inBookmark shape in sync
+// with apps/web/scripts/generate-apple-icon.mjs.
 import { deflateSync } from "node:zlib";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -7,8 +15,8 @@ import { fileURLToPath } from "node:url";
 
 const SIZES = [16, 32, 48, 96, 128];
 const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public", "icon");
-const BG = [79, 70, 229]; // indigo-600
-const FG = [255, 255, 255];
+const BG = [10, 10, 10]; // #0a0a0a — near-black plate (shadcn neutral)
+const FG = [250, 250, 250]; // #fafafa — near-white mark
 
 const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -59,12 +67,34 @@ function inRoundedSquare(x, y) {
   return dx * dx + dy * dy <= r * r;
 }
 
+// Filled bookmark-ribbon silhouette (matches lucide "Bookmark"): a tall
+// rounded-top rectangle with a V-notch cut out of the bottom edge. 3:4-ish
+// aspect like the lucide glyph, centered with margin for the plate.
 function inBookmark(x, y) {
-  if (x < 0.34 || x > 0.66 || y < 0.24 || y > 0.76) return false;
-  // V-notch cut out of the bottom edge.
-  const notchTop = 0.62;
-  const half = 0.16;
-  const lineY = notchTop + (Math.abs(x - 0.5) / half) * (0.76 - notchTop);
+  const left = 0.32;
+  const right = 0.68;
+  const top = 0.26;
+  const bottom = 0.74;
+  if (x < left || x > right || y < top || y > bottom) return false;
+
+  // Rounded top corners (the lucide bookmark's `a2 2` arcs).
+  const rr = 0.05;
+  if (y < top + rr) {
+    if (x < left + rr) {
+      const dx = left + rr - x;
+      const dy = top + rr - y;
+      if (dx * dx + dy * dy > rr * rr) return false;
+    } else if (x > right - rr) {
+      const dx = x - (right - rr);
+      const dy = top + rr - y;
+      if (dx * dx + dy * dy > rr * rr) return false;
+    }
+  }
+
+  // V-notch cut out of the bottom edge (apex points up at the center).
+  const notchApex = 0.63;
+  const half = (right - left) / 2;
+  const lineY = notchApex + (Math.abs(x - 0.5) / half) * (bottom - notchApex);
   return y <= lineY;
 }
 

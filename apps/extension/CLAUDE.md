@@ -15,7 +15,8 @@ Layout (keep multi-file — the user explicitly banned monolith files):
 - `wxt.config.ts` — manifest fn (MV2/MV3-aware), permissions (`cookies` is for Clerk),
   `host_permissions`: `http://localhost/*` (ports are ignored in match patterns — covers the
   web dev server at localhost:3000, both Clerk syncHost and the local /api base) +
-  `bookmark-ai.cloud` apex/www (prod API + future prod syncHost) + Clerk frontend API, the
+  `bookmark-ai.cloud` apex/www (prod API + prod Clerk syncHost, the default) + Clerk frontend
+  APIs (prod `clerk.bookmark-ai.cloud` + dev instance), the
   pinned CRX `key`, and `externally_connectable.matches` (localhost, vercel alias,
   bookmark-ai.cloud apex/www — origins that may message the extension; a missing origin
   silently breaks "Open all in tab group" on that domain, Chrome won't even inject
@@ -31,10 +32,14 @@ Layout (keep multi-file — the user explicitly banned monolith files):
 Auth (Clerk, syncHost pattern):
 - The popup does NOT host sign-in UI (OAuth is unsupported in extension popups). Instead
   `ClerkProvider` in `entrypoints/popup/main.tsx` gets `syncHost` → the extension mirrors the
-  session the user creates on the **web app** (sign in at localhost:3000; popup shows the user).
-- `lib/clerk.ts` — publishable key + sync host (public values, baked-in defaults, overridable
-  via `apps/extension/.env`, see `.env.example`). `AuthStatus.tsx` renders avatar/name/sign-out
-  or a "Sign in ↗" button that opens `<webUrl>/sign-in`.
+  session the user creates on the **web app** (sign in on production `bookmark-ai.cloud` by
+  default, or localhost:3000 in local dev; popup shows the user).
+- `lib/clerk.ts` — publishable key + sync host (public values). Baked-in defaults target the
+  **production** instance (`clerk.bookmark-ai.cloud` + `https://bookmark-ai.cloud` syncHost; the
+  prod frontend API is a `host_permissions` entry). For local development against the dev
+  instance, create `apps/extension/.env` from `.env.example` (dev key + localhost syncHost).
+  `AuthStatus.tsx` renders avatar/name/sign-out or a "Sign in ↗" button that opens
+  `<webUrl>/sign-in`.
 - **Stable extension id** `ffhbgpgebpmofjkehpjcemepbgcmoelp` comes from the `key` in
   wxt.config.ts (private key: `.keys/crx-key.pem`, gitignored). That id is registered in the
   Clerk instance's `allowed_origins` (PATCH /v1/instance) together with localhost:3000 /

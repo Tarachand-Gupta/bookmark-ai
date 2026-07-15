@@ -75,7 +75,7 @@ export default function App() {
   }
 
   function openWebsite() {
-    void browser.tabs.create({ url: webUrl });
+    void browser.tabs.create({ url: `${webUrl}/app` });
     window.close();
   }
 

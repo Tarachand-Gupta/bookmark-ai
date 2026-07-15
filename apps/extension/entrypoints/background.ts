@@ -58,7 +58,7 @@ async function handleSaveSession(message: SaveSessionMessage): Promise<SaveSessi
     });
     // Saved successfully — only now is it safe to close the window + open the app.
     const webUrl = await getWebBaseUrl();
-    await closeWindowsAndOpen(`${webUrl}/?section=sessions`, message.windowId);
+    await closeWindowsAndOpen(`${webUrl}/app?section=sessions`, message.windowId);
     return { ok: true, session };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };

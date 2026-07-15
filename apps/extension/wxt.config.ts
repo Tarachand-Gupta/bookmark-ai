@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "wxt";
 
@@ -9,6 +11,24 @@ import { defineConfig } from "wxt";
  */
 const CRX_PUBLIC_KEY =
   "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxZao/ni4uukRy+6xGGy8DZqMWUzz+rYS/7+3IjLrp9RnrAipUTiqZcxqy+cVEtIiz5ZonMenarOSygvkIh5PG8gVx9eZm97Pcn96J7wIMwMIx3Lacve9RVsDTomSGsdZH/U83ad+6ZXPQGBMMQjSe60cu2Zsays5owt2zXyjKlUvLL4NgkiDNS/YGIruPSvVJg5lzEym7IKSl5WlDZgZ5Hqu3m36D3dKDy1RkiXpNANTWRtcbeoPXt0gf7vFPLnyyVh9mvJSpixD9aRbIRJU5M6ABao9pfnaJYmvdjpF1+8himJ1bYug4RZcLJxkQFqoyqVQaiDEIA7V5AjSo9xU4QIDAQAB";
+
+/**
+ * Hosts the extension needs to reach. Shared between the manifest function's
+ * `host_permissions` and the MV2 re-add hook below so the two never drift.
+ * - `http://localhost/*` — match patterns ignore ports, so this covers the web
+ *   dev server at localhost:3000 (both Clerk syncHost and the local /api base).
+ * - `bookmark-ai.cloud` apex + www — production web app (default API base + prod
+ *   Clerk syncHost).
+ * - Clerk frontend APIs the extension talks to directly — production (default)
+ *   first, dev instance kept for local development.
+ */
+const HOST_PERMISSIONS = [
+  "http://localhost/*",
+  "https://bookmark-ai.cloud/*",
+  "https://www.bookmark-ai.cloud/*",
+  "https://clerk.bookmark-ai.cloud/*",
+  "https://darling-baboon-13.clerk.accounts.dev/*",
+];
 
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
@@ -28,16 +48,7 @@ export default defineConfig({
       "cookies",
       ...(browser === "chrome" ? ["tabGroups"] : []),
     ],
-    host_permissions: [
-      // Match patterns ignore ports, so this one entry covers the web dev
-      // server at localhost:3000 — both Clerk syncHost and the local /api base.
-      "http://localhost/*",
-      // Production web app (default API base; also Clerk syncHost once prod Clerk exists).
-      "https://bookmark-ai.cloud/*",
-      "https://www.bookmark-ai.cloud/*",
-      // Clerk frontend API (dev instance) — the extension talks to it directly.
-      "https://darling-baboon-13.clerk.accounts.dev/*",
-    ],
+    host_permissions: HOST_PERMISSIONS,
     ...(browser === "chrome" && {
       key: CRX_PUBLIC_KEY,
       // Lets the web app hand off "restore session" — a page on these origins
@@ -69,4 +80,31 @@ export default defineConfig({
       },
     },
   }),
+  hooks: {
+    // @clerk/chrome-extension validateManifest requires a top-level
+    // host_permissions key even on MV2 (when syncHost is set); without it the
+    // SDK throws inside ClerkProvider's effect and React blanks the popup on
+    // Firefox/Safari. MV2 has no native host_permissions, so WXT folds those
+    // hosts into `permissions` and DELETES the top-level key. Crucially, that
+    // fold (generateManifest -> moveHostPermissionsToPermissions) runs AFTER
+    // the build:manifestGenerated hook, so re-adding the key there never
+    // survives — verified empirically. We instead patch the written manifest in
+    // build:done, which fires after writeManifest. Firefox/Safari treat the
+    // unknown MV2 key as a harmless warning, and the SDK only checks that the
+    // key exists (its contents are never read). MV3 already keeps the key, so
+    // this is scoped to MV2.
+    "build:done": (wxt) => {
+      if (wxt.config.manifestVersion !== 2) return;
+      const manifestPath = resolve(wxt.config.outDir, "manifest.json");
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      if (manifest.host_permissions) return;
+      manifest.host_permissions = [...HOST_PERMISSIONS];
+      // Match WXT's own writer: minified in production, pretty otherwise.
+      const json =
+        wxt.config.mode === "production"
+          ? JSON.stringify(manifest)
+          : JSON.stringify(manifest, null, 2);
+      writeFileSync(manifestPath, json);
+    },
+  },
 });
