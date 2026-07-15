@@ -32,6 +32,9 @@ export default defineConfig({
       // Match patterns ignore ports, so this one entry covers the web dev
       // server at localhost:3000 — both Clerk syncHost and the local /api base.
       "http://localhost/*",
+      // Production web app (default API base; also Clerk syncHost once prod Clerk exists).
+      "https://bookmark-ai.cloud/*",
+      "https://www.bookmark-ai.cloud/*",
       // Clerk frontend API (dev instance) — the extension talks to it directly.
       "https://darling-baboon-13.clerk.accounts.dev/*",
     ],
@@ -42,7 +45,12 @@ export default defineConfig({
       // one window containing every tab. window.open can't do this (popup
       // blockers allow a single tab per click).
       externally_connectable: {
-        matches: ["http://localhost/*", "https://bookmark-ai-theta.vercel.app/*"],
+        matches: [
+          "http://localhost/*",
+          "https://bookmark-ai-theta.vercel.app/*",
+          "https://bookmark-ai.cloud/*",
+          "https://www.bookmark-ai.cloud/*",
+        ],
       },
     }),
     ...(browser === "firefox" && {

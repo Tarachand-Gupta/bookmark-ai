@@ -28,13 +28,13 @@ Ordered so that items later in the list depend on items earlier in it.
       keys. Configure `allowed_origins` for the prod domain + extension origin (it is a
       RESTRICTION list — include every origin that should work).
 - [ ] **Vercel**: attach the custom domain; swap Clerk env vars to the live keys.
-- [ ] **Extension config for prod**: the baked defaults in `apps/extension/lib/clerk.ts` and
-      `lib/api.ts` point at the dev instance and localhost. Build store packages with
-      `WXT_`-prefixed env overrides (or an `.env.production`): prod publishable key, prod
-      syncHost/web URL, prod API URL (`https://bookmark-ai.cloud/api`). `host_permissions`
-      must gain the prod web domain +
-      prod Clerk frontend API domain; `externally_connectable.matches` must gain the prod
-      web domain.
+- [ ] **Extension config for prod**: the baked default in `apps/extension/lib/clerk.ts` still
+      points at the dev instance. Build store packages with `WXT_`-prefixed env overrides
+      (or an `.env.production`): prod publishable key, prod syncHost/web URL.
+      DONE 2026-07-15: `lib/api.ts` defaults to `https://bookmark-ai.cloud`, and both
+      `host_permissions` and `externally_connectable.matches` include the prod web domain
+      (apex + www) — verified live (tab-group restore from bookmark-ai.cloud). Still pending:
+      the prod Clerk frontend API domain in `host_permissions` once production Clerk exists.
 - [ ] **Vercel functions**: the API now runs as Vercel serverless functions in the same
       deployment as the web app (Render is retired). Watch function execution limits and the
       daily embed cron; `/api/health` stays the liveness check.
