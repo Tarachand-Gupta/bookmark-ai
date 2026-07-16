@@ -26,6 +26,7 @@ import {
   useSearch,
   useSessions,
 } from "@/hooks/use-library";
+import { AccountSetup } from "./account-setup";
 import { AiChat } from "./ai-chat";
 import { AppSidebar } from "./app-sidebar";
 import { ChatPanel } from "./chat-panel";
@@ -127,6 +128,12 @@ export function LibraryPage() {
   // most relevant first); "ai" mode opens the chat panel on top of that.
   const search = useSearch(query, "hybrid", refreshKey);
   const sessions = useSessions(refreshKey);
+
+  // A fresh signup's DB may still be provisioning; every hook hits the same API,
+  // so any of them reporting it means the account isn't ready. One page-level
+  // state for the whole content area beats each section rendering its own
+  // spinner/skeleton for the same wait.
+  const settingUp = list.provisioning || meta.provisioning || sessions.provisioning;
 
   // Saved sessions are a distinct section, keyed off ?section=sessions so the
   // extension can deep-link into it right after saving a session.
@@ -241,7 +248,9 @@ export function LibraryPage() {
           {/* Width-capped and centered so content isn't stretched thin on
               widescreen/desktop; full-bleed below the cap on smaller screens. */}
           <div className="mx-auto w-full max-w-7xl">
-            {sessionsActive ? (
+            {settingUp ? (
+              <AccountSetup />
+            ) : sessionsActive ? (
               <>
                 <div className="mb-4">
                   <h2 className="text-lg font-semibold tracking-tight">Saved sessions</h2>

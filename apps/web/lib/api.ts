@@ -57,6 +57,19 @@ async function authHeaders(): Promise<Record<string, string>> {
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
+/**
+ * The account's private DB isn't ready yet (503 `code: "provisioning"`). Not a
+ * real failure — provisioning takes a second or two on a fresh signup — so
+ * callers should retry rather than surface it. A subclass (not a string match on
+ * the message) so the check survives any rewording of the server's prose.
+ */
+export class ProvisioningError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProvisioningError";
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -64,7 +77,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error((body as { error?: string })?.error ?? `Request failed (${res.status})`);
+    const { error, code } = (body ?? {}) as { error?: string; code?: string };
+    const message = error ?? `Request failed (${res.status})`;
+    throw code === "provisioning" ? new ProvisioningError(message) : new Error(message);
   }
   return (await res.json()) as T;
 }

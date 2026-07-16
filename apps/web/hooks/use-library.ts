@@ -14,6 +14,7 @@ import {
   getMeta,
   getSessions,
   listBookmarks,
+  ProvisioningError,
   searchBookmarks,
   type LibraryFilters,
 } from "@/lib/api";
@@ -22,21 +23,74 @@ interface AsyncState<T> {
   data: T | null;
   loading: boolean;
   error: string | null;
+  /**
+   * The account's DB is still being created and we're polling for it. Never true
+   * at the same time as `error` — the UI shows a calm "setting up" state instead.
+   */
+  provisioning: boolean;
+}
+
+/**
+ * A fresh signup lands here milliseconds after the Clerk redirect, so the first
+ * requests can beat tenant provisioning (~1-2s) and 503. That is a normal part
+ * of signup, not an error, so we poll it out: retry every RETRY_MS for up to
+ * MAX_MS, then give up and fall back to the ordinary error path so a permanently
+ * broken account can't spin forever.
+ */
+const PROVISION_RETRY_MS = 1_500;
+const PROVISION_MAX_MS = 60_000;
+
+/** Abort-aware sleep. Resolves false when the signal fired → caller must stop
+ * (this is what keeps a retry loop from outliving its unmount/re-render). */
+function delay(ms: number, signal: AbortSignal): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve(false);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve(false);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve(true);
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function useAsync<T>(fetcher: (signal: AbortSignal) => Promise<T>, deps: unknown[]): AsyncState<T> {
-  const [state, setState] = useState<AsyncState<T>>({ data: null, loading: true, error: null });
+  const [state, setState] = useState<AsyncState<T>>({
+    data: null,
+    loading: true,
+    error: null,
+    provisioning: false,
+  });
 
   useEffect(() => {
     const controller = new AbortController();
-    setState((s) => ({ ...s, loading: true, error: null }));
-    fetcher(controller.signal)
-      .then((data) => setState({ data, loading: false, error: null }))
-      .catch((err: Error) => {
-        if (err.name !== "AbortError") {
-          setState({ data: null, loading: false, error: err.message });
+    setState((s) => ({ ...s, loading: true, error: null, provisioning: false }));
+
+    void (async () => {
+      const deadline = Date.now() + PROVISION_MAX_MS;
+      for (;;) {
+        try {
+          const data = await fetcher(controller.signal);
+          if (controller.signal.aborted) return;
+          setState({ data, loading: false, error: null, provisioning: false });
+          return;
+        } catch (err) {
+          const e = err as Error;
+          if (e.name === "AbortError") return;
+          if (e instanceof ProvisioningError && Date.now() < deadline) {
+            setState((s) => ({ ...s, loading: true, error: null, provisioning: true }));
+            if (!(await delay(PROVISION_RETRY_MS, controller.signal))) return;
+            continue;
+          }
+          setState({ data: null, loading: false, error: e.message, provisioning: false });
+          return;
         }
-      });
+      }
+    })();
+
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
@@ -72,14 +126,26 @@ export interface BookmarkListState {
   loading: boolean;
   loadingMore: boolean;
   error: string | null;
+  /** See AsyncState.provisioning — the account's DB is still being created. */
+  provisioning: boolean;
   hasMore: boolean;
   loadMore: () => void;
 }
 
 export function useBookmarks(filters: LibraryFilters, refreshKey: number): BookmarkListState {
   const [state, setState] = useState<
-    Pick<BookmarkListState, "bookmarks" | "total" | "loading" | "loadingMore" | "error">
-  >({ bookmarks: null, total: 0, loading: true, loadingMore: false, error: null });
+    Pick<
+      BookmarkListState,
+      "bookmarks" | "total" | "loading" | "loadingMore" | "error" | "provisioning"
+    >
+  >({
+    bookmarks: null,
+    total: 0,
+    loading: true,
+    loadingMore: false,
+    error: null,
+    provisioning: false,
+  });
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchPage = useCallback(
@@ -88,33 +154,55 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
       const controller = new AbortController();
       abortRef.current = controller;
       setState((s) =>
-        offset === 0 ? { ...s, loading: true, error: null } : { ...s, loadingMore: true },
+        offset === 0
+          ? { ...s, loading: true, error: null, provisioning: false }
+          : { ...s, loadingMore: true },
       );
-      listBookmarks(filters, { limit: PAGE_SIZE, offset }, controller.signal)
-        .then((res) =>
-          setState((s) => ({
-            bookmarks: offset === 0 ? res.bookmarks : [...(s.bookmarks ?? []), ...res.bookmarks],
-            total: res.total,
-            loading: false,
-            loadingMore: false,
-            error: null,
-          })),
-        )
-        .catch((err: Error) => {
-          if (err.name === "AbortError") return;
-          setState((s) =>
-            offset === 0
-              ? {
-                  bookmarks: null,
-                  total: 0,
-                  loading: false,
-                  loadingMore: false,
-                  error: err.message,
-                }
-              : // Keep the loaded pages; the button stays visible as the retry affordance.
-                { ...s, loadingMore: false },
-          );
-        });
+
+      void (async () => {
+        const deadline = Date.now() + PROVISION_MAX_MS;
+        for (;;) {
+          try {
+            const res = await listBookmarks(filters, { limit: PAGE_SIZE, offset }, controller.signal);
+            if (controller.signal.aborted) return;
+            setState((s) => ({
+              bookmarks: offset === 0 ? res.bookmarks : [...(s.bookmarks ?? []), ...res.bookmarks],
+              total: res.total,
+              loading: false,
+              loadingMore: false,
+              error: null,
+              provisioning: false,
+            }));
+            return;
+          } catch (err) {
+            const e = err as Error;
+            if (e.name === "AbortError") return;
+            if (e instanceof ProvisioningError && Date.now() < deadline) {
+              // Only reachable on the first page in practice — a not-yet-created
+              // account has nothing to page past — so leave "load more" alone.
+              setState((s) =>
+                offset === 0 ? { ...s, loading: true, error: null, provisioning: true } : s,
+              );
+              if (!(await delay(PROVISION_RETRY_MS, controller.signal))) return;
+              continue;
+            }
+            setState((s) =>
+              offset === 0
+                ? {
+                    bookmarks: null,
+                    total: 0,
+                    loading: false,
+                    loadingMore: false,
+                    error: e.message,
+                    provisioning: false,
+                  }
+                : // Keep the loaded pages; the button stays visible as the retry affordance.
+                  { ...s, loadingMore: false },
+            );
+            return;
+          }
+        }
+      })();
     },
     [filters],
   );

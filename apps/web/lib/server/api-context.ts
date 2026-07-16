@@ -36,6 +36,21 @@ export type RequestApiContext =
       ready: Promise<void>;
     };
 
+/**
+ * The 503 a caller gets while their tenant DB isn't usable yet. `code` is the
+ * stable, machine-readable contract: clients branch on it to show a "setting up
+ * your account" state and retry, rather than string-matching `error` (which is
+ * prose and may be reworded). Both the not-yet-provisioned and the
+ * misconfigured-master cases return it — from the client's side both mean "not
+ * ready yet, retry", and the config case is already logged server-side.
+ */
+function provisioningResponse(): NextResponse {
+  return NextResponse.json(
+    { error: "Account not provisioned yet", code: "provisioning" },
+    { status: 503 },
+  );
+}
+
 export async function getRequestApiContext(): Promise<RequestApiContext> {
   const gate = await requireUser();
   if (!gate.ok) return { response: gate.response };
@@ -53,15 +68,11 @@ export async function getRequestApiContext(): Promise<RequestApiContext> {
     return { userId: gate.userId, db, gemini, ready };
   } catch (err) {
     if (err instanceof TenantNotProvisionedError) {
-      return {
-        response: NextResponse.json({ error: "Account not provisioned yet" }, { status: 503 }),
-      };
+      return { response: provisioningResponse() };
     }
     if (err instanceof MultiTenantConfigError) {
       console.error("[api]", err.message);
-      return {
-        response: NextResponse.json({ error: "Account not provisioned yet" }, { status: 503 }),
-      };
+      return { response: provisioningResponse() };
     }
     throw err;
   }
