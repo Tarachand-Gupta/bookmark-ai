@@ -56,13 +56,15 @@ function toDbUrl(hostname: string): string {
 }
 
 /**
- * Provision a tenant's per-user DB. Idempotent (Clerk webhooks retry): an
- * existing active tenant row short-circuits and is returned unchanged.
- * Otherwise: create the DB, mint a full-access token, run the tenant migrations
- * against it, record the tenant row, and return it. If any step AFTER the DB is
- * created fails, the freshly-created DB (and its full-access token) are deleted
- * before rethrowing, so a failed provision self-cleans instead of orphaning a
- * live database + token that a webhook retry would only duplicate.
+ * Provision a tenant's per-user DB. Idempotent and safe to run concurrently —
+ * the Clerk webhook and the request path (lazy provisioning) race on every real
+ * signup, and webhooks retry on top of that. An existing active tenant row
+ * short-circuits and is returned unchanged. Otherwise: create (or adopt) the DB,
+ * mint a full-access token, run the tenant migrations, record the tenant row,
+ * and return it. If a concurrent provisioner records the row first, its tenant
+ * wins. A database this call actually created is deleted on failure so a failed
+ * provision self-cleans; an ADOPTED database is never deleted (it may belong to
+ * a live tenant).
  */
 export async function provisionTenant({
   master,
@@ -75,16 +77,14 @@ export async function provisionTenant({
   const dbName = tenantDbName(clerkUserId);
   const database = await platform.createDatabase(dbName);
 
-  // A pre-existing DB with no active tenant row for THIS user must not be
-  // adopted: the DB name is a 48-bit hash prefix of the clerk id, so (however
-  // astronomically) it could collide with another user's DB — minting a
-  // full-access token against it would hand over their data. Refuse instead.
-  if (!database.created && !(existing && existing.status === "active")) {
-    console.error(
-      `provisionTenant: DB ${dbName} already exists but no active tenant row for ${clerkUserId}; refusing to adopt`,
-    );
-    throw new Error(`provisionTenant: refusing to adopt pre-existing database ${dbName}`);
-  }
+  // `created: false` means the DB already existed. Its name is a deterministic
+  // hash of THIS user's clerk id, so it is almost certainly their own — the
+  // webhook racing this request-path provision, or an earlier partial attempt.
+  // Adopt it. Refusing would wedge the account forever (the DB never goes away,
+  // so every retry would refuse again). The theoretical risk is a 48-bit hash
+  // collision with a DIFFERENT user; the master row's UNIQUE db_name constraint
+  // is what actually stops a cross-user mapping from being recorded, and the
+  // insert below is where that would surface.
 
   try {
     const token = await platform.createToken(dbName, { authorization: "full-access" });
@@ -103,12 +103,20 @@ export async function provisionTenant({
       createdAt: new Date().toISOString(),
     });
   } catch (err) {
-    // We created the DB this call, so clean it up (and its token) before
-    // rethrowing. Tolerate delete failures — the original error is what matters.
-    try {
-      await platform.deleteDatabase(dbName);
-    } catch (cleanupErr) {
-      console.error(`provisionTenant: cleanup of ${dbName} after failure also failed:`, cleanupErr);
+    // A concurrent provisioner (the webhook vs. this request path) may have
+    // recorded the row first — e.g. our insert lost on the primary key. Its
+    // tenant is authoritative, so prefer it over surfacing the collision.
+    const raced = await getTenant(master, clerkUserId);
+    if (raced && raced.status === "active") return raced;
+
+    // Only clean up a database THIS call created. Never delete one we adopted —
+    // it may be a live tenant's DB that another provisioner is mid-way through.
+    if (database.created) {
+      try {
+        await platform.deleteDatabase(dbName);
+      } catch (cleanupErr) {
+        console.error(`provisionTenant: cleanup of ${dbName} after failure also failed:`, cleanupErr);
+      }
     }
     throw err;
   }
