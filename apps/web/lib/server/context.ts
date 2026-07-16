@@ -7,7 +7,7 @@ import {
   type Db,
   type Tenant,
 } from "@bookmark-ai/db";
-import { GeminiClient } from "@bookmark-ai/engine";
+import { GeminiClient, provisionTenant, type TenantPlatform } from "@bookmark-ai/engine";
 
 /**
  * Server-side context resolution for the API routes.
@@ -203,11 +203,54 @@ export class MultiTenantConfigError extends Error {
 }
 
 /**
+ * In-flight lazy provisions, keyed by user, so the several requests a freshly
+ * loaded page fires don't each try to provision the same tenant.
+ */
+const inflightProvision = new Map<string, Promise<Tenant>>();
+
+/**
+ * Provision a tenant from the REQUEST path, deduped per user.
+ *
+ * The `user.created` webhook is the normal path, but a real signup lands on
+ * /app milliseconds after the redirect — far sooner than webhook delivery — so
+ * the request path has to be able to provision on its own instead of 503ing.
+ * The webhook stays the fast path; this is the safety net (it also covers
+ * webhook failure/retry and users who predate the flag).
+ */
+async function provisionOnce(
+  master: Db,
+  platform: TenantPlatform,
+  userId: string,
+): Promise<Tenant> {
+  const running = inflightProvision.get(userId);
+  if (running) return running;
+
+  const pending = (async () => {
+    try {
+      return await provisionTenant({ master, platform, clerkUserId: userId });
+    } catch (err) {
+      // The webhook (or another instance) may have won the race and inserted the
+      // row while we were working — its tenant is authoritative, so prefer it
+      // over surfacing a collision error.
+      const raced = await getTenant(master, userId);
+      if (raced && raced.status === "active") return raced;
+      throw err;
+    } finally {
+      inflightProvision.delete(userId);
+    }
+  })();
+
+  inflightProvision.set(userId, pending);
+  return pending;
+}
+
+/**
  * Resolve the DB a signed-in user's request should read/write.
  *  - flag OFF → the shared single-DB context (identical to today).
- *  - flag ON  → look the tenant up in the master directory and open its DB.
- * Throws TenantNotProvisionedError (unknown/inactive tenant) or
- * MultiTenantConfigError (flag on, master env missing) for routes to map to 503.
+ *  - flag ON  → look the tenant up in the master directory and open its DB,
+ *    provisioning it on the spot if this user has no tenant yet.
+ * Throws TenantNotProvisionedError (tenant exists but is not active, or we
+ * cannot provision) or MultiTenantConfigError (flag on, master env missing).
  */
 export async function getTenantDb(userId: string): Promise<TenantDb> {
   if (!isMultiTenant()) {
@@ -219,7 +262,15 @@ export async function getTenantDb(userId: string): Promise<TenantDb> {
     throw new MultiTenantConfigError("MULTI_TENANT=1 but MASTER_DATABASE_URL is not set");
   }
   await master.ready;
-  const tenant = await getTenant(master.db, userId);
-  if (!tenant || tenant.status !== "active") throw new TenantNotProvisionedError();
+
+  let tenant = await getTenant(master.db, userId);
+  if (!tenant) {
+    const platform = getPlatform();
+    // No platform client → we genuinely cannot self-heal; let the route 503 and
+    // wait for the webhook.
+    if (!platform) throw new TenantNotProvisionedError();
+    tenant = await provisionOnce(master.db, platform, userId);
+  }
+  if (tenant.status !== "active") throw new TenantNotProvisionedError();
   return tenantDbFromRecord(tenant);
 }
