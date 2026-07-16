@@ -1,6 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { HeroTabField } from "./hero-tab-field";
+import { HeroDemo } from "./hero-demo";
 import { btnOutline, btnPrimary, display, Eyebrow, mono } from "./primitives";
 
 export function Hero() {
@@ -48,9 +48,14 @@ export function Hero() {
           </p>
         </div>
 
-        {/* Right — the proof: the chaos-to-order tab field, bleeding off-edge. */}
-        <div className="relative min-w-0 lg:-mr-[7vw] lg:pl-4">
-          <HeroTabField />
+        {/* Right — the proof: the product, acting itself out.
+            The field this replaced bled 7vw off-edge, which a demo can't do —
+            cropping the search results crops the punchline. So it reclaims only
+            what the container's own margin can spare: the grid's px-6 at lg, and
+            4vw at xl (where the centred max-w-6xl leaves ≥64px of gutter). Both
+            stay inside the viewport at every width in their range. */}
+        <div className="relative min-w-0 lg:-mr-6 lg:pl-4 xl:-mr-[4vw]">
+          <HeroDemo />
         </div>
       </div>
     </section>
