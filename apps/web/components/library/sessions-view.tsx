@@ -6,6 +6,7 @@ import { AppWindow, ChevronDown, Globe, Layers, SquareStack, Trash2 } from "luci
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { restoreSessionViaExtension, type RestoreMode } from "@/lib/extension-bridge";
+import { SessionsEmpty } from "./sessions-empty";
 
 export interface SessionsViewProps {
   sessions: Session[] | null;
@@ -35,20 +36,9 @@ export function SessionsView({ sessions, loading, error, onDelete }: SessionsVie
     );
   }
 
-  if (!sessions || sessions.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-20 text-center">
-        <div className="flex size-12 items-center justify-center rounded-full bg-muted">
-          <Layers className="size-6 text-muted-foreground" aria-hidden />
-        </div>
-        <p className="font-medium">No saved sessions yet</p>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          In the browser extension, use <strong>Save session &amp; close</strong> to snapshot all
-          your open tabs here.
-        </p>
-      </div>
-    );
-  }
+  // Sessions only come from the extension, so an empty list means showing what
+  // that button looks like — not just naming it.
+  if (!sessions || sessions.length === 0) return <SessionsEmpty />;
 
   return (
     <div className="space-y-4">

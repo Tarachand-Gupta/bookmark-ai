@@ -9,6 +9,7 @@ import {
 } from "@bookmark-ai/ui/components/bookmark-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { groupBookmarksByDate } from "@/lib/date-groups";
+import { FirstRunPanel } from "./first-run-panel";
 import type { LibraryView } from "./view-toggle";
 
 export interface BookmarkGridProps {
@@ -23,6 +24,14 @@ export interface BookmarkGridProps {
    * searching or when a date-range filter is applied.
    */
   grouped?: boolean;
+  /**
+   * The account has no bookmarks AT ALL (not merely none matching a filter or
+   * search) — the empty grid is a new user's first screen, so it teaches instead
+   * of shrugging. The caller owns the distinction; see LibraryPage.
+   */
+  firstRun?: boolean;
+  /** Opens the add-bookmark dialog — the quiet path out of the first-run panel. */
+  onAdd?: () => void;
 }
 
 /** The bookmark collection in one of three layouts, optionally grouped by date. */
@@ -34,6 +43,8 @@ export function BookmarkGrid({
   emptyHint,
   onDelete,
   grouped,
+  firstRun,
+  onAdd,
 }: BookmarkGridProps) {
   if (error) {
     return (
@@ -55,6 +66,10 @@ export function BookmarkGrid({
   }
 
   if (!bookmarks || bookmarks.length === 0) {
+    // Nothing saved ever → onboard. Nothing matching a filter/search → the
+    // quiet one-liner; a full-page pitch would be shouting at someone who
+    // already knows how this works.
+    if (firstRun) return <FirstRunPanel onAdd={onAdd} />;
     return (
       <div className="flex flex-col items-center gap-3 py-20 text-center">
         <div className="flex size-12 items-center justify-center rounded-full bg-muted">

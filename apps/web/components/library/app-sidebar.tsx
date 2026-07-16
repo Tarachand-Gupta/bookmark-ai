@@ -35,7 +35,9 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { LibraryFilters } from "@/lib/api";
+import { ExtensionCard } from "./extension-cta";
 import { SettingsDialog } from "./settings-dialog";
 
 /** Facet rows shown before a section needs its "View all" toggle. */
@@ -60,12 +62,15 @@ const DEVICE_ICONS: Record<string, React.ElementType> = {
 
 export interface AppSidebarProps {
   meta: MetaResponse | null;
+  /** /api/meta still in flight — facets show skeletons rather than nothing. */
+  metaLoading?: boolean;
   aiEnabled: boolean | null;
   filters: LibraryFilters;
   onFilterChange: (filters: LibraryFilters) => void;
   /** Whether the Sessions view (not the library) is showing. */
   sessionsActive?: boolean;
   sessionCount?: number | null;
+  sessionsLoading?: boolean;
   onShowSessions?: () => void;
   /** Opens the add-bookmark dialog (the + next to the branding). */
   onAdd?: () => void;
@@ -78,10 +83,12 @@ export interface AppSidebarProps {
  */
 export function AppSidebar({
   meta,
+  metaLoading,
   filters,
   onFilterChange,
   sessionsActive,
   sessionCount,
+  sessionsLoading,
   onShowSessions,
   onAdd,
 }: AppSidebarProps) {
@@ -96,6 +103,13 @@ export function AppSidebar({
 
   const noFilter = !filters.category && !filters.browser && !filters.device && !filters.day;
   const categories = meta?.categories ?? [];
+  const browsers = meta?.browsers ?? [];
+  const devices = meta?.devices ?? [];
+  const days = (meta?.days ?? []).slice(0, 7);
+  // Facets are unknown, not absent, until meta lands. A failed request is
+  // treated as empty — the sections collapse and say what belongs in them,
+  // which beats four open voids.
+  const facetsLoading = meta === null && !!metaLoading;
   // Keep the active category visible even when the list is folded.
   const visibleCategories =
     allCategories || categories.length <= VISIBLE_CATEGORIES
@@ -145,7 +159,7 @@ export function AppSidebar({
                   <Library aria-hidden />
                   <span>All bookmarks</span>
                 </SidebarMenuButton>
-                {meta ? <SidebarMenuBadge>{meta.total}</SidebarMenuBadge> : null}
+                <CountBadge value={meta?.total} loading={facetsLoading} />
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -158,13 +172,21 @@ export function AppSidebar({
                   <Layers aria-hidden />
                   <span>Sessions</span>
                 </SidebarMenuButton>
-                {sessionCount != null ? <SidebarMenuBadge>{sessionCount}</SidebarMenuBadge> : null}
+                <CountBadge
+                  value={sessionCount}
+                  loading={sessionCount == null && !!sessionsLoading}
+                />
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <CollapsibleGroup label="Categories">
+        <CollapsibleGroup
+          label="Categories"
+          loading={facetsLoading}
+          count={categories.length}
+          emptyNote="Categories appear once your first bookmark is saved and categorized."
+        >
           <SidebarMenu>
             {visibleCategories.map((c) => (
               <SidebarMenuItem key={c.name}>
@@ -194,17 +216,17 @@ export function AppSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
-            {meta && categories.length === 0 ? (
-              <p className="px-2 py-1 text-xs text-muted-foreground">
-                Save your first bookmark to see AI categories.
-              </p>
-            ) : null}
           </SidebarMenu>
         </CollapsibleGroup>
 
-        <CollapsibleGroup label="Browsers">
+        <CollapsibleGroup
+          label="Browsers"
+          loading={facetsLoading}
+          count={browsers.length}
+          emptyNote="Every bookmark records the browser it came from. Save one to filter by it."
+        >
           <SidebarMenu>
-            {(meta?.browsers ?? []).map((b) => {
+            {browsers.map((b) => {
               const Icon = BROWSER_ICONS[b.name] ?? Globe;
               return (
                 <SidebarMenuItem key={b.name}>
@@ -222,9 +244,14 @@ export function AppSidebar({
           </SidebarMenu>
         </CollapsibleGroup>
 
-        <CollapsibleGroup label="Devices">
+        <CollapsibleGroup
+          label="Devices"
+          loading={facetsLoading}
+          count={devices.length}
+          emptyNote="Save from your laptop, phone or tablet and each device shows up here."
+        >
           <SidebarMenu>
-            {(meta?.devices ?? []).map((d) => {
+            {devices.map((d) => {
               const Icon = DEVICE_ICONS[d.name] ?? Monitor;
               return (
                 <SidebarMenuItem key={d.name}>
@@ -242,9 +269,14 @@ export function AppSidebar({
           </SidebarMenu>
         </CollapsibleGroup>
 
-        <CollapsibleGroup label="Recent days">
+        <CollapsibleGroup
+          label="Recent days"
+          loading={facetsLoading}
+          count={days.length}
+          emptyNote="The days you saved on are listed here, newest first."
+        >
           <SidebarMenu>
-            {(meta?.days ?? []).slice(0, 7).map((d) => (
+            {days.map((d) => (
               <SidebarMenuItem key={d.day}>
                 <SidebarMenuButton
                   isActive={filters.day === d.day}
@@ -261,6 +293,7 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter>
+        <ExtensionCard />
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={() => setSettingsOpen(true)}>
@@ -275,14 +308,39 @@ export function AppSidebar({
   );
 }
 
-/** A facet section that folds shut from its label (chevron flips with state). */
-function CollapsibleGroup({ label, children }: { label: string; children: React.ReactNode }) {
+interface CollapsibleGroupProps {
+  label: string;
+  /** Facets not in yet → skeleton rows, section open. */
+  loading: boolean;
+  /** How many facet rows `children` will render. 0 once loaded ⇒ empty. */
+  count: number;
+  /** One line naming what will appear here, shown when the section is empty. */
+  emptyNote: string;
+  children: React.ReactNode;
+}
+
+/**
+ * A facet section that folds shut from its label (chevron flips with state),
+ * and starts folded when it has nothing in it.
+ *
+ * Controlled rather than `defaultOpen`: meta arrives AFTER mount, and Radix
+ * reads `defaultOpen` once, so `defaultOpen={count > 0}` would latch to the
+ * empty first render and never open. Deriving `open` from the data keeps it
+ * honest through that transition; the first manual toggle pins `userOpen` and
+ * the derived value stops applying, so we never yank a section shut under
+ * someone who just opened it.
+ */
+function CollapsibleGroup({ label, loading, count, emptyNote, children }: CollapsibleGroupProps) {
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const isEmpty = !loading && count === 0;
+  const open = userOpen ?? !isEmpty;
+
   return (
-    <Collapsible defaultOpen className="group/collapsible">
+    <Collapsible open={open} onOpenChange={setUserOpen} className="group/collapsible">
       <SidebarGroup>
         <SidebarGroupLabel asChild>
           <CollapsibleTrigger>
-            {label}
+            <span className={isEmpty ? "text-sidebar-foreground/50" : undefined}>{label}</span>
             <ChevronDown
               aria-hidden
               className="ml-auto size-4 transition-transform group-data-[state=open]/collapsible:rotate-180"
@@ -290,10 +348,53 @@ function CollapsibleGroup({ label, children }: { label: string; children: React.
           </CollapsibleTrigger>
         </SidebarGroupLabel>
         <CollapsibleContent>
-          <SidebarGroupContent>{children}</SidebarGroupContent>
+          <SidebarGroupContent>
+            {loading ? <FacetSkeleton /> : isEmpty ? <EmptyNote>{emptyNote}</EmptyNote> : children}
+          </SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>
     </Collapsible>
+  );
+}
+
+/** Varied bar widths so the placeholder reads as a list, not a barcode. */
+const FACET_SKELETON_WIDTHS = ["72%", "56%", "84%", "63%"];
+
+/**
+ * Placeholder rows while /api/meta is in flight — loading must not look empty.
+ *
+ * Deliberately NOT shadcn's <SidebarMenuSkeleton>, which picks its bar width
+ * with Math.random() at render: meta.loading starts true, so these DO render on
+ * the server, and the client then rolls different numbers — a hydration
+ * mismatch React logs and explicitly "won't patch up". Same markup, fixed widths.
+ */
+function FacetSkeleton() {
+  return (
+    <SidebarMenu>
+      {FACET_SKELETON_WIDTHS.map((width) => (
+        <SidebarMenuItem key={width}>
+          <div className="flex h-8 items-center gap-2 rounded-md px-2">
+            <Skeleton className="size-4 shrink-0 rounded-md" />
+            <Skeleton className="h-4 flex-1" style={{ maxWidth: width }} />
+          </div>
+        </SidebarMenuItem>
+      ))}
+    </SidebarMenu>
+  );
+}
+
+function EmptyNote({ children }: { children: React.ReactNode }) {
+  return <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">{children}</p>;
+}
+
+/** A fixed row's count: the number, a skeleton while it loads, nothing if it failed. */
+function CountBadge({ value, loading }: { value?: number | null; loading?: boolean }) {
+  if (value != null) return <SidebarMenuBadge>{value}</SidebarMenuBadge>;
+  if (!loading) return null;
+  return (
+    <SidebarMenuBadge>
+      <Skeleton className="h-3 w-4" />
+    </SidebarMenuBadge>
   );
 }
 

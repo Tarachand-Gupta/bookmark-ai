@@ -175,6 +175,13 @@ export function LibraryPage() {
   // filter (range or single day) is active — then show a flat, filtered list.
   const grouped = !searching && !filters.from && !filters.to && !filters.day;
 
+  // A genuinely empty library — no bookmarks at all, nothing filtering them out
+  // — is a new user's first screen, so the grid onboards there. meta.total is
+  // the authority on "zero overall"; list.total only counts what the active
+  // filter matched, and a search that found nothing is a different message.
+  const anyFilter = FILTER_KEYS.some((key) => filters[key]);
+  const firstRun = !searching && !anyFilter && meta.data?.total === 0;
+
   const [actionError, setActionError] = useState<string | null>(null);
   const handleDelete = useCallback(
     async (id: string) => {
@@ -225,11 +232,13 @@ export function LibraryPage() {
     <SidebarProvider>
       <AppSidebar
         meta={meta.data}
+        metaLoading={meta.loading}
         aiEnabled={health.data ? health.data.ai : health.error ? false : null}
         filters={filters}
         onFilterChange={setFilters}
         sessionsActive={sessionsActive}
         sessionCount={sessions.data?.sessions.length ?? null}
+        sessionsLoading={sessions.loading}
         onShowSessions={showSessions}
         onAdd={() => setAddOpen(true)}
       />
@@ -352,6 +361,8 @@ export function LibraryPage() {
                   grouped={grouped}
                   loading={searching ? search.loading : list.loading}
                   error={searching ? search.error : list.error}
+                  firstRun={firstRun}
+                  onAdd={() => setAddOpen(true)}
                   emptyHint={
                     searching
                       ? "No matches. Try different words, or Ask AI for an answer."
