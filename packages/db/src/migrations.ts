@@ -69,8 +69,12 @@ export async function runMigrations(db: Db, migrations: Migration[]): Promise<nu
         await db.executeMultiple(sql);
       }
     }
+    // OR IGNORE: two provisioners can migrate the same fresh tenant DB at once
+    // (the user.created webhook racing the request path on a real signup). The
+    // DDL above is all IF NOT EXISTS, so the duplicate run is a no-op — but a
+    // plain INSERT here would lose the race on the primary key and throw.
     await db.execute({
-      sql: "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+      sql: "INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
       args: [migration.version, migration.name, new Date().toISOString()],
     });
   }
