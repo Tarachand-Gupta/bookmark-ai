@@ -1,24 +1,38 @@
 import { useEffect, useState } from "react";
 import { browser } from "wxt/browser";
-import type { Bookmark } from "@bookmark-ai/types";
+import type { Bookmark, Session } from "@bookmark-ai/types";
 import { getWebBaseUrl, DEFAULT_WEB_URL } from "@/lib/api";
 import { requestSaveBookmark, requestSaveSession } from "@/lib/messages";
 import { AuthStatus } from "./components/AuthStatus";
 import { ErrorNote } from "./components/ErrorNote";
 import { SaveCard, type TabInfo } from "./components/SaveCard";
 import { SavedResult } from "./components/SavedResult";
+import { SessionSavedResult } from "./components/SessionSavedResult";
 import { SettingsRow } from "./components/SettingsRow";
 import { Spinner } from "./components/Spinner";
 
 const AUTO_CLOSE_MS = 1200;
 
-type Status = "idle" | "saving" | "saved" | "savingSession" | "error";
+/** Both session buttons are the same control with different verbs — only the
+ * label distinguishes them, so they must look identical. */
+const SESSION_BUTTON_CLASS =
+  "inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border bg-secondary text-sm font-medium text-secondary-foreground shadow-sm transition-colors hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50";
+
+type Status =
+  | "idle"
+  | "saving"
+  | "saved"
+  | "savingSession"
+  | "savingSessionKeepOpen"
+  | "sessionSaved"
+  | "error";
 
 export default function App() {
   const [tab, setTab] = useState<TabInfo | null>(null);
   const [tabCount, setTabCount] = useState<number | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [bookmark, setBookmark] = useState<Bookmark | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [webUrl, setWebUrl] = useState<string>(DEFAULT_WEB_URL);
 
@@ -28,7 +42,7 @@ export default function App() {
         setTab({ url: active.url, title: active.title, favIconUrl: active.favIconUrl });
       }
     });
-    // Count restorable tabs in THIS window for the session button label —
+    // Count restorable tabs in THIS window for the session button labels —
     // sessions are per-window, other windows are left alone.
     void browser.tabs
       .query({ currentWindow: true })
@@ -37,7 +51,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (status !== "saved") return;
+    if (status !== "saved" && status !== "sessionSaved") return;
     const timer = setTimeout(() => window.close(), AUTO_CLOSE_MS);
     return () => clearTimeout(timer);
   }, [status]);
@@ -56,18 +70,25 @@ export default function App() {
     }
   }
 
-  async function handleSaveSession() {
-    if (status === "savingSession") return;
-    setStatus("savingSession");
+  async function handleSaveSession(keepOpen: boolean) {
+    if (status === "savingSession" || status === "savingSessionKeepOpen") return;
+    setStatus(keepOpen ? "savingSessionKeepOpen" : "savingSession");
     setError(null);
     // Scope the session to the popup's window; the background can't resolve
     // "current window" reliably from its own context.
     const win = await browser.windows.getCurrent();
-    const result = await requestSaveSession({ windowId: win.id });
+    const result = await requestSaveSession({ windowId: win.id, keepOpen });
     if (result.ok) {
-      // The background script now closes this window and opens the web app;
-      // the popup disappears with its window.
-      window.close();
+      if (keepOpen) {
+        // The window survives, so this popup does too — confirm the save, then
+        // auto-close on the same rhythm as a bookmark save.
+        setSession(result.session);
+        setStatus("sessionSaved");
+      } else {
+        // The background script now closes this window and opens the web app;
+        // the popup disappears with its window.
+        window.close();
+      }
     } else {
       setError(result.error);
       setStatus("error");
@@ -80,7 +101,8 @@ export default function App() {
   }
 
   const savable = tab !== null && /^https?:/i.test(tab.url);
-  const busy = status === "saving" || status === "savingSession";
+  const busy = status === "saving" || status === "savingSession" || status === "savingSessionKeepOpen";
+  const tabSuffix = tabCount ? ` (${tabCount} tab${tabCount === 1 ? "" : "s"})` : "";
 
   return (
     <div className="flex min-w-[20rem] flex-col gap-3 p-4">
@@ -93,6 +115,8 @@ export default function App() {
 
       {status === "saved" && bookmark ? (
         <SavedResult bookmark={bookmark} />
+      ) : status === "sessionSaved" && session ? (
+        <SessionSavedResult session={session} />
       ) : (
         <>
           {/* Primary action 1 — bookmark the current tab. */}
@@ -103,18 +127,31 @@ export default function App() {
             onSave={() => void handleSaveBookmark()}
           />
 
-          {/* Primary action 2 — save the whole window session and close it. */}
-          <button
-            type="button"
-            onClick={() => void handleSaveSession()}
-            disabled={busy || !tabCount}
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border bg-secondary text-sm font-medium text-secondary-foreground shadow-sm transition-colors hover:bg-secondary/80 disabled:pointer-events-none disabled:opacity-50"
-          >
-            {status === "savingSession" && <Spinner />}
-            {status === "savingSession"
-              ? "Saving session…"
-              : `Save session & close${tabCount ? ` (${tabCount} tab${tabCount === 1 ? "" : "s"})` : ""}`}
-          </button>
+          {/* Primary actions 2 and 3 — same snapshot, one keeps the window.
+              The non-destructive verb comes first; the destructive one last. */}
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => void handleSaveSession(true)}
+              disabled={busy || !tabCount}
+              className={SESSION_BUTTON_CLASS}
+            >
+              {status === "savingSessionKeepOpen" && <Spinner />}
+              {status === "savingSessionKeepOpen"
+                ? "Saving session…"
+                : `Save session & keep open${tabSuffix}`}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleSaveSession(false)}
+              disabled={busy || !tabCount}
+              className={SESSION_BUTTON_CLASS}
+            >
+              {status === "savingSession" && <Spinner />}
+              {status === "savingSession" ? "Saving session…" : `Save session & close${tabSuffix}`}
+            </button>
+          </div>
         </>
       )}
 
