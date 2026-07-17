@@ -1,16 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24">
   <!--
-    Bookmark AI favicon. Same ribbon mark as the sidebar (lucide "Bookmark"),
-    filled as a solid silhouette so it reads at 16px. Transparent background.
-    Monochrome, adapts to the OS light/dark preference: near-black on light,
-    near-white on dark (Chromium/Firefox honor prefers-color-scheme in SVG
-    favicons; Safari falls back to the default near-black fill).
+    Bookmark AI favicon: the ribbon mark knocked out of a solid tile — the same
+    artwork as apple-icon.png, so every icon we ship is one picture.
+
+    Deliberately NOT theme-aware. The previous version was a bare silhouette on
+    a transparent background that swapped fill via prefers-color-scheme, and it
+    rendered as nothing: browsers disagree about whether that query resolves at
+    all when rasterizing a favicon (it is not the page's context), so the mark
+    kept landing near-black on a dark tab strip, or near-white on a light one.
+    A single-color mark on transparency has no safe answer — there is always a
+    strip it disappears against.
+
+    Two tones fix that without asking the browser for anything. On a light strip
+    you see the black tile; on a dark strip the tile recedes and the white ribbon
+    reads on its own. Same file, both modes, every browser. If you make this
+    theme-aware again, keep both tones — the contrast is what makes it visible.
   -->
-  <style>
-    .mark { fill: #0a0a0a; }
-    @media (prefers-color-scheme: dark) {
-      .mark { fill: #fafafa; }
-    }
-  </style>
-  <path class="mark" d="M19 21 L12 17 L5 21 V5 A2 2 0 0 1 7 3 H17 A2 2 0 0 1 19 5 Z" />
+  <rect width="24" height="24" rx="5" fill="#0a0a0a" />
+  <path fill="#fafafa" d="M19 21 L12 17 L5 21 V5 A2 2 0 0 1 7 3 H17 A2 2 0 0 1 19 5 Z" />
 </svg>
