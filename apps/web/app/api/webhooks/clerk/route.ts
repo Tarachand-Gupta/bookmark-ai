@@ -11,7 +11,9 @@ import { getMasterContext, getPlatform } from "@/lib/server/context";
  *
  * Flow: reject if no signing secret → verify the three svix headers against the
  * RAW body (before any JSON parse) → route on event type. Provisioning failures
- * return 500 so svix retries with backoff (that's the recovery mechanism).
+ * return 500 so svix retries with backoff (that's the recovery mechanism), and
+ * `user.deleted` treats an unconfigured master/platform as a 500 for the same
+ * reason: a deletion we cannot perform must not be acknowledged.
  */
 
 // A missing secret is a config gap, not a per-request error — log once.
@@ -74,11 +76,27 @@ export async function POST(req: NextRequest) {
 
     if (event.type === "user.deleted") {
       const clerkUserId = event.data.id;
-      if (clerkUserId && master && platform) {
-        await master.ready;
-        // Idempotent + tolerates an absent tenant (deterministic DB name).
-        await deprovisionTenant({ master: master.db, platform, clerkUserId });
+      if (!clerkUserId) {
+        // Unactionable, and no retry can supply the id — 400 surfaces it in the
+        // Clerk dashboard rather than pretending the erasure happened.
+        return NextResponse.json({ error: "Missing user id" }, { status: 400 });
       }
+      // Erasure must never fail open. Without master+platform we cannot delete
+      // the tenant DB (nor the master row holding its full-access token), and a
+      // 200 makes svix drop the event forever — the Clerk identity disappears
+      // while the user's data lives on. Unlike user.created there is no request
+      // path that can heal this later: the identity is already gone. So 500 and
+      // let svix retry; a genuinely unconfigured deploy then shows up as a
+      // failed webhook instead of silence.
+      if (!master || !platform) {
+        console.error(
+          "[webhook/clerk] user.deleted but master/platform not configured — cannot erase tenant data",
+        );
+        return NextResponse.json({ error: "Deprovisioning not configured" }, { status: 500 });
+      }
+      await master.ready;
+      // Idempotent + tolerates an absent tenant (deterministic DB name).
+      await deprovisionTenant({ master: master.db, platform, clerkUserId });
       return NextResponse.json({ ok: true });
     }
 
