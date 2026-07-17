@@ -4,11 +4,14 @@ import { createClerkClient } from "@clerk/chrome-extension/background";
 import { createBookmark, getWebBaseUrl, saveSession, setAuthTokenProvider } from "@/lib/api";
 import { CLERK_PUBLISHABLE_KEY, CLERK_SYNC_HOST } from "@/lib/clerk";
 import { detectSource } from "@/lib/detect";
+import { registerLiveCheckpoint, setLiveEnabled } from "@/lib/live-checkpoint";
 import { closeWindowsAndOpen, gatherOpenTabs } from "@/lib/session";
 import {
+  isLiveSetEnabledMessage,
   isRestoreSessionMessage,
   isSaveBookmarkMessage,
   isSaveSessionMessage,
+  type LiveSetEnabledResult,
   type RestoreSessionMessage,
   type SaveBookmarkMessage,
   type SaveBookmarkResult,
@@ -116,6 +119,11 @@ async function handleRestoreSession(
 export default defineBackground(() => {
   setAuthTokenProvider(getSessionToken);
 
+  // Live-tabs checkpoint: registers its tab/window/alarm listeners SYNCHRONOUSLY
+  // (must run before the first await, or the MV3 worker won't wake — §4.5). It
+  // gates every wake on the storage flag, so this is inert until the popup opts in.
+  registerLiveCheckpoint();
+
   // Web-app handoff (origins allowed via manifest externally_connectable):
   // restore a saved session as ONE new window holding every tab — something
   // the page itself can't do (popup blockers allow one window.open per click)
@@ -134,7 +142,9 @@ export default defineBackground(() => {
     (
       message: unknown,
       _sender,
-      sendResponse: (response: SaveBookmarkResult | SaveSessionResult) => void,
+      sendResponse: (
+        response: SaveBookmarkResult | SaveSessionResult | LiveSetEnabledResult,
+      ) => void,
     ) => {
       if (isSaveBookmarkMessage(message)) {
         void handleSaveBookmark(message).then(sendResponse);
@@ -142,6 +152,10 @@ export default defineBackground(() => {
       }
       if (isSaveSessionMessage(message)) {
         void handleSaveSession(message).then(sendResponse);
+        return true;
+      }
+      if (isLiveSetEnabledMessage(message)) {
+        void setLiveEnabled(message.enabled).then(sendResponse);
         return true;
       }
       return undefined;
