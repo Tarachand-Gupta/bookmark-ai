@@ -1196,7 +1196,7 @@ True E2EE is a good v2 and composes elegantly — the phone decrypts locally and
 plaintext `createSession`, making promotion a deliberate re-consent moment. It's rejected for
 v1 only because no key-exchange primitive exists anywhere in the repo and a passphrase prompt
 on every device is an adoption killer. **The honest privacy win here comes from not storing the
-sensitive bits** (§5.4 capture-time minimization, §5.6 upsert-only + 24h, no export) — not from
+sensitive bits** (§5.4 capture-time minimization, §5.6 upsert-only + 7-day TTL, no export) — not from
 encryption whose key the operator holds.
 
 ---
