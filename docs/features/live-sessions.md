@@ -347,7 +347,39 @@ tenants late in the list). Rows are ~1–5 per user. **A retention promise must 
 delegated to a sweep** — an expired row must be invisible the instant it expires, which only
 a read-time filter guarantees.
 
-**TTL = 24h.** See §5.4 for the argument and §9 for why this is an owner decision.
+**TTL = 7 days.** Owner decision, 2026-07-17 (§9.2). It governs a *device that stops reporting* —
+never an individual window. See §4.2.2, and §5.4 for the exposure argument this trades against.
+
+#### 4.2.2 Reopening a laptop must never orphan its windows
+
+Raised by the owner, 2026-07-17, and worth stating outright because the design satisfies it only
+*implicitly* — and the obvious future "optimization" breaks it.
+
+**The failure being avoided:** `windowId` is not stable across a browser restart. Quit Chrome,
+reopen it, and the session-restored window — same tabs, same everything — comes back with a new
+id. If rows were keyed by `windowId`, every restart would leave the old row matching no live
+window while a new row appeared for the same logical window. The stale one has no owner to
+delete it, so it would linger until the TTL reaped it: **a week of ghost windows sitting beside
+the real ones, and the longer the TTL the worse it gets.** That is a real bug in the obvious
+design, and it is the reason the TTL is not a safe place to put window identity.
+
+**Why it can't happen here:** `windowId` is not a key and is never used to match anything.
+`live_devices` is keyed by `device_id` — a UUID minted once and held in `storage.local`, durable
+across worker termination, browser restart, and update (§4.5). Windows exist only as display data
+inside `windows_json`, and **every push is a full re-scan that replaces the whole blob**. The
+extension never tries to reconnect to a previous window: on wake it reports what is open now, and
+the prior state is overwritten in the same write. New ids land and old ids vanish atomically.
+Orphaning requires a per-window row to strand, and there isn't one. (This is also why §6.10's
+`run_id` was unnecessary.)
+
+Note the TTL is *not* load-bearing for correctness even when it does fire: `device_id` outlives
+the row. A laptop closed for eight days gets reaped, then re-inserts under the same `device_id`
+on its next checkpoint and simply reappears.
+
+**Therefore, binding on any future change:** do not move to per-window or per-tab rows, and do
+not introduce delta/incremental pushes (§6.4), without solving window identity across restarts
+first. Both look like obvious wins — fewer bytes, finer granularity — and both reintroduce this
+exact bug. The full-replace snapshot is not naive; it is what makes restart-safety free.
 
 ### 4.3 API surface
 
@@ -450,7 +482,7 @@ export const listLiveResponseSchema = z.object({
 });
 ```
 
-Filters `last_seen_at > now-24h`; opportunistically DELETEs when the filter excludes rows.
+Filters `last_seen_at > now-7d`; opportunistically DELETEs when the filter excludes rows.
 Returns `{devices: [], enabled: false}` unconditionally when the flag is off — belt for a
 partially-failed purge.
 
@@ -996,7 +1028,7 @@ denylist too. Rules 1–4 are structural, predictable, and high-yield. Revisit i
 proves leaky in real use.
 
 **Be honest about the limit.** A denylist is a **mitigation, not a guarantee**. Some token
-shape will slip through. That is precisely why it must layer with opt-in (§5.1), 24h retention
+shape will slip through. That is precisely why it must layer with opt-in (§5.1), 7-day retention
 (§5.6), no export (§4.2.2), no agent access (§5.5), and instant purge (§5.7). **The docs must
 not overclaim.**
 
@@ -1051,20 +1083,27 @@ class was "finding #8" of a prior security review; the same review must be re-ru
 - **Upsert, never append.** One row per device, latest checkpoint only. **There is no browsing
   *history* to leak — only a current state.** This is a privacy property first and a cost
   property second.
-- **TTL = 24h, enforced as a read-time filter** (§4.2.3). Never a cron promise.
-- **Why 24h**, reconciling proposals of 15 min / 24h / 7 days (a 672× spread on the one number
-  that *is* the privacy promise):
-  - **15 min is disqualifying.** The owner's scenario is *"on the go"* with the laptop closed
-    at home. Under a 15-minute TTL his tabs are deleted before he reaches the train. One design
-    argued the 3–15 min stale band "is not a compromise, it's the product brief" — it read the
-    brief as minutes when the brief is hours. It ships a feature that is empty at every moment
-    it is wanted.
-  - **7 days maximizes exposure** for a case ("my laptop's tabs from last Tuesday") that Save
-    already covers, permanently and intentionally.
-  - **24h covers the stated story** — a commute, a lunch break, an evening, the next morning —
-    with the least durable exposure. The honest cost: a laptop closed Friday shows nothing on
-    Monday. That's what Save is for.
-  - This is a **promise to users, not a parameter**. See §9.
+- **TTL = 7 days, enforced as a read-time filter** (§4.2.3). Never a cron promise.
+- **Why 7 days — owner decision, 2026-07-17.** This doc originally argued 24h and the owner
+  chose 7 days. Recording both, because the reasoning is the point and a future maintainer
+  should be able to revisit it knowing what was traded:
+  - **15 min was disqualifying and is dead.** The scenario is *"on the go"* with the laptop
+    closed at home. Under a 15-minute TTL the tabs are deleted before he reaches the train. One
+    design argued the 3–15 min stale band "is not a compromise, it's the product brief" — it read
+    the brief as minutes when the brief is hours. It ships a feature that is empty at exactly the
+    moment it is wanted.
+  - **24h** covers a commute, a lunch break, an evening, the next morning — least durable
+    exposure. Its honest cost is the one that decided it: **a laptop closed on Friday shows
+    nothing on Monday.** The doc called that "what Save is for", but Save requires foresight at
+    the desk, which is the same objection that motivates the whole feature.
+  - **7 days** covers the weekend and the trip. **The cost is real and must not be soft-pedalled:
+    it is the largest durable exposure in the product.** It is bounded by three things — upsert
+    (current state only, never history), opt-in (§5.1), and the sanitizer (§5.4) — but a week is
+    a week. If exposure is ever revisited, this is the first number to look at.
+  - Note it is *not* a limit on how long a window survives — only on a device that has stopped
+    reporting entirely (§4.2.2).
+  - This is a **promise to users, not a parameter.** If it is ever shortened, existing users are
+    losing something they were told they had.
 
 ### 5.7 Purge & deletion
 
@@ -1355,31 +1394,53 @@ Face-ID gating (§5.8), the hash gate (§6.13).
 
 ---
 
-## 9. Open questions for the owner
+## 9. Decisions & remaining questions
 
-Five. Everything else in this doc is a call I made and defended.
+### 9.1 Answered by the owner — 2026-07-17
 
-1. **Do you accept opt-in / default-OFF, overriding your stated "a setting you can disable"?**
-   §5.1 argues `tabs` is already granted so opt-out means silent collection with no browser
-   signal — and §5.1.1 found the Firefox manifest already declares
-   `data_collection_permissions: { required: ["none"] }`, a promise opt-out would break.
-   **This is the decision the rest hangs on.** Everything else is negotiable.
+1. **Opt-in / default-OFF: ACCEPTED**, overriding the originally-stated "a setting you can
+   disable". §5.1. The owner's own reasoning is worth keeping, because it reframed the feature
+   and is better than this doc's original framing:
 
-2. **Retention: 24h?** §5.6. 15 min ships a feature that's empty when wanted; 7 days means a
-   week of your browsing sits on a server. 24h covers "on the go" and loses the
-   closed-over-the-weekend case. This is a promise to users, not a parameter — you own it.
+   > "It's just the feature that would show all those current tabs on other devices wherever this
+   > Bookmark AI account is logged in for the same user. […] I need a similar feature to what
+   > Chrome has for tabs from other devices, similar to what iCloud tabs have for Safari and
+   > Firefox also have for the same kind of sync. In this case, it would be multi-device. There
+   > will be no need to have a particular type of browser or a particular type of ecosystem."
 
-3. **Do you accept the two-key model** — that enabling from the phone only ARMS the account,
-   and a laptop must be activated at its own keyboard? §5.2. It costs onboarding friction and
-   it's the only thing preventing remote activation of a browsing checkpoint.
+   **This is Tabs-from-other-devices, unbundled from the browser vendor.** The account is the
+   ecosystem — Safari on the Mac, Chrome on the PC, Firefox on the laptop, one list. Rewrite the
+   product copy accordingly; "checkpoint"/"mirror" language undersells it and sounds invasive for
+   what is, to the user, table-stakes sync.
 
-4. **Sequencing: do you accept Stage 0 first, and Stage 1 only after the extension is
-   published?** §10 argues the mirror can only reach users *through* a first-time store review,
-   and a debut submission whose diff is "streams every URL you visit" is the worst possible
-   thing to lead with on the artifact your entire funnel depends on.
+2. **No runtime permission prompt on enable: ACCEPTED.** The extension already holds `tabs`; the
+   settings toggle *is* the consent, and a synthetic prompt would be theatre. **This does not
+   discharge §5.1.1** — `data_collection_permissions: { required: ["none"] }` is a store-review
+   declaration, not a prompt, and it becomes false the moment this ships. Fix it before any AMO
+   submission that carries this feature.
 
-5. **Ship Stage 0 and wait?** Genuinely: if "Save session (keep open)" satisfies you for two
-   weeks, Stages 1–3 are dead and you've saved a quarter. What would you need to see to know?
+3. **Retention: 7 days**, overriding this doc's 24h. §5.6 records both arguments and what the
+   choice costs.
+
+4. **Sequencing: publish the extension first**, Stage 1 lands as v1.1. §10.1.
+
+### 9.2 Still open
+
+1. **The two-key model (§5.2) — undecided.** The owner declined *prompt* friction; this is a
+   different question and was not explicitly answered. Without it, anyone who obtains the
+   account password can enable sync remotely and turn an already-installed, already-`tabs`-
+   permissioned browser into a live tracker with **no signal on the device itself**. Note the
+   products the owner cited do NOT have this hole: Chrome Sync and iCloud Tabs require the device
+   to be signed in *at that device*. Our extension is already signed in, so account-level enable
+   is remote activation. **Decide before Stage 1 ships.**
+
+2. **Measure before believing (§8 Stage 1).** What fraction of mirrored tabs are actually
+   phone-readable? If most of a desktop tab hoard is dashboards, localhost, and docs nobody reads
+   on a phone, the feature is thinner than it looks. Instrument on day one.
+
+3. **Ship Stage 0 and wait?** Still live and still cheap. "Save session (keep open)" shipped
+   2026-07-17. If it satisfies for two weeks and the automatic version is never missed, Stages
+   1–3 are unnecessary — a good outcome, not a failed one.
 
 ---
 
