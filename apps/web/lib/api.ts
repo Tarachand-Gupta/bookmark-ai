@@ -2,14 +2,17 @@ import type {
   AiProvider,
   Bookmark,
   CreateBookmarkInput,
+  CreateSessionInput,
   ExportBundle,
   HealthResponse,
   ListBookmarksResponse,
+  ListLiveResponse,
   ListModelsResponse,
   ListSessionsResponse,
   MetaResponse,
   SearchMode,
   SearchResponse,
+  Session,
   UpdateUserSettingsInput,
   UserSettingsResponse,
 } from "@bookmark-ai/types";
@@ -142,6 +145,54 @@ export async function deleteSession(id: string): Promise<void> {
     headers: await authHeaders(),
   });
   if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
+}
+
+/** Save a snapshot of tabs as a session (the extension's POST /api/sessions).
+ * Used by the Ongoing view's per-window Save — promotion needs no new endpoint. */
+export function saveSession(input: CreateSessionInput): Promise<{ session: Session }> {
+  return request<{ session: Session }>("/api/sessions", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+// ── Live Sessions (open tabs from other devices) ────────────────────────────
+
+/** The reader view: devices currently mirroring their open tabs, plus the
+ * account opt-in flag and TTL. `enabled: false` tells "off" apart from "no
+ * devices". Freshness is the server's `lastSeenAgeSeconds` — never subtracted
+ * from a client clock. */
+export function getLive(signal?: AbortSignal): Promise<ListLiveResponse> {
+  return request<ListLiveResponse>("/api/live", { signal });
+}
+
+/** Flip the account-wide "Show my open tabs" flag. Turning it off purges every
+ * device server-side in the same request. */
+export function setLiveEnabled(enabled: boolean): Promise<{ enabled: boolean }> {
+  return request<{ enabled: boolean }>("/api/live/settings", {
+    method: "POST",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+/** Forget one device — deletes its mirrored tabs. Idempotent (204 or 404). It
+ * reappears on that browser's next check-in unless its own switch is off. */
+export async function forgetLiveDevice(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/live/${id}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`Forget failed (${res.status})`);
+}
+
+/** Forget every device at once (the collection-level purge). Leaves the account
+ * flag on — devices reappear on their next check-in. */
+export async function forgetAllLiveDevices(): Promise<void> {
+  const res = await fetch(`${API_URL}/api/live`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`Forget all failed (${res.status})`);
 }
 
 // ── Settings ────────────────────────────────────────────────────────────────

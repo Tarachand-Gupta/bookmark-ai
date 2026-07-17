@@ -7,6 +7,7 @@ import {
   Database,
   Download,
   Loader2,
+  MonitorSmartphone,
   Sparkles,
   Trash2,
   Upload,
@@ -38,19 +39,23 @@ import {
   updateSettings,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { DevicesSection } from "./devices-settings";
 
 export interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Section to open on. Defaults to "ai"; the Ongoing empty state opens "devices". */
+  initialSection?: SectionId;
 }
 
 /** Sections in the settings modal, in rail order. */
 const SECTIONS = [
   { id: "ai", label: "AI", icon: Sparkles },
   { id: "data", label: "Data", icon: Database },
+  { id: "devices", label: "Devices", icon: MonitorSmartphone },
   { id: "account", label: "Account", icon: UserRound },
 ] as const;
-type SectionId = (typeof SECTIONS)[number]["id"];
+export type SectionId = (typeof SECTIONS)[number]["id"];
 
 const PROVIDERS: { value: AiProvider; label: string }[] = [
   { value: "google", label: "Gemini (Google)" },
@@ -64,8 +69,12 @@ const PROVIDERS: { value: AiProvider; label: string }[] = [
  * configures the chat agent's provider, API key, and default model. "Test
  * connection & get models" validates the key by listing models; Save persists.
  */
-export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsDialogProps) {
   const [section, setSection] = useState<SectionId>("ai");
+  // Read at open time only, so re-renders that change the prop don't yank the
+  // user off the section they navigated to.
+  const initialSectionRef = useRef(initialSection);
+  initialSectionRef.current = initialSection;
 
   // Loaded/edited AI settings.
   const [provider, setProvider] = useState<AiProvider>("google");
@@ -91,7 +100,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setSection("ai");
+    setSection(initialSectionRef.current ?? "ai");
     setLoading(true);
     setLoadError(null);
     setTestMsg(null);
@@ -370,6 +379,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             )}
 
             {section === "data" && <DataSection />}
+
+            {section === "devices" && <DevicesSection />}
 
             {section === "account" && <AccountSection />}
           </div>

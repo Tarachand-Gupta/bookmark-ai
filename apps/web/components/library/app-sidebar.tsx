@@ -38,7 +38,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { LibraryFilters } from "@/lib/api";
 import { ExtensionCard } from "./extension-cta";
-import { SettingsDialog } from "./settings-dialog";
 
 /** Facet rows shown before a section needs its "View all" toggle. */
 const VISIBLE_CATEGORIES = 6;
@@ -74,6 +73,8 @@ export interface AppSidebarProps {
   onShowSessions?: () => void;
   /** Opens the add-bookmark dialog (the + next to the branding). */
   onAdd?: () => void;
+  /** Opens the settings modal (owned by the page so other surfaces can open it). */
+  onOpenSettings?: () => void;
 }
 
 /**
@@ -91,10 +92,10 @@ export function AppSidebar({
   sessionsLoading,
   onShowSessions,
   onAdd,
+  onOpenSettings,
 }: AppSidebarProps) {
   const { setOpenMobile } = useSidebar();
   const [allCategories, setAllCategories] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const select = (next: LibraryFilters) => {
     onFilterChange(next);
@@ -296,14 +297,13 @@ export function AppSidebar({
         <ExtensionCard />
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => setSettingsOpen(true)}>
+            <SidebarMenuButton onClick={() => onOpenSettings?.()}>
               <Settings aria-hidden />
               <span>Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </Sidebar>
   );
 }
