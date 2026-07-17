@@ -5,6 +5,7 @@ import { getWebBaseUrl, DEFAULT_WEB_URL } from "@/lib/api";
 import { requestSaveBookmark, requestSaveSession } from "@/lib/messages";
 import { AuthStatus } from "./components/AuthStatus";
 import { ErrorNote } from "./components/ErrorNote";
+import { HeaderIdentity } from "./components/HeaderIdentity";
 import { SaveCard, type TabInfo } from "./components/SaveCard";
 import { SavedResult } from "./components/SavedResult";
 import { SessionSavedResult } from "./components/SessionSavedResult";
@@ -110,7 +111,10 @@ export default function App() {
         <span className="flex size-5 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
           B
         </span>
-        <h1 className="text-sm font-semibold tracking-tight">Bookmark AI</h1>
+        <div className="flex min-w-0 flex-col">
+          <h1 className="text-sm font-semibold leading-tight tracking-tight">Bookmark AI</h1>
+          <HeaderIdentity />
+        </div>
       </header>
 
       {status === "saved" && bookmark ? (
