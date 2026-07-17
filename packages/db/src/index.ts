@@ -53,3 +53,15 @@ export {
   type UserSettingsRow,
   type UserSettingsPatch,
 } from "./queries/settings";
+export {
+  upsertDeviceSnapshot,
+  listDevices,
+  getDevice,
+  deleteDevice,
+  deleteAllDevices,
+  reapExpiredDevices,
+  getLiveSettings,
+  setLiveSettings,
+  type UpsertDeviceSnapshot,
+  type LiveDeviceRow,
+} from "./queries/live";

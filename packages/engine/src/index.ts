@@ -18,6 +18,15 @@ export { saveBookmarkFast, enrichBookmark } from "./ingest";
 export { performSearch, type SearchParams } from "./search";
 export { saveSession } from "./sessions";
 export {
+  applyDeviceSnapshot,
+  listLiveDevices,
+  deleteLiveDevice,
+  getLiveEnabled,
+  setLiveEnabled,
+  LIVE_TTL_DAYS,
+  type ApplyDeviceSnapshotResult,
+} from "./live-sessions";
+export {
   runReadOnlySql,
   type ReadOnlySqlResult,
   type RunReadOnlySqlOptions,

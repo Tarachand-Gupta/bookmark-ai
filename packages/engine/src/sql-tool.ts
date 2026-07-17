@@ -86,6 +86,8 @@ const BLOCKED_KEYWORDS = [
  */
 const BLOCKED_IDENTIFIERS = [
   "user_settings", // holds the plaintext ai_api_key secret
+  "live_devices", // per-device open-tab checkpoints — sensitive, never agent-readable (§5.5)
+  "live_settings", // the live-sessions opt-in flag
   "schema_migrations", // internal migration bookkeeping
   "sqlite_master", // catalog: full schema of every object
   "sqlite_schema", // alias of sqlite_master

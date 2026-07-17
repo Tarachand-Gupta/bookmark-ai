@@ -175,4 +175,40 @@ export const TENANT_MIGRATIONS: Migration[] = [
       "CREATE TABLE IF NOT EXISTS user_settings (user_id TEXT PRIMARY KEY, ai_provider TEXT, ai_base_url TEXT, ai_api_key TEXT, ai_model TEXT, updated_at TEXT NOT NULL)",
     ],
   },
+  // Live Sessions ("open tabs"): one ephemeral row per device (windows_json blob),
+  // plus the account opt-in flag. Excluded from export and reaped from last_seen_at
+  // (no expires_at column, no cron) — so SCHEMA_VERSION stays 1. See §4.2. All bare
+  // strings, NOT tolerant: every statement is genuinely idempotent, which matters
+  // because runMigrations has no transaction.
+  {
+    version: 3,
+    name: "live-sessions",
+    statements: [
+      `
+        CREATE TABLE IF NOT EXISTS live_devices (
+          device_id        TEXT PRIMARY KEY,
+          label            TEXT NOT NULL DEFAULT '',
+          browser          TEXT NOT NULL DEFAULT 'other',
+          device           TEXT NOT NULL DEFAULT 'other',
+          os               TEXT,
+          windows_json     TEXT NOT NULL DEFAULT '[]',
+          tab_count        INTEGER NOT NULL DEFAULT 0,
+          hidden_tab_count INTEGER NOT NULL DEFAULT 0,
+          captured_at      TEXT NOT NULL,
+          last_seen_at     TEXT NOT NULL,
+          push_day         TEXT NOT NULL DEFAULT '',
+          push_count       INTEGER NOT NULL DEFAULT 0,
+          created_at       TEXT NOT NULL
+        )
+      `,
+      "CREATE INDEX IF NOT EXISTS idx_live_devices_last_seen ON live_devices(last_seen_at)",
+      `
+        CREATE TABLE IF NOT EXISTS live_settings (
+          user_id    TEXT PRIMARY KEY,
+          enabled    INTEGER NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL
+        )
+      `,
+    ],
+  },
 ];
