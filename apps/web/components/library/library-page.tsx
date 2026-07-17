@@ -35,7 +35,9 @@ import { LibraryHeader, type HeaderCrumb } from "./library-header";
 import { TagChips } from "./tag-chips";
 import { ViewToggle, type LibraryView } from "./view-toggle";
 import { DateRangeFilter } from "./date-range-filter";
-import { SessionCard, SessionsView } from "./sessions-view";
+import { SessionCard } from "./sessions-view";
+import { SessionsPanel } from "./sessions-panel";
+import { SettingsDialog, type SectionId } from "./settings-dialog";
 import { AddBookmarkDialog } from "./add-bookmark-dialog";
 
 const VIEW_STORAGE_KEY = "bookmark-ai:view";
@@ -86,6 +88,15 @@ export function LibraryPage() {
     searchParams.get("mode") === "ai" ? "ai" : "text",
   );
   const [addOpen, setAddOpen] = useState(false);
+  // Settings modal is owned here (not in the sidebar) so the Ongoing empty state
+  // can deep-link into Settings → Devices.
+  const [settings, setSettings] = useState<{ open: boolean; section: SectionId }>({
+    open: false,
+    section: "ai",
+  });
+  const openSettings = useCallback((section: SectionId = "ai") => {
+    setSettings({ open: true, section });
+  }, []);
 
   // Display preference, not shareable state → localStorage, not the URL.
   // Read in an effect so the server-rendered markup (grid) hydrates cleanly.
@@ -241,6 +252,7 @@ export function LibraryPage() {
         sessionsLoading={sessions.loading}
         onShowSessions={showSessions}
         onAdd={() => setAddOpen(true)}
+        onOpenSettings={openSettings}
       />
       <SidebarInset>
         <LibraryHeader
@@ -260,17 +272,14 @@ export function LibraryPage() {
             {settingUp ? (
               <AccountSetup />
             ) : sessionsActive ? (
-              <>
-                <div className="mb-4">
-                  <h2 className="text-lg font-semibold tracking-tight">Saved sessions</h2>
-                </div>
-                <SessionsView
-                  sessions={sessions.data?.sessions ?? null}
-                  loading={sessions.loading}
-                  error={sessions.error}
-                  onDelete={handleSessionDelete}
-                />
-              </>
+              <SessionsPanel
+                savedSessions={sessions.data?.sessions ?? null}
+                savedLoading={sessions.loading}
+                savedError={sessions.error}
+                onDeleteSaved={handleSessionDelete}
+                onSavedSession={refresh}
+                onOpenSettings={openSettings}
+              />
             ) : (
               <>
                 <div className="mb-4 flex items-start gap-3">
@@ -443,6 +452,11 @@ export function LibraryPage() {
         </div>
       </SidebarInset>
       <AddBookmarkDialog open={addOpen} onOpenChange={setAddOpen} onSaved={refresh} />
+      <SettingsDialog
+        open={settings.open}
+        initialSection={settings.section}
+        onOpenChange={(open) => setSettings((s) => ({ ...s, open }))}
+      />
     </SidebarProvider>
   );
 }

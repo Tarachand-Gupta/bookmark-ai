@@ -13,12 +13,13 @@ export function SessionsEmpty() {
       <div className="max-w-sm text-center md:text-left">
         <h2 className="text-xl font-semibold tracking-tight">Save a window of tabs</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          A session is a snapshot of every tab in a browser window. Save one and the window
-          closes — the tabs wait here until you restore them, all at once or one at a time.
+          A saved session is a snapshot of a browser window&apos;s tabs — they stay here after the
+          window closes, ready to restore all at once or one at a time.
         </p>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          Open the extension in the window you want to keep, then click{" "}
-          <strong className="font-medium text-foreground">Save session &amp; close</strong>.
+          Save one from the Bookmark AI extension, or switch to{" "}
+          <strong className="font-medium text-foreground">Ongoing</strong> to save a window
+          that&apos;s open on another device.
         </p>
         <div className="mt-5 flex justify-center md:justify-start">
           <ExtensionStoreButton size="sm" />

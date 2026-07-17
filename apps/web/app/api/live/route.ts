@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { pushLiveStateSchema } from "@bookmark-ai/types";
 import { applyDeviceSnapshot, listLiveDevices } from "@bookmark-ai/engine";
+import { deleteAllDevices } from "@bookmark-ai/db";
 import { getRequestApiContext } from "@/lib/server/api-context";
 
 export async function GET() {
@@ -38,4 +39,20 @@ export async function POST(req: NextRequest) {
     );
   }
   return NextResponse.json({ ok: true, enabled: true });
+}
+
+/**
+ * Purge every device — the collection-level "forget all" (§4.3, §5.5). A pure
+ * purge: it does NOT touch the account flag, so devices reappear on their next
+ * check-in (this is "Forget", not "Stop" — turning the flag off is a separate
+ * call to POST /api/live/settings). Per-tenant DB, so the delete is user-scoped.
+ */
+export async function DELETE() {
+  const ctx = await getRequestApiContext();
+  if ("response" in ctx) return ctx.response;
+  const { db, ready } = ctx;
+  await ready;
+
+  await deleteAllDevices(db);
+  return new NextResponse(null, { status: 204 });
 }
