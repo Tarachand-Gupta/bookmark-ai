@@ -2,11 +2,14 @@ import { Platform } from "react-native";
 import type {
   Bookmark,
   CreateBookmarkInput,
+  CreateSessionInput,
   ListBookmarksResponse,
+  ListLiveResponse,
   ListSessionsResponse,
   MetaResponse,
   SearchMode,
   SearchResponse,
+  Session,
 } from "@bookmark-ai/types";
 
 /**
@@ -121,4 +124,40 @@ export function listSessions(signal?: AbortSignal): Promise<ListSessionsResponse
 
 export function deleteSession(id: string): Promise<void> {
   return request<void>(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** Save a snapshot of open tabs (one live window → a saved session). */
+export function createSession(input: CreateSessionInput): Promise<{ session: Session }> {
+  return request<{ session: Session }>("/api/sessions", { method: "POST", body: input });
+}
+
+/**
+ * Thrown for the 503 a tenant gets while its DB is still being provisioned. The
+ * generic `request()` collapses every non-2xx into a plain Error, losing the
+ * machine-readable `code`; the live reader must branch on that code (never the
+ * prose `error`) to show "Setting up your account…" instead of a failure, so
+ * `listLiveDevices` does its own fetch and raises this distinct type.
+ */
+export class ProvisioningError extends Error {
+  constructor() {
+    super("Account not provisioned yet");
+    this.name = "ProvisioningError";
+  }
+}
+
+/** GET /api/live — the tabs every armed device is currently mirroring. */
+export async function listLiveDevices(signal?: AbortSignal): Promise<ListLiveResponse> {
+  const res = await fetch(`${getApiUrl()}/api/live`, {
+    signal,
+    headers: { "content-type": "application/json", ...(await authHeaders()) },
+  });
+  if (res.status === 503) {
+    const body = (await res.json().catch(() => null)) as { code?: string } | null;
+    if (body?.code === "provisioning") throw new ProvisioningError();
+  }
+  if (!res.ok) {
+    const errBody = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(errBody?.error ?? `Request failed (${res.status})`);
+  }
+  return (await res.json()) as ListLiveResponse;
 }

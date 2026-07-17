@@ -111,7 +111,7 @@ function Shell() {
             <LibraryScreen filterSheetOpen={filterSheetOpen} onFilterSheetChange={setFilterSheetOpen} />
           </View>
           <View style={[styles.screen, tab !== "sessions" && styles.hidden]}>
-            <SessionsScreen />
+            <SessionsScreen active={tab === "sessions"} onOpenSettings={() => setTab("settings")} />
           </View>
           <View style={[styles.screen, tab !== "search" && styles.hidden]}>
             <SearchScreen />
