@@ -1,66 +1,64 @@
 import { browser } from "wxt/browser";
 import type { SessionTab } from "@bookmark-ai/types";
+import {
+  isPrivateWindow,
+  sessionTabsFromWindow,
+  sessionTabsFromWindows,
+} from "./session-filter";
 
 /**
  * Collect open http(s) tabs as session tabs — from one window when `windowId`
  * is given (the popup's window: sessions are per-window), otherwise from every
- * normal window.
+ * normal window. Private tabs are never collected; the rules (and their tests)
+ * live in ./session-filter.
  */
 export async function gatherOpenTabs(windowId?: number): Promise<SessionTab[]> {
   if (windowId != null) {
-    const tabs = await browser.tabs.query({ windowId });
-    return tabs
-      .filter((t) => t.url && /^https?:/i.test(t.url))
-      .map((t) => ({
-        url: t.url!,
-        title: t.title ?? "",
-        favIconUrl: t.favIconUrl,
-        windowId,
-      }));
+    return sessionTabsFromWindow(await browser.tabs.query({ windowId }), windowId);
   }
-  const windows = await browser.windows.getAll({ populate: true });
-  const tabs: SessionTab[] = [];
-  for (const win of windows) {
-    if (win.type && win.type !== "normal") continue; // skip devtools/popup windows
-    for (const t of win.tabs ?? []) {
-      if (!t.url || !/^https?:/i.test(t.url)) continue; // only restorable tabs
-      tabs.push({
-        url: t.url,
-        title: t.title ?? "",
-        favIconUrl: t.favIconUrl,
-        windowId: win.id,
-      });
-    }
+  return sessionTabsFromWindows(await browser.windows.getAll({ populate: true }));
+}
+
+async function closeWindow(id: number): Promise<void> {
+  try {
+    await browser.windows.remove(id);
+  } catch {
+    // window already closed — ignore
   }
-  return tabs;
+}
+
+/** Defense in depth for the explicit-`windowId` close: `gatherOpenTabs` already
+ * yields nothing for a private window (so a save from one errors out before it
+ * ever gets here), but an id must never close a window we didn't back up. */
+async function isPrivateWindowId(id: number): Promise<boolean> {
+  try {
+    return isPrivateWindow(await browser.windows.get(id));
+  } catch {
+    return false; // window already gone — the remove is a no-op anyway
+  }
 }
 
 /**
  * Open `url` in a fresh window, then close the saved window — just `windowId`
- * when given, every other normal window otherwise. The new window is created
- * first so the browser is never left with zero windows (which would quit it).
- * Called only after the session has been safely saved.
+ * when given, every other non-private window otherwise. The new window is
+ * created first so the browser is never left with zero windows (which would
+ * quit it). Called only after the session has been safely saved.
  */
 export async function closeWindowsAndOpen(url: string, windowId?: number): Promise<void> {
   const keep = await browser.windows.create({ url });
   if (windowId != null) {
-    if (windowId !== keep?.id) {
-      try {
-        await browser.windows.remove(windowId);
-      } catch {
-        // window already closed — ignore
-      }
+    if (windowId !== keep?.id && !(await isPrivateWindowId(windowId))) {
+      await closeWindow(windowId);
     }
     return;
   }
   const existing = await browser.windows.getAll({ populate: false });
   for (const win of existing) {
+    // Incognito windows are `type: "normal"` — without this they'd be swept up
+    // by the "close everything else" walk despite never having been saved.
+    if (isPrivateWindow(win)) continue;
     if (win.id != null && win.id !== keep?.id) {
-      try {
-        await browser.windows.remove(win.id);
-      } catch {
-        // window already closed — ignore
-      }
+      await closeWindow(win.id);
     }
   }
 }

@@ -39,6 +39,17 @@ export default defineConfig({
     name: "Bookmark AI",
     description:
       "Save the current tab to Bookmark AI for automatic categorization and tagging.",
+    // No `incognito` key on purpose — the default ("spanning") stands, and
+    // private tabs are excluded in code by lib/session-filter.ts instead.
+    //   - "not_allowed" would be structural, but it also kills bookmarking a
+    //     single page from a private window. That save is explicit per-URL
+    //     consent (open popup on that page, click Save); a session snapshot
+    //     sweeps every tab and is not. Only the sweep needs blocking.
+    //   - "split" spawns a second worker with its own storage, which perturbs
+    //     the Clerk cookie sync in lib/clerk.ts — and it still wouldn't stand
+    //     alone, since the incognito worker can see incognito windows anyway.
+    // The filter is what enforces this; session-filter.test.ts is what keeps
+    // it enforced. Deleting the filter turns those tests red.
     // `cookies` lets Clerk's syncHost read the web app's session cookie.
     // `tabGroups` (Chrome-only) lets session restore title/color the group.
     permissions: [
