@@ -19,11 +19,13 @@ export const glass =
   "shadow-[0_1px_0_0_rgb(255_255_255/0.5)_inset,0_16px_50px_-24px_rgb(0_0_0/0.2)] " +
   "dark:bg-card/30 dark:shadow-[0_1px_0_0_rgb(255_255_255/0.06)_inset,0_28px_80px_-32px_rgb(0_0_0/0.7)]";
 
+// whitespace-nowrap on both: these are fixed-height pills, so a wrapped label
+// doesn't reflow them — it overflows them.
 export const btnPrimary =
-  "group inline-flex h-11 items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-medium text-primary-foreground shadow-sm transition-[background-color,transform] hover:bg-primary/90 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "group inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-primary px-6 text-sm font-medium text-primary-foreground shadow-sm transition-[background-color,transform] hover:bg-primary/90 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 export const btnOutline =
-  "inline-flex h-11 items-center justify-center gap-2 rounded-full border border-border/70 bg-background/30 px-6 text-sm font-medium backdrop-blur-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-border/70 bg-background/30 px-6 text-sm font-medium backdrop-blur-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 /** The brand ribbon mark (same silhouette as app/icon.svg), inheriting color. */
 export function BookmarkMark({ className }: { className?: string }) {
@@ -31,6 +33,24 @@ export function BookmarkMark({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={className}>
       <path d="M19 21 L12 17 L5 21 V5 A2 2 0 0 1 7 3 H17 A2 2 0 0 1 19 5 Z" />
     </svg>
+  );
+}
+
+/**
+ * The wordmark. The name is **bookmark-ai** — never "bookmark.ai", which is a
+ * domain someone else owns and which quietly tells visitors the wrong place to
+ * find us. `domain` extends it to the real production URL, bookmark-ai.cloud.
+ *
+ * Lives here so the two places that render it can't drift apart again: the name
+ * is split across spans for the two-tone treatment, so a literal grep for
+ * "bookmark.ai" finds nothing.
+ */
+export function Wordmark({ domain = false, className }: { domain?: boolean; className?: string }) {
+  return (
+    <span className={cn(mono, "font-semibold tracking-tight", className)}>
+      bookmark
+      <span className="text-muted-foreground">{domain ? "-ai.cloud" : "-ai"}</span>
+    </span>
   );
 }
 

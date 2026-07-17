@@ -1,7 +1,7 @@
 import { Github } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
-import { BookmarkMark, mono, REPO } from "./primitives";
+import { BookmarkMark, mono, REPO, Wordmark } from "./primitives";
 
 export function Nav() {
   return (
@@ -11,9 +11,7 @@ export function Nav() {
           <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <BookmarkMark className="size-4" />
           </span>
-          <span className={cn(mono, "text-[0.9rem] font-semibold tracking-tight")}>
-            bookmark<span className="text-muted-foreground">.ai</span>
-          </span>
+          <Wordmark className="text-[0.9rem]" />
         </a>
 
         <nav className="ml-auto flex items-center gap-1 sm:gap-2">
@@ -42,9 +40,12 @@ export function Nav() {
           >
             Sign in
           </a>
+          {/* shrink-0 + nowrap: the pill is a fixed h-9, so letting flex squeeze
+              it wraps the label onto a second line and it bursts out of its own
+              height. It gives up width last, not first. */}
           <a
             href="/sign-up"
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Get started
           </a>
