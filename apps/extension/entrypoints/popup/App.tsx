@@ -6,6 +6,7 @@ import { requestSaveBookmark, requestSaveSession } from "@/lib/messages";
 import { AuthStatus } from "./components/AuthStatus";
 import { ErrorNote } from "./components/ErrorNote";
 import { HeaderIdentity } from "./components/HeaderIdentity";
+import { LiveTabsToggle } from "./components/LiveTabsToggle";
 import { SaveCard, type TabInfo } from "./components/SaveCard";
 import { SavedResult } from "./components/SavedResult";
 import { SessionSavedResult } from "./components/SessionSavedResult";
@@ -160,6 +161,8 @@ export default function App() {
       )}
 
       {status === "error" && error && <ErrorNote message={error} />}
+
+      <LiveTabsToggle />
 
       <SettingsRow />
 

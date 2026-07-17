@@ -51,11 +51,14 @@ export default defineConfig({
     // The filter is what enforces this; session-filter.test.ts is what keeps
     // it enforced. Deleting the filter turns those tests red.
     // `cookies` lets Clerk's syncHost read the web app's session cookie.
+    // `alarms` drives the live-tabs heartbeat/backstop (§4.5) — a non-warning
+    // permission, which is exactly why live-tabs must be opt-in (§5.1).
     // `tabGroups` (Chrome-only) lets session restore title/color the group.
     permissions: [
       "activeTab",
       "tabs",
       "storage",
+      "alarms",
       "cookies",
       ...(browser === "chrome" ? ["tabGroups"] : []),
     ],

@@ -43,7 +43,10 @@ export function setAuthTokenProvider(provider: () => Promise<string | null>): vo
   authTokenProvider = provider;
 }
 
-async function authHeaders(): Promise<Record<string, string>> {
+/** Bearer header from the background's registered Clerk provider, or `{}` when
+ * signed out. Exported so the live-tabs client (lib/live-api.ts) reuses the same
+ * token path. */
+export async function authHeaders(): Promise<Record<string, string>> {
   const token = await authTokenProvider?.().catch(() => null);
   return token ? { authorization: `Bearer ${token}` } : {};
 }

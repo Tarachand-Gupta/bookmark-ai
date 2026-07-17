@@ -5,6 +5,9 @@ import { browser } from "wxt/browser";
 
 export const SAVE_BOOKMARK = "SAVE_BOOKMARK" as const;
 export const SAVE_SESSION = "SAVE_SESSION" as const;
+/** Popup → background: flip the live-tabs opt-in. The background owns the Clerk
+ * token, so the settings POST + local mirror + push loop all run there (§4.9). */
+export const LIVE_SET_ENABLED = "LIVE_SET_ENABLED" as const;
 /** External contract: sent by the WEB APP (externally_connectable origins)
  * to restore a saved session — either as one new window with all its tabs,
  * or as a named tab group in the user's current window. */
@@ -80,4 +83,28 @@ export function requestSaveSession(
 ): Promise<SaveSessionResult> {
   const message: SaveSessionMessage = { type: SAVE_SESSION, ...options };
   return browser.runtime.sendMessage(message) as Promise<SaveSessionResult>;
+}
+
+export interface LiveSetEnabledMessage {
+  type: typeof LIVE_SET_ENABLED;
+  enabled: boolean;
+}
+
+/** `enabled` reflects the settled local state (a failed on-request rolls back to
+ * off); `ok` is whether the server write also succeeded. */
+export type LiveSetEnabledResult = { ok: boolean; enabled: boolean };
+
+export function isLiveSetEnabledMessage(message: unknown): message is LiveSetEnabledMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as LiveSetEnabledMessage).type === LIVE_SET_ENABLED &&
+    typeof (message as LiveSetEnabledMessage).enabled === "boolean"
+  );
+}
+
+/** Popup-side helper: turn this browser's live-tabs publishing on or off. */
+export function requestSetLiveEnabled(enabled: boolean): Promise<LiveSetEnabledResult> {
+  const message: LiveSetEnabledMessage = { type: LIVE_SET_ENABLED, enabled };
+  return browser.runtime.sendMessage(message) as Promise<LiveSetEnabledResult>;
 }
