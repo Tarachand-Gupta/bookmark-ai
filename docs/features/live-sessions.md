@@ -148,6 +148,46 @@ for a live window (that word is taken by the saved concept, and the contrast is 
 
 ### 4.1 Transport & sync
 
+> **REWORK 2026-07-17 (batch 2) — the flush trigger changes; the architecture does not.**
+> The owner reworked the cadence: they want **near-real-time counts** ("close a Safari tab, the
+> count goes 10 → 9 without saving") coalesced by a **5-second trailing debounce**, not a
+> 3-minute checkpoint. This is a *smaller* change than it sounds, and that is the point — the
+> central design move below (tab events set a dirty flag; the flush does a full `windows.getAll`
+> scan and full-replaces the row) is **exactly what this rework needs and is unchanged**. Only
+> the timer that fires the flush changes. Concretely:
+>
+> - **Flush trigger = a 5s trailing debounce, not `chrome.alarms` every 3 min.** Any
+>   `tabs.on*` / `windows.on*` event sets the dirty flag (as before) **and** (re)arms a 5s
+>   timer. The timer firing runs the same full-scan push. A burst — 20 tabs opened at once, or
+>   five closed in a row — re-arms the timer on each event, so the whole burst collapses into
+>   **one** push 5s after the *last* change. That is precisely the owner's spec ("bundle all
+>   changes", "wait until all actions are finished", "report now there are 5 tabs").
+> - **`chrome.alarms` stays, demoted to a heartbeat/backstop** (every ~1–3 min): it re-stamps
+>   `last_seen_at` when nothing changed, and — critically — it is the retry path if the worker
+>   was killed mid-debounce. A 5s `setTimeout` usually survives (a tab event *just* woke the
+>   worker, and MV3's idle timeout is ~30s > 5s), but "usually" is not "always", so the dirty
+>   flag in `storage.local` + the heartbeat alarm guarantee a dropped debounce is re-sent, not
+>   lost. Same self-healing property as before.
+> - **This removes the packed-vs-unpacked alarm trap (§10.3) from the freshness path.** Freshness
+>   no longer routes through a sub-minute `chrome.alarms` period (which is clamped in packed
+>   builds, exempt when unpacked — the classic dev-works/prod-doesn't bug). The debounce is a
+>   plain timer; tab-event wakeups behave identically packed and unpacked. **Consequence:** the
+>   feature can be built and dogfooded on an unpacked dev build *now* without the trap biting.
+>   Publishing the extension is still the **ship-to-real-users** blocker (users install from a
+>   store), but it is no longer a *build* blocker. §10.1, §10.3 downgraded accordingly.
+> - **The reader (phone/web) still POLLS — it cannot be truly push-live.** Vercel holds no
+>   persistent connection to a phone (§6.3 unchanged), so "10 → 9 updates automatically" is
+>   bounded by the reader's poll interval, *not* instant. End-to-end latency = ~5s (debounce) +
+>   the reader's poll interval. The fix on the read side is **adaptive polling**: poll every few
+>   seconds while a device/window is *expanded and foregrounded* on the Current segment; slow
+>   down or pause otherwise (§4.7 polling, reworked). This is exactly how the products the owner
+>   cited actually behave — Chrome "tabs from other devices" and iCloud Tabs are sync-bounded,
+>   not live sockets. Calling it "sync", not "live", stays honest (§3, §4.4).
+>
+> Everything below in §4.1 is retained for its reasoning; **read "3 min" as "5s debounce +
+> heartbeat" throughout.** The coalescing, idempotency, boot-reconcile, and latency arguments
+> all still hold — the debounce is just a shorter, event-driven coalescing window.
+
 **Topology: extension pushes, phone polls. There is no alternative.**
 
 Vercel is per-request with no long-lived process — the only scheduled hook in the entire
@@ -510,6 +550,14 @@ phone defaults the name to e.g. `"Chrome on Mac · 12 tabs"`.
 
 ### 4.4 Freshness is server-computed. Always.
 
+> **REWORK 2026-07-17 (batch 2):** with event-driven writes (§4.1) + adaptive reader polling
+> (§4.7), **"as of just now" is the common case**, not the rare one — the thresholds below were
+> tuned for a 3-min source and now skew stale. The server-owned-age mechanism is unchanged and
+> still correct (clients render the integer `lastSeenAgeSeconds`, never subtract their own
+> clock); only the *labels* soften toward live-ish ("just now" up to ~15s, "a few seconds ago",
+> then the table as written). Keep the honesty rule: it is **sync**, never labelled **Live** —
+> the reader is poll-bounded, so a count is at most one poll interval behind.
+
 Three designs proposed three incompatible threshold tables (`live <10m`, `online <3min`,
 `filled dot <2min`). **Reconciled: there is exactly one number, and the server owns it.**
 
@@ -760,6 +808,17 @@ Suggested: `laptopcomputer` / `"🖥"`. Colors via `useAppTheme()`, **never** `t
 `useTheme()` (`:59-63`), which ignores the Settings override.
 
 ### 4.8 Web UX
+
+> **REWORK 2026-07-17 (batch 2) — OVERRULED: web gets the full Current view too.** The owner
+> was explicit: *"This behavior must work on any device, not just mobile. When I open the
+> Bookmark AI web app, it should represent the session of all open windows."* So the web
+> **Sessions** page gets the same **Saved / Current** segmented split as mobile (§4.7), with the
+> same device → window → tab hierarchy, expand-to-see-tabs, and tap-to-open. The reasoning below
+> (web-on-your-own-laptop showing your-own-laptop's-tabs is redundant) is **true but narrow** —
+> its value is cross-device: the web app on laptop A shows laptop B, the phone, and the Safari
+> window, all in one place, same as mobile. Device management (rename/Forget) stays where it is,
+> in **Settings → Devices** (below); it is now *in addition to* the Current view, not instead of
+> it. Build the Current view as the shared component, not a web-only grid.
 
 **The web live *view* is near-pointless and should not be built as a grid.** The web app runs
 on the same machine as the mirroring extension most of the time — showing you your own
@@ -1423,6 +1482,48 @@ Face-ID gating (§5.8), the hash gate (§6.13).
    choice costs.
 
 4. **Sequencing: publish the extension first**, Stage 1 lands as v1.1. §10.1.
+
+### 9.1.1 Reworked by the owner — 2026-07-17 (batch 2)
+
+These change decisions recorded above; the superseded reasoning is retained in place (marked
+`REWORK 2026-07-17 (batch 2)`) so nobody re-litigates it blind.
+
+5. **Cadence: event-driven + 5s trailing debounce, NOT a 3-min alarm.** §4.1. The owner wants
+   near-real-time counts ("close a Safari tab → 10 → 9, no save") with burst-coalescing (20 tabs
+   opened → one push; aggressive closing → one push after the last close). The full-scan-replace
+   architecture already supports this; only the flush timer changes. `chrome.alarms` is demoted
+   to a heartbeat/backstop. **Side effect:** the packed-vs-unpacked alarm trap (§10.3) leaves the
+   freshness path, so Stage 1 can be **built and dogfooded on an unpacked build now** — publish
+   is the ship-to-users blocker, no longer a build blocker.
+
+6. **The reader stays poll-bounded — "auto-updates" ≠ push-live.** §4.1, §4.7. Vercel can't push
+   to a phone (§6.3 stands). "10 → 9 updates automatically" is delivered by **adaptive polling**:
+   fast (a few seconds) while a device/window is expanded and foregrounded on the Current
+   segment, slow/paused otherwise. This **supersedes §4.7's 30s poll and its "never poll faster
+   than the ~3-min source" rule** — the source is now near-real-time, so the old floor is wrong.
+   End-to-end latency ≈ 5s debounce + one poll interval. This matches the owner's cited products
+   (Chrome/iCloud/Firefox tab sync are sync-bounded, not live sockets).
+
+7. **Web gets the full Current Sessions view, not just device management.** §4.8 overruled. The
+   Sessions page on **every** surface (web + mobile) gets a **Saved / Current** segmented split;
+   Current shows device → window → tab, expandable, tap-to-open, cross-browser (a Safari window
+   with 10 tabs sits beside two Chrome windows). "Saved" stays the default landing segment.
+
+8. **Popup shows who's signed in — DONE 2026-07-17.** Independent of Stage 1, shipped in the
+   working tree: the extension popup renders the signed-in identity under the wordmark — full
+   name when both names are set, else a masked email (`tar**@purecode.ai`). Pure logic in
+   `apps/extension/lib/identity.ts` with tests.
+
+### 9.2.1 Still open after batch 2
+
+- **Save granularity.** The owner said "save the session, not the tab group." Ambiguous whether
+  Save on the Current view promotes **one window** or **the whole device's session (all its
+  windows)** into a Saved session. Existing Stage 0 "Save session" from the extension bundles all
+  windows. Default assumption for now: a per-window Save (matches the mobile mock's per-window
+  button) **and** a device-level "Save all N windows". Confirm before building the promote UI.
+- **"Streamed" tabs on expand.** Read as: lazy-load a window's tab list on expand + poll it
+  faster while open (not a persistent socket). Confirm this is what the owner meant by "the tabs
+  can be streamed".
 
 ### 9.2 Still open
 
