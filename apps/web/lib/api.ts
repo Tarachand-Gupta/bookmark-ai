@@ -21,6 +21,12 @@ import type {
  * Set NEXT_PUBLIC_API_URL only to point at a separately hosted API. */
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
+/** The dedicated live server (SSE for "tabs from other devices"), separate
+ * from the Next.js API above — no /api prefix, its own origin. Empty string
+ * is a safe fallback (relative fetch that will 404) rather than throwing
+ * when the env var isn't set yet. */
+export const LIVE_API_URL = process.env.NEXT_PUBLIC_LIVE_API_URL ?? "";
+
 export interface LibraryFilters {
   category?: string;
   browser?: string;
@@ -55,7 +61,10 @@ async function getAuthToken(): Promise<string | null> {
   }
 }
 
-async function authHeaders(): Promise<Record<string, string>> {
+/** Exported so the SSE hook (use-live.ts) can attach the same bearer token
+ * to its fetch-event-source connection — that hook talks straight to
+ * LIVE_API_URL and doesn't go through request() below. */
+export async function authHeaders(): Promise<Record<string, string>> {
   const token = await getAuthToken();
   return token ? { authorization: `Bearer ${token}` } : {};
 }
@@ -157,28 +166,51 @@ export function saveSession(input: CreateSessionInput): Promise<{ session: Sessi
 }
 
 // ── Live Sessions (open tabs from other devices) ────────────────────────────
+// Talks to the dedicated live server (LIVE_API_URL, no /api prefix) instead of
+// this app's own /api routes — direct fetch calls (not request()) since that
+// helper hardcodes API_URL. The Vercel /api/live/* routes still exist (kept
+// for a later cutover step) but nothing here calls them anymore.
 
 /** The reader view: devices currently mirroring their open tabs, plus the
  * account opt-in flag and TTL. `enabled: false` tells "off" apart from "no
  * devices". Freshness is the server's `lastSeenAgeSeconds` — never subtracted
  * from a client clock. */
-export function getLive(signal?: AbortSignal): Promise<ListLiveResponse> {
-  return request<ListLiveResponse>("/api/live", { signal });
+export async function getLive(signal?: AbortSignal): Promise<ListLiveResponse> {
+  const res = await fetch(`${LIVE_API_URL}/live`, {
+    headers: await authHeaders(),
+    signal,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const { error, code } = (body ?? {}) as { error?: string; code?: string };
+    const message = error ?? `Request failed (${res.status})`;
+    // Defensive: the live server doesn't emit this today, but keep the same
+    // provisioning-aware contract the old /api/live route had.
+    throw code === "provisioning" ? new ProvisioningError(message) : new Error(message);
+  }
+  return (await res.json()) as ListLiveResponse;
 }
 
 /** Flip the account-wide "Show my open tabs" flag. Turning it off purges every
  * device server-side in the same request. */
-export function setLiveEnabled(enabled: boolean): Promise<{ enabled: boolean }> {
-  return request<{ enabled: boolean }>("/api/live/settings", {
+export async function setLiveEnabled(enabled: boolean): Promise<{ enabled: boolean }> {
+  const res = await fetch(`${LIVE_API_URL}/live/settings`, {
     method: "POST",
+    headers: { "content-type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify({ enabled }),
   });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const message = (body as { error?: string } | null)?.error ?? `Request failed (${res.status})`;
+    throw new Error(message);
+  }
+  return (await res.json()) as { enabled: boolean };
 }
 
 /** Forget one device — deletes its mirrored tabs. Idempotent (204 or 404). It
  * reappears on that browser's next check-in unless its own switch is off. */
 export async function forgetLiveDevice(id: string): Promise<void> {
-  const res = await fetch(`${API_URL}/api/live/${id}`, {
+  const res = await fetch(`${LIVE_API_URL}/live/${id}`, {
     method: "DELETE",
     headers: await authHeaders(),
   });
@@ -188,7 +220,7 @@ export async function forgetLiveDevice(id: string): Promise<void> {
 /** Forget every device at once (the collection-level purge). Leaves the account
  * flag on — devices reappear on their next check-in. */
 export async function forgetAllLiveDevices(): Promise<void> {
-  const res = await fetch(`${API_URL}/api/live`, {
+  const res = await fetch(`${LIVE_API_URL}/live`, {
     method: "DELETE",
     headers: await authHeaders(),
   });

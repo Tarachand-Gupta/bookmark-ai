@@ -1,31 +1,38 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchEventSource } from "@microsoft/fetch-event-source";
 import type { ListLiveResponse } from "@bookmark-ai/types";
-import { getLive, ProvisioningError } from "@/lib/api";
-
-/** A window is expanded and being read — poll tight so open tabs stay live-ish. */
-const FAST_MS = 4_000;
-/** Ongoing is showing but nothing is expanded — keep presence/freshness current. */
-const SLOW_MS = 15_000;
+import { authHeaders, getLive, LIVE_API_URL, ProvisioningError } from "@/lib/api";
 
 export interface LiveState {
   data: ListLiveResponse | null;
   loading: boolean;
   error: string | null;
   provisioning: boolean;
-  /** True while a poll (not the first load) is in flight — lets the UI hint activity. */
+  /** True while a (re)connect is in flight — lets the UI hint activity. */
   refreshing: boolean;
 }
 
 /**
- * Poll GET /api/live while the Ongoing segment is mounted. Adaptive + gated:
- * FAST_MS when a window is expanded, SLOW_MS otherwise, and fully paused while
- * the tab is hidden (resumes with an immediate fetch on return). Mounting only
- * under the Ongoing segment is what satisfies "pause when Saved". On error the
- * last-known data is kept (the caller dims it) rather than blanked.
+ * Subscribe to GET /live/stream (SSE, on the dedicated live server) while the
+ * Ongoing segment is mounted. Push-driven, not polled: the server emits a
+ * full `state` snapshot (`{devices, enabled, ttlHours}`) on connect and on
+ * every change, plus periodic `:keepalive` comments the SSE parser silently
+ * discards. Gated on visibility — the connection is only held while
+ * `document.visibilityState === "visible"`; it's aborted when the tab is
+ * hidden and reestablished (with a fresh GET /live for instant paint before
+ * the stream opens) on return.
+ *
+ * `fast` is kept only for call-site compatibility with the old polling hook
+ * — ongoing-view.tsx passes it based on whether a window is expanded — but is
+ * now a no-op: SSE has no cadence to adapt, the server pushes on every
+ * change regardless. On error the last-known data is kept (the caller dims
+ * it) rather than blanked; fetch-event-source auto-reconnects on a dropped
+ * connection, so most errors self-heal without user action.
  */
 export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
+  void fast; // no-op under SSE — kept for signature compatibility only
   const [state, setState] = useState<LiveState>({
     data: null,
     loading: true,
@@ -35,60 +42,93 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
   });
   const hasData = useRef(false);
 
-  const load = useCallback(async (signal: AbortSignal, quiet: boolean) => {
-    setState((s) =>
-      quiet ? { ...s, refreshing: true } : { ...s, loading: !hasData.current, error: null },
-    );
-    try {
-      const data = await getLive(signal);
-      if (signal.aborted) return;
-      hasData.current = true;
-      setState({ data, loading: false, error: null, provisioning: false, refreshing: false });
-    } catch (err) {
-      if (signal.aborted) return;
-      const e = err as Error;
-      if (e.name === "AbortError") return;
-      if (e instanceof ProvisioningError) {
-        setState((s) => ({
-          ...s,
-          loading: !hasData.current,
-          provisioning: true,
-          error: null,
-          refreshing: false,
-        }));
-        return;
-      }
-      // Keep last-known data; the Ongoing view dims it and shows the error inline.
-      setState((s) => ({ ...s, loading: false, error: e.message, refreshing: false }));
-    }
+  const applySnapshot = useCallback((data: ListLiveResponse) => {
+    hasData.current = true;
+    setState({ data, loading: false, error: null, provisioning: false, refreshing: false });
   }, []);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setInterval> | null = null;
-
-    const stop = () => {
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
+  const primeAndSubscribe = useCallback(
+    async (signal: AbortSignal) => {
+      // Initial snapshot for instant first paint (or on return-to-tab) — the
+      // stream's own connect-time `state` frame would otherwise leave the
+      // grid blank until the SSE connection finishes establishing.
+      try {
+        const data = await getLive(signal);
+        if (signal.aborted) return;
+        applySnapshot(data);
+      } catch (err) {
+        if (signal.aborted) return;
+        const e = err as Error;
+        if (e.name === "AbortError") return;
+        if (e instanceof ProvisioningError) {
+          setState((s) => ({ ...s, loading: !hasData.current, provisioning: true, error: null }));
+        } else {
+          setState((s) => ({ ...s, loading: !hasData.current, error: e.message }));
+        }
       }
-    };
-    const arm = () => {
-      stop();
+      if (signal.aborted) return;
+
+      setState((s) => ({ ...s, refreshing: true }));
+      try {
+        await fetchEventSource(`${LIVE_API_URL}/live/stream`, {
+          headers: await authHeaders(),
+          signal,
+          openWhenHidden: false,
+          async onopen(res) {
+            if (signal.aborted) return;
+            if (!res.ok) throw new Error(`Live stream failed (${res.status})`);
+            setState((s) => ({ ...s, refreshing: false, error: null }));
+          },
+          onmessage(ev) {
+            if (ev.event !== "state" || !ev.data) return;
+            try {
+              applySnapshot(JSON.parse(ev.data) as ListLiveResponse);
+            } catch {
+              // Malformed frame — ignore and wait for the next one rather
+              // than tearing down a connection that's otherwise healthy.
+            }
+          },
+          onerror(err) {
+            if (signal.aborted) {
+              // Tearing down (unmount/hidden) — throwing stops fetch-event-
+              // source's internal retry loop instead of scheduling one.
+              throw err;
+            }
+            // Keep last-known data (caller dims it); returning undefined
+            // lets fetch-event-source apply its own reconnect backoff.
+            setState((s) => ({
+              ...s,
+              error: (err as Error)?.message ?? "Live connection lost",
+            }));
+          },
+        });
+      } catch (err) {
+        if (signal.aborted) return;
+        setState((s) => ({ ...s, error: (err as Error)?.message ?? "Live connection lost" }));
+      }
+    },
+    [applySnapshot],
+  );
+
+  useEffect(() => {
+    let controller: AbortController | null = null;
+
+    const start = () => {
       if (document.visibilityState !== "visible") return;
-      timer = setInterval(() => void load(controller.signal, true), fast ? FAST_MS : SLOW_MS);
+      controller = new AbortController();
+      void primeAndSubscribe(controller.signal);
+    };
+    const stop = () => {
+      controller?.abort();
+      controller = null;
     };
 
-    // Immediate fetch on mount and whenever the cadence changes (e.g. a window
-    // was just expanded): quiet once we already have data so it never flashes a
-    // skeleton mid-view.
-    void load(controller.signal, hasData.current);
-    arm();
+    start();
 
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
-        void load(controller.signal, true);
-        arm();
+        stop();
+        start();
       } else {
         stop();
       }
@@ -96,11 +136,10 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
-      controller.abort();
       stop();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [load, fast]);
+  }, [primeAndSubscribe]);
 
   return state;
 }

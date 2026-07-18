@@ -21,6 +21,9 @@ const CRX_PUBLIC_KEY =
  *   Clerk syncHost).
  * - Clerk frontend APIs the extension talks to directly — production (default)
  *   first, dev instance kept for local development.
+ * - `live.bookmark-ai.cloud` — the dedicated Live Sessions server (Fastify,
+ *   separate from the Vercel-hosted /api/*). `http://localhost/*` above
+ *   already covers a local live server for dev.
  */
 const HOST_PERMISSIONS = [
   "http://localhost/*",
@@ -28,6 +31,7 @@ const HOST_PERMISSIONS = [
   "https://www.bookmark-ai.cloud/*",
   "https://clerk.bookmark-ai.cloud/*",
   "https://darling-baboon-13.clerk.accounts.dev/*",
+  "https://live.bookmark-ai.cloud/*",
 ];
 
 export default defineConfig({

@@ -12,6 +12,12 @@ import { storage } from "#imports";
  * a fresh install's "Open website"/sign-in links never point at localhost. */
 export const DEFAULT_API_URL = "https://bookmark-ai.cloud";
 export const DEFAULT_WEB_URL = "https://bookmark-ai.cloud";
+/** Live Sessions has its own dedicated server (Fastify, no `/api` prefix) —
+ * separate from the Vercel-hosted `/api/*` routes. Developers point it at
+ * http://localhost:8081 (or similar) via the popup settings row for local
+ * testing; the `http://localhost/*` host_permissions entry already covers
+ * that case. */
+export const DEFAULT_LIVE_API_URL = "https://live.bookmark-ai.cloud";
 
 /** API base URL, user-configurable from the popup settings row. */
 export const apiUrlItem = storage.defineItem<string>("local:apiUrl", {
@@ -23,6 +29,11 @@ export const webUrlItem = storage.defineItem<string>("local:webUrl", {
   fallback: DEFAULT_WEB_URL,
 });
 
+/** Live Sessions server base URL, user-configurable from the popup settings row. */
+export const liveApiUrlItem = storage.defineItem<string>("local:liveApiUrl", {
+  fallback: DEFAULT_LIVE_API_URL,
+});
+
 export async function getApiBaseUrl(): Promise<string> {
   const value = await apiUrlItem.getValue();
   return (value || DEFAULT_API_URL).trim().replace(/\/+$/, "");
@@ -31,6 +42,11 @@ export async function getApiBaseUrl(): Promise<string> {
 export async function getWebBaseUrl(): Promise<string> {
   const value = await webUrlItem.getValue();
   return (value || DEFAULT_WEB_URL).trim().replace(/\/+$/, "");
+}
+
+export async function getLiveBaseUrl(): Promise<string> {
+  const value = await liveApiUrlItem.getValue();
+  return (value || DEFAULT_LIVE_API_URL).trim().replace(/\/+$/, "");
 }
 
 /** The background script registers Clerk's token getter here — keeps this

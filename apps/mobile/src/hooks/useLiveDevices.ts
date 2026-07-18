@@ -1,20 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AppState } from "react-native";
-import type { LiveDevice } from "@bookmark-ai/types";
-import { listLiveDevices, ProvisioningError } from "../api";
+import EventSource from "react-native-sse";
+import type { LiveDevice, ListLiveResponse } from "@bookmark-ai/types";
+import { authHeaders, getLiveUrl, listLiveDevices, ProvisioningError } from "../api";
 import { usePreferences } from "../context/PreferencesContext";
 
 export type SessionsSegment = "saved" | "ongoing";
 
-// Adaptive cadence (§4.1 / §9.1.1 rework — supersedes §4.7's flat 30s floor):
-// fast while a window is expanded, slow while the segment is merely open, and
-// no timer at all otherwise. End-to-end latency is ~5s (extension debounce) plus
-// one interval, so a few seconds while reading is the useful ceiling.
-const FAST_MS = 4000;
-const SLOW_MS = 30000;
-// Battery guard: stop polling after this long without an interaction. The app
-// keeps every screen mounted (App.tsx), so an ungated timer would run forever.
-const IDLE_PAUSE_MS = 5 * 60 * 1000;
+type LiveStreamEvent = "state";
 
 export interface LiveDevicesState {
   devices: LiveDevice[];
@@ -26,32 +19,40 @@ export interface LiveDevicesState {
   error: string | null;
   /** 503 code === "provisioning" — the tenant DB is still being created. */
   provisioning: boolean;
-  /** Auto-paused after idle; the UI prompts a pull-to-refresh to resume. */
+  /** No longer meaningful now that reads are a push stream, not a poll loop
+   * (nothing to auto-pause) — kept `false` for return-shape stability so
+   * SessionsScreen needs zero changes. */
   paused: boolean;
-  /** At least one successful fetch — distinguishes "off/none" from "not asked yet". */
+  /** At least one successful fetch/frame — distinguishes "off/none" from "not asked yet". */
   loaded: boolean;
   refresh: () => void;
-  /** Register a user interaction (expand, scroll) to reset the idle timer. */
+  /** No-op now — was used to reset the old idle-pause timer, which the SSE
+   * stream has no equivalent of. Kept for signature stability. */
   ping: () => void;
 }
 
 /**
- * The Ongoing segment's data story. Mirrors useSessions' load/refresh shape
- * (serverTarget dep, reloadKey counter, loadId stale-write guard) and adds the
- * app's first polling loop. Every poll is gated on `active && app foregrounded
- * && segment === "ongoing"` (all three mandatory) so it can never run in the
- * user's pocket; the interval tightens only while a window is expanded.
+ * The Ongoing segment's data story. A single SSE connection to the dedicated
+ * live server replaces the old adaptive-polling loop: one `GET /live` for an
+ * instant first paint (and as the provisioning/error fallback), then
+ * `GET /live/stream` pushes full-snapshot `state` frames on every change plus
+ * keepalives. The connection is held only while `active && segment ===
+ * "ongoing" && AppState === "active"` (all three mandatory) — same gating the
+ * poll loop used — so it can never run in the user's pocket.
  */
 export function useLiveDevices({
   active,
   segment,
-  expanded,
+  // Cadence knob from the old adaptive poller; the stream pushes on every
+  // server-side change regardless, so there's no "fast while expanded" dial
+  // anymore. Kept in the signature so callers (SessionsScreen) don't change.
+  expanded: _expanded,
 }: {
   active: boolean;
   segment: SessionsSegment;
   expanded: boolean;
 }): LiveDevicesState {
-  const { serverTarget } = usePreferences(); // switching servers refetches
+  const { serverTarget } = usePreferences(); // switching servers reconnects
   const [devices, setDevices] = useState<LiveDevice[]>([]);
   const [enabled, setEnabled] = useState(false); // never assume enabled (§4.9 hydration)
   const [ttlHours, setTtlHours] = useState(0);
@@ -60,11 +61,7 @@ export function useLiveDevices({
   const [error, setError] = useState<string | null>(null);
   const [provisioning, setProvisioning] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [paused, setPaused] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [pingCount, setPingCount] = useState(0);
-  // Guards stale async writes: only the latest load may touch state.
-  const loadId = useRef(0);
 
   const [appActive, setAppActive] = useState(AppState.currentState === "active");
   useEffect(() => {
@@ -74,71 +71,92 @@ export function useLiveDevices({
 
   const onOngoing = active && segment === "ongoing";
 
-  const load = useCallback(async (kind: "initial" | "poll") => {
-    const id = ++loadId.current;
-    if (kind === "initial") setLoading(true);
-    try {
-      const data = await listLiveDevices();
-      if (loadId.current !== id) return;
-      setDevices(data.devices);
-      setEnabled(data.enabled);
-      setTtlHours(data.ttlHours);
-      setError(null);
-      setProvisioning(false);
-      setLoaded(true);
-    } catch (err) {
-      if (loadId.current !== id) return;
-      if (err instanceof ProvisioningError) {
-        setProvisioning(true); // keep last-known devices; this is not a failure
-      } else {
-        // Keep last-known data (rendered dimmed) rather than dropping to an error
-        // screen — a stale tab list is still useful (§4.7).
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    } finally {
-      if (loadId.current === id) {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    }
+  const applySnapshot = useCallback((data: ListLiveResponse) => {
+    setDevices(data.devices);
+    setEnabled(data.enabled);
+    setTtlHours(data.ttlHours);
+    setError(null);
+    setProvisioning(false);
+    setLoaded(true);
   }, []);
 
-  // Initial fetch when the Ongoing segment opens, the server switches, or a
-  // refresh is requested. Never fires on the Saved segment (§5.6 landing rule).
+  // Hold the connection only while on the Ongoing segment, foregrounded, and
+  // active; reconnect whenever the server target changes or a refresh is
+  // requested. Mirrors the old effect's dependency shape.
   useEffect(() => {
-    if (!onOngoing) return;
-    void load("initial");
-  }, [onOngoing, serverTarget, reloadKey, load]);
+    if (!onOngoing || !appActive) return;
+    let cancelled = false;
+    let es: EventSource<LiveStreamEvent> | null = null;
 
-  // Adaptive polling. The effect tears the interval down on every dependency
-  // change, so a hidden/backgrounded/paused screen holds no live timer.
-  useEffect(() => {
-    if (!onOngoing || !appActive || paused) return;
-    const period = expanded ? FAST_MS : SLOW_MS;
-    const timer = setInterval(() => void load("poll"), period);
-    return () => clearInterval(timer);
-  }, [onOngoing, appActive, paused, expanded, serverTarget, reloadKey, load]);
+    const connect = async () => {
+      setLoading(true);
+      // Initial GET for instant first paint (and the ProvisioningError path,
+      // which the stream's own error event can't distinguish from any other
+      // failure) before the stream takes over.
+      try {
+        const data = await listLiveDevices();
+        if (cancelled) return;
+        applySnapshot(data);
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ProvisioningError) {
+          setProvisioning(true); // keep last-known devices; this is not a failure
+        } else {
+          // Keep last-known data (rendered dimmed) rather than dropping to an
+          // error screen — a stale tab list is still useful (§4.7).
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+      if (cancelled) return;
 
-  // Idle auto-pause. Re-armed by any expand toggle, scroll ping, or foreground;
-  // firing stops the poll loop until a pull-to-refresh clears `paused`.
-  useEffect(() => {
-    if (!onOngoing || !appActive || paused) return;
-    const timer = setTimeout(() => setPaused(true), IDLE_PAUSE_MS);
-    return () => clearTimeout(timer);
-  }, [onOngoing, appActive, paused, expanded, pingCount]);
+      const headers = await authHeaders();
+      if (cancelled) return; // effect torn down while the headers were resolving
 
-  // Leaving the Ongoing view clears the pause so a later visit resumes cleanly.
-  useEffect(() => {
-    if (!onOngoing) setPaused(false);
-  }, [onOngoing]);
+      const stream = new EventSource<LiveStreamEvent>(`${getLiveUrl()}/live/stream`, {
+        headers,
+      });
+      es = stream;
+
+      stream.addEventListener("state", (event) => {
+        if (cancelled || !event.data) return;
+        try {
+          applySnapshot(JSON.parse(event.data) as ListLiveResponse);
+        } catch {
+          // Malformed frame — ignore and keep the last-known state.
+        }
+      });
+
+      stream.addEventListener("error", (event) => {
+        if (cancelled) return;
+        // Keep last-known devices (same "stale is still useful" rule as the
+        // initial fetch) — never clear `devices`/`loaded` here.
+        if (event.type === "error") setError(event.message);
+        else if (event.type === "exception") setError(event.message);
+      });
+      // "open" and keepalive comments need no handling.
+    };
+
+    void connect();
+
+    return () => {
+      cancelled = true;
+      es?.removeAllEventListeners();
+      es?.close();
+    };
+  }, [onOngoing, appActive, serverTarget, reloadKey, applySnapshot]);
 
   const refresh = useCallback(() => {
-    setPaused(false);
     setRefreshing(true);
     setReloadKey((k) => k + 1);
   }, []);
 
-  const ping = useCallback(() => setPingCount((c) => c + 1), []);
+  // No idle timer left to reset — kept as a no-op so callers need no changes.
+  const ping = useCallback(() => {}, []);
 
   return {
     devices,
@@ -148,7 +166,7 @@ export function useLiveDevices({
     refreshing,
     error,
     provisioning,
-    paused,
+    paused: false,
     loaded,
     refresh,
     ping,

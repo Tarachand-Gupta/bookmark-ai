@@ -24,6 +24,15 @@ export const LOCAL_API_URL =
   Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
 export const PROD_API_URL = "https://bookmark-ai.cloud";
 
+/**
+ * The dedicated live server (Live Sessions reads only — no `/api` prefix).
+ * Same local/production split as the main API, just a different port/host in
+ * dev since it's a standalone process, not the Next dev server.
+ */
+export const LOCAL_LIVE_URL =
+  Platform.OS === "android" ? "http://10.0.2.2:8081" : "http://localhost:8081";
+export const PROD_LIVE_URL = "https://live.bookmark-ai.cloud";
+
 export type ServerTarget = "local" | "production";
 
 // Owned by PreferencesContext (persisted there); mirrored here so the
@@ -39,6 +48,11 @@ export function getApiUrl(): string {
   return serverTarget === "production" ? PROD_API_URL : LOCAL_API_URL;
 }
 
+export function getLiveUrl(): string {
+  if (process.env.EXPO_PUBLIC_LIVE_API_URL) return process.env.EXPO_PUBLIC_LIVE_API_URL;
+  return serverTarget === "production" ? PROD_LIVE_URL : LOCAL_LIVE_URL;
+}
+
 /** Clerk session token (registered from the ClerkProvider tree). Mobile
  * normally sends a token; null → unauthenticated request, which the local Next
  * dev server accepts only when run with DEV_OPEN_API=1, and the deployed server
@@ -49,7 +63,10 @@ export function setAuthTokenProvider(provider: () => Promise<string | null>): vo
   authTokenProvider = provider;
 }
 
-async function authHeaders(): Promise<Record<string, string>> {
+/** Exported so the SSE stream (react-native-sse can't reuse `request()`, it
+ * needs raw headers up front) can attach the same Bearer token as everything
+ * else. */
+export async function authHeaders(): Promise<Record<string, string>> {
   const token = await authTokenProvider?.().catch(() => null);
   return token ? { authorization: `Bearer ${token}` } : {};
 }
@@ -145,9 +162,11 @@ export class ProvisioningError extends Error {
   }
 }
 
-/** GET /api/live — the tabs every armed device is currently mirroring. */
+/** GET /live on the dedicated live server — the tabs every armed device is
+ * currently mirroring. Used for the instant first paint before the SSE
+ * stream (see useLiveDevices) takes over, and as its reconnect fallback. */
 export async function listLiveDevices(signal?: AbortSignal): Promise<ListLiveResponse> {
-  const res = await fetch(`${getApiUrl()}/api/live`, {
+  const res = await fetch(`${getLiveUrl()}/live`, {
     signal,
     headers: { "content-type": "application/json", ...(await authHeaders()) },
   });

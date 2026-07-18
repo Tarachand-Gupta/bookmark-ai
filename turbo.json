@@ -10,7 +10,8 @@
         "GEMINI_API_KEY",
         "CLERK_SECRET_KEY",
         "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
-        "NEXT_PUBLIC_API_URL"
+        "NEXT_PUBLIC_API_URL",
+        "NEXT_PUBLIC_LIVE_API_URL"
       ]
     },
     "dev": {
