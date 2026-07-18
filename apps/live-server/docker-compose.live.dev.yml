@@ -1,0 +1,30 @@
+# Dev override — hot-reloading tsx server with the repo mounted, on a DIFFERENT
+# host port so it coexists with the prod stack. Run as its own project:
+#
+#   docker compose -p live-dev \
+#     -f apps/live-server/docker-compose.live.yml \
+#     -f apps/live-server/docker-compose.live.dev.yml up
+#
+# `-p live-dev` gives redis its own isolated volume automatically. All live
+# deps are pure JS (no native bindings), so mounting the host repo into the linux
+# container is safe. Runs in open mode (DEV_OPEN_API=1) for tokenless smoke tests.
+
+services:
+  live-server:
+    # Drop the prebuilt image/build; run source directly with pnpm + tsx watch.
+    image: node:20-slim
+    build: !reset null
+    working_dir: /repo
+    command:
+      - sh
+      - -c
+      - "corepack enable && pnpm install --frozen-lockfile --filter @bookmark-ai/live-server... && pnpm --filter @bookmark-ai/live-server dev"
+    environment:
+      NODE_ENV: development
+      DEV_OPEN_API: "1"
+      PORT: "8080"
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ../..:/repo
+    ports: !override
+      - "127.0.0.1:8081:8080"

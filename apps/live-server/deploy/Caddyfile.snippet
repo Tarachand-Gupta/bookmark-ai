@@ -1,0 +1,19 @@
+# Add to the VM's existing Caddyfile. Caddy auto-provisions the TLS cert for the
+# subdomain (point a DNS A record `live` → the VM's IP first).
+#
+# Caddy streams responses by default, but SSE needs the reverse-proxy flush to be
+# immediate (no buffering) — `flush_interval -1` forces that on the stream route.
+
+live.bookmark-ai.cloud {
+	# Server-Sent Events endpoint — flush every write, keep the connection long-lived.
+	@sse path /live/stream
+	reverse_proxy @sse 127.0.0.1:8080 {
+		flush_interval -1
+		transport http {
+			read_timeout 1h
+		}
+	}
+
+	# Everything else (push, list, forget, settings, health).
+	reverse_proxy 127.0.0.1:8080
+}

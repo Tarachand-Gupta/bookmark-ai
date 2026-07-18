@@ -1,0 +1,13 @@
+# The build context is the repo root; keep it lean and never leak secrets.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/.output
+**/.git
+**/*.env
+**/.env*
+**/zig-out
+**/.expo
+**/ios
+**/android

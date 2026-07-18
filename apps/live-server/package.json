@@ -1,0 +1,32 @@
+{
+  "name": "@bookmark-ai/live-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/server.ts",
+      "default": "./src/server.ts"
+    }
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsup",
+    "start": "node dist/server.js",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bookmark-ai/types": "workspace:*",
+    "@clerk/backend": "^3.11.2",
+    "@fastify/cors": "^10.0.1",
+    "fastify": "^5.2.0",
+    "ioredis": "^5.4.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

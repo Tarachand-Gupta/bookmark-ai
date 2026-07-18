@@ -1,0 +1,55 @@
+# Production stack for the Live Sessions server. Run as its own project so it
+# coexists with the VM's other backends and the dev stack:
+#
+#   docker compose -p live-prod -f apps/live-server/docker-compose.live.yml up -d
+#
+# In CI the image is built and pushed to GHCR; on the VM we pull it (no rebuild):
+#   docker compose -p live-prod -f apps/live-server/docker-compose.live.yml pull
+#   docker compose -p live-prod -f apps/live-server/docker-compose.live.yml up -d --no-build
+#
+# `-p live-prod` namespaces the network AND the redis volume, so `down -v` on the
+# dev stack (`-p live-dev`) can never touch prod data.
+
+services:
+  live-server:
+    image: ghcr.io/tarachand-gupta/bookmark-ai-live-server:${LIVE_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: apps/live-server/Dockerfile
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    # Bound to loopback — Caddy on the host terminates TLS and reverse-proxies in.
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - live-redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  live-redis-data:
