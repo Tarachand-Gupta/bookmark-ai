@@ -1,13 +1,21 @@
-# Dev override — hot-reloading tsx server with the repo mounted, on a DIFFERENT
-# host port so it coexists with the prod stack. Run as its own project:
+# Dev override — hot-reloading tsx server with the repo SOURCE mounted, on a
+# DIFFERENT host port so it coexists with the prod stack. Run as its own project:
 #
 #   docker compose -p live-dev \
 #     -f apps/live-server/docker-compose.live.yml \
 #     -f apps/live-server/docker-compose.live.dev.yml up
 #
-# `-p live-dev` gives redis its own isolated volume automatically. All live
-# deps are pure JS (no native bindings), so mounting the host repo into the linux
-# container is safe. Runs in open mode (DEV_OPEN_API=1) for tokenless smoke tests.
+# `-p live-dev` gives redis its own isolated volume automatically.
+#
+# node_modules is NOT shared with the host. The repo is bind-mounted so live
+# source edits hot-reload, but the three workspace node_modules dirs in the
+# live-server subgraph are masked by anonymous volumes: the container installs
+# its OWN linux binaries there without clobbering the host's macOS ones. (esbuild
+# and tsx ship platform-specific binaries — a node_modules shared between a mac
+# host and a linux container breaks whichever `pnpm install` ran last.)
+#
+# Auth: inherits CLERK_* from .env, so dev verifies real Clerk tokens exactly
+# like prod. For a tokenless smoke test, add DEV_OPEN_API=1 to .env.
 
 services:
   live-server:
@@ -21,10 +29,17 @@ services:
       - "corepack enable && pnpm install --frozen-lockfile --filter @bookmark-ai/live-server... && pnpm --filter @bookmark-ai/live-server dev"
     environment:
       NODE_ENV: development
-      DEV_OPEN_API: "1"
+      # Non-interactive pnpm: never prompt to purge a mismatched node_modules
+      # (there's a TTY-less confirm that otherwise aborts the container's install).
+      CI: "true"
       PORT: "8080"
       REDIS_URL: redis://redis:6379
     volumes:
       - ../..:/repo
+      # Anonymous volumes mask the host's node_modules for the live-server
+      # subgraph so the container populates its own (see header note).
+      - /repo/node_modules
+      - /repo/apps/live-server/node_modules
+      - /repo/packages/types/node_modules
     ports: !override
       - "127.0.0.1:8081:8080"
