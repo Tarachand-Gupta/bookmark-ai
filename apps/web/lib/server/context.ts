@@ -3,6 +3,7 @@ import {
   ensureMasterSchema,
   ensureSchema,
   getTenant,
+  LocalFilePlatform,
   TursoPlatform,
   type Db,
   type Tenant,
@@ -42,7 +43,7 @@ const store = globalThis as unknown as {
   __bookmarkApiContext?: ApiContext;
   __bookmarkGemini?: { client: GeminiClient | null };
   __bookmarkMasterContext?: MasterContext | null;
-  __bookmarkPlatform?: TursoPlatform | null;
+  __bookmarkPlatform?: TenantPlatform | null;
   __bookmarkTenantDbs?: Map<string, TenantDb>;
 };
 
@@ -116,22 +117,28 @@ export function getMasterContext(): MasterContext | null {
 }
 
 /**
- * The Turso Platform client for provisioning per-user DBs, or null if its env
- * (`TURSO_API_TOKEN` + `TURSO_ORG`) is not configured. `TURSO_GROUP` defaults to
- * "default".
+ * The tenant provisioning platform: local sqlite files in dev
+ * (`TENANT_PLATFORM=local`, non-production only — mirrors the `DEV_OPEN_API`
+ * guard in require-user.ts), else the Turso Platform client, or null if its
+ * env (`TURSO_API_TOKEN` + `TURSO_ORG`) is not configured. `TURSO_GROUP`
+ * defaults to "default".
  */
-export function getPlatform(): TursoPlatform | null {
+export function getPlatform(): TenantPlatform | null {
   if (store.__bookmarkPlatform === undefined) {
-    const apiToken = process.env.TURSO_API_TOKEN;
-    const org = process.env.TURSO_ORG;
-    if (!apiToken || !org) {
-      store.__bookmarkPlatform = null;
+    if (process.env.TENANT_PLATFORM === "local" && process.env.NODE_ENV !== "production") {
+      store.__bookmarkPlatform = new LocalFilePlatform(process.env.TENANT_DB_DIR ?? "../../data/tenants");
     } else {
-      store.__bookmarkPlatform = new TursoPlatform({
-        apiToken,
-        org,
-        group: process.env.TURSO_GROUP || "default",
-      });
+      const apiToken = process.env.TURSO_API_TOKEN;
+      const org = process.env.TURSO_ORG;
+      if (!apiToken || !org) {
+        store.__bookmarkPlatform = null;
+      } else {
+        store.__bookmarkPlatform = new TursoPlatform({
+          apiToken,
+          org,
+          group: process.env.TURSO_GROUP || "default",
+        });
+      }
     }
   }
   return store.__bookmarkPlatform;

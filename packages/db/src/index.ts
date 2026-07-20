@@ -19,6 +19,7 @@ export {
   type PlatformDatabase,
   type CreateTokenOptions,
 } from "./platform";
+export { LocalFilePlatform } from "./local-platform";
 export {
   insertBookmark,
   updateBookmarkContent,
