@@ -35,3 +35,12 @@ data/
 .env
 **/.env
 **/.env.*
+
+# Untracked local tooling / caches — not part of the build, and big.
+# .pnpm-store is the local pnpm content-addressable store (100s of MB);
+# Vercel runs its own install. .agents/.claude/skills-lock are skill installs.
+**/node_modules
+.pnpm-store
+.agents
+.claude
+skills-lock.json

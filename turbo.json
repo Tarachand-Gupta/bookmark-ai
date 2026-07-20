@@ -11,7 +11,17 @@
         "CLERK_SECRET_KEY",
         "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
         "NEXT_PUBLIC_API_URL",
-        "NEXT_PUBLIC_LIVE_API_URL"
+        "NEXT_PUBLIC_LIVE_API_URL",
+        "CLERK_ALLOWED_USER_IDS",
+        "CRON_SECRET",
+        "DATABASE_URL",
+        "DATABASE_AUTH_TOKEN",
+        "MULTI_TENANT",
+        "MASTER_DATABASE_URL",
+        "MASTER_DATABASE_AUTH_TOKEN",
+        "TURSO_API_TOKEN",
+        "TURSO_ORG",
+        "TURSO_GROUP"
       ]
     },
     "dev": {
