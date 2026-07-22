@@ -57,6 +57,9 @@ const SECTIONS = [
 ] as const;
 export type SectionId = (typeof SECTIONS)[number]["id"];
 
+/** All valid section ids — used to validate the `?settings=<id>` deep link. */
+export const SECTION_IDS = SECTIONS.map((s) => s.id) as SectionId[];
+
 const PROVIDERS: { value: AiProvider; label: string }[] = [
   { value: "google", label: "Gemini (Google)" },
   { value: "openai", label: "OpenAI" },

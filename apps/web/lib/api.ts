@@ -231,6 +231,13 @@ export function getLiveBaseUrl(): Promise<string> {
   return liveBasePromise;
 }
 
+/** Drop the cached live base so the next `getLiveBaseUrl()` re-reads settings.
+ * Call after saving a new `liveServerUrl` — otherwise the module-cached promise
+ * keeps the next live connect pointed at the old URL for the rest of the page. */
+export function resetLiveBaseCache(): void {
+  liveBasePromise = null;
+}
+
 /** Guard every live call: resolve the base (setting or env) and, with neither
  * configured, throw (rejected promise) instead of firing a doomed same-origin
  * request. */

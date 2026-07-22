@@ -1,11 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { LiveDevice } from "@bookmark-ai/types";
+import type { LiveDevice, UserSettings } from "@bookmark-ai/types";
 import { Chrome, Compass, Flame, Globe, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { forgetAllLiveDevices, forgetLiveDevice, getLive, setLiveEnabled } from "@/lib/api";
+import {
+  forgetAllLiveDevices,
+  forgetLiveDevice,
+  getLive,
+  getSettings,
+  resetLiveBaseCache,
+  setLiveEnabled,
+  updateSettings,
+} from "@/lib/api";
 import { deviceFreshness, formatDeviceAge } from "@/lib/live-format";
 
 const BROWSER_ICONS: Record<string, React.ElementType> = {
@@ -197,8 +206,121 @@ export function DevicesSection() {
               </p>
             </div>
           )}
+
+          <LiveServerUrlField />
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * The optional custom live-server URL. Live tabs stream through this server;
+ * empty means the built-in default (`NEXT_PUBLIC_LIVE_API_URL`). Saving resets
+ * lib/api's cached live base so the next live connect uses the new URL.
+ */
+function LiveServerUrlField() {
+  const [value, setValue] = useState("");
+  // The PUT always overwrites provider/baseUrl/model from the body, so we round-
+  // trip the loaded AI config to avoid clobbering it when saving just the URL.
+  const [aiConfig, setAiConfig] = useState<Pick<
+    UserSettings,
+    "provider" | "baseUrl" | "model"
+  > | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getSettings()
+      .then(({ settings }) => {
+        if (cancelled) return;
+        setValue(settings.liveServerUrl ?? "");
+        setAiConfig({
+          provider: settings.provider,
+          baseUrl: settings.baseUrl,
+          model: settings.model,
+        });
+      })
+      .catch(() => {
+        // A failed load leaves the field empty (the default) — the user can
+        // still type and save an override.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    setSavedMsg(null);
+    setError(null);
+    try {
+      const { settings } = await updateSettings({
+        // Re-send the current AI config so this save doesn't reset it (the route
+        // overwrites provider/baseUrl/model on every PUT).
+        provider: aiConfig?.provider ?? "google",
+        baseUrl: aiConfig?.baseUrl ?? undefined,
+        model: aiConfig?.model ?? undefined,
+        liveServerUrl: value.trim() || null,
+      });
+      setValue(settings.liveServerUrl ?? "");
+      setAiConfig({
+        provider: settings.provider,
+        baseUrl: settings.baseUrl,
+        model: settings.model,
+      });
+      // The live base is cached per page load in lib/api — drop it so the next
+      // connect picks up this URL.
+      resetLiveBaseCache();
+      setSavedMsg("Saved");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2 border-t pt-5">
+      <label htmlFor="live-server-url" className="text-sm font-medium">
+        Live server URL
+      </label>
+      <div className="flex items-center gap-2">
+        <Input
+          id="live-server-url"
+          type="url"
+          inputMode="url"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setSavedMsg(null);
+          }}
+          placeholder="Default server"
+        />
+        <Button
+          type="button"
+          size="sm"
+          onClick={save}
+          disabled={saving || aiConfig === null}
+          className="shrink-0"
+        >
+          {saving ? (
+            <>
+              <Loader2 className="animate-spin" aria-hidden />
+              Saving…
+            </>
+          ) : (
+            "Save"
+          )}
+        </Button>
+      </div>
+      {savedMsg && <p className="text-sm text-emerald-600 dark:text-emerald-500">{savedMsg}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
+        Live tabs stream through this server. Leave empty to use the built-in one.
+      </p>
     </div>
   );
 }

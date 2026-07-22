@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { SearchMode } from "@bookmark-ai/types";
 import {
@@ -39,7 +39,7 @@ import { DateRangeFilter } from "./date-range-filter";
 import { SessionCard } from "./sessions-view";
 import { SessionsPanel } from "./sessions-panel";
 import { OngoingView } from "./ongoing-view";
-import { SettingsDialog, type SectionId } from "./settings-dialog";
+import { SECTION_IDS, SettingsDialog, type SectionId } from "./settings-dialog";
 import { AddBookmarkDialog } from "./add-bookmark-dialog";
 import { OnboardingDialog } from "./onboarding-dialog";
 
@@ -102,6 +102,31 @@ export function LibraryPage() {
   const openSettings = useCallback((section: SectionId = "ai") => {
     setSettings({ open: true, section });
   }, []);
+
+  // Deep link: /app?settings=<sectionId> opens Settings at that section (the
+  // extension's gear links to ?settings=devices). An unknown value falls back to
+  // the dialog's default section. A ref guards against re-yanking the user off a
+  // section they navigated to inside the dialog when some OTHER param changes.
+  const handledSettingsParam = useRef<string | null>(null);
+  useEffect(() => {
+    const param = searchParams.get("settings");
+    if (!param) {
+      handledSettingsParam.current = null;
+      return;
+    }
+    if (param === handledSettingsParam.current) return;
+    handledSettingsParam.current = param;
+    openSettings(SECTION_IDS.includes(param as SectionId) ? (param as SectionId) : undefined);
+  }, [searchParams, openSettings]);
+
+  // Strip the ?settings param (preserving the rest) when the dialog closes, so
+  // the deep-linked URL doesn't linger and re-open on the next param change.
+  const clearSettingsParam = useCallback(() => {
+    if (!searchParams.get("settings")) return;
+    const params = new URLSearchParams(searchParams);
+    params.delete("settings");
+    router.replace(params.size ? `${pathname}?${params}` : pathname, { scroll: false });
+  }, [router, pathname, searchParams]);
 
   // First-run tour: open once per browser (localStorage), read in an effect so
   // the server-rendered markup hydrates cleanly. The footer "Tour" item reopens it.
@@ -496,7 +521,10 @@ export function LibraryPage() {
       <SettingsDialog
         open={settings.open}
         initialSection={settings.section}
-        onOpenChange={(open) => setSettings((s) => ({ ...s, open }))}
+        onOpenChange={(open) => {
+          setSettings((s) => ({ ...s, open }));
+          if (!open) clearSettingsParam();
+        }}
       />
       <OnboardingDialog open={onboardingOpen} onOpenChange={closeOnboarding} />
     </SidebarProvider>

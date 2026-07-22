@@ -32,8 +32,11 @@ const EXTENSION_IDS = [
   "joillpelifndeefomeimoomlgoimbkei", // local
 ];
 
-/** Overall budget for the ping round-trip before we conclude "not installed". */
-const PING_TIMEOUT_MS = 400;
+/** Overall budget for the ping round-trip before we conclude "not installed". A
+ * cold extension service worker has to WAKE before it can answer the external
+ * ping, which can take well over 400ms — the card hiding a beat later is better
+ * than hiding never (a false "not installed"). */
+const PING_TIMEOUT_MS = 1500;
 
 interface ChromeRuntimeLike {
   sendMessage?: (
