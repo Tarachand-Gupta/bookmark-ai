@@ -37,7 +37,8 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { LibraryFilters } from "@/lib/api";
+import { getSettings, type LibraryFilters } from "@/lib/api";
+import { AiSetupCard } from "./ai-setup-card";
 
 interface BookmarkHit {
   id: string;
@@ -112,6 +113,25 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
   });
   const seeded = useRef(false);
 
+  // Offer "bring your own AI provider" when the user hasn't set a key: the server
+  // may still answer via its own key, so this is an opt-in, dismissible upsell —
+  // not a blocker. "Not configured" = no user API key saved (apiKeySet false).
+  const [showSetup, setShowSetup] = useState(false);
+  const [setupDismissed, setSetupDismissed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    getSettings()
+      .then(({ settings }) => {
+        if (!cancelled) setShowSetup(!settings.apiKeySet);
+      })
+      .catch(() => {
+        // Leave the card hidden if settings can't load — don't block the chat.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     const q = initialQuery?.trim();
     if (q && !seeded.current) {
@@ -140,6 +160,15 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
           Close
         </Button>
       </div>
+
+      {showSetup && !setupDismissed && (
+        <div className="border-b p-3">
+          <AiSetupCard
+            onSaved={() => setShowSetup(false)}
+            onDismiss={() => setSetupDismissed(true)}
+          />
+        </div>
+      )}
 
       <Conversation className="flex-1">
         <ConversationContent>

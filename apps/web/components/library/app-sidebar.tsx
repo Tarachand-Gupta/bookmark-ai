@@ -16,8 +16,10 @@ import {
   Library,
   Monitor,
   Plus,
+  Radio,
   Settings,
   Smartphone,
+  Sparkles,
   Tablet,
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -66,15 +68,20 @@ export interface AppSidebarProps {
   aiEnabled: boolean | null;
   filters: LibraryFilters;
   onFilterChange: (filters: LibraryFilters) => void;
-  /** Whether the Sessions view (not the library) is showing. */
+  /** Whether the Saved sessions view (not the library) is showing. */
   sessionsActive?: boolean;
   sessionCount?: number | null;
   sessionsLoading?: boolean;
   onShowSessions?: () => void;
+  /** Whether the Live sessions view (open tabs from every device) is showing. */
+  liveActive?: boolean;
+  onShowLive?: () => void;
   /** Opens the add-bookmark dialog (the + next to the branding). */
   onAdd?: () => void;
   /** Opens the settings modal (owned by the page so other surfaces can open it). */
   onOpenSettings?: () => void;
+  /** Reopens the first-run feature tour. */
+  onOpenTour?: () => void;
 }
 
 /**
@@ -91,8 +98,11 @@ export function AppSidebar({
   sessionCount,
   sessionsLoading,
   onShowSessions,
+  liveActive,
+  onShowLive,
   onAdd,
   onOpenSettings,
+  onOpenTour,
 }: AppSidebarProps) {
   const { setOpenMobile } = useSidebar();
   const [allCategories, setAllCategories] = useState(false);
@@ -154,13 +164,25 @@ export function AppSidebar({
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  isActive={noFilter && !sessionsActive}
+                  isActive={noFilter && !sessionsActive && !liveActive}
                   onClick={() => select({})}
                 >
                   <Library aria-hidden />
                   <span>All bookmarks</span>
                 </SidebarMenuButton>
                 <CountBadge value={meta?.total} loading={facetsLoading} />
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={!!liveActive}
+                  onClick={() => {
+                    onShowLive?.();
+                    setOpenMobile(false);
+                  }}
+                >
+                  <Radio aria-hidden />
+                  <span>Live sessions</span>
+                </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -171,7 +193,7 @@ export function AppSidebar({
                   }}
                 >
                   <Layers aria-hidden />
-                  <span>Sessions</span>
+                  <span>Saved sessions</span>
                 </SidebarMenuButton>
                 <CountBadge
                   value={sessionCount}
@@ -296,6 +318,14 @@ export function AppSidebar({
       <SidebarFooter>
         <ExtensionCard />
         <SidebarMenu>
+          {onOpenTour && (
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={onOpenTour}>
+                <Sparkles aria-hidden />
+                <span>Tour</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem>
             <SidebarMenuButton onClick={() => onOpenSettings?.()}>
               <Settings aria-hidden />

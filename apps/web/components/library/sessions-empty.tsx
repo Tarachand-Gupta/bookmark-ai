@@ -17,8 +17,8 @@ export function SessionsEmpty() {
           window closes, ready to restore all at once or one at a time.
         </p>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          Save one from the Bookmark AI extension, or switch to{" "}
-          <strong className="font-medium text-foreground">Ongoing</strong> to save a window
+          Save one from the Bookmark AI extension, or open{" "}
+          <strong className="font-medium text-foreground">Live sessions</strong> to save a window
           that&apos;s open on another device.
         </p>
         <div className="mt-5 flex justify-center md:justify-start">

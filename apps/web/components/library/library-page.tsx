@@ -38,10 +38,14 @@ import { ViewToggle, type LibraryView } from "./view-toggle";
 import { DateRangeFilter } from "./date-range-filter";
 import { SessionCard } from "./sessions-view";
 import { SessionsPanel } from "./sessions-panel";
+import { OngoingView } from "./ongoing-view";
 import { SettingsDialog, type SectionId } from "./settings-dialog";
 import { AddBookmarkDialog } from "./add-bookmark-dialog";
+import { OnboardingDialog } from "./onboarding-dialog";
 
 const VIEW_STORAGE_KEY = "bookmark-ai:view";
+/** First-run tour: set once the user dismisses the onboarding dialog. */
+const ONBOARDED_KEY = "bmk:onboarded";
 
 const FILTER_KEYS = ["category", "browser", "device", "day", "tag", "from", "to"] as const;
 
@@ -97,6 +101,17 @@ export function LibraryPage() {
   });
   const openSettings = useCallback((section: SectionId = "ai") => {
     setSettings({ open: true, section });
+  }, []);
+
+  // First-run tour: open once per browser (localStorage), read in an effect so
+  // the server-rendered markup hydrates cleanly. The footer "Tour" item reopens it.
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  useEffect(() => {
+    if (!localStorage.getItem(ONBOARDED_KEY)) setOnboardingOpen(true);
+  }, []);
+  const closeOnboarding = useCallback((open: boolean) => {
+    setOnboardingOpen(open);
+    if (!open) localStorage.setItem(ONBOARDED_KEY, "1");
   }, []);
 
   // Display preference, not shareable state → localStorage, not the URL.
@@ -155,8 +170,10 @@ export function LibraryPage() {
     list.forbidden || meta.forbidden || sessions.forbidden || search.forbidden;
 
   // Saved sessions are a distinct section, keyed off ?section=sessions so the
-  // extension can deep-link into it right after saving a session.
+  // extension can deep-link into it right after saving a session. Live open tabs
+  // are their own section at ?section=live.
   const sessionsActive = searchParams.get("section") === "sessions";
+  const liveActive = searchParams.get("section") === "live";
 
   const searching = query.trim().length > 0;
   // Hybrid results arrive sectioned: keyword hits (exact) up top, semantic
@@ -222,6 +239,12 @@ export function LibraryPage() {
     router.push(`${pathname}?section=sessions`, { scroll: false });
   }, [router, pathname]);
 
+  const showLive = useCallback(() => {
+    setQuery("");
+    setMode("text");
+    router.push(`${pathname}?section=live`, { scroll: false });
+  }, [router, pathname]);
+
   const handleSessionDelete = useCallback(
     async (id: string) => {
       setActionError(null);
@@ -237,8 +260,8 @@ export function LibraryPage() {
   );
 
   // Breadcrumb: root view + the active facet; search presents in the content area.
-  const crumb = sessionsActive ? null : headerCrumb(filters);
-  const title = sessionsActive ? "Sessions" : "All bookmarks";
+  const crumb = sessionsActive || liveActive ? null : headerCrumb(filters);
+  const title = sessionsActive ? "Saved sessions" : liveActive ? "Live sessions" : "All bookmarks";
   const aiActive = mode === "ai";
 
   // The chat is a side panel now — the library stays live next to it, so
@@ -259,8 +282,11 @@ export function LibraryPage() {
         sessionCount={sessions.data?.sessions.length ?? null}
         sessionsLoading={sessions.loading}
         onShowSessions={showSessions}
+        liveActive={liveActive}
+        onShowLive={showLive}
         onAdd={() => setAddOpen(true)}
         onOpenSettings={openSettings}
+        onOpenTour={() => setOnboardingOpen(true)}
       />
       <SidebarInset>
         <LibraryHeader
@@ -281,14 +307,19 @@ export function LibraryPage() {
               <AccountSetup />
             ) : noAccess ? (
               <NoAccessNotice />
+            ) : liveActive ? (
+              // Mounted ONLY while section=live, so its SSE/live hook (gated on
+              // visibility) holds no connection outside this view.
+              <div>
+                <h2 className="mb-4 text-lg font-semibold tracking-tight">Live sessions</h2>
+                <OngoingView onSaved={refresh} onOpenSettings={openSettings} />
+              </div>
             ) : sessionsActive ? (
               <SessionsPanel
                 savedSessions={sessions.data?.sessions ?? null}
                 savedLoading={sessions.loading}
                 savedError={sessions.error}
                 onDeleteSaved={handleSessionDelete}
-                onSavedSession={refresh}
-                onOpenSettings={openSettings}
               />
             ) : (
               <>
@@ -467,6 +498,7 @@ export function LibraryPage() {
         initialSection={settings.section}
         onOpenChange={(open) => setSettings((s) => ({ ...s, open }))}
       />
+      <OnboardingDialog open={onboardingOpen} onOpenChange={closeOnboarding} />
     </SidebarProvider>
   );
 }
