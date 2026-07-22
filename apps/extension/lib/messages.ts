@@ -5,6 +5,10 @@ import { browser } from "wxt/browser";
 
 export const SAVE_BOOKMARK = "SAVE_BOOKMARK" as const;
 export const SAVE_SESSION = "SAVE_SESSION" as const;
+/** Popup → background: who is signed in? The background owns the Clerk client
+ * (createClerkClient + syncHost), so it is the authority on the mirrored web
+ * session; the popup polls this to drive the signed-in/out gate. */
+export const GET_USER = "GET_USER" as const;
 /** Popup → background: flip the live-tabs opt-in. The background owns the Clerk
  * token, so the settings POST + local mirror + push loop all run there (§4.9). */
 export const LIVE_SET_ENABLED = "LIVE_SET_ENABLED" as const;
@@ -83,6 +87,38 @@ export function requestSaveSession(
 ): Promise<SaveSessionResult> {
   const message: SaveSessionMessage = { type: SAVE_SESSION, ...options };
   return browser.runtime.sendMessage(message) as Promise<SaveSessionResult>;
+}
+
+export interface GetUserMessage {
+  type: typeof GET_USER;
+}
+
+/** The current signed-in identity as the background resolves it from the
+ * mirrored web session. `name` is a display name (full name or username) or
+ * null; the popup falls back to `email` when there is no name. */
+export interface UserInfo {
+  signedIn: boolean;
+  name: string | null;
+  email: string | null;
+}
+
+export function isGetUserMessage(message: unknown): message is GetUserMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as GetUserMessage).type === GET_USER
+  );
+}
+
+/** Popup-side helper: ask the background for the current signed-in user. Never
+ * rejects into the caller — an unreachable background resolves to signed-out. */
+export function requestUser(): Promise<UserInfo> {
+  const message: GetUserMessage = { type: GET_USER };
+  return (browser.runtime.sendMessage(message) as Promise<UserInfo>).catch(() => ({
+    signedIn: false,
+    name: null,
+    email: null,
+  }));
 }
 
 export interface LiveSetEnabledMessage {

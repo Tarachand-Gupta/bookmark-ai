@@ -1,19 +1,30 @@
 import { useEffect, useState } from "react";
 import { browser } from "wxt/browser";
 import type { Bookmark, Session } from "@bookmark-ai/types";
-import { getWebBaseUrl, DEFAULT_WEB_URL } from "@/lib/api";
-import { requestSaveBookmark, requestSaveSession } from "@/lib/messages";
-import { AuthStatus } from "./components/AuthStatus";
+import { DEFAULT_WEB_URL, getWebBaseUrl } from "@/lib/api";
+import {
+  requestSaveBookmark,
+  requestSaveSession,
+  requestUser,
+  type UserInfo,
+} from "@/lib/messages";
 import { ErrorNote } from "./components/ErrorNote";
-import { HeaderIdentity } from "./components/HeaderIdentity";
 import { LiveTabsToggle } from "./components/LiveTabsToggle";
 import { SaveCard, type TabInfo } from "./components/SaveCard";
 import { SavedResult } from "./components/SavedResult";
 import { SessionSavedResult } from "./components/SessionSavedResult";
 import { SettingsRow } from "./components/SettingsRow";
+import { SignInGate } from "./components/SignInGate";
+import { SignOutButton } from "./components/SignOutButton";
 import { Spinner } from "./components/Spinner";
 
 const AUTO_CLOSE_MS = 1200;
+/** Re-check auth while the signed-out gate is up, so signing in on the web tab
+ * promotes the popup without a reopen (paired with the visibilitychange re-check
+ * for when the popup regains focus). */
+const AUTH_POLL_MS = 2000;
+
+const SIGNED_OUT: UserInfo = { signedIn: false, name: null, email: null };
 
 /** Both session buttons are the same control with different verbs — only the
  * label distinguishes them, so they must look identical. */
@@ -30,6 +41,8 @@ type Status =
   | "error";
 
 export default function App() {
+  // `null` = auth still loading; the gate/full UI only render once it resolves.
+  const [auth, setAuth] = useState<UserInfo | null>(null);
   const [tab, setTab] = useState<TabInfo | null>(null);
   const [tabCount, setTabCount] = useState<number | null>(null);
   const [status, setStatus] = useState<Status>("idle");
@@ -37,6 +50,37 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [webUrl, setWebUrl] = useState<string>(DEFAULT_WEB_URL);
+
+  // Auth check on open (popup mount) + a re-check whenever the popup regains
+  // visibility — e.g. returning from the sign-in tab.
+  useEffect(() => {
+    let alive = true;
+    const check = () => {
+      void requestUser().then((info) => {
+        if (alive) setAuth(info);
+      });
+    };
+    check();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      alive = false;
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
+  // Poll ONLY while the signed-out gate is showing. `auth?.signedIn` stays false
+  // across signed-out re-checks, so the interval persists; it clears the moment
+  // sign-in flips it true (or while auth is still loading/undefined).
+  useEffect(() => {
+    if (!auth || auth.signedIn) return;
+    const id = window.setInterval(() => {
+      void requestUser().then(setAuth);
+    }, AUTH_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [auth?.signedIn]);
 
   useEffect(() => {
     void browser.tabs.query({ active: true, currentWindow: true }).then(([active]) => {
@@ -102,20 +146,40 @@ export default function App() {
     window.close();
   }
 
+  // Auth still resolving — a bare frame so we neither flash the save UI nor the
+  // sign-in gate before we know which one to show.
+  if (!auth) {
+    return (
+      <div className="flex min-w-[20rem] items-center justify-center p-8">
+        <Spinner />
+      </div>
+    );
+  }
+
+  // Signed out: the gate is the ONLY thing the popup shows.
+  if (!auth.signedIn) {
+    return <SignInGate webUrl={webUrl} />;
+  }
+
+  const identity = auth.name ?? auth.email ?? "Account";
   const savable = tab !== null && /^https?:/i.test(tab.url);
-  const busy = status === "saving" || status === "savingSession" || status === "savingSessionKeepOpen";
+  const busy =
+    status === "saving" || status === "savingSession" || status === "savingSessionKeepOpen";
   const tabSuffix = tabCount ? ` (${tabCount} tab${tabCount === 1 ? "" : "s"})` : "";
 
   return (
     <div className="flex min-w-[20rem] flex-col gap-3 p-4">
       <header className="flex items-center gap-2">
-        <span className="flex size-5 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
           B
         </span>
-        <div className="flex min-w-0 flex-col">
-          <h1 className="text-sm font-semibold leading-tight tracking-tight">Bookmark AI</h1>
-          <HeaderIdentity />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <h1 className="truncate text-sm font-semibold leading-tight tracking-tight" title={identity}>
+            {identity}
+          </h1>
+          <p className="text-[11px] leading-tight text-muted-foreground">Bookmark AI</p>
         </div>
+        <SignOutButton onSignedOut={() => setAuth(SIGNED_OUT)} />
       </header>
 
       {status === "saved" && bookmark ? (
@@ -166,8 +230,7 @@ export default function App() {
 
       <SettingsRow />
 
-      <footer className="mt-1 flex items-center justify-between gap-2 border-t pt-2">
-        <AuthStatus webUrl={webUrl} />
+      <footer className="mt-1 flex items-center justify-end gap-2 border-t pt-2">
         <button
           type="button"
           onClick={openWebsite}

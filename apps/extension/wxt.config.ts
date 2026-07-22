@@ -19,8 +19,11 @@ const CRX_PUBLIC_KEY =
  *   dev server at localhost:3000 (both Clerk syncHost and the local /api base).
  * - `bookmark-ai.cloud` apex + www — production web app (default API base + prod
  *   Clerk syncHost).
+ * - `bookmark-ai-wine.vercel.app` — the Vercel PREVIEW target (the `build:preview`
+ *   app origin + its Clerk syncHost). Kept in the superset so one manifest covers
+ *   all three build targets (dev/prod/preview).
  * - Clerk frontend APIs the extension talks to directly — production (default)
- *   first, dev instance kept for local development.
+ *   first, dev instance kept for local development + preview.
  * - `live.bookmark-ai.cloud` — the dedicated Live Sessions server (Fastify,
  *   separate from the Vercel-hosted /api/*). `http://localhost/*` above
  *   already covers a local live server for dev.
@@ -29,6 +32,7 @@ const HOST_PERMISSIONS = [
   "http://localhost/*",
   "https://bookmark-ai.cloud/*",
   "https://www.bookmark-ai.cloud/*",
+  "https://bookmark-ai-wine.vercel.app/*",
   "https://clerk.bookmark-ai.cloud/*",
   "https://darling-baboon-13.clerk.accounts.dev/*",
   "https://live.bookmark-ai.cloud/*",
@@ -77,6 +81,7 @@ export default defineConfig({
         matches: [
           "http://localhost/*",
           "https://bookmark-ai-theta.vercel.app/*",
+          "https://bookmark-ai-wine.vercel.app/*",
           "https://bookmark-ai.cloud/*",
           "https://www.bookmark-ai.cloud/*",
         ],

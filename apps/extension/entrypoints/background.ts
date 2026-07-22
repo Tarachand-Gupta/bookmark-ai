@@ -4,9 +4,11 @@ import { createClerkClient } from "@clerk/chrome-extension/background";
 import { createBookmark, getWebBaseUrl, saveSession, setAuthTokenProvider } from "@/lib/api";
 import { CLERK_PUBLISHABLE_KEY, CLERK_SYNC_HOST } from "@/lib/clerk";
 import { detectSource } from "@/lib/detect";
+import { fullName } from "@/lib/identity";
 import { registerLiveCheckpoint, setLiveEnabled } from "@/lib/live-checkpoint";
 import { closeWindowsAndOpen, gatherOpenTabs } from "@/lib/session";
 import {
+  isGetUserMessage,
   isLiveSetEnabledMessage,
   isRestoreSessionMessage,
   isSaveBookmarkMessage,
@@ -17,6 +19,7 @@ import {
   type SaveBookmarkResult,
   type SaveSessionMessage,
   type SaveSessionResult,
+  type UserInfo,
 } from "@/lib/messages";
 
 /** Clerk session JWT (same syncHost session the popup shows). Null when
@@ -31,6 +34,29 @@ async function getSessionToken(): Promise<string | null> {
     return (await clerk.session?.getToken()) ?? null;
   } catch {
     return null;
+  }
+}
+
+const SIGNED_OUT: UserInfo = { signedIn: false, name: null, email: null };
+
+/** Resolve the signed-in identity from the mirrored web session (syncHost). The
+ * popup polls this to drive its gate; any failure (Clerk unreachable, no synced
+ * session) degrades to signed-out so the popup shows the sign-in prompt. */
+async function handleGetUser(): Promise<UserInfo> {
+  try {
+    const clerk = await createClerkClient({
+      publishableKey: CLERK_PUBLISHABLE_KEY,
+      syncHost: CLERK_SYNC_HOST,
+    });
+    const user = clerk.user;
+    if (!clerk.session || !user) return SIGNED_OUT;
+    return {
+      signedIn: true,
+      name: fullName(user),
+      email: user.primaryEmailAddress?.emailAddress ?? null,
+    };
+  } catch {
+    return SIGNED_OUT;
   }
 }
 
@@ -143,9 +169,13 @@ export default defineBackground(() => {
       message: unknown,
       _sender,
       sendResponse: (
-        response: SaveBookmarkResult | SaveSessionResult | LiveSetEnabledResult,
+        response: SaveBookmarkResult | SaveSessionResult | LiveSetEnabledResult | UserInfo,
       ) => void,
     ) => {
+      if (isGetUserMessage(message)) {
+        void handleGetUser().then(sendResponse);
+        return true; // keep the channel open for the async response
+      }
       if (isSaveBookmarkMessage(message)) {
         void handleSaveBookmark(message).then(sendResponse);
         return true; // keep the channel open for the async response

@@ -6,27 +6,28 @@ import type {
 } from "@bookmark-ai/types";
 import { storage } from "#imports";
 
-/** A freshly installed extension talks to production; developers point the API
- * base at http://localhost:3000 (the web dev server, which serves the same
- * /api) via the popup settings row. The web base defaults to production too, so
- * a fresh install's "Open website"/sign-in links never point at localhost. */
-export const DEFAULT_API_URL = "https://bookmark-ai.cloud";
-export const DEFAULT_WEB_URL = "https://bookmark-ai.cloud";
+/** The app origin (web UI + its `/api/*` routes — one deployment serves both).
+ * Selected at BUILD time per target via WXT's env/mode: `.env.production` →
+ * https://bookmark-ai.cloud, `.env.development` → http://localhost:3000,
+ * `.env.preview` → the Vercel preview alias. The `WXT_APP_URL` fallback here is
+ * only for a build with no env file loaded. A developer can still override the
+ * default at RUNTIME from the popup settings row. */
+const DEFAULT_APP_URL = import.meta.env.WXT_APP_URL || "https://bookmark-ai.cloud";
+/** API base and web base are the SAME origin in every build target, so both
+ * derive from `DEFAULT_APP_URL`; the single "API server" setting drives the
+ * website links too (see `getWebBaseUrl`). */
+export const DEFAULT_API_URL = DEFAULT_APP_URL;
+export const DEFAULT_WEB_URL = DEFAULT_APP_URL;
 /** Live Sessions has its own dedicated server (Fastify, no `/api` prefix) —
- * separate from the Vercel-hosted `/api/*` routes. Developers point it at
- * http://localhost:8091 (or similar) via the popup settings row for local
- * testing; the `http://localhost/*` host_permissions entry already covers
- * that case. */
-export const DEFAULT_LIVE_API_URL = "https://live.bookmark-ai.cloud";
+ * separate from the Vercel-hosted `/api/*` routes. Build-time default via
+ * `WXT_LIVE_API_URL` (dev points it at a local server; the `http://localhost/*`
+ * host_permissions entry covers that). Also overridable in popup settings. */
+export const DEFAULT_LIVE_API_URL =
+  import.meta.env.WXT_LIVE_API_URL || "https://live.bookmark-ai.cloud";
 
 /** API base URL, user-configurable from the popup settings row. */
 export const apiUrlItem = storage.defineItem<string>("local:apiUrl", {
   fallback: DEFAULT_API_URL,
-});
-
-/** Web app base URL — for the "Open website" button and post-session redirect. */
-export const webUrlItem = storage.defineItem<string>("local:webUrl", {
-  fallback: DEFAULT_WEB_URL,
 });
 
 /** Live Sessions server base URL, user-configurable from the popup settings row. */
@@ -39,9 +40,13 @@ export async function getApiBaseUrl(): Promise<string> {
   return (value || DEFAULT_API_URL).trim().replace(/\/+$/, "");
 }
 
+/** Web app base URL — for the "Open website" button, the sign-in link, and the
+ * post-session redirect. The web UI shares the API origin in every build target,
+ * so it follows the single "API server" setting (and its build-time default)
+ * rather than a separate, unsettable web URL that used to drift to production
+ * while the API pointed at localhost. */
 export async function getWebBaseUrl(): Promise<string> {
-  const value = await webUrlItem.getValue();
-  return (value || DEFAULT_WEB_URL).trim().replace(/\/+$/, "");
+  return getApiBaseUrl();
 }
 
 export async function getLiveBaseUrl(): Promise<string> {

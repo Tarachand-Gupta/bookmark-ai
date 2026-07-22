@@ -4,6 +4,11 @@ node_modules/
 .turbo/
 .env*
 !.env.example
+# Committed per-target build defaults (all PUBLIC values — publishable keys +
+# URLs). A local `.env` / `.env.*.local` stays ignored for private overrides.
+!.env.development
+!.env.production
+!.env.preview
 # CRX private key — its public half is committed in wxt.config.ts
 .keys/
 # Stray Safari converter output (placeholder com.yourCompany.* bundle ids) from
