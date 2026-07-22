@@ -1,19 +1,23 @@
-# Add to the VM's existing Caddyfile. Caddy auto-provisions the TLS cert for the
-# subdomain (point a DNS A record `live` → the VM's IP first).
+# The actual Caddy sites deployed on the VM. Each lives in its OWN file under
+# /etc/caddy/sites/ (the VM's Caddyfile does `import /etc/caddy/sites/*.caddy`), so
+# adding them is drop-a-file + `sudo systemctl reload caddy` (reload, never restart).
+# Caddy auto-provisions the TLS cert on the first HTTPS request per hostname.
 #
-# Caddy streams responses by default, but SSE needs the reverse-proxy flush to be
-# immediate (no buffering) — `flush_interval -1` forces that on the stream route.
+# SSE needs the reverse-proxy flush to be immediate (no buffering); `flush_interval -1`
+# forces that. The other payloads are tiny JSON, so flushing everything is fine.
 
-live.bookmark-ai.cloud {
-	# Server-Sent Events endpoint — flush every write, keep the connection long-lived.
-	@sse path /live/stream
-	reverse_proxy @sse 127.0.0.1:8080 {
+# /etc/caddy/sites/bookmark-live.caddy  — sslip.io host (resolves today, no DNS needed)
+live.129.146.3.172.sslip.io {
+	reverse_proxy 127.0.0.1:5100 {
 		flush_interval -1
-		transport http {
-			read_timeout 1h
-		}
 	}
+}
 
-	# Everything else (push, list, forget, settings, health).
-	reverse_proxy 127.0.0.1:8080
+# /etc/caddy/sites/bookmark-live-domain.caddy  — the real domain. Kept in a SEPARATE
+# file so that, until its DNS record exists, Caddy's harmless ACME retries for this
+# name can't affect the working sslip host above.
+live.bookmark-ai.cloud {
+	reverse_proxy 127.0.0.1:5100 {
+		flush_interval -1
+	}
 }

@@ -49,31 +49,48 @@ curl localhost:8080/live/settings -X POST -H 'content-type: application/json' -d
 curl -N localhost:8080/live/stream     # watch the SSE stream
 ```
 
-Or the whole dev stack in containers (server + its own Redis, hot-reload, port 8091):
+Or the whole dev stack in containers (server + its own Redis, hot-reload, port 8091).
+This compose file is self-contained — Docker is a **local-dev-only** convenience now
+(production is systemd/rsync, below):
 
 ```bash
-docker compose -p live-dev \
-  -f apps/live-server/docker-compose.live.yml \
-  -f apps/live-server/docker-compose.live.dev.yml up
+docker compose -p live-dev -f apps/live-server/docker-compose.live.dev.yml up
 ```
 
 Point the clients at it: web `NEXT_PUBLIC_LIVE_API_URL=http://localhost:8091`,
 extension popup `local:liveApiUrl=http://localhost:8091`, mobile `serverTarget=local`.
 
-## Production
+## Production — systemd + rsync on the OCI ARM VM (no Docker)
 
-CI (`.github/workflows/live-server-deploy.yml`) builds the image, pushes it to GHCR,
-and deploys to the VM over SSH. On the VM:
+Production runs on a shared Oracle Cloud **ARM64** VM (Ubuntu 24.04) alongside other
+backends. There is **no Docker** there — the server is pure-JS (Fastify + ioredis +
+`@clerk/backend`, no native bindings), so a CI-built `node_modules` runs as-is on ARM64.
+It runs under **systemd** and is fronted by the VM's shared **Caddy** on 443; Redis is
+the VM's shared instance on **logical DB 2** (`redis://127.0.0.1:6379/2`).
 
-```bash
-docker compose -p live-prod -f apps/live-server/docker-compose.live.yml pull
-docker compose -p live-prod -f apps/live-server/docker-compose.live.yml up -d --no-build
-```
+| | |
+| --- | --- |
+| systemd unit | `bookmark-live.service` (`User=ubuntu`, `ExecStart=/usr/bin/node dist/server.js`, `EnvironmentFile=/home/ubuntu/bookmark-live/.env`) |
+| App dir | `/home/ubuntu/bookmark-live` |
+| Port (loopback) | `127.0.0.1:5100` (bound `0.0.0.0` by the app; host iptables blocks it externally) |
+| Redis | shared server, logical DB `2` |
+| Caddy sites | `/etc/caddy/sites/bookmark-live.caddy` → `live.129.146.3.172.sslip.io`; `/etc/caddy/sites/bookmark-live-domain.caddy` → `live.bookmark-ai.cloud` (both `reverse_proxy … { flush_interval -1 }` for SSE) |
 
-Fronted by Caddy on `live.bookmark-ai.cloud` (auto-TLS) — see `deploy/Caddyfile.snippet`
-(SSE needs `flush_interval -1`). Requires `.env` on the VM (see `.env.example`), a DNS
-A record `live` → the VM, and `live.bookmark-ai.cloud` in the extension `host_permissions`
-+ the Clerk instance `allowed_origins`.
+**Deploy** is automated by `.github/workflows/live-server-deploy.yml` on pushes to
+`main`/`live-sessions` touching `apps/live-server/**` or `packages/types/**`: it builds,
+runs `pnpm --filter=@bookmark-ai/live-server --legacy deploy --prod out` (copying the
+gitignored `dist/` in), `rsync`s `out/` to the VM (**excluding `.env`** so the VM secret is
+never clobbered), `sudo systemctl restart bookmark-live`, and health-checks the sslip host.
+It never touches Caddy or the co-tenant services. Secrets: `VM_HOST`, `VM_USER`,
+`VM_SSH_KEY` (a dedicated deploy key), `VM_APP_DIR`.
+
+**First-time / manual deploy** mirrors the workflow: build → `pnpm … --legacy deploy --prod
+out` → `cp -R apps/live-server/dist out/dist` → `rsync -az --exclude=.env out/ VM:/home/ubuntu/bookmark-live/`
+→ write `/home/ubuntu/bookmark-live/.env` (chmod 600, values per `.env.example`) → install
+the systemd unit + the two Caddy site files → `systemctl enable --now bookmark-live` +
+`sudo systemctl reload caddy` (**reload, never restart**). `live.bookmark-ai.cloud` also needs
+its DNS CNAME/A record, plus entry in the extension `host_permissions` and the Clerk instance
+`allowed_origins`; until the DNS exists, only the `sslip.io` host serves.
 
 ## Environment
 

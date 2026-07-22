@@ -39,17 +39,22 @@ is `@bookmark-ai/types` (`packages/types/src/live.ts`), reused verbatim and bund
 
 Self-healing by convergence — every reconnect re-syncs full state (not deltas). The
 extension push loop is already outage-proof (never-throws, backoff, ~2min heartbeat);
-SSE auto-reconnects and the server sends a full `state` frame on every connect; both
-containers `restart: unless-stopped`; Redis AOF survives restarts. Total VM/disk loss
+SSE auto-reconnects and the server sends a full `state` frame on every connect; the
+systemd unit is `Restart=always` and Redis AOF survives restarts. Total VM/disk loss
 self-heals: flags default OFF and online extensions re-push within ~2min.
 
 ## Deploy
 
-Containerized, portable, in-repo: `apps/live-server/Dockerfile` + `docker-compose.live.yml`
-(prod) / `docker-compose.live.dev.yml` (dev), run as separate `-p live-prod` / `-p live-dev`
-stacks. Fronted by **Caddy** on `live.bookmark-ai.cloud` (auto-TLS; SSE needs
-`flush_interval -1` — see `deploy/Caddyfile.snippet`). CI builds → GHCR → SSH deploy
-(`.github/workflows/live-server-deploy.yml`).
+Runs on a shared Oracle Cloud **ARM64** VM (Ubuntu 24.04) with **no Docker** — the server
+is pure-JS (no native bindings), so a CI-built `node_modules` runs as-is on ARM. Deployed
+under **systemd** (`bookmark-live.service`, `node dist/server.js`, `EnvironmentFile` .env) in
+`/home/ubuntu/bookmark-live`, on loopback port **5100**, using the VM's shared **Redis** on
+logical DB **2**. Fronted by the VM's shared **Caddy** on `live.bookmark-ai.cloud` +
+`live.129.146.3.172.sslip.io` (auto-TLS; SSE needs `flush_interval -1` — see
+`deploy/Caddyfile.snippet`). CI (`.github/workflows/live-server-deploy.yml`) builds →
+`pnpm --legacy deploy` → `rsync` (excluding `.env`) → `systemctl restart bookmark-live`.
+Local dev still uses the self-contained `docker-compose.live.dev.yml` stack. See
+`apps/live-server/README.md` for the full runbook.
 
 ## Client seams (return shapes unchanged → no view-component edits)
 
