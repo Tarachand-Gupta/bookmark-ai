@@ -8,7 +8,7 @@ node_modules/
 # URLs). A local `.env` / `.env.*.local` stays ignored for private overrides.
 !.env.development
 !.env.production
-!.env.preview
+!.env.dev-remote
 # CRX private key — its public half is committed in wxt.config.ts
 .keys/
 # Stray Safari converter output (placeholder com.yourCompany.* bundle ids) from

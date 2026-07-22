@@ -11,5 +11,9 @@ export const AUTHORIZED_PARTIES = [
   "https://bookmark-ai-dev.vercel.app",
   "https://bookmark-ai.cloud",
   "https://www.bookmark-ai.cloud",
-  "chrome-extension://ffhbgpgebpmofjkehpjcemepbgcmoelp",
+  // Three side-by-side extension builds, each with its own pinned CRX id
+  // (apps/extension/wxt.config.ts → CRX_KEYS). id → target:
+  "chrome-extension://ffhbgpgebpmofjkehpjcemepbgcmoelp", // prod  (bookmark-ai.cloud)
+  "chrome-extension://ljlfmaknohecakpdolffabmjdfikfjed", // dev   (bookmark-ai-dev.vercel.app)
+  "chrome-extension://joillpelifndeefomeimoomlgoimbkei", // local (localhost:3000)
 ];

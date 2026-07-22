@@ -1,22 +1,36 @@
-// Generates the Bookmark AI toolbar icon (dark rounded plate + white bookmark
-// ribbon) as PNGs without any image-library dependency. Run: pnpm icons
+// Generates the Bookmark AI toolbar icons (a filled rounded plate + white
+// bookmark ribbon) as PNGs without any image-library dependency. Run: pnpm icons
+//
+// THREE color-coded plate variants, one per build target, so the three
+// side-by-side installs (prod / dev / local) are instantly distinguishable in
+// the toolbar (see apps/extension/CLAUDE.md → Build targets):
+//   - public/icon/        prod   near-black plate (#0a0a0a), white mark
+//   - public/icon-dev/     dev    GREEN plate (#16a34a),      white mark
+//   - public/icon-local/   local  RED plate (#dc2626),        white mark
+// Only the PLATE color changes; the glyph/shape is identical across all three.
 //
 // The mark is the SAME bookmark-ribbon shape as the web favicon
 // (apps/web/app/icon.svg) and apple icon — one consistent brand mark
-// everywhere. Colors are the shadcn-neutral brand palette
-// (packages/ui/src/theme.css): near-black plate, near-white mark. A toolbar
-// icon needs a filled plate for contrast, so it's plated rather than the
-// transparent silhouette the favicon uses. Keep the inBookmark shape in sync
-// with apps/web/scripts/generate-apple-icon.mjs.
+// everywhere. The prod plate is the shadcn-neutral brand palette
+// (packages/ui/src/theme.css). A toolbar icon needs a filled plate for
+// contrast, so it's plated rather than the transparent silhouette the favicon
+// uses. Keep the inBookmark shape in sync with
+// apps/web/scripts/generate-apple-icon.mjs.
 import { deflateSync } from "node:zlib";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SIZES = [16, 32, 48, 96, 128];
-const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public", "icon");
-const BG = [10, 10, 10]; // #0a0a0a — near-black plate (shadcn neutral)
-const FG = [250, 250, 250]; // #fafafa — near-white mark
+const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
+const FG = [250, 250, 250]; // #fafafa — near-white mark (shared by all targets)
+
+// One entry per build target: { dir, plate-background rgb }.
+const TARGETS = [
+  { dir: "icon", bg: [10, 10, 10] },       // prod  — #0a0a0a near-black
+  { dir: "icon-dev", bg: [22, 163, 74] },  // dev   — #16a34a green-600
+  { dir: "icon-local", bg: [220, 38, 38] }, // local — #dc2626 red-600
+];
 
 const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -98,7 +112,7 @@ function inBookmark(x, y) {
   return y <= lineY;
 }
 
-function render(size) {
+function render(size, BG) {
   const rgba = Buffer.alloc(size * size * 4);
   const S = 4; // supersampling for smooth edges
   for (let py = 0; py < size; py++) {
@@ -128,9 +142,12 @@ function render(size) {
   return rgba;
 }
 
-mkdirSync(OUT_DIR, { recursive: true });
-for (const size of SIZES) {
-  const file = join(OUT_DIR, `${size}.png`);
-  writeFileSync(file, encodePng(size, render(size)));
-  console.log(`wrote ${file}`);
+for (const { dir, bg } of TARGETS) {
+  const outDir = join(PUBLIC_DIR, dir);
+  mkdirSync(outDir, { recursive: true });
+  for (const size of SIZES) {
+    const file = join(outDir, `${size}.png`);
+    writeFileSync(file, encodePng(size, render(size, bg)));
+    console.log(`wrote ${file}`);
+  }
 }
