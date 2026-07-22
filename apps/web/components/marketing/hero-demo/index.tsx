@@ -140,11 +140,19 @@ export function HeroDemo() {
           "text-[clamp(11px,2.4cqw,16px)]",
         )}
       >
-        {/* The camera. One element, one transform, five beats. */}
+        {/* The camera. One element, one transform, five beats.
+
+            No permanent `will-change: transform` here: it promotes the camera to
+            a raster-cached compositing layer that's drawn once at scale-1 size
+            and then GPU-upscaled by the ~2.35x closeup zoom — which is exactly
+            why the closeup used to read blurry and only sharpened once the
+            camera pulled back to scale 1. Left un-promoted, the static zoomed
+            hold is painted at true device resolution (crisp), and the timeline
+            re-adds `will-change` only for the duration of the beat-4 dolly, the
+            one stretch where the camera actually moves. */}
         <div
           data-demo="camera"
           className="absolute inset-0 origin-top-left"
-          style={{ willChange: "transform" }}
         >
           <DashboardMock />
           <BrowserWindow />

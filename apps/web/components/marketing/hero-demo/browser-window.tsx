@@ -22,7 +22,6 @@ export function BrowserWindow() {
         top: `${GEO.browser.top}%`,
         width: `${GEO.browser.width}%`,
         height: `${GEO.browser.height}%`,
-        willChange: "transform, opacity",
       }}
       className={cn(
         // Below a ~448px column there aren't enough pixels to hold a legible

@@ -233,6 +233,11 @@ function buildFullTimeline(root: HTMLElement): gsap.core.Timeline {
       scale: shot.scale,
       xPercent: shot.xFrac * 100,
       yPercent: shot.yFrac * 100,
+      // Un-promoted while zoomed in and held: a will-change'd layer would be
+      // rasterized at scale-1 and GPU-upscaled ~2.35x into a blur. It's turned
+      // back on only for the beat-4 dolly below. (This also runs on every loop
+      // via the slate, re-clearing it before the hard cut back to the closeup.)
+      willChange: "auto",
     },
     0,
   )
@@ -308,11 +313,16 @@ function buildFullTimeline(root: HTMLElement): gsap.core.Timeline {
   // turns out to be right there behind it — with the page we just saved landing
   // last, so the eye has to make the connection itself.
   tl.addLabel("reveal", 5.25)
+    // Promote the camera for the one stretch it actually moves, then release it
+    // so the wide shot is painted at true resolution too (and the next loop's
+    // closeup starts un-promoted — see the slate).
+    .set(sel.camera, { willChange: "transform" }, 5.2)
     .to(
       sel.camera,
       { scale: REST.scale, xPercent: 0, yPercent: 0, duration: 1.7, ease: "power3.inOut" },
       5.25,
     )
+    .set(sel.camera, { willChange: "auto" }, 7.0)
     .to(sel.browser, { scale: 0.96, opacity: 0, duration: 0.95, ease: "power2.in" }, 5.3)
     .to(sel.dashboard, { opacity: 1, duration: 0.8, ease: "power2.out" }, 5.5)
     .fromTo(

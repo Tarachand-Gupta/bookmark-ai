@@ -24,8 +24,11 @@ export function Hero() {
 
           <p className="mt-6 max-w-lg text-base text-muted-foreground sm:text-lg">
             See the tabs open on your laptop right there on your phone — live, the
-            moment they change. And every page you save is read by AI, filed, and
-            embedded, so you find it later by meaning, not the exact words.
+            moment they change.
+          </p>
+          <p className="mt-3 max-w-lg text-base text-muted-foreground sm:text-lg">
+            Save any page in one click — and find it again by meaning, not the
+            exact words.
           </p>
 
           <LiveWire />
@@ -48,7 +51,7 @@ export function Hero() {
             <span aria-hidden className="mx-2 text-border">
               /
             </span>
-            categorized by Gemini
+            bring your own AI
           </p>
         </div>
 

@@ -42,6 +42,31 @@ const KEYFRAMES = `
 }
 `;
 
+/**
+ * A neutral, single-color mark that reads as a browser without being anyone's
+ * trademark: a ring with a small hub and three spokes. Deliberately NOT the
+ * Chrome asset — just enough silhouette to say "this is the browser window."
+ */
+function ChromeGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      className={className}
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="3.1" fill="currentColor" stroke="none" />
+      <path d="M12 3 L12 8.9" />
+      <path d="M19.8 16.5 L14.7 13.6" />
+      <path d="M4.2 16.5 L9.3 13.6" />
+    </svg>
+  );
+}
+
 /** The pulsing "live" dot — a solid core with an expanding ping ring. */
 function LiveDot({ className }: { className?: string }) {
   return (
@@ -113,24 +138,64 @@ export function LiveTabsDemo() {
   }, []);
 
   return (
-    <div aria-hidden className="pointer-events-none mt-6 select-none">
+    <div aria-hidden className="pointer-events-none mt-6 select-none overflow-hidden">
       <style>{KEYFRAMES}</style>
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
-        {/* Laptop — the source. Always shows every open tab. */}
-        <div className="rounded-xl border border-border/60 bg-card/50 p-2.5 shadow-sm">
-          <div className="mb-2 flex items-center gap-1.5">
+      {/* minmax(0,…) on both panels lets them shrink instead of forcing the
+          iPhone past the card's rounded edge; the laptop gets the wider share so
+          its tab strip has room. */}
+      <div className="grid grid-cols-[minmax(0,1.45fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-3">
+        {/* Laptop — the source, staged as a real browser window: a title line,
+            a Chrome-style tab strip, and the active tab's omnibox. */}
+        <div className="min-w-0 rounded-xl border border-border/60 bg-card/50 p-2 shadow-sm">
+          <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
             <span className="size-1.5 rounded-full bg-border" />
             <span className="size-1.5 rounded-full bg-border" />
             <span className="size-1.5 rounded-full bg-border" />
             <span className={cn(mono, "ml-1 flex items-center gap-1 text-[9px] text-muted-foreground")}>
-              <Laptop className="size-3" aria-hidden />
               MacBook
+              <span aria-hidden className="text-border">
+                ·
+              </span>
+              <ChromeGlyph className="size-3 text-foreground/70" />
             </span>
           </div>
-          <div className="space-y-1.5">
-            {TABS.map((t) => (
-              <TabRow key={t.host} tab={t} arrived compact />
+
+          {/* Chrome-style tab strip — the active tab carries its title, the rest
+              collapse to favicons the way Chrome does once tabs get tight. */}
+          <div className="flex items-end gap-0.5">
+            {TABS.map((t, i) => (
+              <div
+                key={t.host}
+                className={cn(
+                  "flex items-center gap-1 rounded-t-md border border-b-0 px-1.5 py-1",
+                  i === 0
+                    ? "min-w-0 flex-1 border-border/60 bg-background/70"
+                    : "shrink-0 border-transparent bg-foreground/[0.04]",
+                )}
+              >
+                <span
+                  className={cn(
+                    mono,
+                    "flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border border-border/50 bg-foreground/[0.06] text-[8px] font-semibold text-foreground/70",
+                  )}
+                >
+                  {t.letter}
+                </span>
+                {i === 0 && (
+                  <span className="truncate text-[9px] font-medium leading-none">{t.title}</span>
+                )}
+              </div>
             ))}
+          </div>
+
+          {/* The active tab's viewport: an omnibox reading its URL. */}
+          <div className="rounded-md rounded-tl-none border border-border/50 bg-background/40 p-1.5">
+            <div className="flex items-center gap-1 rounded-full border border-border/50 bg-background/60 px-1.5 py-0.5">
+              <span className="size-1.5 shrink-0 rounded-full bg-emerald-500/60" />
+              <span className={cn(mono, "truncate text-[8px] text-muted-foreground")}>
+                {TABS[0].host}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -141,7 +206,7 @@ export function LiveTabsDemo() {
         </div>
 
         {/* Phone — the receiver. Tabs land here one at a time, live. */}
-        <div className="rounded-[1.1rem] border border-border/60 bg-card/50 p-2 shadow-sm">
+        <div className="min-w-0 rounded-[1.1rem] border border-border/60 bg-card/50 p-2 shadow-sm">
           <div className="mb-2 flex items-center justify-between px-0.5">
             <span className={cn(mono, "flex items-center gap-1 text-[9px] text-muted-foreground")}>
               <Smartphone className="size-3" aria-hidden />

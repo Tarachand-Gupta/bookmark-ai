@@ -26,7 +26,6 @@ export function PopupMock() {
   return (
     <div
       data-demo="popup"
-      style={{ willChange: "transform, opacity" }}
       className={cn(
         "absolute right-[3.5%] top-[21%] z-20 w-[56%] origin-top-right rounded-[0.6em] p-[0.8em] text-[1.15em] opacity-0",
         "border border-border/80 bg-card/95 text-card-foreground backdrop-blur-md",
