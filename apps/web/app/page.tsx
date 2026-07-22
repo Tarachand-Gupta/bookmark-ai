@@ -12,22 +12,22 @@ import { OpenSource } from "@/components/marketing/open-source";
 import { Footer } from "@/components/marketing/footer";
 
 export const metadata: Metadata = {
-  title: "Bookmark AI — every bookmark, organized by AI",
+  title: "Bookmark AI — your tabs and bookmarks, everywhere",
   description:
-    "Save pages from any browser or device. Bookmark AI auto-categorizes, tags, and embeds each one, so you can search your whole library by meaning. Free and open source.",
+    "See your open tabs live on every device, and save pages from any browser. Bookmark AI auto-categorizes, tags, and embeds each one, so you can search your whole library by meaning. Free and open source.",
   openGraph: {
-    title: "Bookmark AI — every bookmark, organized by AI",
+    title: "Bookmark AI — your tabs and bookmarks, everywhere",
     description:
-      "Save from any browser or device. AI files it. Find anything by meaning, not just keywords. Free and open source.",
+      "Your open tabs, live on every device. Save from any browser, and find anything by meaning, not just keywords. Free and open source.",
     type: "website",
     siteName: "Bookmark AI",
     url: "https://bookmark-ai.cloud",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Bookmark AI — every bookmark, organized by AI",
+    title: "Bookmark AI — your tabs and bookmarks, everywhere",
     description:
-      "Save from any browser or device. AI files it. Find anything by meaning. Free and open source.",
+      "Your open tabs, live on every device. Save from any browser, find anything by meaning. Free and open source.",
   },
 };
 

@@ -1,5 +1,6 @@
 import { FolderTree, Layers, MonitorSmartphone, ScanSearch } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LiveTabsDemo } from "./live-tabs";
 import { Reveal } from "./reveal";
 import { display, glass, mono, SectionHead } from "./primitives";
 
@@ -51,17 +52,60 @@ export function Features() {
   return (
     <section className="mx-auto w-full max-w-6xl px-6 py-20 sm:py-24">
       <Reveal>
-        <SectionHead eyebrow="what it does" title="Less filing. More finding." />
+        <SectionHead
+          eyebrow="what it does"
+          title="Live where you left off. Find what you saved."
+        />
       </Reveal>
 
       <Reveal
         selector="[data-reveal-item]"
-        className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-12 md:auto-rows-fr"
+        className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-12"
       >
-        {/* The lead feature, given the space. */}
+        {/* Big card 1 — LIVE TABS, the headline differentiator and the most alive
+            surface in the grid. */}
         <div
           data-reveal-item
-          className={cn(glass, "flex flex-col rounded-2xl p-7 md:col-span-7 md:row-span-3")}
+          className={cn(
+            glass,
+            "flex flex-col rounded-2xl p-7 md:col-span-6",
+            // A faint emerald wash sets the live card apart from the rest.
+            "bg-gradient-to-b from-emerald-500/[0.04] to-transparent",
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <MonitorSmartphone className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
+            <span
+              className={cn(
+                mono,
+                "flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400",
+              )}
+            >
+              <span className="relative flex size-1.5">
+                <span className="absolute inset-0 rounded-full bg-emerald-500/70 motion-safe:animate-ping" />
+                <span className="relative size-1.5 rounded-full bg-emerald-500" />
+              </span>
+              real-time
+            </span>
+          </div>
+          <h3 className={cn(display, "mt-5 text-2xl font-semibold tracking-tight")}>
+            Live tabs, on every device
+          </h3>
+          <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
+            Every browser you sign in to publishes its open tabs — opt-in — and they
+            appear on your other devices as they change, streamed live. Close the
+            laptop, open your phone, and the tab you were reading is already there.
+            Private to you, and gone after seven days.
+          </p>
+          <div className="mt-auto">
+            <LiveTabsDemo />
+          </div>
+        </div>
+
+        {/* Big card 2 — search by meaning, the AI-bookmarks story. */}
+        <div
+          data-reveal-item
+          className={cn(glass, "flex flex-col rounded-2xl p-7 md:col-span-6")}
         >
           <ScanSearch className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
           <h3 className={cn(display, "mt-5 text-2xl font-semibold tracking-tight")}>
@@ -75,9 +119,10 @@ export function Features() {
           <SearchDemo />
         </div>
 
+        {/* Small cards. */}
         <div
           data-reveal-item
-          className={cn(glass, "flex flex-col gap-4 rounded-2xl p-7 md:col-span-5")}
+          className={cn(glass, "flex flex-col gap-4 rounded-2xl p-7 md:col-span-6")}
         >
           <FolderTree className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
           <h3 className={cn(display, "text-xl font-semibold tracking-tight")}>
@@ -91,7 +136,7 @@ export function Features() {
 
         <div
           data-reveal-item
-          className={cn(glass, "flex flex-col gap-4 rounded-2xl p-7 md:col-span-5")}
+          className={cn(glass, "flex flex-col gap-4 rounded-2xl p-7 md:col-span-6")}
         >
           <Layers className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
           <h3 className={cn(display, "text-xl font-semibold tracking-tight")}>
@@ -100,21 +145,6 @@ export function Features() {
           <p className="text-sm leading-relaxed text-muted-foreground">
             Save every open tab as one session, then restore the whole set as a tab
             group later. Park research and pick it back up.
-          </p>
-        </div>
-
-        <div
-          data-reveal-item
-          className={cn(glass, "flex flex-col gap-4 rounded-2xl p-7 md:col-span-5")}
-        >
-          <MonitorSmartphone className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
-          <h3 className={cn(display, "text-xl font-semibold tracking-tight")}>
-            Live tabs
-          </h3>
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            Install the extension and forget it — your open tabs mirror to the web and
-            mobile, so you can pick up on your phone right where the laptop left off.
-            Live, private to you, and gone after seven days.
           </p>
         </div>
       </Reveal>

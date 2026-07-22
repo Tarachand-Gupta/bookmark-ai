@@ -1,6 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HeroDemo } from "./hero-demo";
+import { LiveWire } from "./live-tabs";
 import { btnOutline, btnPrimary, display, Eyebrow, mono } from "./primitives";
 
 export function Hero() {
@@ -9,7 +10,7 @@ export function Hero() {
       <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-y-14 px-6 pb-20 pt-14 sm:pt-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:gap-x-10 lg:pb-28 lg:pt-24">
         {/* Left — the argument. */}
         <div className="flex max-w-xl flex-col justify-center">
-          <Eyebrow>every tab · every device</Eyebrow>
+          <Eyebrow>live tabs · every device</Eyebrow>
 
           <h1
             className={cn(
@@ -17,14 +18,17 @@ export function Hero() {
               "mt-6 text-balance text-[2.9rem] font-semibold leading-[0.98] tracking-[-0.03em] sm:text-6xl lg:text-[4.15rem]",
             )}
           >
-            Turn tab chaos into searchable memory.
+            Your tabs and bookmarks,{" "}
+            <span className="text-muted-foreground">everywhere you are.</span>
           </h1>
 
           <p className="mt-6 max-w-lg text-base text-muted-foreground sm:text-lg">
-            Save any page from any browser or device. Bookmark AI reads each one,
-            files it under a category with tags, and embeds it — so you find things
-            by meaning, not just the words you remember.
+            See the tabs open on your laptop right there on your phone — live, the
+            moment they change. And every page you save is read by AI, filed, and
+            embedded, so you find it later by meaning, not the exact words.
           </p>
+
+          <LiveWire />
 
           <div className="mt-8 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
             <a href="/sign-up" className={btnPrimary}>
