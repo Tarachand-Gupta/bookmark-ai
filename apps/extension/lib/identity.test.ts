@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayIdentity, maskEmail } from "./identity";
+import { displayIdentity, maskAccountEmail, maskEmail } from "./identity";
 
 describe("maskEmail", () => {
   it("keeps the first three local-part chars and the full domain", () => {
@@ -17,6 +17,23 @@ describe("maskEmail", () => {
     expect(maskEmail("no-at-sign")).toBe("");
     expect(maskEmail("@nolocal.com")).toBe("");
     expect(maskEmail("nodomain@")).toBe("");
+  });
+});
+
+describe("maskAccountEmail", () => {
+  it("shows the first three and last three chars with **** between", () => {
+    expect(maskAccountEmail("tarachandragupta2784@gmail.com")).toBe("tar****com");
+    expect(maskAccountEmail("bob.smith@company.io")).toBe("bob****.io");
+  });
+
+  it("leaves an address of six chars or fewer unmasked", () => {
+    expect(maskAccountEmail("a@b.co")).toBe("a@b.co");
+    expect(maskAccountEmail("ab@c.d")).toBe("ab@c.d");
+    expect(maskAccountEmail("")).toBe("");
+  });
+
+  it("trims surrounding whitespace before masking", () => {
+    expect(maskAccountEmail("  tarachand@purecode.ai  ")).toBe("tar****.ai");
   });
 });
 

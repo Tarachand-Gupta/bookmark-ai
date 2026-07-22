@@ -11,10 +11,11 @@ import {
 } from "@/lib/messages";
 import { ErrorNote } from "./components/ErrorNote";
 import { LiveTabsToggle } from "./components/LiveTabsToggle";
+import { MaskedEmail } from "./components/MaskedEmail";
 import { SaveCard, type TabInfo } from "./components/SaveCard";
 import { SavedResult } from "./components/SavedResult";
 import { SessionSavedResult } from "./components/SessionSavedResult";
-import { SettingsPopover } from "./components/SettingsPopover";
+import { SettingsButton } from "./components/SettingsButton";
 import { SignInGate } from "./components/SignInGate";
 import { SignOutButton } from "./components/SignOutButton";
 import { Spinner } from "./components/Spinner";
@@ -162,7 +163,6 @@ export default function App() {
     return <SignInGate webUrl={webUrl} />;
   }
 
-  const identity = auth.name ?? auth.email ?? "Account";
   const savable = tab !== null && /^https?:/i.test(tab.url);
   const busy =
     status === "saving" || status === "savingSession" || status === "savingSessionKeepOpen";
@@ -173,10 +173,18 @@ export default function App() {
       <header className="flex items-center gap-2">
         <img src={iconUrl()} alt="" className="size-8 shrink-0 rounded-lg" />
         <div className="flex min-w-0 flex-1 flex-col">
-          <h1 className="truncate text-sm font-semibold leading-tight tracking-tight" title={identity}>
-            {identity}
+          <h1 className="truncate text-sm font-semibold leading-tight tracking-tight">
+            Bookmark AI
           </h1>
-          <p className="text-[11px] leading-tight text-muted-foreground">Bookmark AI</p>
+          {/* Subtext: the masked email with a hover reveal; no email → the name,
+              unmasked and with no reveal control. */}
+          {auth.email ? (
+            <MaskedEmail email={auth.email} />
+          ) : (
+            <p className="truncate text-[11px] leading-tight text-muted-foreground">
+              {auth.name ?? "Account"}
+            </p>
+          )}
         </div>
         <SignOutButton onSignedOut={() => setAuth(SIGNED_OUT)} />
       </header>
@@ -228,7 +236,7 @@ export default function App() {
       <LiveTabsToggle />
 
       <footer className="mt-1 flex items-center justify-between gap-2 border-t pt-2">
-        <SettingsPopover />
+        <SettingsButton webUrl={webUrl} />
         <button
           type="button"
           onClick={openApp}

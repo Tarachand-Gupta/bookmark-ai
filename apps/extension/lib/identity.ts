@@ -44,6 +44,17 @@ export function maskEmail(email: string): string {
   return `${local.slice(0, 3)}**@${domain}`;
 }
 
+/** Mask an account email for the popup header subtext: the first three and last
+ * three characters with `****` between, hiding everything in the middle (domain
+ * included) — `tarachandragupta2784@gmail.com` → `tar****com`. An address of six
+ * chars or fewer (where the two windows would cover the whole string) is shown
+ * unmasked. The reveal control lives in the `MaskedEmail` component. */
+export function maskAccountEmail(email: string): string {
+  const trimmed = email.trim();
+  if (trimmed.length <= 6) return trimmed;
+  return `${trimmed.slice(0, 3)}****${trimmed.slice(-3)}`;
+}
+
 /** The label for a signed-in user: the full name when we have both parts,
  * otherwise a masked email, otherwise "" (nothing worth showing). */
 export function displayIdentity({ firstName, lastName, email }: IdentityInput): string {

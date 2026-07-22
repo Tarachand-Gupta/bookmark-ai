@@ -49,9 +49,45 @@ export async function getWebBaseUrl(): Promise<string> {
   return getApiBaseUrl();
 }
 
+function normalizeBase(url: string): string {
+  return url.trim().replace(/\/+$/, "");
+}
+
+/** Live server base URL now FOLLOWS the account: the user edits it on the web
+ * app, GET /api/settings returns it. Short-lived module cache (a restarted MV3
+ * worker just refetches). */
+const LIVE_BASE_TTL_MS = 5 * 60_000;
+let liveBaseCache: { value: string; at: number } | null = null;
+
+async function resolveLiveBaseUrl(): Promise<string> {
+  try {
+    const base = await getApiBaseUrl();
+    // authHeaders only carries a token in the BACKGROUND (that's where all live
+    // calls run); a popup-context call goes out unauthenticated, 401s, and falls
+    // through to the mirror below.
+    const res = await fetch(`${base}/api/settings`, { headers: { ...(await authHeaders()) } });
+    if (res.ok) {
+      const body = (await res.json()) as { settings?: { liveServerUrl?: string | null } };
+      const url = body.settings?.liveServerUrl;
+      if (url) {
+        const clean = normalizeBase(url);
+        // Mirror so the last-known value survives offline / signed-out.
+        await liveApiUrlItem.setValue(clean);
+        return clean;
+      }
+    }
+  } catch {
+    // network/parse failure — fall back exactly as before
+  }
+  return normalizeBase((await liveApiUrlItem.getValue()) || DEFAULT_LIVE_API_URL);
+}
+
 export async function getLiveBaseUrl(): Promise<string> {
-  const value = await liveApiUrlItem.getValue();
-  return (value || DEFAULT_LIVE_API_URL).trim().replace(/\/+$/, "");
+  const now = Date.now();
+  if (liveBaseCache && now - liveBaseCache.at < LIVE_BASE_TTL_MS) return liveBaseCache.value;
+  const value = await resolveLiveBaseUrl();
+  liveBaseCache = { value, at: now };
+  return value;
 }
 
 /** The background script registers Clerk's token getter here — keeps this

@@ -213,36 +213,3 @@ export function requestLivePushNow(): Promise<{ ok: boolean }> {
     ok: false,
   }));
 }
-
-/** Popup → background: change the Live Sessions server URL. The background owns
- * the Clerk token, so it both writes the local mirror AND best-effort persists
- * the choice to the account (PUT /api/settings) so it follows the user. */
-export const SET_LIVE_SERVER = "SET_LIVE_SERVER" as const;
-
-export interface SetLiveServerMessage {
-  type: typeof SET_LIVE_SERVER;
-  url: string;
-}
-
-/** `ok` = the local write succeeded (always, barring a thrown background); the
- * popup shows "Saved" on it. `synced` = the account PUT returned 2xx — surfaced
- * for completeness but non-fatal, so the popup shows no error when it's false. */
-export type SetLiveServerResult = { ok: boolean; synced: boolean };
-
-export function isSetLiveServerMessage(message: unknown): message is SetLiveServerMessage {
-  return (
-    typeof message === "object" &&
-    message !== null &&
-    (message as SetLiveServerMessage).type === SET_LIVE_SERVER &&
-    typeof (message as SetLiveServerMessage).url === "string"
-  );
-}
-
-/** Popup-side helper: save the Live server URL. Never rejects into the caller. */
-export function requestSetLiveServer(url: string): Promise<SetLiveServerResult> {
-  const message: SetLiveServerMessage = { type: SET_LIVE_SERVER, url };
-  return (browser.runtime.sendMessage(message) as Promise<SetLiveServerResult>).catch(() => ({
-    ok: false,
-    synced: false,
-  }));
-}

@@ -86,7 +86,9 @@ export function LiveTabsToggle() {
           className="flex cursor-pointer items-center gap-2.5 p-3"
         >
           <Switch checked={enabled} disabled={busy} onToggle={() => void toggle()} />
-          <span className="flex-1 text-sm font-medium leading-tight">Share as live tabs</span>
+          <span className="flex-1 text-sm font-medium leading-tight">
+            Share window as live session
+          </span>
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
@@ -169,7 +171,7 @@ function Switch({
       type="button"
       role="switch"
       aria-checked={checked}
-      aria-label="Share as live tabs"
+      aria-label="Share window as live session"
       disabled={disabled}
       onClick={(e) => {
         e.stopPropagation();

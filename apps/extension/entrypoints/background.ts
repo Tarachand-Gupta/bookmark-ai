@@ -1,16 +1,7 @@
 import { defineBackground } from "#imports";
 import { browser } from "wxt/browser";
 import { createClerkClient } from "@clerk/chrome-extension/background";
-import {
-  authHeaders,
-  createBookmark,
-  DEFAULT_LIVE_API_URL,
-  getApiBaseUrl,
-  getWebBaseUrl,
-  liveApiUrlItem,
-  saveSession,
-  setAuthTokenProvider,
-} from "@/lib/api";
+import { createBookmark, getWebBaseUrl, saveSession, setAuthTokenProvider } from "@/lib/api";
 import { CLERK_PUBLISHABLE_KEY, CLERK_SYNC_HOST } from "@/lib/clerk";
 import { detectSource } from "@/lib/detect";
 import { fullName } from "@/lib/identity";
@@ -25,7 +16,6 @@ import {
   isRestoreSessionMessage,
   isSaveBookmarkMessage,
   isSaveSessionMessage,
-  isSetLiveServerMessage,
   isSignOutMessage,
   type LiveSetEnabledResult,
   type RestoreSessionMessage,
@@ -33,8 +23,6 @@ import {
   type SaveBookmarkResult,
   type SaveSessionMessage,
   type SaveSessionResult,
-  type SetLiveServerMessage,
-  type SetLiveServerResult,
   type UserInfo,
 } from "@/lib/messages";
 
@@ -209,35 +197,6 @@ async function handleRestoreSession(
   return { ok: true };
 }
 
-/**
- * Change the Live Sessions server URL. Writes the local mirror first (that's the
- * `ok`), then BEST-EFFORT persists the choice to the account so it follows the
- * user across installs (§ multi-device). An empty value resets to the build-time
- * default; a value equal to the default clears the account override (null). The
- * PUT failing is non-fatal — the local save still stands (`ok` stays true).
- */
-async function handleSetLiveServer(message: SetLiveServerMessage): Promise<SetLiveServerResult> {
-  const trimmed = message.url.trim();
-  const value = trimmed || DEFAULT_LIVE_API_URL;
-  await liveApiUrlItem.setValue(value);
-
-  let synced = false;
-  try {
-    const base = await getApiBaseUrl();
-    // null = clear (empty or back to default); otherwise the chosen override.
-    const liveServerUrl = !trimmed || value === DEFAULT_LIVE_API_URL ? null : value;
-    const res = await fetch(`${base}/api/settings`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-      body: JSON.stringify({ liveServerUrl }),
-    });
-    synced = res.ok;
-  } catch {
-    // non-fatal: local write already succeeded
-  }
-  return { ok: true, synced };
-}
-
 export default defineBackground(() => {
   setAuthTokenProvider(getSessionToken);
 
@@ -274,7 +233,6 @@ export default defineBackground(() => {
           | SaveBookmarkResult
           | SaveSessionResult
           | LiveSetEnabledResult
-          | SetLiveServerResult
           | UserInfo
           | { ok: boolean },
       ) => void,
@@ -301,10 +259,6 @@ export default defineBackground(() => {
       }
       if (isLivePushNowMessage(message)) {
         void pushLiveNow().then(() => sendResponse({ ok: true }));
-        return true;
-      }
-      if (isSetLiveServerMessage(message)) {
-        void handleSetLiveServer(message).then(sendResponse);
         return true;
       }
       return undefined;
