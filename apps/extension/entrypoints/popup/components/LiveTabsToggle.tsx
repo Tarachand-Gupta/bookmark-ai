@@ -70,33 +70,6 @@ export function LiveTabsToggle() {
 
   return (
     <div className="flex flex-col gap-1.5">
-      {/* View button sits OUTSIDE the card so it reads as a shortcut to the web
-          view, not part of the on/off control. */}
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={openLive}
-          title="View live tabs"
-          aria-label="View live tabs"
-          className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="size-4"
-            aria-hidden="true"
-          >
-            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-        </button>
-      </div>
-
       <div className="rounded-xl border bg-muted/40">
         {/* Collapsed row: clicking anywhere but the switch expands the card. */}
         <div

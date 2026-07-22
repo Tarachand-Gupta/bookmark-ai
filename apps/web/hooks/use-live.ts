@@ -88,10 +88,13 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
         if (signal.aborted) return;
         const e = err as Error;
         if (e.name === "AbortError") return;
+        // The fetch settled (in failure) — loading must clear, or the view's
+        // `loading && !data` skeleton wins over its own error affordance and
+        // an unreachable live server looks like an eternal spinner.
         if (e instanceof ProvisioningError) {
-          setState((s) => ({ ...s, loading: !hasData.current, provisioning: true, error: null }));
+          setState((s) => ({ ...s, loading: false, provisioning: true, error: null }));
         } else {
-          setState((s) => ({ ...s, loading: !hasData.current, error: e.message }));
+          setState((s) => ({ ...s, loading: false, error: e.message }));
         }
       }
       if (signal.aborted) return;
