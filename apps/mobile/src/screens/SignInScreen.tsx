@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -11,20 +11,30 @@ import {
 } from "react-native";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
-import { useSignIn, useSSO } from "@clerk/clerk-expo";
+import { useSignIn, useSignUp, useSSO } from "@clerk/clerk-expo";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 
 // Completes the SSO browser round-trip when the app regains focus.
 WebBrowser.maybeCompleteAuthSession();
 
-/** Sign-in gate: Google (browser SSO) or an emailed one-time code — the two
- * flows every Clerk dev instance supports. Mirrors the web app's session, so
- * the same account works across web, extension, and mobile. */
+/** Clerk's code for "no account with this identifier" — the API message is the
+ * bare "Couldn't find your account.", which is a dead end on its own. */
+const isIdentifierNotFound = (err: unknown): boolean =>
+  (err as { errors?: { code?: string }[] })?.errors?.some(
+    (e) => e.code === "form_identifier_not_found",
+  ) ?? false;
+
+/** Auth gate: Google (browser SSO) or an emailed one-time code. Both flows sign
+ * you IN if the account exists and sign you UP if it doesn't — a new email gets
+ * an account from the same code, matching Google (which signs up on first use)
+ * and the web app's /sign-up. Mirrors the web app's session, so the same account
+ * works across web, extension, and mobile. */
 export function SignInScreen() {
   const { colors, radius } = useAppTheme();
   const { startSSOFlow } = useSSO();
   const { signIn, setActive, isLoaded } = useSignIn();
+  const { signUp, isLoaded: signUpLoaded } = useSignUp();
 
   // Android: pre-warm the custom tab so the SSO browser opens instantly
   // and reliably (Clerk's recommendation for Expo on Android).
@@ -38,8 +48,19 @@ export function SignInScreen() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [phase, setPhase] = useState<"email" | "code">("email");
+  // Which object the emailed code belongs to — decided when we send it.
+  const [mode, setMode] = useState<"signIn" | "signUp">("signIn");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Clerk resource methods (create/prepare/attempt) each return the UPDATED
+  // resource; the useSignIn()/useSignUp() hook objects can be a stale copy
+  // mid-flow (a fresh signUp.create() leaves the hook's `signUp` pointing at
+  // the previous, empty attempt → "No sign up attempt was found"). Hold the
+  // resource returned by the send step and run verify against THAT, never the
+  // hook object. Refs (not state) so a re-render between phases can't reset it.
+  const activeSignIn = useRef<NonNullable<typeof signIn> | null>(null);
+  const activeSignUp = useRef<NonNullable<typeof signUp> | null>(null);
 
   const failed = (err: unknown) => {
     const message =
@@ -123,42 +144,80 @@ export function SignInScreen() {
     }
   };
 
+  /** Email the one-time code. Existing account → sign-in code; brand-new email →
+   * create the account and send its verification code, so the email path is never
+   * a dead end ("Couldn't find your account.") the way a bare sign-in attempt is. */
   const sendCode = async () => {
-    if (!isLoaded || !email.trim()) return;
+    if (!isLoaded || !signUpLoaded || !email.trim()) return;
     setError(null);
     setBusy(true);
+    // Fresh send: drop any resource held from a previous email/attempt.
+    activeSignIn.current = null;
+    activeSignUp.current = null;
+    const identifier = email.trim();
     try {
-      const attempt = await signIn.create({ identifier: email.trim() });
+      const attempt = await signIn.create({ identifier });
       const factor = attempt.supportedFirstFactors?.find((f) => f.strategy === "email_code");
       if (!factor || !("emailAddressId" in factor)) {
         setError("This account has no email-code sign-in. Use Google instead.");
         setBusy(false);
         return;
       }
-      await attempt.prepareFirstFactor({
+      // prepareFirstFactor returns the advanced resource — keep THAT for verify.
+      const prepared = await attempt.prepareFirstFactor({
         strategy: "email_code",
         emailAddressId: factor.emailAddressId,
       });
+      activeSignIn.current = prepared;
+      setMode("signIn");
       setPhase("code");
       setBusy(false);
     } catch (err) {
-      failed(err);
+      if (!isIdentifierNotFound(err)) return failed(err);
+      // No account on this email yet — sign them up with the same emailed code.
+      try {
+        // Use the resource RETURNED by create()/prepare(), not the hook's
+        // signUp (which is still the stale pre-create attempt here).
+        const created = await signUp.create({ emailAddress: identifier });
+        const prepared = await created.prepareEmailAddressVerification({ strategy: "email_code" });
+        activeSignUp.current = prepared;
+        setMode("signUp");
+        setPhase("code");
+        setBusy(false);
+      } catch (signUpErr) {
+        failed(signUpErr);
+      }
     }
   };
 
   const verifyCode = async () => {
-    if (!isLoaded || code.trim().length < 4) return;
+    if (!isLoaded || !signUpLoaded || code.trim().length < 4) return;
     setError(null);
     setBusy(true);
+    const value = code.trim();
     try {
-      const result = await signIn.attemptFirstFactor({
-        strategy: "email_code",
-        code: code.trim(),
-      });
-      if (result.status === "complete") {
+      // Attempt on the resource sendCode() prepared — NOT the hook object,
+      // which may be a stale copy of the attempt (esp. the sign-up branch).
+      // Fall back to the hook object only if the ref was somehow lost.
+      const signInRes = activeSignIn.current ?? signIn;
+      const signUpRes = activeSignUp.current ?? signUp;
+      const result =
+        mode === "signUp"
+          ? await signUpRes.attemptEmailAddressVerification({ code: value })
+          : await signInRes.attemptFirstFactor({ strategy: "email_code", code: value });
+
+      // Keep the ref pointing at the freshest resource for a possible retry.
+      if (mode === "signUp") activeSignUp.current = result as NonNullable<typeof signUp>;
+      else activeSignIn.current = result as NonNullable<typeof signIn>;
+
+      if (result.status === "complete" && result.createdSessionId) {
         await setActive({ session: result.createdSessionId });
       } else {
-        setError("Additional verification required — finish signing in on the web app.");
+        setError(
+          mode === "signUp"
+            ? "Couldn't finish creating your account — finish signing up on the web app."
+            : "Additional verification required — finish signing in on the web app.",
+        );
         setBusy(false);
       }
     } catch (err) {
@@ -251,7 +310,9 @@ export function SignInScreen() {
         ) : (
           <>
             <Text style={{ fontSize: 15, color: colors.mutedForeground, textAlign: "center" }}>
-              Enter the code sent to {email.trim()}
+              {mode === "signUp"
+                ? `Creating your account — enter the code sent to ${email.trim()}`
+                : `Enter the code sent to ${email.trim()}`}
             </Text>
             <TextInput
               value={code}
@@ -289,7 +350,17 @@ export function SignInScreen() {
                 Verify
               </Text>
             </Pressable>
-            <Pressable onPress={() => (setPhase("email"), setCode(""), setError(null))} hitSlop={8}>
+            <Pressable
+              onPress={() => {
+                setPhase("email");
+                setCode("");
+                setError(null);
+                setMode("signIn");
+                activeSignIn.current = null;
+                activeSignUp.current = null;
+              }}
+              hitSlop={8}
+            >
               <Text style={{ fontSize: 15, color: colors.mutedForeground, textAlign: "center" }}>
                 Use a different email
               </Text>
