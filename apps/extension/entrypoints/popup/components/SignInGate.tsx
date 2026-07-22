@@ -1,4 +1,5 @@
 import { browser } from "wxt/browser";
+import { iconUrl } from "@/lib/icon";
 
 /**
  * The entire popup when no one is signed in: a sign-in prompt and nothing else
@@ -11,9 +12,7 @@ export function SignInGate({ webUrl }: { webUrl: string }) {
   return (
     <div className="flex min-w-[20rem] flex-col gap-4 p-5">
       <header className="flex items-center gap-2">
-        <span className="flex size-5 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
-          B
-        </span>
+        <img src={iconUrl()} alt="" className="size-8 shrink-0 rounded-lg" />
         <h1 className="text-sm font-semibold tracking-tight">Bookmark AI</h1>
       </header>
 

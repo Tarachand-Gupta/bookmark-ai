@@ -16,6 +16,10 @@ export const LIVE_SET_ENABLED = "LIVE_SET_ENABLED" as const;
  * to restore a saved session — either as one new window with all its tabs,
  * or as a named tab group in the user's current window. */
 export const RESTORE_SESSION = "RESTORE_SESSION" as const;
+/** External contract: the web app pings this to detect whether the extension
+ * is installed (chrome.runtime.sendMessage(extensionId, {type}, cb)). Answered
+ * from the same onMessageExternal listener as RESTORE_SESSION. */
+export const BOOKMARK_AI_PING = "BOOKMARK_AI_PING" as const;
 
 export type RestoreMode = "window" | "group";
 
@@ -34,6 +38,18 @@ export function isRestoreSessionMessage(message: unknown): message is RestoreSes
     message !== null &&
     (message as RestoreSessionMessage).type === RESTORE_SESSION &&
     Array.isArray((message as RestoreSessionMessage).urls)
+  );
+}
+
+export interface BookmarkAiPingMessage {
+  type: typeof BOOKMARK_AI_PING;
+}
+
+export function isBookmarkAiPingMessage(message: unknown): message is BookmarkAiPingMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as BookmarkAiPingMessage).type === BOOKMARK_AI_PING
   );
 }
 
@@ -170,4 +186,63 @@ export function isLiveSetEnabledMessage(message: unknown): message is LiveSetEna
 export function requestSetLiveEnabled(enabled: boolean): Promise<LiveSetEnabledResult> {
   const message: LiveSetEnabledMessage = { type: LIVE_SET_ENABLED, enabled };
   return browser.runtime.sendMessage(message) as Promise<LiveSetEnabledResult>;
+}
+
+/** Popup → background: force an immediate live push, bypassing the 5s debounce.
+ * A device rename writes only storage.local and carries NO tab event, so without
+ * this the new label never reaches the mirror until the next tab change (the
+ * ~2min heartbeat deliberately doesn't touch the mirror). No-op when off. */
+export const LIVE_PUSH_NOW = "LIVE_PUSH_NOW" as const;
+
+export interface LivePushNowMessage {
+  type: typeof LIVE_PUSH_NOW;
+}
+
+export function isLivePushNowMessage(message: unknown): message is LivePushNowMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as LivePushNowMessage).type === LIVE_PUSH_NOW
+  );
+}
+
+/** Popup-side helper: push current state now (after a rename). Never rejects. */
+export function requestLivePushNow(): Promise<{ ok: boolean }> {
+  const message: LivePushNowMessage = { type: LIVE_PUSH_NOW };
+  return (browser.runtime.sendMessage(message) as Promise<{ ok: boolean }>).catch(() => ({
+    ok: false,
+  }));
+}
+
+/** Popup → background: change the Live Sessions server URL. The background owns
+ * the Clerk token, so it both writes the local mirror AND best-effort persists
+ * the choice to the account (PUT /api/settings) so it follows the user. */
+export const SET_LIVE_SERVER = "SET_LIVE_SERVER" as const;
+
+export interface SetLiveServerMessage {
+  type: typeof SET_LIVE_SERVER;
+  url: string;
+}
+
+/** `ok` = the local write succeeded (always, barring a thrown background); the
+ * popup shows "Saved" on it. `synced` = the account PUT returned 2xx — surfaced
+ * for completeness but non-fatal, so the popup shows no error when it's false. */
+export type SetLiveServerResult = { ok: boolean; synced: boolean };
+
+export function isSetLiveServerMessage(message: unknown): message is SetLiveServerMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as SetLiveServerMessage).type === SET_LIVE_SERVER &&
+    typeof (message as SetLiveServerMessage).url === "string"
+  );
+}
+
+/** Popup-side helper: save the Live server URL. Never rejects into the caller. */
+export function requestSetLiveServer(url: string): Promise<SetLiveServerResult> {
+  const message: SetLiveServerMessage = { type: SET_LIVE_SERVER, url };
+  return (browser.runtime.sendMessage(message) as Promise<SetLiveServerResult>).catch(() => ({
+    ok: false,
+    synced: false,
+  }));
 }

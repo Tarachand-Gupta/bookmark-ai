@@ -238,6 +238,19 @@ export async function setLiveEnabled(enabled: boolean): Promise<LiveEnabledResul
 }
 
 /**
+ * Force an immediate full push, bypassing the 5s debounce — for a change that
+ * carries NO tab event (a device rename writes only storage.local, and the
+ * ~2min heartbeat deliberately doesn't touch the mirror, §4.3). Marks dirty and
+ * flushes now; the `flushing` guard inside `flush` still serializes it against
+ * an in-flight push. No-op when publishing is off.
+ */
+export async function pushLiveNow(): Promise<void> {
+  if (!(await liveEnabledItem.getValue())) return;
+  await liveDirtyItem.setValue(true);
+  await flush("debounce");
+}
+
+/**
  * Register every listener SYNCHRONOUSLY (§4.5) — a listener behind an await never
  * wakes the MV3 worker. Each listener does two things only: filter incognito where
  * the event exposes it (§5.3), then mark dirty + arm the debounce. It never reads

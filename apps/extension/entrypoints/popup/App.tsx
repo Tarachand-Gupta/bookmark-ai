@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { browser } from "wxt/browser";
 import type { Bookmark, Session } from "@bookmark-ai/types";
 import { DEFAULT_WEB_URL, getWebBaseUrl } from "@/lib/api";
+import { iconUrl } from "@/lib/icon";
 import {
   requestSaveBookmark,
   requestSaveSession,
@@ -13,7 +14,7 @@ import { LiveTabsToggle } from "./components/LiveTabsToggle";
 import { SaveCard, type TabInfo } from "./components/SaveCard";
 import { SavedResult } from "./components/SavedResult";
 import { SessionSavedResult } from "./components/SessionSavedResult";
-import { SettingsRow } from "./components/SettingsRow";
+import { SettingsPopover } from "./components/SettingsPopover";
 import { SignInGate } from "./components/SignInGate";
 import { SignOutButton } from "./components/SignOutButton";
 import { Spinner } from "./components/Spinner";
@@ -141,7 +142,7 @@ export default function App() {
     }
   }
 
-  function openWebsite() {
+  function openApp() {
     void browser.tabs.create({ url: `${webUrl}/app` });
     window.close();
   }
@@ -170,9 +171,7 @@ export default function App() {
   return (
     <div className="flex min-w-[20rem] flex-col gap-3 p-4">
       <header className="flex items-center gap-2">
-        <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
-          B
-        </span>
+        <img src={iconUrl()} alt="" className="size-8 shrink-0 rounded-lg" />
         <div className="flex min-w-0 flex-1 flex-col">
           <h1 className="truncate text-sm font-semibold leading-tight tracking-tight" title={identity}>
             {identity}
@@ -228,15 +227,14 @@ export default function App() {
 
       <LiveTabsToggle />
 
-      <SettingsRow />
-
-      <footer className="mt-1 flex items-center justify-end gap-2 border-t pt-2">
+      <footer className="mt-1 flex items-center justify-between gap-2 border-t pt-2">
+        <SettingsPopover />
         <button
           type="button"
-          onClick={openWebsite}
+          onClick={openApp}
           className="shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          Open website ↗
+          Open App ↗
         </button>
       </footer>
     </div>
