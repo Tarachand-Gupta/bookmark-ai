@@ -18,6 +18,9 @@ export const userSettingsSchema = z.object({
   model: z.string().nullable(),
   apiKeySet: z.boolean(),
   apiKeyLast4: z.string().nullable(),
+  /** Per-user override for the dedicated live server's base URL. Null = use the
+   * app's `NEXT_PUBLIC_LIVE_API_URL` default (or, if that's empty too, live off). */
+  liveServerUrl: z.string().nullable(),
 });
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 
@@ -35,6 +38,13 @@ export const updateUserSettingsSchema = z
     apiKey: z.string().optional(),
     baseUrl: z.string().url().optional(),
     model: z.string().optional(),
+    // Live server base URL. Same keep/clear semantics as apiKey: absent = keep,
+    // "" or null = clear (fall back to the env default). A set value must be a
+    // http(s) URL, capped at 200 chars.
+    liveServerUrl: z
+      .union([z.literal(""), z.string().max(200).url().regex(/^https?:\/\//i)])
+      .nullable()
+      .optional(),
   })
   .refine((v) => v.provider !== "custom" || (!!v.baseUrl && /^https?:\/\//i.test(v.baseUrl)), {
     message: "A http(s) Base URL is required for a custom provider",

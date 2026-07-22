@@ -6,7 +6,7 @@ import type { ListLiveResponse } from "@bookmark-ai/types";
 import {
   authHeaders,
   getLive,
-  LIVE_API_URL,
+  getLiveBaseUrl,
   LIVE_NOT_CONFIGURED,
   ProvisioningError,
 } from "@/lib/api";
@@ -39,15 +39,16 @@ export interface LiveState {
  */
 export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
   void fast; // no-op under SSE — kept for signature compatibility only
-  // With no live server configured (empty NEXT_PUBLIC_LIVE_API_URL) every live
-  // fetch would hit this app's own origin and 404, and fetch-event-source would
-  // reconnect against that 404 forever. Start settled on a clear error and make
-  // ZERO network calls (the useEffect below bails too), so the Ongoing view
-  // shows its error affordance instead of spinning.
+  // The live base can come from a saved setting (liveServerUrl override) OR the
+  // env default, so it isn't known synchronously — start in `loading` and resolve
+  // it in the effect via getLiveBaseUrl(). With NEITHER configured that resolves
+  // empty and primeAndSubscribe settles on LIVE_NOT_CONFIGURED after making ZERO
+  // live network calls, so the Ongoing view shows its error affordance instead of
+  // reconnecting against a doomed same-origin 404 forever.
   const [state, setState] = useState<LiveState>(() => ({
     data: null,
-    loading: Boolean(LIVE_API_URL),
-    error: LIVE_API_URL ? null : LIVE_NOT_CONFIGURED,
+    loading: true,
+    error: null,
     provisioning: false,
     refreshing: false,
   }));
@@ -60,6 +61,22 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
 
   const primeAndSubscribe = useCallback(
     async (signal: AbortSignal) => {
+      // A saved liveServerUrl override wins over the env default; resolve the
+      // base (cached after the first call) before any live network call. Empty
+      // = neither configured → live off, exactly like the old empty-env case.
+      const base = await getLiveBaseUrl();
+      if (signal.aborted) return;
+      if (!base) {
+        setState({
+          data: null,
+          loading: false,
+          error: LIVE_NOT_CONFIGURED,
+          provisioning: false,
+          refreshing: false,
+        });
+        return;
+      }
+
       // Initial snapshot for instant first paint (or on return-to-tab) — the
       // stream's own connect-time `state` frame would otherwise leave the
       // grid blank until the SSE connection finishes establishing.
@@ -81,7 +98,7 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
 
       setState((s) => ({ ...s, refreshing: true }));
       try {
-        await fetchEventSource(`${LIVE_API_URL}/live/stream`, {
+        await fetchEventSource(`${base}/live/stream`, {
           headers: await authHeaders(),
           signal,
           openWhenHidden: false,
@@ -122,7 +139,8 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
   );
 
   useEffect(() => {
-    if (!LIVE_API_URL) return; // no live server — never touch the network
+    // The base is resolved async inside primeAndSubscribe (it may come from a
+    // saved setting), which no-ops on an empty base — so no synchronous guard here.
     let controller: AbortController | null = null;
 
     const start = () => {

@@ -211,4 +211,12 @@ export const TENANT_MIGRATIONS: Migration[] = [
       `,
     ],
   },
+  // Per-user override for the live server base URL (user_settings created in v2).
+  // Additive-only ADD COLUMN, nullable. Not exported (user_settings isn't part of
+  // the export bundle), so SCHEMA_VERSION stays 1.
+  {
+    version: 4,
+    name: "user-settings-live-server-url",
+    statements: ["ALTER TABLE user_settings ADD COLUMN live_server_url TEXT"],
+  },
 ];

@@ -24,6 +24,79 @@ export function useExtensionTarget(): ExtensionTarget {
   return target;
 }
 
+/** Published extension ids per build target — each browser exposes exactly one,
+ * so we ping all three and take the first that answers. */
+const EXTENSION_IDS = [
+  "ffhbgpgebpmofjkehpjcemepbgcmoelp", // prod
+  "ljlfmaknohecakpdolffabmjdfikfjed", // dev
+  "joillpelifndeefomeimoomlgoimbkei", // local
+];
+
+/** Overall budget for the ping round-trip before we conclude "not installed". */
+const PING_TIMEOUT_MS = 400;
+
+interface ChromeRuntimeLike {
+  sendMessage?: (
+    extensionId: string,
+    message: unknown,
+    callback: (response: unknown) => void,
+  ) => void;
+  /** Read (any access clears it) inside the callback to swallow the "Receiving
+   * end does not exist" error Chrome sets when no extension answers. */
+  lastError?: unknown;
+}
+
+/**
+ * Whether an installed Bookmark AI extension is reachable from this origin.
+ * `null` while checking; `false` once we've concluded none is present (or the
+ * browser isn't Chrome). `window.chrome.runtime.sendMessage` exists only in
+ * Chrome, and only reaches an extension whose `externally_connectable` matches
+ * this origin — so a non-Chrome browser (no API) resolves `false` and keeps the
+ * install card visible. Resolves `true` on the first `{ ok: true }` ping reply.
+ */
+export function useExtensionInstalled(): boolean | null {
+  const [installed, setInstalled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const runtime = (window as Window & { chrome?: { runtime?: ChromeRuntimeLike } }).chrome
+      ?.runtime;
+    if (!runtime?.sendMessage) {
+      setInstalled(false); // not Chrome, or no externally_connectable match
+      return;
+    }
+
+    let done = false;
+    const finish = (value: boolean) => {
+      if (done) return;
+      done = true;
+      setInstalled(value);
+    };
+    const timer = setTimeout(() => finish(false), PING_TIMEOUT_MS);
+
+    for (const id of EXTENSION_IDS) {
+      try {
+        runtime.sendMessage(id, { type: "BOOKMARK_AI_PING" }, (response) => {
+          void runtime.lastError; // swallow "Receiving end does not exist"
+          if (response && (response as { ok?: boolean }).ok) {
+            clearTimeout(timer);
+            finish(true);
+          }
+        });
+      } catch {
+        // sendMessage can throw synchronously (e.g. a malformed id) — ignore and
+        // let the other ids / the timeout decide.
+      }
+    }
+
+    return () => {
+      done = true;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  return installed;
+}
+
 export interface ExtensionStoreButtonProps {
   size?: React.ComponentProps<typeof Button>["size"];
   variant?: React.ComponentProps<typeof Button>["variant"];
@@ -55,6 +128,10 @@ export function ExtensionStoreButton({
  * with a full library still wants the extension on their second browser.
  */
 export function ExtensionCard({ className }: { className?: string }) {
+  // Hide once we've confirmed the extension is installed; keep showing while
+  // that's unknown (null) or false, so non-Chrome users always see it.
+  const installed = useExtensionInstalled();
+  if (installed === true) return null;
   return (
     <div
       className={cn(

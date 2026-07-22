@@ -22,6 +22,7 @@ function toApiSettings(row: UserSettingsRow | null): UserSettings {
     model: row?.aiModel ?? null,
     apiKeySet: !!key,
     apiKeyLast4: key ? key.slice(-4) : null,
+    liveServerUrl: row?.liveServerUrl ?? null,
   };
 }
 
@@ -47,7 +48,7 @@ export async function PUT(req: NextRequest) {
       { status: 400 },
     );
   }
-  const { provider, apiKey, baseUrl, model } = parsed.data;
+  const { provider, apiKey, baseUrl, model, liveServerUrl } = parsed.data;
 
   // The form always sends provider/baseUrl/model, so those always overwrite. A
   // base URL only makes sense for a custom provider — clear it otherwise.
@@ -58,6 +59,8 @@ export async function PUT(req: NextRequest) {
   };
   // apiKey: absent → keep (omit from patch); "" → clear (store null); else set.
   if (apiKey !== undefined) patch.aiApiKey = apiKey === "" ? null : apiKey;
+  // liveServerUrl: absent → keep (omit); "" or null → clear (store null); else set.
+  if (liveServerUrl !== undefined) patch.liveServerUrl = liveServerUrl ? liveServerUrl : null;
 
   const row = await upsertUserSettings(db, settingsKey(userId), patch);
   return NextResponse.json({ settings: toApiSettings(row) });
