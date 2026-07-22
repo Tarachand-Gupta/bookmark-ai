@@ -144,6 +144,37 @@ mobile via Clerk Expo. The route handlers delegate to `packages/engine` — chan
 - **Desktop**: read `apps/desktop/CLAUDE.md` FIRST — the native SDK is not guessable from
   general knowledge.
 
+## Dev → test → prod procedure (NO HALF FEATURES)
+
+Hard-learned rule: **a feature is not "built" until it runs in every environment it targets.**
+Code that works locally but needs someone to "later" create a DNS record, set an env var, add a
+Clerk origin, provision a DB, or flip a flag is a HALF FEATURE and is banned. Enablement ships
+WITH the code, using the CLIs available on this machine (`vercel`, `turso`, `gh`, `clerk`,
+Cloudflare API when a token is provided) — never offloaded to the user unless it's a genuine
+access/permission blocker (then surface exactly what's blocked and why).
+
+**Environments (strictly separated):**
+
+| Env | Web/API | Data | Notes |
+| --- | --- | --- | --- |
+| local | `localhost:3000` | local sqlite: `DATABASE_URL=file:../../data/bookmarks-dev.db`, `MULTI_TENANT=1` + `TENANT_PLATFORM=local` → `data/tenants-dev/` (see `.env.example`) | dev Clerk instance; NEVER point local dev at prod Turso (this once leaked test data into prod) |
+| preview | Vercel preview deploys / `bookmark-ai-wine.vercel.app` | prod Turso (until a preview DB split exists) | dev Clerk instance; preview env vars on Vercel are incomplete — check before relying on it |
+| prod | `bookmark-ai.cloud` (Cloudflare DNS → Vercel; www is primary) | Turso cloud, multi-tenant (master + per-user DBs) | env vars live in Vercel as sensitive values (not readable back — keep root `.env` as source of truth) |
+
+**Definition of done for any feature/change:**
+1. Schema/migration ships in the SAME commit as the code (see next section).
+2. Every env var it needs is set in root `.env`/`.env.local` (local), added to Vercel prod+preview
+   (`vercel env add`), declared in `turbo.json` `build.env` (strict mode prunes undeclared vars),
+   and documented in `.env.example`.
+3. External surface updated: DNS records, Clerk `allowed_origins`/`AUTHORIZED_PARTIES`
+   (`apps/web/lib/authorized-parties.ts`), extension `host_permissions`, per-target extension
+   `.env.{development,preview,production}` files.
+4. ALL clients that touch the feature are repointed (web, extension, mobile, desktop) — for their
+   respective build targets, not just local.
+5. Verified locally AND smoke-tested after the prod deploy (sign-in, `/api/health`, the feature's
+   own flow). Deploy = `vercel deploy --prod` from the REPO ROOT (rootDirectory is set to
+   `apps/web` in the project, so deploying from `apps/web/` double-nests the path).
+
 ## Database migrations (read before ANY schema change)
 
 Production is **Turso cloud (libSQL/SQLite) holding REAL user data** — treat it like it.
