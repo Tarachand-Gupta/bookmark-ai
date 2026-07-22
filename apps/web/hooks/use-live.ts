@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import type { ListLiveResponse } from "@bookmark-ai/types";
-import { authHeaders, getLive, LIVE_API_URL, ProvisioningError } from "@/lib/api";
+import {
+  authHeaders,
+  getLive,
+  LIVE_API_URL,
+  LIVE_NOT_CONFIGURED,
+  ProvisioningError,
+} from "@/lib/api";
 
 export interface LiveState {
   data: ListLiveResponse | null;
@@ -33,13 +39,18 @@ export interface LiveState {
  */
 export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
   void fast; // no-op under SSE — kept for signature compatibility only
-  const [state, setState] = useState<LiveState>({
+  // With no live server configured (empty NEXT_PUBLIC_LIVE_API_URL) every live
+  // fetch would hit this app's own origin and 404, and fetch-event-source would
+  // reconnect against that 404 forever. Start settled on a clear error and make
+  // ZERO network calls (the useEffect below bails too), so the Ongoing view
+  // shows its error affordance instead of spinning.
+  const [state, setState] = useState<LiveState>(() => ({
     data: null,
-    loading: true,
-    error: null,
+    loading: Boolean(LIVE_API_URL),
+    error: LIVE_API_URL ? null : LIVE_NOT_CONFIGURED,
     provisioning: false,
     refreshing: false,
-  });
+  }));
   const hasData = useRef(false);
 
   const applySnapshot = useCallback((data: ListLiveResponse) => {
@@ -111,6 +122,7 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
   );
 
   useEffect(() => {
+    if (!LIVE_API_URL) return; // no live server — never touch the network
     let controller: AbortController | null = null;
 
     const start = () => {

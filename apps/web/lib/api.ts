@@ -171,12 +171,24 @@ export function saveSession(input: CreateSessionInput): Promise<{ session: Sessi
 // helper hardcodes API_URL. The Vercel /api/live/* routes still exist (kept
 // for a later cutover step) but nothing here calls them anymore.
 
+/** No live server configured. Surfaced verbatim by the Ongoing view's error
+ * affordance and used to bail these fns before any network call — an empty
+ * LIVE_API_URL would otherwise fetch same-origin and 404. */
+export const LIVE_NOT_CONFIGURED = "Live server is not configured";
+
+/** Guard every live call: with no LIVE_API_URL, throw synchronously (rejected
+ * promise) instead of firing a doomed same-origin request. */
+function requireLiveUrl(): string {
+  if (!LIVE_API_URL) throw new Error(LIVE_NOT_CONFIGURED);
+  return LIVE_API_URL;
+}
+
 /** The reader view: devices currently mirroring their open tabs, plus the
  * account opt-in flag and TTL. `enabled: false` tells "off" apart from "no
  * devices". Freshness is the server's `lastSeenAgeSeconds` — never subtracted
  * from a client clock. */
 export async function getLive(signal?: AbortSignal): Promise<ListLiveResponse> {
-  const res = await fetch(`${LIVE_API_URL}/live`, {
+  const res = await fetch(`${requireLiveUrl()}/live`, {
     headers: await authHeaders(),
     signal,
   });
@@ -194,7 +206,7 @@ export async function getLive(signal?: AbortSignal): Promise<ListLiveResponse> {
 /** Flip the account-wide "Show my open tabs" flag. Turning it off purges every
  * device server-side in the same request. */
 export async function setLiveEnabled(enabled: boolean): Promise<{ enabled: boolean }> {
-  const res = await fetch(`${LIVE_API_URL}/live/settings`, {
+  const res = await fetch(`${requireLiveUrl()}/live/settings`, {
     method: "POST",
     headers: { "content-type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify({ enabled }),
@@ -210,7 +222,7 @@ export async function setLiveEnabled(enabled: boolean): Promise<{ enabled: boole
 /** Forget one device — deletes its mirrored tabs. Idempotent (204 or 404). It
  * reappears on that browser's next check-in unless its own switch is off. */
 export async function forgetLiveDevice(id: string): Promise<void> {
-  const res = await fetch(`${LIVE_API_URL}/live/${id}`, {
+  const res = await fetch(`${requireLiveUrl()}/live/${id}`, {
     method: "DELETE",
     headers: await authHeaders(),
   });
@@ -220,7 +232,7 @@ export async function forgetLiveDevice(id: string): Promise<void> {
 /** Forget every device at once (the collection-level purge). Leaves the account
  * flag on — devices reappear on their next check-in. */
 export async function forgetAllLiveDevices(): Promise<void> {
-  const res = await fetch(`${LIVE_API_URL}/live`, {
+  const res = await fetch(`${requireLiveUrl()}/live`, {
     method: "DELETE",
     headers: await authHeaders(),
   });

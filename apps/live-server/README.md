@@ -49,7 +49,7 @@ curl localhost:8080/live/settings -X POST -H 'content-type: application/json' -d
 curl -N localhost:8080/live/stream     # watch the SSE stream
 ```
 
-Or the whole dev stack in containers (server + its own Redis, hot-reload, port 8081):
+Or the whole dev stack in containers (server + its own Redis, hot-reload, port 8091):
 
 ```bash
 docker compose -p live-dev \
@@ -57,8 +57,8 @@ docker compose -p live-dev \
   -f apps/live-server/docker-compose.live.dev.yml up
 ```
 
-Point the clients at it: web `NEXT_PUBLIC_LIVE_API_URL=http://localhost:8081`,
-extension popup `local:liveApiUrl=http://localhost:8081`, mobile `serverTarget=local`.
+Point the clients at it: web `NEXT_PUBLIC_LIVE_API_URL=http://localhost:8091`,
+extension popup `local:liveApiUrl=http://localhost:8091`, mobile `serverTarget=local`.
 
 ## Production
 

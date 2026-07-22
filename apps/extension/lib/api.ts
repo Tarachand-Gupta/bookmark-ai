@@ -14,7 +14,7 @@ export const DEFAULT_API_URL = "https://bookmark-ai.cloud";
 export const DEFAULT_WEB_URL = "https://bookmark-ai.cloud";
 /** Live Sessions has its own dedicated server (Fastify, no `/api` prefix) —
  * separate from the Vercel-hosted `/api/*` routes. Developers point it at
- * http://localhost:8081 (or similar) via the popup settings row for local
+ * http://localhost:8091 (or similar) via the popup settings row for local
  * testing; the `http://localhost/*` host_permissions entry already covers
  * that case. */
 export const DEFAULT_LIVE_API_URL = "https://live.bookmark-ai.cloud";

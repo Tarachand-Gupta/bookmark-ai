@@ -30,7 +30,7 @@ export const PROD_API_URL = "https://bookmark-ai.cloud";
  * dev since it's a standalone process, not the Next dev server.
  */
 export const LOCAL_LIVE_URL =
-  Platform.OS === "android" ? "http://10.0.2.2:8081" : "http://localhost:8081";
+  Platform.OS === "android" ? "http://10.0.2.2:8091" : "http://localhost:8091";
 export const PROD_LIVE_URL = "https://live.bookmark-ai.cloud";
 
 export type ServerTarget = "local" | "production";
