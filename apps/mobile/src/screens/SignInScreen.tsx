@@ -157,6 +157,14 @@ export function SignInScreen() {
     const identifier = email.trim();
     try {
       const attempt = await signIn.create({ identifier });
+      activeSignIn.current = attempt;
+      // Defensive: same class of early-completion guard as the sign-up branch.
+      // A bare identifier sign-in shouldn't complete here, but if the instance
+      // ever mints a session at create() there's no first factor to prepare.
+      if (attempt.status === "complete" && attempt.createdSessionId) {
+        await setActive({ session: attempt.createdSessionId });
+        return;
+      }
       const factor = attempt.supportedFirstFactors?.find((f) => f.strategy === "email_code");
       if (!factor || !("emailAddressId" in factor)) {
         setError("This account has no email-code sign-in. Use Google instead.");
@@ -179,6 +187,18 @@ export function SignInScreen() {
         // Use the resource RETURNED by create()/prepare(), not the hook's
         // signUp (which is still the stale pre-create attempt here).
         const created = await signUp.create({ emailAddress: identifier });
+        activeSignUp.current = created;
+        // Dev Clerk instances disable email verification (test emails
+        // auto-verify), so create() can return "complete" with a session
+        // already minted — there's nothing to verify. Activate and skip the
+        // code phase; calling prepareEmailAddressVerification() on a completed
+        // sign-up throws "No sign up attempt was found." On PRODUCTION (email
+        // verification required) create() is "missing_requirements" and we
+        // fall through to the code phase below.
+        if (created.status === "complete" && created.createdSessionId) {
+          await setActive({ session: created.createdSessionId });
+          return;
+        }
         const prepared = await created.prepareEmailAddressVerification({ strategy: "email_code" });
         activeSignUp.current = prepared;
         setMode("signUp");
