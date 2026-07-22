@@ -95,7 +95,7 @@ export function Platforms() {
             <h3 className={cn(display, "text-xl font-semibold tracking-tight")}>Web app</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               Your full library in any browser — nothing to install. Browse, search,
-              and chat with your bookmarks.
+              chat, and pick up the tabs still open on your other devices.
             </p>
           </div>
           <a href="/app" className={cn(btnPrimary, "shrink-0")}>

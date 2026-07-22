@@ -1,4 +1,4 @@
-import { FolderTree, Layers, ScanSearch } from "lucide-react";
+import { FolderTree, Layers, MonitorSmartphone, ScanSearch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Reveal } from "./reveal";
 import { display, glass, mono, SectionHead } from "./primitives";
@@ -61,7 +61,7 @@ export function Features() {
         {/* The lead feature, given the space. */}
         <div
           data-reveal-item
-          className={cn(glass, "flex flex-col rounded-2xl p-7 md:col-span-7 md:row-span-2")}
+          className={cn(glass, "flex flex-col rounded-2xl p-7 md:col-span-7 md:row-span-3")}
         >
           <ScanSearch className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
           <h3 className={cn(display, "mt-5 text-2xl font-semibold tracking-tight")}>
@@ -100,6 +100,21 @@ export function Features() {
           <p className="text-sm leading-relaxed text-muted-foreground">
             Save every open tab as one session, then restore the whole set as a tab
             group later. Park research and pick it back up.
+          </p>
+        </div>
+
+        <div
+          data-reveal-item
+          className={cn(glass, "flex flex-col gap-4 rounded-2xl p-7 md:col-span-5")}
+        >
+          <MonitorSmartphone className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
+          <h3 className={cn(display, "text-xl font-semibold tracking-tight")}>
+            Live tabs
+          </h3>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Install the extension and forget it — your open tabs mirror to the web and
+            mobile, so you can pick up on your phone right where the laptop left off.
+            Live, private to you, and gone after seven days.
           </p>
         </div>
       </Reveal>
