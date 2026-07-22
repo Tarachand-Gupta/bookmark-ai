@@ -1,0 +1,9 @@
+{
+  "label": "Reference",
+  "position": 5,
+  "link": {
+    "type": "generated-index",
+    "title": "Reference",
+    "description": "The REST API and a condensed architecture overview."
+  }
+}

@@ -1,0 +1,46 @@
+---
+slug: /
+sidebar_position: 1
+title: What is Bookmark AI
+sidebar_label: Introduction
+---
+
+# Bookmark AI
+
+Bookmark AI saves a page from any browser and helps you find it again by what it
+means — not just by the words you remember.
+
+Save a bookmark from the browser extension and the app reads the page, pulls its
+Open Graph data (title, description, image), sorts it into a category, tags it,
+and builds a semantic embedding so you can search by meaning. Your library lives
+on the web app, an iOS/Android app, and a desktop app — all reading the same
+data.
+
+## The 30-second tour
+
+- **One-click saving.** Click the extension and the current page is saved. No
+  folders to file it in — categorization and tags are automatic.
+- **Search by meaning.** Search blends keyword matching with semantic similarity,
+  so the right page surfaces even when you don't remember its exact title.
+- **Ask AI.** Chat over your own library and get answers with citations back to
+  your saved pages.
+- **Saved sessions.** Snapshot every tab in a window as one session, close them,
+  and restore the whole window (or open tabs one at a time) later.
+- **Live sessions.** Opt in and your open tabs mirror across your devices in real
+  time — jump to a tab you left open on another machine.
+- **Bring your own AI.** Use Google Gemini, OpenAI, Anthropic, or any
+  OpenAI-compatible endpoint (like OpenRouter). Configured in **Settings → AI**.
+- **Your data is yours.** Export everything to a file and import it back. The
+  whole project is open source and self-hostable.
+
+## Where to go next
+
+- New here? Start with [Getting started](/getting-started/sign-up).
+- Want the details on a feature? See the [Guides](/guides/saving-bookmarks).
+- Running it yourself? Read [Self-hosting](/self-hosting/overview).
+- Looking for endpoints? The [API reference](/reference/api) has them all.
+
+:::note
+This is a young, single-developer project. The docs describe how the product
+works today and try never to promise something that isn't built yet.
+:::

@@ -1,0 +1,9 @@
+{
+  "label": "Self-hosting",
+  "position": 4,
+  "link": {
+    "type": "generated-index",
+    "title": "Self-hosting",
+    "description": "Run your own Bookmark AI: the web app + API, an optional live server, and multi-tenant notes."
+  }
+}
