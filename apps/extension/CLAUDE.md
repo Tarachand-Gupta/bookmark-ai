@@ -27,7 +27,7 @@ settings row; the env only sets the DEFAULT.
 
 | Target | Command | Mode / env file | Icon | Name | App origin (API + web) | Extension id | Clerk |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| **prod** | `pnpm build` | `production` / `.env.production` | ⬛ black/white | `Bookmark AI` | `https://bookmark-ai.cloud` | `ffhbgpgebpmofjkehpjcemepbgcmoelp` | dev instance (`pk_test`; no prod instance yet — see `.env.production`) |
+| **prod** | `pnpm build` | `production` / `.env.production` | ⬛ black/white | `Bookmark AI` | `https://bookmark-ai.cloud` | `ffhbgpgebpmofjkehpjcemepbgcmoelp` | PROD instance (`pk_live`, FAPI `clerk.bookmark-ai.cloud`) |
 | **dev** | `pnpm build:dev` | `dev-remote` / `.env.dev-remote` | 🟩 green/white | `Bookmark AI (Dev)` | `https://bookmark-ai-dev.vercel.app` | `ljlfmaknohecakpdolffabmjdfikfjed` | dev instance (`pk_test`) |
 | **local** | `pnpm dev` / `pnpm build:local` | `development` / `.env.development` | 🟥 red/white | `Bookmark AI (Local)` | `http://localhost:3000` | `joillpelifndeefomeimoomlgoimbkei` | dev instance (`pk_test`) |
 
@@ -85,6 +85,14 @@ Auth (Clerk, syncHost pattern):
 - The popup does NOT host sign-in UI (OAuth is unsupported in extension popups). Instead
   `ClerkProvider` in `entrypoints/popup/main.tsx` gets `syncHost` → the extension mirrors the
   session the user creates on the **web app** (the build-target origin; see Build targets).
+- **PROD needs `lib/native-session.ts`** — on a production instance with a custom domain the
+  client token is an HttpOnly `__client` cookie on the FAPI domain (`clerk.bookmark-ai.cloud`),
+  NOT on the syncHost, so `@clerk/chrome-extension`'s syncHost flow never finds it. The
+  background falls back to the Clerk Native API (requires the instance's **Native API**
+  dashboard toggle to be ON): read `__client` via the `cookies` permission → present it as
+  `Authorization` with `?_is_native=1` for identity, session-JWT minting, and sign-out. Sign-out
+  ends the shared client session, so it signs the user out of the website too. Dev instances
+  keep the SDK path; the fallback only runs when the SDK resolves no session.
 - **Signed-out gate**: `App.tsx` shows ONLY `SignInGate` (a sign-in prompt whose button opens
   `<appOrigin>/sign-in`) when no session — no save/session UI at all. The gate's auth source is
   the background `GET_USER` message (createClerkClient reads the mirrored session), NOT the popup

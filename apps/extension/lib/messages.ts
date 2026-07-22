@@ -93,6 +93,33 @@ export interface GetUserMessage {
   type: typeof GET_USER;
 }
 
+/** Popup → background: sign out of the mirrored session. The background owns
+ * the Clerk client (SDK + native fallback), so sign-out must run there too —
+ * the popup-side Clerk client can't see a production custom-domain session. */
+export const SIGN_OUT = "SIGN_OUT" as const;
+
+export interface SignOutMessage {
+  type: typeof SIGN_OUT;
+}
+
+export interface SignOutResult {
+  ok: boolean;
+}
+
+export function isSignOutMessage(message: unknown): message is SignOutMessage {
+  return (
+    typeof message === "object" && message !== null && (message as SignOutMessage).type === SIGN_OUT
+  );
+}
+
+/** Popup-side helper: sign out via the background. Never rejects. */
+export function requestSignOut(): Promise<SignOutResult> {
+  const message: SignOutMessage = { type: SIGN_OUT };
+  return (browser.runtime.sendMessage(message) as Promise<SignOutResult>).catch(() => ({
+    ok: false,
+  }));
+}
+
 /** The current signed-in identity as the background resolves it from the
  * mirrored web session. `name` is a display name (full name or username) or
  * null; the popup falls back to `email` when there is no name. */

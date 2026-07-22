@@ -5,6 +5,7 @@ import { createBookmark, getWebBaseUrl, saveSession, setAuthTokenProvider } from
 import { CLERK_PUBLISHABLE_KEY, CLERK_SYNC_HOST } from "@/lib/clerk";
 import { detectSource } from "@/lib/detect";
 import { fullName } from "@/lib/identity";
+import { getNativeSession, getNativeSessionToken, nativeSignOut } from "@/lib/native-session";
 import { registerLiveCheckpoint, setLiveEnabled } from "@/lib/live-checkpoint";
 import { closeWindowsAndOpen, gatherOpenTabs } from "@/lib/session";
 import {
@@ -13,6 +14,7 @@ import {
   isRestoreSessionMessage,
   isSaveBookmarkMessage,
   isSaveSessionMessage,
+  isSignOutMessage,
   type LiveSetEnabledResult,
   type RestoreSessionMessage,
   type SaveBookmarkMessage,
@@ -22,42 +24,93 @@ import {
   type UserInfo,
 } from "@/lib/messages";
 
-/** Clerk session JWT (same syncHost session the popup shows). Null when
- * signed out or Clerk is unreachable — saves still work against the open
- * local server; the auth-enforcing deployed server rejects them. */
+/** Clerk session JWT (same syncHost session the popup shows). SDK first (dev
+ * instances), then the production Native-API fallback (see lib/native-session).
+ * Null when signed out or Clerk is unreachable — saves still work against the
+ * open local server; the auth-enforcing deployed server rejects them. */
 async function getSessionToken(): Promise<string | null> {
   try {
     const clerk = await createClerkClient({
       publishableKey: CLERK_PUBLISHABLE_KEY,
       syncHost: CLERK_SYNC_HOST,
     });
-    return (await clerk.session?.getToken()) ?? null;
+    const token = (await clerk.session?.getToken()) ?? null;
+    if (token) return token;
   } catch {
-    return null;
+    // fall through to native
   }
+  return getNativeSessionToken();
 }
 
 const SIGNED_OUT: UserInfo = { signedIn: false, name: null, email: null };
+
+/** TEMP migration cleanup: the domain switched Clerk instances (dev → prod) on
+ * 2026-07-22; browsers that used the dev era carry stale dev-suffixed cookies
+ * (`*_vm2h_-wW`) that can shadow the prod session for the sync SDK. Surgically
+ * remove exactly those. */
+async function purgeDevEraCookies(): Promise<void> {
+  for (const url of [CLERK_SYNC_HOST, "https://www.bookmark-ai.cloud"]) {
+    try {
+      const all = await browser.cookies.getAll({ url });
+      for (const c of all) {
+        if (c.name.endsWith("_vm2h_-wW")) {
+          await browser.cookies.remove({ url, name: c.name });
+        }
+      }
+    } catch {
+      // best-effort
+    }
+  }
+}
 
 /** Resolve the signed-in identity from the mirrored web session (syncHost). The
  * popup polls this to drive its gate; any failure (Clerk unreachable, no synced
  * session) degrades to signed-out so the popup shows the sign-in prompt. */
 async function handleGetUser(): Promise<UserInfo> {
   try {
+    await purgeDevEraCookies();
     const clerk = await createClerkClient({
       publishableKey: CLERK_PUBLISHABLE_KEY,
       syncHost: CLERK_SYNC_HOST,
     });
     const user = clerk.user;
-    if (!clerk.session || !user) return SIGNED_OUT;
-    return {
-      signedIn: true,
-      name: fullName(user),
-      email: user.primaryEmailAddress?.emailAddress ?? null,
-    };
+    if (clerk.session && user) {
+      return {
+        signedIn: true,
+        name: fullName(user),
+        email: user.primaryEmailAddress?.emailAddress ?? null,
+      };
+    }
   } catch {
-    return SIGNED_OUT;
+    // fall through to native
   }
+  // Production Native-API fallback (see lib/native-session for why).
+  const native = await getNativeSession();
+  if (native) {
+    return { signedIn: true, name: native.name, email: native.email };
+  }
+  return SIGNED_OUT;
+}
+
+/** Sign out of the mirrored session: SDK first, then the native fallback
+ * (which ends the same client session the WEB app uses — signing out of the
+ * extension signs out of the site too, which is the honest behavior). */
+async function handleSignOut(): Promise<{ ok: boolean }> {
+  let ok = false;
+  try {
+    const clerk = await createClerkClient({
+      publishableKey: CLERK_PUBLISHABLE_KEY,
+      syncHost: CLERK_SYNC_HOST,
+    });
+    if (clerk.session) {
+      await clerk.signOut();
+      ok = true;
+    }
+  } catch {
+    // fall through to native
+  }
+  if (!ok) ok = await nativeSignOut();
+  return { ok };
 }
 
 async function handleSaveBookmark(message: SaveBookmarkMessage): Promise<SaveBookmarkResult> {
@@ -169,12 +222,21 @@ export default defineBackground(() => {
       message: unknown,
       _sender,
       sendResponse: (
-        response: SaveBookmarkResult | SaveSessionResult | LiveSetEnabledResult | UserInfo,
+        response:
+          | SaveBookmarkResult
+          | SaveSessionResult
+          | LiveSetEnabledResult
+          | UserInfo
+          | { ok: boolean },
       ) => void,
     ) => {
       if (isGetUserMessage(message)) {
         void handleGetUser().then(sendResponse);
         return true; // keep the channel open for the async response
+      }
+      if (isSignOutMessage(message)) {
+        void handleSignOut().then(sendResponse);
+        return true;
       }
       if (isSaveBookmarkMessage(message)) {
         void handleSaveBookmark(message).then(sendResponse);
