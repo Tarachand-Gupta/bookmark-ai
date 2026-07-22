@@ -26,6 +26,7 @@ import {
   useSearch,
   useSessions,
 } from "@/hooks/use-library";
+import { NoAccessNotice } from "@/components/no-access-notice";
 import { AccountSetup } from "./account-setup";
 import { AiChat } from "./ai-chat";
 import { AppSidebar } from "./app-sidebar";
@@ -145,6 +146,13 @@ export function LibraryPage() {
   // state for the whole content area beats each section rendering its own
   // spinner/skeleton for the same wait.
   const settingUp = list.provisioning || meta.provisioning || sessions.provisioning;
+
+  // The signed-in account isn't on the API allowlist (403). Every hook hits the
+  // same API, so any one reporting it means no access — replace the whole content
+  // area with an honest "switch account" notice instead of each list surface
+  // showing the misleading "check that you're signed in" error.
+  const noAccess =
+    list.forbidden || meta.forbidden || sessions.forbidden || search.forbidden;
 
   // Saved sessions are a distinct section, keyed off ?section=sessions so the
   // extension can deep-link into it right after saving a session.
@@ -271,6 +279,8 @@ export function LibraryPage() {
           <div className="mx-auto w-full max-w-7xl">
             {settingUp ? (
               <AccountSetup />
+            ) : noAccess ? (
+              <NoAccessNotice />
             ) : sessionsActive ? (
               <SessionsPanel
                 savedSessions={sessions.data?.sessions ?? null}

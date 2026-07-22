@@ -118,9 +118,17 @@ export async function requireUser(): Promise<Gate> {
   }
   const allowed = csv(process.env.CLERK_ALLOWED_USER_IDS);
   if (allowed.length > 0 && !allowed.includes(userId)) {
+    // `code: "forbidden"` is additive — the `error` string is unchanged so
+    // clients in the wild that match on it keep working, while newer clients
+    // detect the stable code to show a distinct "no access" state (the account
+    // is signed in, just not on the allowlist). Keep the message in sync with
+    // FORBIDDEN_MESSAGE in lib/api.ts.
     return {
       ok: false,
-      response: NextResponse.json({ error: "This account may not use this API" }, { status: 403 }),
+      response: NextResponse.json(
+        { error: "This account may not use this API", code: "forbidden" },
+        { status: 403 },
+      ),
     };
   }
   return { ok: true, userId };

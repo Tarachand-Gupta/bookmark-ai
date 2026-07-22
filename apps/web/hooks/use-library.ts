@@ -10,6 +10,7 @@ import type {
   SearchResponse,
 } from "@bookmark-ai/types";
 import {
+  ForbiddenError,
   getHealth,
   getMeta,
   getSessions,
@@ -28,6 +29,12 @@ interface AsyncState<T> {
    * at the same time as `error` — the UI shows a calm "setting up" state instead.
    */
   provisioning: boolean;
+  /**
+   * The signed-in account isn't on the API allowlist (server 403). Set alongside
+   * `error`, but the UI branches on this first to show a distinct "no access /
+   * switch account" state instead of the generic "check you're signed in" error.
+   */
+  forbidden: boolean;
 }
 
 /**
@@ -63,11 +70,12 @@ function useAsync<T>(fetcher: (signal: AbortSignal) => Promise<T>, deps: unknown
     loading: true,
     error: null,
     provisioning: false,
+    forbidden: false,
   });
 
   useEffect(() => {
     const controller = new AbortController();
-    setState((s) => ({ ...s, loading: true, error: null, provisioning: false }));
+    setState((s) => ({ ...s, loading: true, error: null, provisioning: false, forbidden: false }));
 
     void (async () => {
       const deadline = Date.now() + PROVISION_MAX_MS;
@@ -75,17 +83,23 @@ function useAsync<T>(fetcher: (signal: AbortSignal) => Promise<T>, deps: unknown
         try {
           const data = await fetcher(controller.signal);
           if (controller.signal.aborted) return;
-          setState({ data, loading: false, error: null, provisioning: false });
+          setState({ data, loading: false, error: null, provisioning: false, forbidden: false });
           return;
         } catch (err) {
           const e = err as Error;
           if (e.name === "AbortError") return;
           if (e instanceof ProvisioningError && Date.now() < deadline) {
-            setState((s) => ({ ...s, loading: true, error: null, provisioning: true }));
+            setState((s) => ({ ...s, loading: true, error: null, provisioning: true, forbidden: false }));
             if (!(await delay(PROVISION_RETRY_MS, controller.signal))) return;
             continue;
           }
-          setState({ data: null, loading: false, error: e.message, provisioning: false });
+          setState({
+            data: null,
+            loading: false,
+            error: e.message,
+            provisioning: false,
+            forbidden: e instanceof ForbiddenError,
+          });
           return;
         }
       }
@@ -128,6 +142,8 @@ export interface BookmarkListState {
   error: string | null;
   /** See AsyncState.provisioning — the account's DB is still being created. */
   provisioning: boolean;
+  /** See AsyncState.forbidden — the account isn't on the API allowlist. */
+  forbidden: boolean;
   hasMore: boolean;
   loadMore: () => void;
 }
@@ -136,7 +152,7 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
   const [state, setState] = useState<
     Pick<
       BookmarkListState,
-      "bookmarks" | "total" | "loading" | "loadingMore" | "error" | "provisioning"
+      "bookmarks" | "total" | "loading" | "loadingMore" | "error" | "provisioning" | "forbidden"
     >
   >({
     bookmarks: null,
@@ -145,6 +161,7 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
     loadingMore: false,
     error: null,
     provisioning: false,
+    forbidden: false,
   });
   const abortRef = useRef<AbortController | null>(null);
 
@@ -155,7 +172,7 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
       abortRef.current = controller;
       setState((s) =>
         offset === 0
-          ? { ...s, loading: true, error: null, provisioning: false }
+          ? { ...s, loading: true, error: null, provisioning: false, forbidden: false }
           : { ...s, loadingMore: true },
       );
 
@@ -172,6 +189,7 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
               loadingMore: false,
               error: null,
               provisioning: false,
+              forbidden: false,
             }));
             return;
           } catch (err) {
@@ -181,7 +199,9 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
               // Only reachable on the first page in practice — a not-yet-created
               // account has nothing to page past — so leave "load more" alone.
               setState((s) =>
-                offset === 0 ? { ...s, loading: true, error: null, provisioning: true } : s,
+                offset === 0
+                  ? { ...s, loading: true, error: null, provisioning: true, forbidden: false }
+                  : s,
               );
               if (!(await delay(PROVISION_RETRY_MS, controller.signal))) return;
               continue;
@@ -195,6 +215,7 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
                     loadingMore: false,
                     error: e.message,
                     provisioning: false,
+                    forbidden: e instanceof ForbiddenError,
                   }
                 : // Keep the loaded pages; the button stays visible as the retry affordance.
                   { ...s, loadingMore: false },

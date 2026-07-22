@@ -82,6 +82,42 @@ export class ProvisioningError extends Error {
   }
 }
 
+/**
+ * The request authenticated fine, but this Clerk account isn't on the API's
+ * allowlist (server 403). NOT a "you're signed out / bad token" failure — the
+ * user IS signed in, just with an identity that has no access (e.g. Google's
+ * account picker landed on the wrong one). A distinct type so the UI can tell
+ * this apart and offer "switch account" instead of the misleading
+ * "check that you're signed in" advice. Detected on `code: "forbidden"`
+ * (preferred, stable) with a message fallback for older server builds.
+ */
+export class ForbiddenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
+
+/** The exact 403 body the server emits for an allowlist rejection — the
+ * message fallback for detecting a ForbiddenError when `code` is absent
+ * (older server builds). Keep in sync with require-user.ts. */
+const FORBIDDEN_MESSAGE = "This account may not use this API";
+
+/** Map a failed response's parsed body to the right typed Error. Shared by the
+ * `request()` helper and the direct-fetch live-server calls so every surface
+ * classifies provisioning/forbidden the same way. */
+function errorFromBody(
+  status: number,
+  body: { error?: string; code?: string } | null,
+): Error {
+  const message = body?.error ?? `Request failed (${status})`;
+  if (body?.code === "provisioning") return new ProvisioningError(message);
+  if (status === 403 && (body?.code === "forbidden" || body?.error === FORBIDDEN_MESSAGE)) {
+    return new ForbiddenError(message);
+  }
+  return new Error(message);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -89,9 +125,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    const { error, code } = (body ?? {}) as { error?: string; code?: string };
-    const message = error ?? `Request failed (${res.status})`;
-    throw code === "provisioning" ? new ProvisioningError(message) : new Error(message);
+    throw errorFromBody(res.status, body as { error?: string; code?: string } | null);
   }
   return (await res.json()) as T;
 }
@@ -194,11 +228,9 @@ export async function getLive(signal?: AbortSignal): Promise<ListLiveResponse> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    const { error, code } = (body ?? {}) as { error?: string; code?: string };
-    const message = error ?? `Request failed (${res.status})`;
-    // Defensive: the live server doesn't emit this today, but keep the same
-    // provisioning-aware contract the old /api/live route had.
-    throw code === "provisioning" ? new ProvisioningError(message) : new Error(message);
+    // Defensive: the live server doesn't emit these today, but keep the same
+    // provisioning/forbidden-aware contract the old /api/live route had.
+    throw errorFromBody(res.status, body as { error?: string; code?: string } | null);
   }
   return (await res.json()) as ListLiveResponse;
 }
