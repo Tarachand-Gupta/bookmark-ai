@@ -8,6 +8,7 @@ export const AUTHORIZED_PARTIES = [
   "http://127.0.0.1:3000",
   "https://bookmark-ai-theta.vercel.app",
   "https://bookmark-ai-wine.vercel.app",
+  "https://bookmark-ai-dev.vercel.app",
   "https://bookmark-ai.cloud",
   "https://www.bookmark-ai.cloud",
   "chrome-extension://ffhbgpgebpmofjkehpjcemepbgcmoelp",
