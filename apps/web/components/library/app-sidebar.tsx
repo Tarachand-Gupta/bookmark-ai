@@ -16,7 +16,6 @@ import {
   Library,
   Monitor,
   Plus,
-  Radio,
   Settings,
   Smartphone,
   Sparkles,
@@ -180,7 +179,15 @@ export function AppSidebar({
                     setOpenMobile(false);
                   }}
                 >
-                  <Radio aria-hidden />
+                  {/* Sessions icon with a "live" pip: same glyph family as Saved
+                      sessions, the green dot is what says "this one is live". */}
+                  <span className="relative flex shrink-0 items-center justify-center">
+                    <Layers aria-hidden className="size-4" />
+                    <span
+                      aria-hidden
+                      className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-emerald-500 motion-safe:animate-pulse"
+                    />
+                  </span>
                   <span>Live sessions</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
