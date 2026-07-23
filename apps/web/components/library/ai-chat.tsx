@@ -57,6 +57,7 @@ import {
 import { AiSetupCard } from "./ai-setup-card";
 import { ConversationHistory } from "./chat-conversation-history";
 import { ChatLimitCard, type ChatLimitInfo } from "./chat-limit-card";
+import { ChatThreadSkeleton } from "./chat-thread-skeleton";
 
 interface BookmarkHit {
   id: string;
@@ -178,6 +179,11 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
   const [expanded, setExpanded] = useState(false);
   // Title for a just-loaded thread until the list refresh carries its own.
   const [pendingTitle, setPendingTitle] = useState<string | null>(null);
+  // Loading a stored conversation: the GET + setMessages can take a few seconds,
+  // so we show an immediate title swap + ghost-bubble skeleton meanwhile. A load
+  // failure surfaces `loadError` and restores the previous thread.
+  const [loadingConversation, setLoadingConversation] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refreshConversations = useCallback(async () => {
     setHistoryLoading(true);
@@ -248,15 +254,37 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
     setActiveId(null);
     setPendingTitle(null);
     setLimitInfo(null);
+    setLoadError(null);
+    setLoadingConversation(false);
     setMessages([]);
     clearError();
   }, [setMessages, clearError]);
 
   const loadConversation = useCallback(
     async (id: string) => {
+      // Snapshot the current thread so a failed load can restore it instead of
+      // leaving a dead empty panel.
+      const prev = {
+        messages,
+        conversationId: conversationIdRef.current,
+        activeId,
+        pendingTitle,
+      };
+
+      // IMMEDIATE feedback on click: close the popover, adopt the row's known
+      // title, clear the thread, and show the skeleton — the network round-trip
+      // then swaps real messages in (or restores `prev` on failure).
       setHistoryOpen(false);
       setLimitInfo(null);
+      setLoadError(null);
       clearError();
+      const knownTitle = conversations.find((c) => c.id === id)?.title ?? null;
+      conversationIdRef.current = id;
+      setActiveId(id);
+      setPendingTitle(knownTitle);
+      setMessages([]);
+      setLoadingConversation(true);
+
       try {
         const { conversation, messages: loaded } = await getChatConversation(id);
         conversationIdRef.current = conversation.id;
@@ -266,10 +294,16 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
         // structural cast is the seam until packages/types/chat.ts is wired in.
         setMessages(loaded as unknown as UIMessage[]);
       } catch {
-        // A failed load leaves the current thread untouched.
+        conversationIdRef.current = prev.conversationId;
+        setActiveId(prev.activeId);
+        setPendingTitle(prev.pendingTitle);
+        setMessages(prev.messages);
+        setLoadError("Couldn't load that conversation. Check your connection and try again.");
+      } finally {
+        setLoadingConversation(false);
       }
     },
-    [setMessages, clearError],
+    [messages, activeId, pendingTitle, conversations, setMessages, clearError],
   );
 
   const handleDeleteConversation = useCallback(
@@ -390,6 +424,26 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
   const thread = (
     <Conversation className="flex-1">
       <ConversationContent>
+        {/* Load failure: inline, dismissible, and the previous thread is already
+            restored underneath — never a dead empty panel. */}
+        {loadError && (
+          <div className="not-prose mb-2 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.05] px-3 py-2 text-xs text-destructive">
+            <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{loadError}</span>
+            <button
+              type="button"
+              onClick={() => setLoadError(null)}
+              aria-label="Dismiss"
+              className="shrink-0 rounded p-1 transition-colors hover:bg-destructive/10"
+            >
+              <X className="size-3.5" aria-hidden />
+            </button>
+          </div>
+        )}
+        {loadingConversation ? (
+          // Immediate feedback while the GET + setMessages round-trips.
+          <ChatThreadSkeleton />
+        ) : (
+          <>
         {messages.length === 0 && (
           <ConversationEmptyState
             icon={<Sparkles className="size-8" aria-hidden />}
@@ -470,6 +524,8 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
           </div>
         )}
         {status === "submitted" && <Loader />}
+          </>
+        )}
       </ConversationContent>
       <ConversationScrollButton />
     </Conversation>

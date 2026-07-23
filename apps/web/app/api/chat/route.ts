@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { convertToModelMessages, stepCountIs, streamText, tool, type UIMessage } from "ai";
 import { z } from "zod";
 import { listSessions, type Db } from "@bookmark-ai/db";
@@ -320,6 +321,14 @@ export async function POST(req: Request) {
     // Let the client (and any new-conversation flow) learn the conversation id.
     headers: { "X-Conversation-Id": conversationId },
     originalMessages: messages,
+    // MUST set this. Without it, when the last original message is a USER message
+    // (our normal case) the SDK leaves responseMessage.id = "" for EVERY turn — so
+    // persisting under that id makes each assistant message overwrite the previous
+    // (INSERT OR REPLACE by PK), collapsing the whole conversation to its last
+    // assistant reply. A fresh id per response keeps every turn distinct, and it
+    // becomes the assistant message's id on the client too (via the start chunk),
+    // so re-sent history stays consistent.
+    generateMessageId: () => randomUUID(),
     onFinish: async ({ responseMessage }) => {
       // Persist the assistant turn (full parts incl. tool calls/results) and,
       // for a metered request, record the aggregated token total for the week.

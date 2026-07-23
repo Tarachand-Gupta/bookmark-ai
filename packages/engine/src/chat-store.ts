@@ -93,8 +93,15 @@ export async function appendChatMessage(
   message: IncomingChatMessage,
 ): Promise<void> {
   const now = new Date().toISOString();
+  // Treat a blank/whitespace id as MISSING, not as a valid key. `?? randomUUID()`
+  // alone doesn't catch "" — and an empty-string id is exactly what the AI SDK
+  // produces for a response message when no id generator is configured, which
+  // would make every assistant turn collide on the same primary key (INSERT OR
+  // REPLACE) and wipe all but the last. Belt-and-braces with the route's
+  // generateMessageId so no blank id can ever reach the PK.
+  const id = typeof message.id === "string" && message.id.trim() !== "" ? message.id : randomUUID();
   await insertMessage(db, {
-    id: message.id ?? randomUUID(),
+    id,
     conversationId,
     role: message.role,
     parts: message.parts ?? [],
