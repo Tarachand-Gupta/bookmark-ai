@@ -1,5 +1,5 @@
 import type { PushLiveStateInput, UpdateLiveSettingsInput } from "@bookmark-ai/types";
-import { authHeaders, getLiveBaseUrl } from "./api";
+import { authFetch, getLiveBaseUrl } from "./api";
 
 /**
  * The Live Sessions endpoints the extension consumes (§4.3). Unlike the one-shot
@@ -20,9 +20,9 @@ export async function pushLiveState(body: PushLiveStateInput): Promise<PushOutco
   const base = await getLiveBaseUrl();
   let res: Response;
   try {
-    res = await fetch(`${base}/live`, {
+    res = await authFetch(`${base}/live`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
   } catch {
@@ -37,9 +37,9 @@ export async function pushLiveState(body: PushLiveStateInput): Promise<PushOutco
 export async function updateLiveSettings(body: UpdateLiveSettingsInput): Promise<boolean> {
   const base = await getLiveBaseUrl();
   try {
-    const res = await fetch(`${base}/live/settings`, {
+    const res = await authFetch(`${base}/live/settings`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     return res.ok;
@@ -53,9 +53,8 @@ export async function updateLiveSettings(body: UpdateLiveSettingsInput): Promise
 export async function deleteLiveDevice(deviceId: string): Promise<void> {
   const base = await getLiveBaseUrl();
   try {
-    await fetch(`${base}/live/${encodeURIComponent(deviceId)}`, {
+    await authFetch(`${base}/live/${encodeURIComponent(deviceId)}`, {
       method: "DELETE",
-      headers: { ...(await authHeaders()) },
     });
   } catch {
     // swallow — teardown is best-effort

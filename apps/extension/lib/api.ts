@@ -13,6 +13,12 @@ import { storage } from "#imports";
  * only for a build with no env file loaded. A developer can still override the
  * default at RUNTIME from the popup settings row. */
 const DEFAULT_APP_URL = import.meta.env.WXT_APP_URL || "https://bookmark-ai.cloud";
+
+/** Build-target browser (Vite inlines `import.meta.env.BROWSER`). The cookie-
+ * credentialed auth fallback (Path C) is Safari-ONLY: Chrome/Firefox always
+ * resolve a bearer token, so gating on this leaves their request shape
+ * byte-identical and the branch is dead-code-eliminated from their bundles. */
+const SAFARI = import.meta.env.BROWSER === "safari";
 /** API base and web base are the SAME origin in every build target, so both
  * derive from `DEFAULT_APP_URL`; the single "API server" setting drives the
  * website links too (see `getWebBaseUrl`). */
@@ -62,10 +68,11 @@ let liveBaseCache: { value: string; at: number } | null = null;
 async function resolveLiveBaseUrl(): Promise<string> {
   try {
     const base = await getApiBaseUrl();
-    // authHeaders only carries a token in the BACKGROUND (that's where all live
-    // calls run); a popup-context call goes out unauthenticated, 401s, and falls
+    // authFetch carries a token only in the BACKGROUND (that's where all live
+    // calls run); a popup-context call has no token so it goes out credentialed
+    // on Safari (cookie session) or unauthenticated elsewhere — 401s there fall
     // through to the mirror below.
-    const res = await fetch(`${base}/api/settings`, { headers: { ...(await authHeaders()) } });
+    const res = await authFetch(`${base}/api/settings`);
     if (res.ok) {
       const body = (await res.json()) as { settings?: { liveServerUrl?: string | null } };
       const url = body.settings?.liveServerUrl;
@@ -108,13 +115,65 @@ export async function authHeaders(): Promise<Record<string, string>> {
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
+/**
+ * Authenticated fetch — the single choke point for every background-originated
+ * API call. Attaches the bearer token when one is mintable (unchanged path for
+ * Chrome/Firefox and for Safari's SDK/native paths when they ever work). When NO
+ * token is mintable, on Safari ONLY it retries the request credentialed:
+ * `credentials:'include'` makes Safari attach the SITE's own Clerk session cookie
+ * to a host-permission origin without the extension reading it, and
+ * `requireUser()` accepts a cookie session (its azp = the web origin, which
+ * passes the azp check). Chrome/Firefox with no token = signed out, so no
+ * fallback — the request goes out exactly as before and 401s if auth is enforced.
+ */
+export async function authFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const token = await authTokenProvider?.().catch(() => null);
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string> | undefined),
+  };
+  if (token) {
+    headers.authorization = `Bearer ${token}`;
+    return fetch(url, { ...init, headers });
+  }
+  if (SAFARI) return fetch(url, { ...init, headers, credentials: "include" });
+  return fetch(url, { ...init, headers });
+}
+
+export interface MeResponse {
+  signedIn: boolean;
+  name: string | null;
+  email: string | null;
+}
+
+/**
+ * Safari cookie path (Path C) identity probe: ask GET /api/me who we are using
+ * the site's own session cookie (`credentials:'include'`). 200 → identity; 401 →
+ * genuinely signed out; network/parse failure → null (unknown — leave the other
+ * paths in play). Only the background calls this, and only on Safari.
+ */
+export async function fetchMe(): Promise<MeResponse | null> {
+  const base = await getApiBaseUrl();
+  try {
+    const res = await fetch(`${base}/api/me`, {
+      credentials: "include",
+      headers: { accept: "application/json" },
+    });
+    if (res.status === 401) return { signedIn: false, name: null, email: null };
+    if (!res.ok) return null;
+    const body = (await res.json()) as { name?: string | null; email?: string | null };
+    return { signedIn: true, name: body.name ?? null, email: body.email ?? null };
+  } catch {
+    return null;
+  }
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const base = await getApiBaseUrl();
   let res: Response;
   try {
-    res = await fetch(`${base}${path}`, {
+    res = await authFetch(`${base}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
   } catch {

@@ -73,10 +73,45 @@ export interface NativeSession {
   email: string | null;
 }
 
+/** One-time-per-SW-lifetime diagnostic: when the FAPI `__client` cookie isn't
+ * visible to us, dump what the cookies API DOES return for our domains so we can
+ * tell "Safari hides nothing from us" (permission/entitlement empty) from "Safari
+ * selectively hides HttpOnly __client" (filtering). Logs count/names/domains
+ * ONLY — never cookie values. */
+let cookieProbed = false;
+async function probeCookieVisibility(): Promise<void> {
+  if (cookieProbed) return;
+  cookieProbed = true;
+  const queries = [
+    { domain: "bookmark-ai.cloud" },
+    { url: "https://clerk.bookmark-ai.cloud/" },
+  ] as const;
+  for (const query of queries) {
+    try {
+      const all = await browser.cookies.getAll(query);
+      diag("native", "cookie probe", {
+        query,
+        count: all.length,
+        names: all.map((c) => c.name),
+        domains: Array.from(new Set(all.map((c) => c.domain))),
+      });
+    } catch (e) {
+      diag("native", "cookie probe error", {
+        query,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+}
+
 export async function getNativeSession(): Promise<NativeSession | null> {
   const origin = fapiOrigin();
   const token = await readClientToken();
-  if (!origin || !token) return null;
+  if (!origin || !token) {
+    // Native path can't proceed — surface what the cookies API sees (once).
+    void probeCookieVisibility();
+    return null;
+  }
   try {
     const res = await fetch(`${origin}/v1/client?_is_native=1`, {
       headers: { Authorization: token },

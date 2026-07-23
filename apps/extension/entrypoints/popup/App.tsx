@@ -248,7 +248,7 @@ export default function App() {
             </p>
           )}
         </div>
-        <SignOutButton onSignedOut={() => setAuth(SIGNED_OUT)} />
+        <SignOutButton webUrl={webUrl} onSignedOut={() => setAuth(SIGNED_OUT)} />
       </header>
 
       {status === "saved" && bookmark ? (

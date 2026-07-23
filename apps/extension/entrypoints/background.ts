@@ -1,7 +1,7 @@
 import { defineBackground } from "#imports";
 import { browser } from "wxt/browser";
 import { createClerkClient } from "@clerk/chrome-extension/background";
-import { createBookmark, getWebBaseUrl, saveSession, setAuthTokenProvider } from "@/lib/api";
+import { createBookmark, fetchMe, getWebBaseUrl, saveSession, setAuthTokenProvider } from "@/lib/api";
 import { CLERK_PUBLISHABLE_KEY, CLERK_SYNC_HOST } from "@/lib/clerk";
 import { detectSource } from "@/lib/detect";
 import { diag } from "@/lib/diag";
@@ -24,8 +24,13 @@ import {
   type SaveBookmarkResult,
   type SaveSessionMessage,
   type SaveSessionResult,
+  type SignOutResult,
   type UserInfo,
 } from "@/lib/messages";
+
+/** Build-target browser (Vite inlines this). The cookie-credentialed identity
+ * probe (Path C) is Safari-only. */
+const SAFARI = import.meta.env.BROWSER === "safari";
 
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -36,12 +41,13 @@ const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(
  * a throw: fall through to the cookie→Native-API path (lib/native-session). */
 const CLERK_RACE_MS = 3000;
 
-type AuthPath = "sdk" | "native";
+type AuthPath = "sdk" | "native" | "cookie";
 /** Which path last resolved a session, cached for THIS background lifetime so
- * repeat popup opens don't re-pay the SDK race once we know Safari needs native.
+ * repeat popup opens don't re-pay the SDK race once we know which path works.
  * A browser restart spins up a fresh background script → `null` again → the SDK
- * path is retried. Stays null while fully signed out so neither path is skipped
- * (a pending web sign-in must still be picked up). */
+ * path is retried. Stays null while fully signed out so no path is skipped (a
+ * pending web sign-in must still be picked up). "cookie" = the Safari
+ * credentialed /api/me path (SDK + native cookie both blind). */
 let winningPath: AuthPath | null = null;
 
 /** Reject if `p` doesn't settle within `ms`. */
@@ -75,6 +81,9 @@ function racedClerkClient() {
  * Null when signed out or Clerk is unreachable — saves still work against the
  * open local server; the auth-enforcing deployed server rejects them. */
 async function getSessionToken(): Promise<string | null> {
+  // Cookie path yields no mintable token — writes go out credentialed (authFetch
+  // adds credentials:'include' on Safari when there's no token), so short-circuit.
+  if (winningPath === "cookie") return null;
   if (winningPath !== "native") {
     const started = Date.now();
     try {
@@ -123,7 +132,8 @@ async function purgeDevEraCookies(): Promise<void> {
  * session) degrades to signed-out so the popup shows the sign-in prompt. */
 async function handleGetUser(): Promise<UserInfo> {
   diag("getUser", "entry", { cachedPath: winningPath });
-  if (winningPath !== "native") {
+  // Path A — SDK (dev instances; settles empty on the prod custom domain).
+  if (winningPath !== "native" && winningPath !== "cookie") {
     const started = Date.now();
     try {
       await purgeDevEraCookies();
@@ -148,12 +158,27 @@ async function handleGetUser(): Promise<UserInfo> {
       diag("getUser", "sdk failed", { ms: Date.now() - started, error: errMsg(e) });
     }
   }
-  // Production Native-API fallback (see lib/native-session for why).
-  const native = await getNativeSession();
-  if (native) {
-    winningPath = "native";
-    diag("getUser", "reply", { path: "native", signedIn: true });
-    return { signedIn: true, name: native.name, email: native.email };
+  // Path B — Native API via the FAPI __client cookie (see lib/native-session).
+  if (winningPath !== "cookie") {
+    const native = await getNativeSession();
+    if (native) {
+      winningPath = "native";
+      diag("getUser", "reply", { path: "native", signedIn: true });
+      return { signedIn: true, name: native.name, email: native.email };
+    }
+  }
+  // Path C — Safari cookie path: /api/me authenticated by the SITE's own session
+  // cookie (credentials:'include'), which Safari sends without us reading it.
+  // Only engages when A and B both came up empty (never happens on Chrome, where
+  // A always wins when signed in), keeping Chrome/Firefox behavior unchanged.
+  if (SAFARI) {
+    const me = await fetchMe();
+    diag("getUser", "cookie /api/me", { got: !!me, signedIn: me?.signedIn ?? null });
+    if (me?.signedIn) {
+      winningPath = "cookie";
+      diag("getUser", "reply", { path: "cookie", signedIn: true });
+      return { signedIn: true, name: me.name, email: me.email };
+    }
   }
   diag("getUser", "reply", { path: "none", signedIn: false });
   return SIGNED_OUT;
@@ -162,9 +187,9 @@ async function handleGetUser(): Promise<UserInfo> {
 /** Sign out of the mirrored session: SDK first, then the native fallback
  * (which ends the same client session the WEB app uses — signing out of the
  * extension signs out of the site too, which is the honest behavior). */
-async function handleSignOut(): Promise<{ ok: boolean }> {
+async function handleSignOut(): Promise<SignOutResult> {
   let ok = false;
-  if (winningPath !== "native") {
+  if (winningPath !== "native" && winningPath !== "cookie") {
     try {
       const clerk = await racedClerkClient();
       if (clerk.session) {
@@ -175,7 +200,14 @@ async function handleSignOut(): Promise<{ ok: boolean }> {
       diag("signOut", "sdk failed", { error: errMsg(e) });
     }
   }
-  if (!ok) ok = await nativeSignOut();
+  if (!ok && winningPath !== "cookie") ok = await nativeSignOut();
+  if (!ok && SAFARI) {
+    // Cookie path: the client token is an HttpOnly cookie we can't present, so we
+    // can't end the shared session from here. Hand off to the web app — the user
+    // signs out there, and the popup's next /api/me poll then 401s to the gate.
+    diag("signOut", "cookie handoff (open web)");
+    return { ok: false, openWeb: true };
+  }
   diag("signOut", "done", { ok });
   return { ok };
 }
@@ -303,6 +335,7 @@ export default defineBackground(() => {
           | SaveSessionResult
           | LiveSetEnabledResult
           | UserInfo
+          | SignOutResult
           | { ok: boolean },
       ) => void,
     ) => {

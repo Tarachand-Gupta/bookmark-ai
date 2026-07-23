@@ -1,3 +1,4 @@
+import { browser } from "wxt/browser";
 import { requestSignOut } from "@/lib/messages";
 
 /**
@@ -6,13 +7,30 @@ import { requestSignOut } from "@/lib/messages";
  * to signal the destructive action. Sign-out runs in the BACKGROUND (SDK +
  * production native fallback — the popup-side Clerk client cannot see a
  * production custom-domain session), then notifies App so it re-checks and
- * drops back to the sign-in gate without waiting for a poll.
+ * drops back to the sign-in gate without waiting for a poll. On Safari's cookie
+ * path the background can't end the shared session, so it asks the popup to open
+ * the web app (`openWeb`) where the user signs out instead.
  */
-export function SignOutButton({ onSignedOut }: { onSignedOut?: () => void }) {
+export function SignOutButton({
+  webUrl,
+  onSignedOut,
+}: {
+  webUrl: string;
+  onSignedOut?: () => void;
+}) {
   return (
     <button
       type="button"
-      onClick={() => void requestSignOut().then(() => onSignedOut?.())}
+      onClick={() =>
+        void requestSignOut().then((res) => {
+          if (res.openWeb) {
+            void browser.tabs.create({ url: `${webUrl}/app` });
+            window.close();
+          } else {
+            onSignedOut?.();
+          }
+        })
+      }
       className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
       title="Sign out"
       aria-label="Sign out"

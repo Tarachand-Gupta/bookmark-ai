@@ -23,16 +23,17 @@ const isApiRoute = createRouteMatcher(["/api(.*)"]);
 // Unknown web origins get no CORS headers.
 const CORS_WEB_ORIGINS = new Set(AUTHORIZED_PARTIES.filter((o) => o.startsWith("http")));
 
-// Extension CORS allowlist. Firefox ids are per-install UUIDs (unpinnable), so
-// any moz-extension origin is allowed — the bearer token is the real gate there.
-// But chrome-extension:// and safari-web-extension:// ids ARE stable and pinned,
-// so those must EXACTLY match our authorized extension id; otherwise an arbitrary
-// malicious extension could get CORS access to a user's session.
-const FIREFOX_EXTENSION = /^moz-extension:\/\//;
-const PINNED_EXTENSION = /^(chrome|safari-web)-extension:\/\//;
+// Extension CORS allowlist. moz-extension AND safari-web-extension ids are
+// per-install UUIDs (unpinnable), so any origin on those schemes is allowed — the
+// bearer token, or (Safari cookie path) the site's own session cookie, is the
+// real gate. chrome-extension:// ids ARE stable and pinned, so those must EXACTLY
+// match our authorized extension id; otherwise an arbitrary malicious extension
+// could get CORS access to a user's session.
+const SCHEME_ALLOWED_EXTENSION = /^(moz-extension|safari-web-extension):\/\//;
+const CHROME_EXTENSION = /^chrome-extension:\/\//;
 function isAllowedExtensionOrigin(origin: string): boolean {
-  if (FIREFOX_EXTENSION.test(origin)) return true;
-  if (PINNED_EXTENSION.test(origin)) return AUTHORIZED_PARTIES.includes(origin);
+  if (SCHEME_ALLOWED_EXTENSION.test(origin)) return true;
+  if (CHROME_EXTENSION.test(origin)) return AUTHORIZED_PARTIES.includes(origin);
   return false;
 }
 
@@ -44,6 +45,10 @@ function corsHeaders(origin: string | null): Record<string, string> {
     "access-control-allow-origin": origin,
     "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
     "access-control-allow-headers": "authorization,content-type",
+    // Allow the Safari cookie path (fetch with credentials:'include') to pass a
+    // credentialed CORS check. Valid only because ACAO echoes the specific origin
+    // above, never "*". Bearer clients (web/chrome/mobile) ignore it.
+    "access-control-allow-credentials": "true",
     "access-control-max-age": "86400",
     vary: "Origin",
   };

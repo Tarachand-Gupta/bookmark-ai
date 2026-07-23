@@ -121,6 +121,10 @@ export interface SignOutMessage {
 
 export interface SignOutResult {
   ok: boolean;
+  /** Safari cookie path: the extension can't end the shared session itself, so
+   * the popup should open the web app (`<webBase>/app`) for the user to sign out
+   * there. Set only when `ok` is false and a web handoff is the correct action. */
+  openWeb?: boolean;
 }
 
 export function isSignOutMessage(message: unknown): message is SignOutMessage {
