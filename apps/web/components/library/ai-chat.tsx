@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type ToolUIPart, type UIMessage } from "ai";
 import ReactMarkdown from "react-markdown";
@@ -500,10 +501,13 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
   // persistent history rail sits to the left (the two-pane screenshot layout);
   // below that it collapses to a single large column (history via the popover),
   // so nothing overflows at 390px. useChat state lives in this component, so
-  // swapping the wrapper never drops the conversation.
+  // swapping the wrapper never drops the conversation. MUST portal to <body>:
+  // the docked shell lives inside the sidebar layout whose ancestors form
+  // stacking contexts, which would trap this `fixed` overlay underneath the
+  // sidebar and top bar.
   if (expanded) {
-    return (
-      <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
+    return createPortal(
+      <div className="fixed inset-0 z-[60] flex" role="dialog" aria-modal="true">
         <button
           type="button"
           aria-label="Collapse chat"
@@ -516,7 +520,8 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
           </aside>
           {chatColumn}
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   }
 
