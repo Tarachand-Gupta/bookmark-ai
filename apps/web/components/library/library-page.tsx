@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { SearchMode } from "@bookmark-ai/types";
 import {
   CalendarDays,
@@ -54,9 +54,28 @@ const FILTER_KEYS = ["category", "browser", "device", "day", "tag", "from", "to"
  * back-button friendly); search is local state layered on top.
  */
 export function LibraryPage() {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  // Every view switch here (section, facet, search mirror, settings-param
+  // clearing) is pure URL state — nothing server-side changes, all data comes
+  // from the client hooks below. router.push/replace would still trigger an RSC
+  // round-trip on each click, which is exactly the 1-2s "frozen" feel. The
+  // native History API updates the URL WITHOUT that round-trip and Next keeps
+  // useSearchParams/usePathname in sync (and handles back/forward via popstate),
+  // so the view swaps synchronously on click. See the single-page-app guide.
+  const shallowPush = useCallback(
+    (url: string) => {
+      window.history.pushState(null, "", url);
+    },
+    [],
+  );
+  const shallowReplace = useCallback(
+    (url: string) => {
+      window.history.replaceState(null, "", url);
+    },
+    [],
+  );
 
   const filters = useMemo<LibraryFilters>(() => {
     const out: LibraryFilters = {};
@@ -82,10 +101,12 @@ export function LibraryPage() {
         if (m) params.set("mode", m);
       }
       // push (not replace) so each facet change is a history entry — back button
-      // walks the filter states, as docs/TESTING.md promises.
-      router.push(params.size ? `${pathname}?${params}` : pathname, { scroll: false });
+      // walks the filter states, as docs/TESTING.md promises. Shallow: pushState
+      // keeps the URL in sync without an RSC round-trip (no scroll-to-top either,
+      // which matches the previous { scroll: false }).
+      shallowPush(params.size ? `${pathname}?${params}` : pathname);
     },
-    [router, pathname, searchParams],
+    [shallowPush, pathname, searchParams],
   );
 
   const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
@@ -125,8 +146,9 @@ export function LibraryPage() {
     if (!searchParams.get("settings")) return;
     const params = new URLSearchParams(searchParams);
     params.delete("settings");
-    router.replace(params.size ? `${pathname}?${params}` : pathname, { scroll: false });
-  }, [router, pathname, searchParams]);
+    // Pure URL cleanup — no server data changes, so replace shallowly.
+    shallowReplace(params.size ? `${pathname}?${params}` : pathname);
+  }, [shallowReplace, pathname, searchParams]);
 
   // First-run tour: open once per browser (localStorage), read in an effect so
   // the server-rendered markup hydrates cleanly. The footer "Tour" item reopens it.
@@ -167,10 +189,12 @@ export function LibraryPage() {
       else params.delete("mode");
       const next = params.size ? `${pathname}?${params}` : pathname;
       const current = searchParams.size ? `${pathname}?${searchParams}` : pathname;
-      if (next !== current) router.replace(next, { scroll: false });
+      // Search results come from the client useSearch hook; the URL is only for
+      // refresh/share, so mirror it shallowly (no RSC round-trip per keystroke).
+      if (next !== current) shallowReplace(next);
     }, 250);
     return () => clearTimeout(timer);
-  }, [query, mode, pathname, router, searchParams]);
+  }, [query, mode, pathname, shallowReplace, searchParams]);
 
   const [refreshKey, refresh] = useRefresh();
   const meta = useMeta(refreshKey);
@@ -232,6 +256,14 @@ export function LibraryPage() {
   const sessionMatches = search.data?.sessionResults ?? [];
   const showingSessionsTab = resultsTab === "sessions" && sessionMatches.length > 0;
 
+  // Facet switches keep the previous list on screen while the new one loads
+  // (useBookmarks preserves stale data across a filter change). With shallow
+  // routing the heading/sidebar swap instantly, so dim that stale grid to show
+  // the load is happening rather than leaving it looking frozen. Search has its
+  // own keep-previous behaviour and is debounced per keystroke, so it's excluded
+  // to avoid the grid pulsing on every character.
+  const gridDimmed = !searching && list.loading && (list.bookmarks?.length ?? 0) > 0;
+
   // Group the content by relative date unless searching or a specific date
   // filter (range or single day) is active — then show a flat, filtered list.
   const grouped = !searching && !filters.from && !filters.to && !filters.day;
@@ -261,14 +293,15 @@ export function LibraryPage() {
   const showSessions = useCallback(() => {
     setQuery("");
     setMode("text");
-    router.push(`${pathname}?section=sessions`, { scroll: false });
-  }, [router, pathname]);
+    // Section is view-state only (data via useSessions) → shallow, instant swap.
+    shallowPush(`${pathname}?section=sessions`);
+  }, [shallowPush, pathname]);
 
   const showLive = useCallback(() => {
     setQuery("");
     setMode("text");
-    router.push(`${pathname}?section=live`, { scroll: false });
-  }, [router, pathname]);
+    shallowPush(`${pathname}?section=live`);
+  }, [shallowPush, pathname]);
 
   const handleSessionDelete = useCallback(
     async (id: string) => {
@@ -437,6 +470,7 @@ export function LibraryPage() {
                   loading={searching ? search.loading : list.loading}
                   error={searching ? search.error : list.error}
                   firstRun={firstRun}
+                  dimmed={gridDimmed}
                   onAdd={() => setAddOpen(true)}
                   emptyHint={
                     searching

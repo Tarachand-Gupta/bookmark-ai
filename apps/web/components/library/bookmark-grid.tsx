@@ -32,6 +32,14 @@ export interface BookmarkGridProps {
   firstRun?: boolean;
   /** Opens the add-bookmark dialog — the quiet path out of the first-run panel. */
   onAdd?: () => void;
+  /**
+   * A refetch is in flight but we're keeping the PREVIOUS list on screen (e.g.
+   * switching facet filters). The view already swapped instantly via shallow
+   * routing; dimming the stale grid signals "loading" without a jarring
+   * skeleton flash. Ignored once there's nothing stale to show (the skeleton
+   * path above wins).
+   */
+  dimmed?: boolean;
 }
 
 /** The bookmark collection in one of three layouts, optionally grouped by date. */
@@ -45,6 +53,7 @@ export function BookmarkGrid({
   grouped,
   firstRun,
   onAdd,
+  dimmed,
 }: BookmarkGridProps) {
   if (error) {
     return (
@@ -81,9 +90,21 @@ export function BookmarkGrid({
     );
   }
 
+  // A refetch is in flight over stale content (e.g. facet switch): the view
+  // already swapped, so dim + freeze the old list instead of flashing a
+  // skeleton, then let it re-render when the new data lands.
+  const staleWrap = (node: React.ReactNode) =>
+    dimmed ? (
+      <div aria-busy className="pointer-events-none opacity-60 transition-opacity">
+        {node}
+      </div>
+    ) : (
+      node
+    );
+
   if (grouped) {
     const groups = groupBookmarksByDate(bookmarks);
-    return (
+    return staleWrap(
       <div className="space-y-8">
         {groups.map((g) => (
           <section key={g.key}>
@@ -94,11 +115,11 @@ export function BookmarkGrid({
             <ItemLayout items={g.items} view={view} onDelete={onDelete} />
           </section>
         ))}
-      </div>
+      </div>,
     );
   }
 
-  return <ItemLayout items={bookmarks} view={view} onDelete={onDelete} />;
+  return staleWrap(<ItemLayout items={bookmarks} view={view} onDelete={onDelete} />);
 }
 
 /** Renders a set of bookmarks in the chosen layout — shared by flat + grouped modes. */

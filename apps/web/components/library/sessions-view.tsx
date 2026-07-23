@@ -6,6 +6,7 @@ import { AppWindow, ChevronDown, Globe, Layers, SquareStack, Trash2 } from "luci
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { restoreSessionViaExtension, type RestoreMode } from "@/lib/extension-bridge";
+import { safeHref } from "@/lib/safe-href";
 import { SessionsEmpty } from "./sessions-empty";
 
 export interface SessionsViewProps {
@@ -215,16 +216,12 @@ function TabList({
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   useEffect(() => setRevealed(new Set()), [q]);
 
-  const tabRow = (t: SessionTab, i: number, matched: boolean) => (
-    <li key={`${t.url}-${i}`}>
-      <a
-        href={t.url}
-        target="_blank"
-        rel="noreferrer noopener"
-        className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors hover:bg-muted/50 ${
-          matched ? "bg-primary/5" : ""
-        }`}
-      >
+  const tabRow = (t: SessionTab, i: number, matched: boolean) => {
+    // Never render a non-http(s) URL as a live link (javascript:/data: XSS via a
+    // crafted import or POST) — fall back to a non-interactive row.
+    const href = safeHref(t.url);
+    const inner = (
+      <>
         <TabIcon favIconUrl={t.favIconUrl} />
         <span
           className={`line-clamp-1 flex-1 [overflow-wrap:anywhere] ${matched ? "font-medium" : ""}`}
@@ -234,9 +231,23 @@ function TabList({
         <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
           {domainOf(t.url)}
         </span>
-      </a>
-    </li>
-  );
+      </>
+    );
+    const cls = `flex items-center gap-2 px-4 py-2 text-sm transition-colors ${
+      matched ? "bg-primary/5" : ""
+    }`;
+    return (
+      <li key={`${t.url}-${i}`}>
+        {href ? (
+          <a href={href} target="_blank" rel="noreferrer noopener" className={`${cls} hover:bg-muted/50`}>
+            {inner}
+          </a>
+        ) : (
+          <span className={`${cls} text-muted-foreground`}>{inner}</span>
+        )}
+      </li>
+    );
+  };
 
   return (
     <ul className="divide-y border-t">

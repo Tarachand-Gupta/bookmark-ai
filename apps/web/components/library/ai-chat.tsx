@@ -26,6 +26,7 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Loader } from "@/components/ai-elements/loader";
+import { safeHref } from "@/lib/safe-href";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
   PromptInput,
@@ -541,15 +542,6 @@ function hostOf(url: string): string {
  * link. Saved *tab* URLs are stored permissively — this render guard, not input
  * validation, is what keeps a hostile scheme out of the DOM.
  */
-function safeHref(url: string): string | undefined {
-  try {
-    const { protocol } = new URL(url);
-    return protocol === "http:" || protocol === "https:" ? url : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * One listSessions invocation: status strip + the saved sessions with their
  * first tabs, visually distinct (Layers icon) from bookmark results.

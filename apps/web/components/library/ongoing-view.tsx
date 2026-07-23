@@ -32,6 +32,7 @@ import {
 } from "@/lib/live-format";
 import type { SectionId } from "./settings-dialog";
 import { ExtensionStoreButton } from "./extension-cta";
+import { safeHref } from "@/lib/safe-href";
 
 const BROWSER_ICONS: Record<string, React.ElementType> = {
   chrome: Chrome,
@@ -431,10 +432,22 @@ function LiveTabRow({ tab, deviceLabel }: { tab: LiveTab; deviceLabel: string })
     );
   }
 
+  // Defense-in-depth: isOpenableTab already requires http(s), but never emit a
+  // non-http(s) href even if that guard ever loosens (javascript:/data: XSS).
+  const href = safeHref(tab.url);
+  if (!href) {
+    return (
+      <li className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+        <Globe className="size-4 shrink-0" aria-hidden />
+        <span className="line-clamp-1 flex-1 [overflow-wrap:anywhere]">{label}</span>
+      </li>
+    );
+  }
+
   return (
     <li>
       <a
-        href={tab.url}
+        href={href}
         target="_blank"
         rel="noreferrer noopener"
         className="flex items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-muted/50"
