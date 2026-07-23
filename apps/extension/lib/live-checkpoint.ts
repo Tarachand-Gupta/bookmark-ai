@@ -1,6 +1,7 @@
 import { browser } from "wxt/browser";
 import type { PushLiveStateInput } from "@bookmark-ai/types";
 import { detectBrowser, detectDevice, detectOs } from "./detect";
+import { diag } from "./diag";
 import { getDeviceId, getDeviceLabel } from "./device-id";
 import { pushLiveState, updateLiveSettings, type PushOutcome } from "./live-api";
 import { buildLiveWindows, type LiveInputWindow } from "./live-sanitize";
@@ -26,7 +27,13 @@ import {
 const DEBOUNCE_MS = 5_000;
 const HEARTBEAT_ALARM = "live-heartbeat";
 const HEARTBEAT_PERIOD_MINUTES = 2; // backstop: re-stamp liveness + retry a dropped debounce
-const BACKOFF_SCHEDULE_MS = [60_000, 120_000, 300_000, 900_000, 1_800_000]; // 1m→2m→5m→15m→30m (§4.5)
+// 1m→2m→5m→15m→30m (§4.5). Safari caps at 5m: its worker restarts constantly,
+// so a transient failure (e.g. no bridge tab open to mint a live token) is
+// common and must not freeze the mirror for half an hour once conditions heal.
+const BACKOFF_SCHEDULE_MS =
+  import.meta.env.BROWSER === "safari"
+    ? [60_000, 120_000, 300_000]
+    : [60_000, 120_000, 300_000, 900_000, 1_800_000];
 const BADGE_COLOR = "#2563eb";
 const MAX_OS = 40; // pushLiveStateSchema.os cap
 
@@ -155,7 +162,11 @@ async function flush(reason: "debounce" | "alarm" | "windowRemoved"): Promise<vo
     await setBadge(false);
     return;
   }
-  if (Date.now() < (await liveBackoffUntilItem.getValue())) return;
+  const backoffUntil = await liveBackoffUntilItem.getValue();
+  if (Date.now() < backoffUntil) {
+    diag("live", "flush skipped (backoff)", { reason, remainingMs: backoffUntil - Date.now() });
+    return;
+  }
   if (flushing) {
     armDebounce(); // a push is in flight; retry after it settles
     return;
@@ -169,6 +180,7 @@ async function flush(reason: "debounce" | "alarm" | "windowRemoved"): Promise<vo
       // Heartbeat: re-stamp liveness WITHOUT touching the mirror — windows OMITTED
       // (absent = heartbeat; sending [] would wipe the mirror, §4.3).
       const outcome = await pushLiveState({ ...(await baseState()), hiddenTabCount: 0 });
+      diag("live", "heartbeat push", { ok: outcome.ok });
       if (outcome.ok) await resetBackoff();
       else await reactToFailure(outcome);
       return;
@@ -178,6 +190,7 @@ async function flush(reason: "debounce" | "alarm" | "windowRemoved"): Promise<vo
     // re-sets it and is not swallowed by this success.
     await liveDirtyItem.setValue(false);
     const outcome = await pushLiveState(await buildFullPush());
+    diag("live", "full push", { reason, ok: outcome.ok });
     if (outcome.ok) {
       await resetBackoff();
     } else {

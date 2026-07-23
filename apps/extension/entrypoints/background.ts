@@ -401,43 +401,46 @@ export default defineBackground(() => {
   //    ever opens up for the extension context; today it 401s, harmlessly).
   if (SAFARI) {
     setNoTokenFetcher(async (url, init) => {
-      const tokenless = winningPath === "bridge" || winningPath === "cookie";
-      if (tokenless) {
-        let appOrigin = "";
-        try {
-          appOrigin = new URL(await getApiBaseUrl()).origin;
-        } catch {
-          // leave appOrigin empty → skip the origin-specific branches
-        }
-        const target = new URL(url);
+      // Deliberately NOT gated on `winningPath`: Safari kills this worker every
+      // couple of minutes, and a fresh worker boots with winningPath === null —
+      // gating here made every alarm-driven live push go out tokenless (401 →
+      // backoff → frozen mirror). Each strategy below is a cheap no-op when
+      // unavailable (no bridge tab → null; no mintable token → fall through).
+      let appOrigin = "";
+      try {
+        appOrigin = new URL(await getApiBaseUrl()).origin;
+      } catch {
+        // leave appOrigin empty → skip the origin-specific branches
+      }
+      const target = new URL(url);
 
-        if (winningPath === "bridge" && appOrigin && target.origin === appOrigin) {
-          const body = typeof init.body === "string" ? init.body : undefined;
-          const bridged = await bridgeFetch(
-            target.pathname + target.search,
-            (init.method as string) ?? "GET",
-            body,
-          );
-          if (bridged) return bridged;
-        } else if (appOrigin && target.origin !== appOrigin) {
-          const withBearer = (t: string): Promise<Response> =>
-            fetch(url, {
-              ...init,
-              headers: {
-                ...(init.headers as Record<string, string> | undefined),
-                authorization: `Bearer ${t}`,
-              },
-            });
-          const token = await getLiveToken();
-          if (token) {
-            const res = await withBearer(token);
-            diag("live", "live call", { path: target.pathname, status: res.status });
-            if (res.status !== 401) return res;
-            const fresh = await getLiveToken(true);
-            if (fresh) return withBearer(fresh);
-            return res;
-          }
+      if (appOrigin && target.origin === appOrigin) {
+        const body = typeof init.body === "string" ? init.body : undefined;
+        const bridged = await bridgeFetch(
+          target.pathname + target.search,
+          (init.method as string) ?? "GET",
+          body,
+        );
+        if (bridged) return bridged;
+      } else if (appOrigin && target.origin !== appOrigin) {
+        const withBearer = (t: string): Promise<Response> =>
+          fetch(url, {
+            ...init,
+            headers: {
+              ...(init.headers as Record<string, string> | undefined),
+              authorization: `Bearer ${t}`,
+            },
+          });
+        const token = await getLiveToken();
+        if (token) {
+          const res = await withBearer(token);
+          diag("live", "live call", { path: target.pathname, status: res.status });
+          if (res.status !== 401) return res;
+          const fresh = await getLiveToken(true);
+          if (fresh) return withBearer(fresh);
+          return res;
         }
+        diag("live", "live call unauthed", { path: target.pathname });
       }
       return fetch(url, { ...init, credentials: "include" });
     });
