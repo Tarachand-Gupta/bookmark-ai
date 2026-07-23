@@ -20,6 +20,7 @@ import {
   Maximize2,
   Minimize2,
   Plus,
+  Radio,
   RotateCw,
   Search,
   Sparkles,
@@ -45,6 +46,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { deviceFreshness, formatDeviceAge } from "@/lib/live-format";
 import {
   authHeaders,
   deleteChatConversation,
@@ -107,6 +109,23 @@ interface SessionHit {
 interface SessionsToolOutput {
   total: number;
   sessions: SessionHit[];
+}
+
+interface LiveDeviceHit {
+  label: string;
+  browser: string;
+  lastSeenAgeSeconds: number;
+  tabCount: number;
+  hiddenTabCount: number;
+  windows: { tabs: { title: string; url: string }[] }[];
+}
+
+/** listLiveTabs output: `{enabled:false}` = sharing off, `{error}` = unavailable,
+ * else the compacted live devices. Discriminated by which field is present. */
+interface LiveTabsToolOutput {
+  enabled?: boolean;
+  error?: string;
+  devices?: LiveDeviceHit[];
 }
 
 export interface AiChatProps {
@@ -487,6 +506,10 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
                 if (part.type === "tool-listSessions") {
                   const tool = part as ToolUIPart;
                   return <SessionsToolCall key={tool.toolCallId} part={tool} />;
+                }
+                if (part.type === "tool-listLiveTabs") {
+                  const tool = part as ToolUIPart;
+                  return <LiveTabsToolCall key={tool.toolCallId} part={tool} />;
                 }
                 return null;
               })}
@@ -964,6 +987,150 @@ function SessionsToolCall({ part }: { part: ToolUIPart }) {
                 </ul>
               </li>
             ))}
+          </ul>
+        ))}
+    </div>
+  );
+}
+
+/** Small favicon-substitute: the host's first letter in a muted dot. The live
+ * tool ships no favicon urls (compacted for the model), so we derive one. */
+function LetterDot({ text }: { text: string }) {
+  const letter = (text.trim()[0] ?? "•").toUpperCase();
+  return (
+    <span
+      aria-hidden
+      className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-medium text-muted-foreground"
+    >
+      {letter}
+    </span>
+  );
+}
+
+/**
+ * One listLiveTabs invocation: the user's CURRENTLY-OPEN tabs across devices.
+ * Distinct from saved sessions — a Radio icon + a live freshness dot per device
+ * (emerald = recently seen) with "as of …" age. Handles the three terminal
+ * shapes (error / sharing-off / devices) purely off the stored output, so a
+ * rehydrated `output-available` part renders identically to the live one.
+ */
+function LiveTabsToolCall({ part }: { part: ToolUIPart }) {
+  const output = part.output as LiveTabsToolOutput | undefined;
+  const running = part.state === "input-streaming" || part.state === "input-available";
+  const failed = part.state === "output-error" || !!output?.error;
+  const enabled = output?.enabled ?? false;
+  const devices = output?.devices ?? [];
+  const count = devices.length;
+
+  return (
+    <div className="not-prose mb-1 w-full overflow-hidden rounded-lg border bg-background">
+      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs">
+        <Radio className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="shrink-0 font-medium">Live tabs</span>
+        <span className="ml-auto shrink-0 text-muted-foreground">
+          {running ? (
+            <span className="flex items-center gap-1.5">
+              <Loader size={12} />
+              Checking…
+            </span>
+          ) : failed ? (
+            <span className="text-destructive">unavailable</span>
+          ) : !enabled ? (
+            "sharing off"
+          ) : (
+            `${count} device${count === 1 ? "" : "s"}`
+          )}
+        </span>
+      </div>
+      {failed && (
+        <p className="px-3 py-2 text-xs text-muted-foreground">
+          Live tabs are unavailable right now.
+        </p>
+      )}
+      {output && !failed && !enabled && (
+        <p className="px-3 py-2 text-xs text-muted-foreground">
+          Live sharing is off — turn on “Live sessions” sharing to let the assistant see your
+          current tabs.
+        </p>
+      )}
+      {output &&
+        !failed &&
+        enabled &&
+        (count === 0 ? (
+          <p className="px-3 py-2 text-xs text-muted-foreground">
+            No devices are sharing live tabs right now.
+          </p>
+        ) : (
+          <ul className="divide-y">
+            {devices.map((d, di) => {
+              const { filled } = deviceFreshness(d.lastSeenAgeSeconds);
+              const tabs = d.windows.flatMap((w) => w.tabs);
+              return (
+                <li key={`${d.label}-${di}`} className="px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "size-2 shrink-0 rounded-full",
+                        filled ? "bg-emerald-500" : "border border-muted-foreground/50",
+                      )}
+                    />
+                    <span className="line-clamp-1 min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
+                      {d.label || "Unnamed device"}
+                    </span>
+                    <span className="shrink-0 text-xs capitalize text-muted-foreground">
+                      {d.browser}
+                    </span>
+                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                      {formatDeviceAge(d.lastSeenAgeSeconds)}
+                    </span>
+                  </div>
+                  {tabs.length === 0 ? (
+                    <p className="mt-1 pl-4 text-[11px] text-muted-foreground">No open tabs.</p>
+                  ) : (
+                    <ul className="mt-1.5 space-y-1">
+                      {tabs.slice(0, 8).map((t, ti) => {
+                        const href = safeHref(t.url);
+                        return (
+                          <li key={`${t.url}-${ti}`} className="flex items-start gap-2">
+                            <LetterDot text={hostOf(t.url)} />
+                            <div className="min-w-0 flex-1">
+                              {href ? (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  className="line-clamp-1 text-xs font-medium hover:underline [overflow-wrap:anywhere]"
+                                >
+                                  {t.title || t.url}
+                                </a>
+                              ) : (
+                                <span className="line-clamp-1 text-xs font-medium [overflow-wrap:anywhere]">
+                                  {t.title || t.url}
+                                </span>
+                              )}
+                              <p className="line-clamp-1 text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
+                                {hostOf(t.url)}
+                              </p>
+                            </div>
+                          </li>
+                        );
+                      })}
+                      {tabs.length > 8 && (
+                        <li className="pl-6 text-[10px] text-muted-foreground">
+                          +{tabs.length - 8} more tab{tabs.length - 8 === 1 ? "" : "s"}
+                        </li>
+                      )}
+                      {d.hiddenTabCount > 0 && (
+                        <li className="pl-6 text-[10px] text-muted-foreground">
+                          +{d.hiddenTabCount} hidden
+                        </li>
+                      )}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         ))}
     </div>

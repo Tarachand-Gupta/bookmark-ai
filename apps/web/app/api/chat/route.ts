@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { auth } from "@clerk/nextjs/server";
 import { convertToModelMessages, stepCountIs, streamText, tool, type UIMessage } from "ai";
 import { z } from "zod";
 import { listSessions, type Db } from "@bookmark-ai/db";
+import type { ListLiveResponse } from "@bookmark-ai/types";
 import { fetchUrl, performSearch, runReadOnlySql, webSearch } from "@bookmark-ai/engine";
 import {
   appendChatMessage,
@@ -16,6 +18,7 @@ import {
 import { resolveChatModel } from "@/lib/server/ai-model";
 import { getFreeAiWeeklyLimit } from "@/lib/server/ai-limit";
 import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
+import { mintLiveSessionToken, resolveLiveBaseUrl } from "@/lib/server/live-token";
 
 export const maxDuration = 60;
 
@@ -153,6 +156,58 @@ async function runListSessions(ctx: ToolContext, query: string | undefined, limi
   }
 }
 
+/**
+ * Read-only view of the user's CURRENTLY OPEN tabs across their devices, via the
+ * dedicated live server (a separate origin). User-token-scoped: we mint the
+ * caller's own short-lived session JWT and read `${liveBase}/live` as them — the
+ * agent never gets broader access than the user has. Compacted for the model
+ * (device label + freshness + tab title/url only). Degrades to `{error}` on any
+ * failure (no live URL, no session to mint from, live server down/slow) and
+ * `{enabled:false}` when the user hasn't turned sharing on — NEVER throws into
+ * the stream. Strictly read-only: there is no toggle/forget/push counterpart.
+ */
+async function runListLiveTabs(db: Db, userId: string | null, sessionId: string | null) {
+  try {
+    const base = await resolveLiveBaseUrl(db, userId);
+    // No configured live server, or open/self-host mode with no session to mint
+    // a token from → nothing to read.
+    if (!base || !sessionId) return { error: "live tabs unavailable" };
+
+    const { token } = await mintLiveSessionToken(sessionId);
+    // Bound the cross-origin read so a slow/hung live server can't stall the turn.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
+    let res: Response;
+    try {
+      res = await fetch(`${base}/live`, {
+        headers: { authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) return { error: "live tabs unavailable" };
+
+    const data = (await res.json()) as ListLiveResponse;
+    if (!data.enabled) return { enabled: false, devices: [] };
+    return {
+      enabled: true,
+      devices: data.devices.map((d) => ({
+        label: d.label,
+        browser: d.browser,
+        lastSeenAgeSeconds: d.lastSeenAgeSeconds,
+        tabCount: d.tabCount,
+        hiddenTabCount: d.hiddenTabCount,
+        windows: d.windows.map((w) => ({
+          tabs: w.tabs.map((t) => ({ title: t.title, url: t.url })),
+        })),
+      })),
+    };
+  } catch {
+    return { error: "live tabs unavailable" };
+  }
+}
+
 function systemPrompt(): string {
   const today = new Date().toISOString().slice(0, 10);
   return [
@@ -174,7 +229,8 @@ function systemPrompt(): string {
     "TOOLS — pick the right one, and combine them for complex asks:",
     "- queryDatabase: counts, aggregates, grouping, filters, and date math (e.g. 'bookmarks per category this month', 'top domains', 'saved in the last 7 days'). Write a single read-only SELECT/WITH. Use saved_day/saved_at for dates; expand tags with json_each(tags_json). It is read-only and row-capped.",
     "- searchBookmarks: topical or fuzzy finding ('articles about databases'). mode hybrid (default) is best; use semantic for by-meaning and text for exact words/domains.",
-    "- listSessions: any question about saved browser sessions (snapshots of open tabs).",
+    "- listSessions: any question about SAVED browser sessions (named snapshots of tabs the user deliberately kept).",
+    "- listLiveTabs: the user's tabs that are OPEN RIGHT NOW, live, across their devices — use for 'what am I working on right now', 'what's open on my laptop/phone', 'what was I just looking at'. Works ONLY when the user has turned on live tab sharing; if it comes back disabled, tell them they can enable 'Live sessions' sharing to let you see current tabs. Takes no parameters. (Distinct from listSessions, which is deliberately-saved snapshots.)",
     "- webSearch: current or external information NOT in the user's library. Returns titles, URLs, and snippets.",
     "- fetchUrl: read a specific page's live text — including re-reading a saved bookmark's current content before answering questions about it.",
     "",
@@ -196,6 +252,16 @@ export async function POST(req: Request) {
   const apiCtx = await getRequestApiContext();
   if ("response" in apiCtx) return apiCtx.response;
   const { userId, db, gemini, ready } = apiCtx;
+
+  // The caller's Clerk session id — needed to mint their own token for the live
+  // server (a separate origin) in the listLiveTabs tool. Absent in open/self-host
+  // mode (no Clerk / no clerkMiddleware), where the live tool simply degrades.
+  let sessionId: string | null = null;
+  try {
+    ({ sessionId } = await auth());
+  } catch {
+    sessionId = null;
+  }
 
   // Resolve the model before metering: the user's configured provider/model
   // (Settings) wins, else the env Gemini model. Reading settings needs `ready`.
@@ -300,6 +366,12 @@ export async function POST(req: Request) {
           "List the user's saved browser sessions (named snapshots of open tabs), newest first, optionally filtered by text.",
         inputSchema: listSessionsInput,
         execute: ({ query, limit }) => runListSessions(ctx, query, limit),
+      }),
+      listLiveTabs: tool({
+        description:
+          "See the user's browser tabs that are OPEN RIGHT NOW, live, across their devices — only when the user has enabled live tab sharing. Best for 'what am I working on right now', 'what's open on my other device', 'what was I just looking at'. Read-only; takes no parameters.",
+        inputSchema: z.object({}),
+        execute: () => runListLiveTabs(db, userId, sessionId),
       }),
       webSearch: tool({
         description:

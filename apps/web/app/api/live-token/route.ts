@@ -1,6 +1,7 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/server/require-user";
+import { mintLiveSessionToken } from "@/lib/server/live-token";
 
 /**
  * GET /api/live-token — mint a fresh standard Clerk session JWT for the caller's
@@ -13,10 +14,9 @@ import { requireUser } from "@/lib/server/require-user";
  *
  * Uses the DEFAULT session token (no JWT template) — the exact token
  * `session.getToken()` returns client-side — so NO Clerk dashboard template is
- * required. Never cached server-side; short-lived by design.
+ * required. Never cached server-side; short-lived by design. The actual minting
+ * lives in lib/server/live-token.ts (shared with the chat `listLiveTabs` tool).
  */
-
-const EXPIRES_IN_SECONDS = 60;
 
 export async function GET() {
   const gate = await requireUser();
@@ -33,8 +33,5 @@ export async function GET() {
     return NextResponse.json({ error: "No active session" }, { status: 401 });
   }
 
-  const client = await clerkClient();
-  // No template arg → default session token (standard session JWT).
-  const { jwt } = await client.sessions.getToken(sessionId, undefined, EXPIRES_IN_SECONDS);
-  return NextResponse.json({ token: jwt, expiresInSeconds: EXPIRES_IN_SECONDS });
+  return NextResponse.json(await mintLiveSessionToken(sessionId));
 }
