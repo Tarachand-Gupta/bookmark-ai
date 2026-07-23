@@ -128,7 +128,13 @@ All three must succeed. Live test (needs a real browser via computer use / chrom
      appex's `ai.bookmark.safari.Extension`) and the build fails at ValidateEmbeddedBinary —
      fix: `sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = "ai.bookmark.Bookmark-AI";/PRODUCT_BUNDLE_IDENTIFIER = ai.bookmark.safari;/g' "safari-xcode/Bookmark AI/Bookmark AI.xcodeproj/project.pbxproj"`
   3. `cd "safari-xcode/Bookmark AI" && xcodebuild -project "Bookmark AI.xcodeproj" -scheme "Bookmark AI" -configuration Debug clean build` (`clean` matters — see step 1 note; default sign-to-run-locally; do NOT pass CODE_SIGNING_REQUIRED=NO)
-  4. `open ~/Library/Developer/Xcode/DerivedData/Bookmark_AI-*/Build/Products/Debug/"Bookmark AI.app"` — running it once registers the extension.
+  4. Install to a STABLE path and keep it the ONLY copy — multiple registered copies of the
+     app (DerivedData + /Applications + ~/Applications) make Safari's extension list appear
+     empty or doubled, and each rebuild re-registers the DerivedData copy:
+     `ditto "$DD_APP" "/Applications/Bookmark AI.app" && pluginkit -r "$DD_APP/Contents/PlugIns/Bookmark AI Extension.appex"; rm -rf "$DD_APP"; open "/Applications/Bookmark AI.app"`
+     (where `DD_APP=~/Library/Developer/Xcode/DerivedData/Bookmark_AI-*/Build/Products/Debug/"Bookmark AI.app"`).
+     Running the app once registers the extension; verify a single registration with
+     `pluginkit -mAvvv | grep -A1 ai.bookmark`.
   5. In Safari: Settings → Advanced → "Show features for web developers", then Develop →
      "Allow Unsigned Extensions" (re-arm after each Safari restart), then Settings →
      Extensions → enable Bookmark AI. `safari-xcode/` is gitignored (generated).
