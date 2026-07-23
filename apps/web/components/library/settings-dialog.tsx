@@ -7,7 +7,6 @@ import {
   Database,
   Download,
   Loader2,
-  MonitorSmartphone,
   Sparkles,
   Trash2,
   Upload,
@@ -40,6 +39,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { DevicesSection } from "./devices-settings";
+import { FEATURE_ICONS } from "./feature-icons";
 
 export interface SettingsDialogProps {
   open: boolean;
@@ -52,7 +52,7 @@ export interface SettingsDialogProps {
 const SECTIONS = [
   { id: "ai", label: "AI", icon: Sparkles },
   { id: "data", label: "Data", icon: Database },
-  { id: "devices", label: "Devices", icon: MonitorSmartphone },
+  { id: "devices", label: "Live sessions", icon: FEATURE_ICONS.live },
   { id: "account", label: "Account", icon: UserRound },
 ] as const;
 export type SectionId = (typeof SECTIONS)[number]["id"];

@@ -2,10 +2,16 @@
 
 import { useEffect, useState } from "react";
 import type { LiveDevice, UserSettings } from "@bookmark-ai/types";
-import { Chrome, Compass, Flame, Globe, Loader2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, Chrome, Compass, Flame, Globe, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { FEATURE_ICONS } from "./feature-icons";
 import {
   forgetAllLiveDevices,
   forgetLiveDevice,
@@ -16,6 +22,9 @@ import {
   updateSettings,
 } from "@/lib/api";
 import { deviceFreshness, formatDeviceAge } from "@/lib/live-format";
+
+/** Canonical live-sessions glyph, shared with sidebar/tour via FEATURE_ICONS. */
+const LiveIcon = FEATURE_ICONS.live;
 
 const BROWSER_ICONS: Record<string, React.ElementType> = {
   chrome: Chrome,
@@ -124,9 +133,12 @@ export function DevicesSection() {
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="text-sm font-semibold">Open tabs</h3>
+        <h3 className="flex items-center gap-2 text-sm font-semibold">
+          <LiveIcon className="size-4 text-muted-foreground" aria-hidden />
+          Live sessions
+        </h3>
         <p className="text-xs text-muted-foreground">
-          See the tabs your other devices have open, and manage those devices.
+          See the tabs your other devices have open in real time, and manage those devices.
         </p>
       </div>
 
@@ -215,9 +227,12 @@ export function DevicesSection() {
 }
 
 /**
- * The optional custom live-server URL. Live tabs stream through this server;
- * empty means the built-in default (`NEXT_PUBLIC_LIVE_API_URL`). Saving resets
- * lib/api's cached live base so the next live connect uses the new URL.
+ * The optional custom live-server URL, tucked behind a "Use my own live server"
+ * disclosure (collapsed unless a custom URL is already saved). Live tabs stream
+ * through this server; empty means the built-in default (`NEXT_PUBLIC_LIVE_API_URL`).
+ * Because pointing live sessions at a self-hosted server can break the feature,
+ * the URL input + Save are gated behind an "I know what I'm doing" checkbox.
+ * Saving resets lib/api's cached live base so the next live connect uses the new URL.
  */
 function LiveServerUrlField() {
   const [value, setValue] = useState("");
@@ -227,6 +242,10 @@ function LiveServerUrlField() {
     UserSettings,
     "provider" | "baseUrl" | "model"
   > | null>(null);
+  // Disclosure + gate: both start open/checked when a custom URL already exists,
+  // so the user can see and edit what they set instead of being locked out.
+  const [open, setOpen] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -236,7 +255,10 @@ function LiveServerUrlField() {
     getSettings()
       .then(({ settings }) => {
         if (cancelled) return;
+        const hasCustom = settings.liveServerUrl != null;
         setValue(settings.liveServerUrl ?? "");
+        setOpen(hasCustom);
+        setAcknowledged(hasCustom);
         setAiConfig({
           provider: settings.provider,
           baseUrl: settings.baseUrl,
@@ -245,7 +267,7 @@ function LiveServerUrlField() {
       })
       .catch(() => {
         // A failed load leaves the field empty (the default) — the user can
-        // still type and save an override.
+        // still expand, acknowledge, type, and save an override.
       });
     return () => {
       cancelled = true;
@@ -282,46 +304,86 @@ function LiveServerUrlField() {
     }
   };
 
+  const locked = !acknowledged;
+
   return (
-    <div className="space-y-2 border-t pt-5">
-      <label htmlFor="live-server-url" className="text-sm font-medium">
-        Live server URL
-      </label>
-      <div className="flex items-center gap-2">
-        <Input
-          id="live-server-url"
-          type="url"
-          inputMode="url"
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setSavedMsg(null);
-          }}
-          placeholder="Default server"
+    <Collapsible open={open} onOpenChange={setOpen} className="border-t pt-5">
+      <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 rounded-md text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+        Use my own live server
+        <ChevronDown
+          className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+          aria-hidden
         />
-        <Button
-          type="button"
-          size="sm"
-          onClick={save}
-          disabled={saving || aiConfig === null}
-          className="shrink-0"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="animate-spin" aria-hidden />
-              Saving…
-            </>
-          ) : (
-            "Save"
-          )}
-        </Button>
-      </div>
-      {savedMsg && <p className="text-sm text-emerald-600 dark:text-emerald-500">{savedMsg}</p>}
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
-        Live tabs stream through this server. Leave empty to use the built-in one.
-      </p>
-    </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-3 pt-3">
+        <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500" aria-hidden />
+          <div className="space-y-1.5">
+            <label htmlFor="live-server-ack" className="flex cursor-pointer items-start gap-2 text-sm font-medium">
+              <input
+                id="live-server-ack"
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => {
+                  setAcknowledged(e.target.checked);
+                  setSavedMsg(null);
+                }}
+                className="mt-0.5 size-4 shrink-0 accent-amber-600 dark:accent-amber-500"
+              />
+              I know what I&apos;m doing, allow me.
+            </label>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              This changes the live server your tabs stream through. If the self-hosted server is
+              misconfigured or unavailable, live sessions may stop working — we&apos;re not
+              responsible for the feature misbehaving on a custom server. Leave empty to use the
+              built-in one.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="live-server-url"
+            className={cn("text-sm font-medium", locked && "text-muted-foreground")}
+          >
+            Live server URL
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              id="live-server-url"
+              type="url"
+              inputMode="url"
+              value={value}
+              disabled={locked}
+              onChange={(e) => {
+                setValue(e.target.value);
+                setSavedMsg(null);
+              }}
+              placeholder="Default server"
+              className="w-full min-w-0 flex-1"
+            />
+            <Button
+              type="button"
+              size="sm"
+              onClick={save}
+              disabled={locked || saving || aiConfig === null}
+              className="shrink-0"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="animate-spin" aria-hidden />
+                  Saving…
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </div>
+          {savedMsg && <p className="text-sm text-emerald-600 dark:text-emerald-500">{savedMsg}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
