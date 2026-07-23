@@ -85,9 +85,12 @@ const BLOCKED_KEYWORDS = [
  * false-rejects and is intentionally not over-engineered.
  */
 const BLOCKED_IDENTIFIERS = [
-  "user_settings", // holds the plaintext ai_api_key secret
+  "user_settings", // holds the (encrypted-at-rest) ai_api_key secret + provider config
   "live_devices", // per-device open-tab checkpoints — sensitive, never agent-readable (§5.5)
   "live_settings", // the live-sessions opt-in flag
+  "chat_conversations", // persisted AI chat — conversation content, never agent-readable
+  "chat_messages", // persisted AI chat message parts (incl. tool results)
+  "ai_usage", // free-tier token meter bookkeeping
   "schema_migrations", // internal migration bookkeeping
   "sqlite_master", // catalog: full schema of every object
   "sqlite_schema", // alias of sqlite_master

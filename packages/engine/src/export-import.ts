@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 import {
   createSession,
   insertBookmark,
+  insertConversation,
+  insertMessage,
+  listConversations,
+  listMessages,
   type Db,
 } from "@bookmark-ai/db";
 import {
@@ -11,6 +15,7 @@ import {
   type DeviceType,
   type ExportBundle,
   type ExportedBookmark,
+  type ExportedConversation,
   type ExportedSession,
   type OpenGraph,
   type SessionTab,
@@ -68,12 +73,37 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
     createdAt: String(r.created_at),
   }));
 
+  // Persisted AI chat (v2): each conversation with its full message history.
+  const conversationRows = await listConversations(db);
+  const conversations: ExportedConversation[] = await Promise.all(
+    conversationRows.map(async (c) => {
+      const messages = await listMessages(db, c.id);
+      return {
+        id: c.id,
+        title: c.title,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        messages: messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          parts: m.parts,
+          createdAt: m.createdAt,
+        })),
+      };
+    }),
+  );
+
   return {
     schemaVersion: SCHEMA_VERSION,
     exportedAt,
-    counts: { bookmarks: bookmarks.length, sessions: sessions.length },
+    counts: {
+      bookmarks: bookmarks.length,
+      sessions: sessions.length,
+      conversations: conversations.length,
+    },
     bookmarks,
     sessions,
+    conversations,
   };
 }
 
@@ -92,7 +122,7 @@ export async function importUserData(
   db: Db,
   bundle: unknown,
   _opts?: ImportUserDataOptions,
-): Promise<{ bookmarks: number; sessions: number }> {
+): Promise<{ bookmarks: number; sessions: number; conversations: number }> {
   const migrated = migrateExportBundle(bundle);
 
   let bookmarks = 0;
@@ -144,7 +174,30 @@ export async function importUserData(
     sessions++;
   }
 
-  return { bookmarks, sessions };
+  // Chat (v2): conversations + messages keep their original ids and timestamps.
+  // insertConversation is INSERT OR IGNORE and insertMessage is INSERT OR
+  // REPLACE, so re-importing the same bundle is idempotent (no duplicates).
+  let conversations = 0;
+  for (const c of migrated.conversations) {
+    await insertConversation(db, {
+      id: c.id,
+      title: c.title,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    });
+    for (const m of c.messages) {
+      await insertMessage(db, {
+        id: m.id,
+        conversationId: c.id,
+        role: m.role,
+        parts: m.parts,
+        createdAt: m.createdAt,
+      });
+    }
+    conversations++;
+  }
+
+  return { bookmarks, sessions, conversations };
 }
 
 function parseStringArray(raw: unknown): string[] {

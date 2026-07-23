@@ -3,6 +3,7 @@ import { listModelsInputSchema, type AiModel, type AiProvider } from "@bookmark-
 import { getUserSettings } from "@bookmark-ai/db";
 import { followRedirects } from "@bookmark-ai/engine";
 import { getRequestApiContext } from "@/lib/server/api-context";
+import { decryptApiKey } from "@/lib/server/ai-key-crypto";
 
 /** Upstream returned 401/403 — the API key is bad. Mapped to a 401 for us. */
 class UpstreamAuthError extends Error {}
@@ -57,7 +58,8 @@ export async function POST(req: NextRequest) {
   let apiKey = parsed.data.apiKey?.trim() ?? "";
   if (!apiKey) {
     const stored = await getUserSettings(db, userId ?? "local");
-    apiKey = stored?.aiApiKey ?? "";
+    // The stored key is encrypted at rest — decrypt before using it upstream.
+    apiKey = decryptApiKey(stored?.aiApiKey ?? null) ?? "";
   }
   if (!apiKey) {
     return NextResponse.json({ error: "An API key is required" }, { status: 400 });

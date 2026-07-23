@@ -368,3 +368,39 @@ export async function deleteAccount(): Promise<void> {
   const body = await res.json().catch(() => null);
   throw new Error((body as { error?: string })?.error ?? `Delete failed (${res.status})`);
 }
+
+// ── Chat conversation history ─────────────────────────────────────────────────
+// The contract is the Zod schema in @bookmark-ai/types (packages/types/src/chat.ts).
+
+export type ChatConversationSummary = import("@bookmark-ai/types").ChatConversation;
+export type StoredChatMessage = import("@bookmark-ai/types").StoredChatMessage;
+export type ChatConversationDetail = import("@bookmark-ai/types").ChatConversationDetailResponse;
+
+/** Newest-first list of the caller's saved chat conversations. */
+export function listChatConversations(
+  signal?: AbortSignal,
+): Promise<{ conversations: ChatConversationSummary[] }> {
+  return request<{ conversations: ChatConversationSummary[] }>("/api/chat/conversations", {
+    signal,
+  });
+}
+
+/** One conversation with its full (UIMessage-compatible) message history. */
+export function getChatConversation(
+  id: string,
+  signal?: AbortSignal,
+): Promise<ChatConversationDetail> {
+  return request<ChatConversationDetail>(
+    `/api/chat/conversations/${encodeURIComponent(id)}`,
+    { signal },
+  );
+}
+
+/** Delete a conversation. Idempotent (204 or 404 both resolve). */
+export async function deleteChatConversation(id: string): Promise<void> {
+  const res = await fetch(
+    `${API_URL}/api/chat/conversations/${encodeURIComponent(id)}`,
+    { method: "DELETE", headers: await authHeaders() },
+  );
+  if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
+}

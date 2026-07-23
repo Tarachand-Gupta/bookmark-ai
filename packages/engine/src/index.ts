@@ -58,3 +58,25 @@ export {
   importUserData,
   type ImportUserDataOptions,
 } from "./export-import";
+export {
+  encryptApiKey,
+  decryptApiKey,
+  isEncryptedApiKey,
+} from "./ai-key-crypto";
+export {
+  weekStartUtc,
+  getWeeklyUsage,
+  recordWeeklyUsage,
+  DEFAULT_FREE_AI_WEEKLY_TOKEN_LIMIT,
+} from "./metering";
+export {
+  messageText,
+  deriveConversationTitle,
+  createConversationRecord,
+  getConversationRecord,
+  listConversationRecords,
+  deleteConversationRecord,
+  loadConversationRecord,
+  appendChatMessage,
+  type IncomingChatMessage,
+} from "./chat-store";

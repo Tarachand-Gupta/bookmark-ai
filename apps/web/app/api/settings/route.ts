@@ -3,6 +3,7 @@ import { updateUserSettingsSchema, type UserSettings } from "@bookmark-ai/types"
 import { getUserSettings, upsertUserSettings, type UserSettingsRow } from "@bookmark-ai/db";
 import { assertSafeUrl } from "@bookmark-ai/engine";
 import { getRequestApiContext } from "@/lib/server/api-context";
+import { decryptApiKey, encryptApiKey } from "@/lib/server/ai-key-crypto";
 
 /**
  * Settings key. `getRequestApiContext` resolves `userId` to null in the open/
@@ -14,9 +15,10 @@ function settingsKey(userId: string | null): string {
 }
 
 /** Mask a stored row (or its absence) into the key-free client view. Defaults to
- * provider "google" / no key when the user has never saved settings. */
+ * provider "google" / no key when the user has never saved settings. The stored
+ * key is encrypted at rest, so decrypt before deriving the masked last-4. */
 function toApiSettings(row: UserSettingsRow | null): UserSettings {
-  const key = row?.aiApiKey ?? null;
+  const key = decryptApiKey(row?.aiApiKey ?? null);
   return {
     provider: (row?.aiProvider as UserSettings["provider"]) ?? "google",
     baseUrl: row?.aiBaseUrl ?? null,
@@ -79,8 +81,10 @@ export async function PUT(req: NextRequest) {
     patch.aiBaseUrl = provider === "custom" ? (baseUrl ?? null) : null;
     patch.aiModel = model ?? null;
   }
-  // apiKey: absent → keep (omit from patch); "" → clear (store null); else set.
-  if (apiKey !== undefined) patch.aiApiKey = apiKey === "" ? null : apiKey;
+  // apiKey: absent → keep (omit from patch); "" → clear (store null); else
+  // encrypt-at-rest before storing (AES-256-GCM `enc:v1:` envelope). Writing here
+  // is also the lazy re-encryption path for any legacy plaintext row.
+  if (apiKey !== undefined) patch.aiApiKey = apiKey === "" ? null : encryptApiKey(apiKey);
   // liveServerUrl: absent → keep (omit); "" or null → clear (store null); else set.
   if (liveServerUrl !== undefined) patch.liveServerUrl = liveServerUrl ? liveServerUrl : null;
   // onboarded: true → stamp onboarded_at to now (marks the tour seen for this

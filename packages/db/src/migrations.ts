@@ -229,4 +229,41 @@ export const TENANT_MIGRATIONS: Migration[] = [
     name: "user-settings-onboarded-at",
     statements: ["ALTER TABLE user_settings ADD COLUMN onboarded_at TEXT"],
   },
+  // Persisted AI chat (conversations + full UIMessage parts) and the free-tier AI
+  // token meter. chat_conversations/chat_messages ARE user data and DO round-trip
+  // through the export bundle, so SCHEMA_VERSION is bumped to 2 with a v1→v2
+  // upgrader (see packages/types/src/export.ts). ai_usage is a derived,
+  // per-calendar-week token counter (Monday 00:00 UTC key) — NOT exported (it is
+  // regenerable metering state, like a rate-limit window, not user content). All
+  // bare strings, NOT tolerant: every statement is genuinely idempotent.
+  {
+    version: 6,
+    name: "chat-persistence-and-ai-usage",
+    statements: [
+      `
+        CREATE TABLE IF NOT EXISTS chat_conversations (
+          id         TEXT PRIMARY KEY,
+          title      TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `,
+      `
+        CREATE TABLE IF NOT EXISTS chat_messages (
+          id              TEXT PRIMARY KEY,
+          conversation_id TEXT NOT NULL,
+          role            TEXT NOT NULL,
+          parts_json      TEXT NOT NULL,
+          created_at      TEXT NOT NULL
+        )
+      `,
+      "CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id)",
+      `
+        CREATE TABLE IF NOT EXISTS ai_usage (
+          week_start TEXT PRIMARY KEY,
+          tokens     INTEGER NOT NULL DEFAULT 0
+        )
+      `,
+    ],
+  },
 ];

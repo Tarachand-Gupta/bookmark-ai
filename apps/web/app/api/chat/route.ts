@@ -2,8 +2,18 @@ import { convertToModelMessages, stepCountIs, streamText, tool, type UIMessage }
 import { z } from "zod";
 import { listSessions, type Db } from "@bookmark-ai/db";
 import { fetchUrl, performSearch, runReadOnlySql, webSearch } from "@bookmark-ai/engine";
-import type { GeminiClient } from "@bookmark-ai/engine";
+import {
+  appendChatMessage,
+  createConversationRecord,
+  getConversationRecord,
+  getWeeklyUsage,
+  messageText,
+  recordWeeklyUsage,
+  type GeminiClient,
+  type IncomingChatMessage,
+} from "@bookmark-ai/engine";
 import { resolveChatModel } from "@/lib/server/ai-model";
+import { getFreeAiWeeklyLimit } from "@/lib/server/ai-limit";
 import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
 
 export const maxDuration = 60;
@@ -200,18 +210,68 @@ export async function POST(req: Request) {
     );
   }
 
+  // FREE-TIER METERING: only when this request runs on the SERVER's fallback key
+  // (the user has no own key configured). Compares LIVE weekly usage against the
+  // current (admin-adjustable, master-DB) limit at request start; at/over the
+  // limit → 402 instead of streaming. Recorded after each request in onFinish.
+  if (resolved.usesServerKey) {
+    const [usedTokens, limitTokens] = await Promise.all([
+      getWeeklyUsage(db),
+      getFreeAiWeeklyLimit(),
+    ]);
+    if (usedTokens >= limitTokens) {
+      return Response.json(
+        { error: "free-limit-exceeded", usedTokens, limitTokens },
+        { status: 402 },
+      );
+    }
+  }
+
   const overQuota = await enforceQuota(userId, "chats");
   if (overQuota) return overQuota;
 
   const ctx: ToolContext = { db, gemini, ready };
   // The client transport pins the body to { messages }, but accept the
-  // last-message-only shape too so default transports keep working.
-  const body = (await req.json()) as { messages?: UIMessage[]; message?: UIMessage };
+  // last-message-only shape too so default transports keep working. An optional
+  // conversationId threads chat persistence.
+  const body = (await req.json()) as {
+    messages?: UIMessage[];
+    message?: UIMessage;
+    conversationId?: string;
+  };
   const messages: UIMessage[] = Array.isArray(body.messages)
     ? body.messages
     : body.message
       ? [body.message]
       : [];
+
+  // ── Chat persistence: resolve/verify the conversation, persist the incoming
+  // user turn now; the assistant turn is persisted in onFinish. ──
+  const incomingConversationId =
+    typeof body.conversationId === "string" && body.conversationId.trim() !== ""
+      ? body.conversationId.trim()
+      : undefined;
+  const lastUserMessage = [...messages].reverse().find((m) => m.role === "user") as
+    | IncomingChatMessage
+    | undefined;
+
+  let conversationId: string;
+  if (incomingConversationId) {
+    const existing = await getConversationRecord(db, incomingConversationId);
+    if (!existing) {
+      return Response.json({ error: "conversation-not-found" }, { status: 404 });
+    }
+    conversationId = existing.id;
+  } else {
+    // No id → new conversation, titled from the first user message text.
+    const conversation = await createConversationRecord(db, messageText(lastUserMessage));
+    conversationId = conversation.id;
+  }
+  if (lastUserMessage) {
+    await appendChatMessage(db, conversationId, lastUserMessage).catch((err: unknown) => {
+      console.error("[chat] failed to persist user message:", err);
+    });
+  }
 
   const result = streamText({
     model: resolved.model,
@@ -256,7 +316,34 @@ export async function POST(req: Request) {
     stopWhen: stepCountIs(8),
   });
 
-  return result.toUIMessageStreamResponse();
+  return result.toUIMessageStreamResponse({
+    // Let the client (and any new-conversation flow) learn the conversation id.
+    headers: { "X-Conversation-Id": conversationId },
+    originalMessages: messages,
+    onFinish: async ({ responseMessage }) => {
+      // Persist the assistant turn (full parts incl. tool calls/results) and,
+      // for a metered request, record the aggregated token total for the week.
+      try {
+        await appendChatMessage(db, conversationId, {
+          id: responseMessage.id,
+          role: responseMessage.role,
+          parts: responseMessage.parts,
+        });
+      } catch (err) {
+        console.error("[chat] failed to persist assistant message:", err);
+      }
+      if (resolved.usesServerKey) {
+        try {
+          const usage = await result.totalUsage;
+          const total =
+            usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+          await recordWeeklyUsage(db, total);
+        } catch (err) {
+          console.error("[chat] failed to record token usage:", err);
+        }
+      }
+    },
+  });
 }
 
 /** Keyless web search (never throws — degrades to empty results). */

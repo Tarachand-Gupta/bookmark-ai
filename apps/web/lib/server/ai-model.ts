@@ -5,11 +5,18 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { getUserSettings, type Db } from "@bookmark-ai/db";
 import { assertSafeUrl, type GeminiClient } from "@bookmark-ai/engine";
+import { decryptApiKey } from "@/lib/server/ai-key-crypto";
 
 /** The chat model to run, plus a short human label for logging/telemetry. */
 export interface ResolvedChatModel {
   model: LanguageModel;
   label: string;
+  /**
+   * True when this request runs on the SERVER's fallback AI key (env Gemini)
+   * rather than a key the user configured — i.e. it counts against the free-tier
+   * token meter. False for a user's own configured provider (never metered).
+   */
+  usesServerKey: boolean;
 }
 
 interface ResolveArgs {
@@ -52,16 +59,21 @@ export async function resolveChatModel({
 }: ResolveArgs): Promise<ResolvedChatModel | null> {
   const settings = await getUserSettings(db, settingsKey(userId)).catch(() => null);
 
-  if (settings && hasText(settings.aiProvider) && hasText(settings.aiApiKey) && hasText(settings.aiModel)) {
-    const apiKey = settings.aiApiKey;
+  // The stored key is encrypted at rest (AES-256-GCM, `enc:v1:` envelope) or
+  // legacy plaintext; decrypt before use. A missing/wrong secret → null →
+  // treated as "no key configured" and we fall through to the env fallback.
+  const decryptedKey = decryptApiKey(settings?.aiApiKey ?? null);
+
+  if (settings && hasText(settings.aiProvider) && hasText(decryptedKey) && hasText(settings.aiModel)) {
+    const apiKey = decryptedKey;
     const model = settings.aiModel;
     switch (settings.aiProvider) {
       case "google":
-        return { model: createGoogleGenerativeAI({ apiKey })(model), label: `google:${model}` };
+        return { model: createGoogleGenerativeAI({ apiKey })(model), label: `google:${model}`, usesServerKey: false };
       case "openai":
-        return { model: createOpenAI({ apiKey })(model), label: `openai:${model}` };
+        return { model: createOpenAI({ apiKey })(model), label: `openai:${model}`, usesServerKey: false };
       case "anthropic":
-        return { model: createAnthropic({ apiKey })(model), label: `anthropic:${model}` };
+        return { model: createAnthropic({ apiKey })(model), label: `anthropic:${model}`, usesServerKey: false };
       case "custom":
         // A custom OpenAI-compatible endpoint also needs a base URL; without one
         // the config is incomplete, so fall through to the env fallback.
@@ -93,6 +105,7 @@ export async function resolveChatModel({
               apiKey,
             })(model),
             label: `custom:${model}`,
+            usesServerKey: false,
           };
         }
         break;
@@ -101,11 +114,13 @@ export async function resolveChatModel({
 
   // Fallback: the env Gemini model. `gemini` being non-null mirrors
   // GEMINI_API_KEY being set; we still read the raw key to build the AI SDK model.
+  // This path uses the SERVER's key → metered against the free-tier budget.
   const envKey = process.env.GEMINI_API_KEY;
   if (gemini && hasText(envKey)) {
     return {
       model: createGoogleGenerativeAI({ apiKey: envKey })("gemini-2.5-flash"),
       label: "google:gemini-2.5-flash (env)",
+      usesServerKey: true,
     };
   }
 

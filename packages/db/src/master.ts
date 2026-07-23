@@ -51,7 +51,44 @@ export const MASTER_MIGRATIONS: Migration[] = [
       `,
     ],
   },
+  // Global control-plane key/value config, read with a short in-process cache in
+  // the API layer. Currently holds the admin-adjustable free-tier AI weekly token
+  // limit ("free_ai_weekly_token_limit"). Append-only additive migration; never
+  // edit v1. Not user data → no export-format impact.
+  {
+    version: 2,
+    name: "platform-config",
+    statements: [
+      `
+        CREATE TABLE IF NOT EXISTS platform_config (
+          key        TEXT PRIMARY KEY,
+          value      TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `,
+    ],
+  },
 ];
+
+/** Read a single platform_config value by key, or null if unset. */
+export async function getPlatformConfig(db: Db, key: string): Promise<string | null> {
+  const rs = await db.execute({
+    sql: "SELECT value FROM platform_config WHERE key = ?",
+    args: [key],
+  });
+  const row = rs.rows[0];
+  return row ? String(row.value) : null;
+}
+
+/** Upsert a single platform_config value. `updated_at` is refreshed to now. */
+export async function setPlatformConfig(db: Db, key: string, value: string): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO platform_config (key, value, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    args: [key, value, new Date().toISOString()],
+  });
+}
 
 /** Idempotent master schema setup. Mirrors ensureSchema for the control plane. */
 export async function ensureMasterSchema(db: Db): Promise<number> {

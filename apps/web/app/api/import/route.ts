@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   const overQuota = await enforceQuota(userId, "saves");
   if (overQuota) return overQuota;
 
-  let imported: { bookmarks: number; sessions: number };
+  let imported: { bookmarks: number; sessions: number; conversations: number };
   try {
     imported = await importUserData(db, body);
   } catch (err) {

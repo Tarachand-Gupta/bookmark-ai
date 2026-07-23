@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type ToolUIPart } from "ai";
+import { DefaultChatTransport, type ToolUIPart, type UIMessage } from "ai";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   Check,
+  ChevronDown,
   Copy,
   Database,
   ExternalLink,
@@ -15,6 +16,10 @@ import {
   Globe,
   Layers,
   Link2,
+  Maximize2,
+  Minimize2,
+  Plus,
+  RotateCw,
   Search,
   Sparkles,
   X,
@@ -37,9 +42,20 @@ import {
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { getSettings, type LibraryFilters } from "@/lib/api";
+import {
+  authHeaders,
+  deleteChatConversation,
+  getChatConversation,
+  getSettings,
+  listChatConversations,
+  type ChatConversationSummary,
+  type LibraryFilters,
+} from "@/lib/api";
 import { AiSetupCard } from "./ai-setup-card";
+import { ConversationHistory } from "./chat-conversation-history";
+import { ChatLimitCard, type ChatLimitInfo } from "./chat-limit-card";
 
 interface BookmarkHit {
   id: string;
@@ -105,13 +121,84 @@ export interface AiChatProps {
  * renders as a status header + always-visible bookmark result cards.
  */
 export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
-  const { messages, sendMessage, status } = useChat({
-    transport: new DefaultChatTransport({
-      api: "/api/chat",
-      // Pin the wire format: the route handler expects the full history.
-      prepareSendMessagesRequest: ({ messages }) => ({ body: { messages } }),
-    }),
+  // The adopted conversation id — a ref so the transport reads the CURRENT value
+  // when building each request body without re-instantiating the transport.
+  const conversationIdRef = useRef<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [limitInfo, setLimitInfo] = useState<ChatLimitInfo | null>(null);
+
+  // Custom fetch = the persistence + budget hook. It attaches auth (matching the
+  // rest of lib/api), adopts the server-minted conversation id from the
+  // X-Conversation-Id response header, and detects the 402 free-limit body
+  // before the SDK turns it into an opaque stream error.
+  const chatFetch = useCallback<typeof fetch>(async (input, init) => {
+    const headers = {
+      ...(init?.headers as Record<string, string> | undefined),
+      ...(await authHeaders()),
+    };
+    const res = await fetch(input, { ...init, headers });
+    const cid = res.headers.get("X-Conversation-Id");
+    if (cid && conversationIdRef.current !== cid) {
+      conversationIdRef.current = cid;
+      setActiveId(cid);
+    }
+    if (res.status === 402) {
+      const body = (await res
+        .clone()
+        .json()
+        .catch(() => null)) as
+        | { error?: string; usedTokens?: number; limitTokens?: number }
+        | null;
+      if (body?.error === "free-limit-exceeded") {
+        setLimitInfo({ usedTokens: body.usedTokens, limitTokens: body.limitTokens });
+      }
+    }
+    return res;
+  }, []);
+
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/chat",
+        fetch: chatFetch,
+        // Pin the wire format: full history + the (optional) conversation id so
+        // the server appends to an existing thread or mints a new one.
+        prepareSendMessagesRequest: ({ messages }) => ({
+          body: { messages, conversationId: conversationIdRef.current ?? undefined },
+        }),
+      }),
+    [chatFetch],
+  );
+
+  // ── History list ────────────────────────────────────────────────────────────
+  const [conversations, setConversations] = useState<ChatConversationSummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  // Title for a just-loaded thread until the list refresh carries its own.
+  const [pendingTitle, setPendingTitle] = useState<string | null>(null);
+
+  const refreshConversations = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const { conversations } = await listChatConversations();
+      setConversations(conversations);
+    } catch {
+      // History is a convenience layer — a failed list never blocks chatting.
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  const { messages, sendMessage, setMessages, regenerate, clearError, status, error } = useChat({
+    transport,
+    // A finished turn may have created the conversation (or renamed it) — pull
+    // the fresh list so the header title + history reflect it.
+    onFinish: () => {
+      void refreshConversations();
+    },
   });
+
   const seeded = useRef(false);
 
   // Offer "bring your own AI provider" when the user hasn't set a key: the server
@@ -134,6 +221,10 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
   }, []);
 
   useEffect(() => {
+    void refreshConversations();
+  }, [refreshConversations]);
+
+  useEffect(() => {
     const q = initialQuery?.trim();
     if (q && !seeded.current) {
       seeded.current = true;
@@ -144,103 +235,293 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
   const handleSubmit = (message: PromptInputMessage) => {
     const text = message.text?.trim();
     if (!text) return;
+    // A new send clears any stale limit card; a fresh 402 re-raises it.
+    setLimitInfo(null);
     void sendMessage({ text });
   };
 
-  return (
-    // Fills whatever shell it's mounted in (ChatPanel provides the chrome);
-    // min-h-0 keeps the conversation area scrolling instead of the page.
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-card">
-      <div className="flex items-center justify-between border-b px-3 py-2">
-        <p className="flex items-center gap-1.5 text-sm font-medium">
-          <Sparkles className="size-4" aria-hidden />
-          Ask your bookmarks
-        </p>
-        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onClose}>
-          <X aria-hidden />
-          Close
+  // ── Thread lifecycle: new / load / delete ─────────────────────────────────────
+  const startNewConversation = useCallback(() => {
+    setHistoryOpen(false);
+    conversationIdRef.current = null;
+    setActiveId(null);
+    setPendingTitle(null);
+    setLimitInfo(null);
+    setMessages([]);
+    clearError();
+  }, [setMessages, clearError]);
+
+  const loadConversation = useCallback(
+    async (id: string) => {
+      setHistoryOpen(false);
+      setLimitInfo(null);
+      clearError();
+      try {
+        const { conversation, messages: loaded } = await getChatConversation(id);
+        conversationIdRef.current = conversation.id;
+        setActiveId(conversation.id);
+        setPendingTitle(conversation.title);
+        // Stored messages are UIMessage-compatible ({id, role, parts}); the
+        // structural cast is the seam until packages/types/chat.ts is wired in.
+        setMessages(loaded as unknown as UIMessage[]);
+      } catch {
+        // A failed load leaves the current thread untouched.
+      }
+    },
+    [setMessages, clearError],
+  );
+
+  const handleDeleteConversation = useCallback(
+    (id: string) => {
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (id === conversationIdRef.current) {
+        conversationIdRef.current = null;
+        setActiveId(null);
+        setPendingTitle(null);
+        setMessages([]);
+        clearError();
+      }
+      deleteChatConversation(id).catch(() => {
+        // Re-sync if the server rejected the delete (row reappears).
+        void refreshConversations();
+      });
+    },
+    [setMessages, clearError, refreshConversations],
+  );
+
+  // After the user saves their own key from the limit card, retry the send —
+  // their key is unmetered, so the same last message now succeeds.
+  const handleKeySaved = useCallback(() => {
+    setShowSetup(false);
+    if (limitInfo) {
+      setLimitInfo(null);
+      clearError();
+      void regenerate();
+    }
+  }, [limitInfo, clearError, regenerate]);
+
+  const headerTitle =
+    conversations.find((c) => c.id === activeId)?.title ?? pendingTitle ?? "New conversation";
+
+  const history = (variant: "popover" | "panel") => (
+    <ConversationHistory
+      conversations={conversations}
+      activeId={activeId}
+      loading={historyLoading}
+      variant={variant}
+      onSelect={loadConversation}
+      onNew={startNewConversation}
+      onDelete={handleDeleteConversation}
+    />
+  );
+
+  // Header: title+chevron history popover on the left, new/expand/close on the right.
+  const header = (
+    <div className="flex shrink-0 items-center gap-1 border-b px-2 py-2">
+      <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted"
+            aria-label="Conversation history"
+          >
+            <Sparkles className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="line-clamp-1 text-sm font-medium [overflow-wrap:anywhere]">
+              {headerTitle}
+            </span>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          sideOffset={6}
+          className="w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden p-0"
+        >
+          {history("popover")}
+        </PopoverContent>
+      </Popover>
+
+      <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={startNewConversation}
+          aria-label="New conversation"
+          title="New conversation"
+        >
+          <Plus className="size-4" aria-hidden />
         </Button>
-      </div>
-
-      {showSetup && !setupDismissed && (
-        <div className="border-b p-3">
-          <AiSetupCard
-            onSaved={() => setShowSetup(false)}
-            onDismiss={() => setSetupDismissed(true)}
-          />
-        </div>
-      )}
-
-      <Conversation className="flex-1">
-        <ConversationContent>
-          {messages.length === 0 && (
-            <ConversationEmptyState
-              icon={<Sparkles className="size-8" aria-hidden />}
-              title="Ask anything about your bookmarks"
-              description="The agent searches your library, runs SQL for counts and trends, and can search the web — then answers with citations."
-            />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={() => setExpanded((v) => !v)}
+          aria-label={expanded ? "Collapse chat" : "Expand chat"}
+          title={expanded ? "Collapse" : "Expand"}
+        >
+          {expanded ? (
+            <Minimize2 className="size-4" aria-hidden />
+          ) : (
+            <Maximize2 className="size-4" aria-hidden />
           )}
-          {messages.map((message) => (
-            <Message from={message.role} key={message.id}>
-              {/* w-full (not w-fit) so wide tool cards truncate instead of
-                  propagating their intrinsic width and stretching the page. */}
-              <MessageContent className={message.role === "assistant" ? "w-full" : undefined}>
-                {message.parts.map((part, i) => {
-                  if (part.type === "text") {
-                    // Assistant answers are markdown (incl. GFM tables); user
-                    // messages stay verbatim plain text.
-                    return message.role === "assistant" ? (
-                      <Markdown key={`${message.id}-${i}`}>{part.text}</Markdown>
-                    ) : (
-                      <span key={`${message.id}-${i}`} className="whitespace-pre-wrap">
-                        {part.text}
-                      </span>
-                    );
-                  }
-                  if (part.type === "tool-searchBookmarks") {
-                    const tool = part as ToolUIPart;
-                    return (
-                      <SearchToolCall key={tool.toolCallId} part={tool} onFilter={onFilter} />
-                    );
-                  }
-                  if (part.type === "tool-queryDatabase") {
-                    const tool = part as ToolUIPart;
-                    return <SqlToolCall key={tool.toolCallId} part={tool} />;
-                  }
-                  if (part.type === "tool-webSearch") {
-                    const tool = part as ToolUIPart;
-                    return <WebSearchToolCall key={tool.toolCallId} part={tool} />;
-                  }
-                  if (part.type === "tool-fetchUrl") {
-                    const tool = part as ToolUIPart;
-                    return <FetchUrlToolCall key={tool.toolCallId} part={tool} />;
-                  }
-                  if (part.type === "tool-listSessions") {
-                    const tool = part as ToolUIPart;
-                    return <SessionsToolCall key={tool.toolCallId} part={tool} />;
-                  }
-                  return null;
-                })}
-              </MessageContent>
-            </Message>
-          ))}
-          {status === "submitted" && <Loader />}
-        </ConversationContent>
-        <ConversationScrollButton />
-      </Conversation>
-
-      <div className="border-t p-2">
-        <PromptInput onSubmit={handleSubmit}>
-          <PromptInputBody>
-            <PromptInputTextarea placeholder="Ask a follow-up…" />
-          </PromptInputBody>
-          <PromptInputFooter>
-            <PromptInputSubmit status={status} className="ml-auto" />
-          </PromptInputFooter>
-        </PromptInput>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={onClose}
+          aria-label="Close chat"
+          title="Close"
+        >
+          <X className="size-4" aria-hidden />
+        </Button>
       </div>
     </div>
   );
+
+  const setupBlock = showSetup && !setupDismissed && (
+    <div className="shrink-0 border-b p-3">
+      <AiSetupCard onSaved={handleKeySaved} onDismiss={() => setSetupDismissed(true)} />
+    </div>
+  );
+
+  const thread = (
+    <Conversation className="flex-1">
+      <ConversationContent>
+        {messages.length === 0 && (
+          <ConversationEmptyState
+            icon={<Sparkles className="size-8" aria-hidden />}
+            title="Ask anything about your bookmarks"
+            description="The agent searches your library, runs SQL for counts and trends, and can search the web — then answers with citations."
+          />
+        )}
+        {messages.map((message) => (
+          <Message from={message.role} key={message.id}>
+            {/* w-full (not w-fit) so wide tool cards truncate instead of
+                propagating their intrinsic width and stretching the page. */}
+            <MessageContent className={message.role === "assistant" ? "w-full" : undefined}>
+              {message.parts.map((part, i) => {
+                if (part.type === "text") {
+                  // Assistant answers are markdown (incl. GFM tables); user
+                  // messages stay verbatim plain text.
+                  return message.role === "assistant" ? (
+                    <Markdown key={`${message.id}-${i}`}>{part.text}</Markdown>
+                  ) : (
+                    <span key={`${message.id}-${i}`} className="whitespace-pre-wrap">
+                      {part.text}
+                    </span>
+                  );
+                }
+                if (part.type === "tool-searchBookmarks") {
+                  const tool = part as ToolUIPart;
+                  return <SearchToolCall key={tool.toolCallId} part={tool} onFilter={onFilter} />;
+                }
+                if (part.type === "tool-queryDatabase") {
+                  const tool = part as ToolUIPart;
+                  return <SqlToolCall key={tool.toolCallId} part={tool} />;
+                }
+                if (part.type === "tool-webSearch") {
+                  const tool = part as ToolUIPart;
+                  return <WebSearchToolCall key={tool.toolCallId} part={tool} />;
+                }
+                if (part.type === "tool-fetchUrl") {
+                  const tool = part as ToolUIPart;
+                  return <FetchUrlToolCall key={tool.toolCallId} part={tool} />;
+                }
+                if (part.type === "tool-listSessions") {
+                  const tool = part as ToolUIPart;
+                  return <SessionsToolCall key={tool.toolCallId} part={tool} />;
+                }
+                return null;
+              })}
+            </MessageContent>
+          </Message>
+        ))}
+        {/* Free-budget wall: the inline card replaces the opaque stream error. */}
+        {limitInfo && (
+          <ChatLimitCard
+            info={limitInfo}
+            onConfigure={() => {
+              setSetupDismissed(false);
+              setShowSetup(true);
+            }}
+          />
+        )}
+        {/* Non-limit failures get a small retry affordance (limit has its own card). */}
+        {error && !limitInfo && (
+          <div className="not-prose flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.05] px-3 py-2 text-xs text-destructive">
+            <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+              Something went wrong. Try again.
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 shrink-0"
+              onClick={() => {
+                clearError();
+                void regenerate();
+              }}
+            >
+              <RotateCw className="size-3.5" aria-hidden />
+              Retry
+            </Button>
+          </div>
+        )}
+        {status === "submitted" && <Loader />}
+      </ConversationContent>
+      <ConversationScrollButton />
+    </Conversation>
+  );
+
+  const composer = (
+    <div className="shrink-0 border-t p-2">
+      <PromptInput onSubmit={handleSubmit}>
+        <PromptInputBody>
+          <PromptInputTextarea placeholder="Ask a follow-up…" />
+        </PromptInputBody>
+        <PromptInputFooter>
+          <PromptInputSubmit status={status} className="ml-auto" />
+        </PromptInputFooter>
+      </PromptInput>
+    </div>
+  );
+
+  const chatColumn = (
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card">
+      {header}
+      {setupBlock}
+      {thread}
+      {composer}
+    </div>
+  );
+
+  // Expanded: a floating near-fullscreen panel with a small margin. On ≥640px a
+  // persistent history rail sits to the left (the two-pane screenshot layout);
+  // below that it collapses to a single large column (history via the popover),
+  // so nothing overflows at 390px. useChat state lives in this component, so
+  // swapping the wrapper never drops the conversation.
+  if (expanded) {
+    return (
+      <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
+        <button
+          type="button"
+          aria-label="Collapse chat"
+          onClick={() => setExpanded(false)}
+          className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
+        />
+        <div className="relative m-auto flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-hidden rounded-xl border bg-card shadow-2xl sm:h-[calc(100dvh-3rem)] sm:w-[calc(100vw-3rem)]">
+          <aside className="hidden w-64 shrink-0 flex-col border-r sm:flex">
+            {history("panel")}
+          </aside>
+          {chatColumn}
+        </div>
+      </div>
+    );
+  }
+
+  // Docked: fills whatever shell ChatPanel provides (side / overlay / full).
+  return chatColumn;
 }
 
 /**

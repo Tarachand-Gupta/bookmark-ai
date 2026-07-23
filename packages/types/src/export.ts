@@ -1,14 +1,19 @@
 import { z } from "zod";
 import { httpUrlSchema } from "./bookmark";
 import { sessionTabSchema } from "./api";
+import { storedChatMessageSchema } from "./chat";
 
 /**
  * Version of the export bundle format. Bump this whenever the exported shape of
  * user data changes (a new/renamed user-data column, a restructured field) AND
  * add a matching `migrateExportBundle` upgrader step, so older bundles keep
- * importing cleanly. v1 is the initial format.
+ * importing cleanly.
+ *  - v1: bookmarks + sessions.
+ *  - v2: adds persisted AI chat (`conversations`, each with its `messages`) —
+ *    chat_conversations/chat_messages are user data, so per the migrations rule
+ *    a tenant schema change to user data bumps this + adds an upgrader.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * A single bookmark, flattened to mirror its real DB columns (see
@@ -50,6 +55,24 @@ export const exportedSessionSchema = z.object({
 });
 export type ExportedSession = z.infer<typeof exportedSessionSchema>;
 
+/**
+ * A persisted AI chat conversation with its full message history. Messages keep
+ * their UIMessage-compatible `{ id, role, parts }` shape plus the stored
+ * `createdAt`, so the chat round-trips losslessly (tool calls/results included).
+ */
+export const exportedConversationSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  // SECURITY: cap messages per conversation so an oversized import can't exhaust
+  // memory during validation. Generous relative to any real chat history.
+  messages: z
+    .array(storedChatMessageSchema.extend({ createdAt: z.string() }))
+    .max(5_000),
+});
+export type ExportedConversation = z.infer<typeof exportedConversationSchema>;
+
 /** The full, versioned, lossless export of a user's data. */
 export const exportBundleSchema = z.object({
   schemaVersion: z.number(),
@@ -58,13 +81,17 @@ export const exportBundleSchema = z.object({
   counts: z.object({
     bookmarks: z.number(),
     sessions: z.number(),
+    // Optional so a v1 bundle upgraded in place (conversations defaulted to [])
+    // still validates without the caller having to synthesize a count.
+    conversations: z.number().optional(),
   }),
   // SECURITY: bound the bundle so a malicious/oversized import can't exhaust
   // memory during validation. Caps are generous (well above any real personal
-  // library) and are a validation tightening only — they add/rename no column, so
-  // SCHEMA_VERSION is unchanged and previously-exported bundles still import.
+  // library) and are a validation tightening only.
   bookmarks: z.array(exportedBookmarkSchema).max(10_000),
   sessions: z.array(exportedSessionSchema).max(1_000),
+  // Defaulted so a v1→v2-upgraded bundle (no `conversations` key) parses cleanly.
+  conversations: z.array(exportedConversationSchema).max(5_000).default([]),
 });
 export type ExportBundle = z.infer<typeof exportBundleSchema>;
 
@@ -95,14 +122,26 @@ export function migrateExportBundle(raw: unknown): ExportBundle {
 
   let data: unknown = raw;
   // vN → vN+1 upgraders run in ascending order until `data` is at
-  // SCHEMA_VERSION. No upgraders exist yet (v1 is current); each future bump
-  // adds a `case` that transforms `data` and increments `version`.
+  // SCHEMA_VERSION. Each bump adds a `case` that transforms `data` in place and
+  // increments `version`.
   while (version < SCHEMA_VERSION) {
     switch (version) {
-      // case 1:
-      //   data = upgradeV1ToV2(data);
-      //   version = 2;
-      //   break;
+      case 1:
+        // v1 → v2: chat was added. A v1 bundle simply had no conversations;
+        // stamp an empty list (schemaVersion + count updated to match). The
+        // `conversations` field defaults to [] in the schema too, so this is
+        // belt-and-suspenders for the counts/version fields.
+        data = {
+          ...(data as Record<string, unknown>),
+          schemaVersion: 2,
+          conversations: [],
+          counts: {
+            ...(((data as Record<string, unknown>).counts as Record<string, unknown>) ?? {}),
+            conversations: 0,
+          },
+        };
+        version = 2;
+        break;
       default:
         throw new Error(`No upgrade path from export schemaVersion ${version}`);
     }

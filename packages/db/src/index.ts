@@ -9,6 +9,8 @@ export {
   deleteTenant,
   listActiveTenants,
   bumpUsage,
+  getPlatformConfig,
+  setPlatformConfig,
   type Tenant,
   type UsageField,
 } from "./master";
@@ -54,6 +56,21 @@ export {
   type UserSettingsRow,
   type UserSettingsPatch,
 } from "./queries/settings";
+export {
+  insertConversation,
+  getConversation,
+  listConversations,
+  touchConversation,
+  deleteConversation,
+  insertMessage,
+  listMessages,
+  getWeeklyTokens,
+  addWeeklyTokens,
+  type ChatConversationRow,
+  type ChatMessageRow,
+  type InsertConversation,
+  type InsertChatMessage,
+} from "./queries/chat";
 export {
   upsertDeviceSnapshot,
   listDevices,

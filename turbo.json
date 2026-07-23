@@ -21,7 +21,9 @@
         "MASTER_DATABASE_AUTH_TOKEN",
         "TURSO_API_TOKEN",
         "TURSO_ORG",
-        "TURSO_GROUP"
+        "TURSO_GROUP",
+        "AI_KEY_ENCRYPTION_SECRET",
+        "ADMIN_USER_IDS"
       ]
     },
     "dev": {
