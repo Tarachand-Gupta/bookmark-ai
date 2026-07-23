@@ -5,6 +5,8 @@ import type {
   Session,
 } from "@bookmark-ai/types";
 import { storage } from "#imports";
+import { diag } from "./diag";
+import { tokenFresh, type CachedToken } from "./live-token";
 
 /** The app origin (web UI + its `/api/*` routes — one deployment serves both).
  * Selected at BUILD time per target via WXT's env/mode: `.env.production` →
@@ -183,6 +185,44 @@ export async function fetchMe(): Promise<MeResponse | null> {
   } catch {
     return null;
   }
+}
+
+/* ── Live-server token (Safari) ──────────────────────────────────────────────
+ * The Live Sessions server is a DIFFERENT origin, so neither the cookie nor the
+ * content-script bridge authenticates it, and the tokenless Safari paths mint no
+ * Clerk JWT. We instead mint one through the MAIN origin's /api/live-token
+ * (itself reached via the bridge on the bridge path — it's a whitelisted /api/
+ * path) and attach it as Bearer. Cached in memory with its expiry; refreshed
+ * when within the skew window or on a forced 401-retry. Never persisted. */
+const LIVE_TOKEN_SKEW_MS = 10_000;
+let liveTokenCache: CachedToken | null = null;
+
+async function mintLiveToken(): Promise<CachedToken | null> {
+  const base = await getApiBaseUrl();
+  try {
+    const res = await authFetch(`${base}/api/live-token`, { headers: { accept: "application/json" } });
+    if (!res.ok) {
+      diag("live", "live-token fetch", { status: res.status });
+      return null;
+    }
+    const body = (await res.json()) as { token?: string; expiresInSeconds?: number };
+    diag("live", "live-token fetch", { status: res.status, expiresIn: body.expiresInSeconds ?? null });
+    if (!body.token) return null;
+    const ttlMs = Math.max(0, (body.expiresInSeconds ?? 60) * 1000);
+    return { token: body.token, exp: Date.now() + ttlMs };
+  } catch {
+    return null;
+  }
+}
+
+/** A live-server session JWT, reusing the in-memory cache unless it's within the
+ * skew window (or `forceRefresh` after a 401). Null when none can be minted. */
+export async function getLiveToken(forceRefresh = false): Promise<string | null> {
+  if (!forceRefresh && tokenFresh(liveTokenCache, Date.now(), LIVE_TOKEN_SKEW_MS)) {
+    return liveTokenCache!.token;
+  }
+  liveTokenCache = await mintLiveToken();
+  return liveTokenCache?.token ?? null;
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {

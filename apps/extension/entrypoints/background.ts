@@ -5,6 +5,7 @@ import {
   createBookmark,
   fetchMe,
   getApiBaseUrl,
+  getLiveToken,
   getWebBaseUrl,
   saveSession,
   setAuthTokenProvider,
@@ -389,17 +390,28 @@ export default defineBackground(() => {
   diag("bg", "boot", { browser: import.meta.env.BROWSER, syncHost: CLERK_SYNC_HOST });
   setAuthTokenProvider(getSessionToken);
 
-  // No-token request strategy (Safari): route same-origin app writes through the
-  // content-script bridge when it's the winning path; otherwise attempt a direct
-  // credentialed fetch (works if a site-access grant later opens the cookie jar).
-  // Live-server calls (different origin) can't be bridged — they fall through to
-  // the direct attempt, keeping the documented cross-origin limitation.
-  setNoTokenFetcher(async (url, init) => {
-    if (winningPath === "bridge") {
-      try {
-        const appOrigin = new URL(await getApiBaseUrl()).origin;
+  // No-token request strategy — SAFARI ONLY (gated so the whole closure, and
+  // bridgeFetch/getLiveToken with it, tree-shakes out of the Chrome/Firefox
+  // bundles). Three cases on a tokenless Safari path:
+  //  • main origin + bridge path → proxy the write through the content script.
+  //  • cross-origin authed call (the Live server) → mint a session JWT via the
+  //    main origin and attach it as Bearer (the live server verifies it offline);
+  //    on a 401, force one refresh and retry once.
+  //  • otherwise → a direct credentialed fetch (works only if the cookie jar
+  //    ever opens up for the extension context; today it 401s, harmlessly).
+  if (SAFARI) {
+    setNoTokenFetcher(async (url, init) => {
+      const tokenless = winningPath === "bridge" || winningPath === "cookie";
+      if (tokenless) {
+        let appOrigin = "";
+        try {
+          appOrigin = new URL(await getApiBaseUrl()).origin;
+        } catch {
+          // leave appOrigin empty → skip the origin-specific branches
+        }
         const target = new URL(url);
-        if (target.origin === appOrigin) {
+
+        if (winningPath === "bridge" && appOrigin && target.origin === appOrigin) {
           const body = typeof init.body === "string" ? init.body : undefined;
           const bridged = await bridgeFetch(
             target.pathname + target.search,
@@ -407,13 +419,29 @@ export default defineBackground(() => {
             body,
           );
           if (bridged) return bridged;
+        } else if (appOrigin && target.origin !== appOrigin) {
+          const withBearer = (t: string): Promise<Response> =>
+            fetch(url, {
+              ...init,
+              headers: {
+                ...(init.headers as Record<string, string> | undefined),
+                authorization: `Bearer ${t}`,
+              },
+            });
+          const token = await getLiveToken();
+          if (token) {
+            const res = await withBearer(token);
+            diag("live", "live call", { path: target.pathname, status: res.status });
+            if (res.status !== 401) return res;
+            const fresh = await getLiveToken(true);
+            if (fresh) return withBearer(fresh);
+            return res;
+          }
         }
-      } catch {
-        // fall through to the direct credentialed attempt
       }
-    }
-    return fetch(url, { ...init, credentials: "include" });
-  });
+      return fetch(url, { ...init, credentials: "include" });
+    });
+  }
 
   // Register the popup↔background message listeners FIRST (still synchronous, so
   // MV3-worker wake is unaffected). If the optional live-tabs wiring below ever
