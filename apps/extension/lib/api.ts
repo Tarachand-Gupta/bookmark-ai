@@ -107,6 +107,18 @@ export function setAuthTokenProvider(provider: () => Promise<string | null>): vo
   authTokenProvider = provider;
 }
 
+/** Background-registered strategy for authenticated requests that have NO bearer
+ * token — the Safari cookie/bridge paths. Given the same (url, init) as fetch, it
+ * returns a Response (via the content-script bridge when a bridge tab is live,
+ * else a direct credentialed fetch). Unset in the popup and on Chrome/Firefox. */
+let noTokenFetcher: ((url: string, init: RequestInit) => Promise<Response>) | null = null;
+
+export function setNoTokenFetcher(
+  fetcher: (url: string, init: RequestInit) => Promise<Response>,
+): void {
+  noTokenFetcher = fetcher;
+}
+
 /** Bearer header from the background's registered Clerk provider, or `{}` when
  * signed out. Exported so the live-tabs client (lib/live-api.ts) reuses the same
  * token path. */
@@ -135,7 +147,13 @@ export async function authFetch(url: string, init: RequestInit = {}): Promise<Re
     headers.authorization = `Bearer ${token}`;
     return fetch(url, { ...init, headers });
   }
-  if (SAFARI) return fetch(url, { ...init, headers, credentials: "include" });
+  if (SAFARI) {
+    // No token. The background's registered strategy (bridge tab, else direct
+    // credentialed fetch) handles it; without one (popup context) fall back to a
+    // direct credentialed fetch.
+    if (noTokenFetcher) return noTokenFetcher(url, { ...init, headers });
+    return fetch(url, { ...init, headers, credentials: "include" });
+  }
   return fetch(url, { ...init, headers });
 }
 

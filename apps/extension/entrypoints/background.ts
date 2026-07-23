@@ -1,7 +1,15 @@
 import { defineBackground } from "#imports";
 import { browser } from "wxt/browser";
 import { createClerkClient } from "@clerk/chrome-extension/background";
-import { createBookmark, fetchMe, getWebBaseUrl, saveSession, setAuthTokenProvider } from "@/lib/api";
+import {
+  createBookmark,
+  fetchMe,
+  getApiBaseUrl,
+  getWebBaseUrl,
+  saveSession,
+  setAuthTokenProvider,
+  setNoTokenFetcher,
+} from "@/lib/api";
 import { CLERK_PUBLISHABLE_KEY, CLERK_SYNC_HOST } from "@/lib/clerk";
 import { detectSource } from "@/lib/detect";
 import { diag } from "@/lib/diag";
@@ -18,6 +26,10 @@ import {
   isSaveBookmarkMessage,
   isSaveSessionMessage,
   isSignOutMessage,
+  requestBridgeFetch,
+  requestBridgeMe,
+  type BridgeFetchResult,
+  type BridgeMeResult,
   type LiveSetEnabledResult,
   type RestoreSessionMessage,
   type SaveBookmarkMessage,
@@ -41,7 +53,7 @@ const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(
  * a throw: fall through to the cookie→Native-API path (lib/native-session). */
 const CLERK_RACE_MS = 3000;
 
-type AuthPath = "sdk" | "native" | "cookie";
+type AuthPath = "sdk" | "native" | "cookie" | "bridge";
 /** Which path last resolved a session, cached for THIS background lifetime so
  * repeat popup opens don't re-pay the SDK race once we know which path works.
  * A browser restart spins up a fresh background script → `null` again → the SDK
@@ -81,9 +93,9 @@ function racedClerkClient() {
  * Null when signed out or Clerk is unreachable — saves still work against the
  * open local server; the auth-enforcing deployed server rejects them. */
 async function getSessionToken(): Promise<string | null> {
-  // Cookie path yields no mintable token — writes go out credentialed (authFetch
-  // adds credentials:'include' on Safari when there's no token), so short-circuit.
-  if (winningPath === "cookie") return null;
+  // Cookie/bridge paths yield no mintable token — writes go out via authFetch's
+  // no-token strategy (bridge tab, else credentialed fetch) — so short-circuit.
+  if (winningPath === "cookie" || winningPath === "bridge") return null;
   if (winningPath !== "native") {
     const started = Date.now();
     try {
@@ -107,6 +119,72 @@ async function getSessionToken(): Promise<string | null> {
 }
 
 const SIGNED_OUT: UserInfo = { signedIn: false, name: null, email: null };
+
+/* ── Path D: content-script session bridge (Safari) ─────────────────────────
+ * Safari 26 partitions the extension's network/cookie context from the browser
+ * jar, so an OPEN app tab's content script is the only context that can make a
+ * credentialed same-origin request. These helpers drive that bridge. */
+
+const BRIDGE_MATCHES = ["https://bookmark-ai.cloud/*", "https://www.bookmark-ai.cloud/*"];
+/** Statuses whose Response MUST have a null body (constructor throws otherwise). */
+const NULL_BODY_STATUS = new Set([101, 103, 204, 205, 304]);
+
+async function bridgeTabIds(): Promise<number[]> {
+  try {
+    const tabs = await browser.tabs.query({ url: BRIDGE_MATCHES });
+    return tabs.map((t) => t.id).filter((id): id is number => typeof id === "number");
+  } catch {
+    return [];
+  }
+}
+
+/** Path D identity: ask an open app tab's bridge who is signed in. Returns null
+ * when no tab has a live bridge (predates install / none open). */
+async function bridgeGetUser(): Promise<UserInfo | null> {
+  const ids = await bridgeTabIds();
+  diag("bridge", "tabs found", { count: ids.length });
+  for (const tabId of ids) {
+    try {
+      const res = (await browser.tabs.sendMessage(tabId, requestBridgeMe())) as
+        | BridgeMeResult
+        | undefined;
+      if (res?.ok) {
+        diag("bridge", "BRIDGE_ME result", { got: true, signedIn: res.signedIn });
+        return res.signedIn ? { signedIn: true, name: res.name, email: res.email } : SIGNED_OUT;
+      }
+    } catch {
+      // Tab predates the install (no content script) — try the next.
+    }
+  }
+  diag("bridge", "BRIDGE_ME result", { got: false, signedIn: null });
+  return null;
+}
+
+/** Path D write: proxy a same-origin API request through an app tab's bridge and
+ * rebuild it as a Response. Null when no live bridge tab answered. */
+async function bridgeFetch(
+  path: string,
+  method: string,
+  bodyJson?: string,
+): Promise<Response | null> {
+  const ids = await bridgeTabIds();
+  for (const tabId of ids) {
+    try {
+      const res = (await browser.tabs.sendMessage(
+        tabId,
+        requestBridgeFetch(path, method, bodyJson),
+      )) as BridgeFetchResult | undefined;
+      if (res && typeof res.status === "number" && res.status > 0) {
+        diag("bridge", "BRIDGE_FETCH", { path, status: res.status });
+        const body = NULL_BODY_STATUS.has(res.status) ? null : (res.bodyJson ?? null);
+        return new Response(body, { status: res.status });
+      }
+    } catch {
+      // Try the next tab.
+    }
+  }
+  return null;
+}
 
 /** TEMP migration cleanup: the domain switched Clerk instances (dev → prod) on
  * 2026-07-22; browsers that used the dev era carry stale dev-suffixed cookies
@@ -133,7 +211,7 @@ async function purgeDevEraCookies(): Promise<void> {
 async function handleGetUser(): Promise<UserInfo> {
   diag("getUser", "entry", { cachedPath: winningPath });
   // Path A — SDK (dev instances; settles empty on the prod custom domain).
-  if (winningPath !== "native" && winningPath !== "cookie") {
+  if (winningPath !== "native" && winningPath !== "cookie" && winningPath !== "bridge") {
     const started = Date.now();
     try {
       await purgeDevEraCookies();
@@ -159,7 +237,7 @@ async function handleGetUser(): Promise<UserInfo> {
     }
   }
   // Path B — Native API via the FAPI __client cookie (see lib/native-session).
-  if (winningPath !== "cookie") {
+  if (winningPath !== "cookie" && winningPath !== "bridge") {
     const native = await getNativeSession();
     if (native) {
       winningPath = "native";
@@ -169,8 +247,8 @@ async function handleGetUser(): Promise<UserInfo> {
   }
   // Path C — Safari cookie path: /api/me authenticated by the SITE's own session
   // cookie (credentials:'include'), which Safari sends without us reading it.
-  // Only engages when A and B both came up empty (never happens on Chrome, where
-  // A always wins when signed in), keeping Chrome/Firefox behavior unchanged.
+  // Tried on EVERY Safari resolve (cheap, one fetch) so it wins the moment a
+  // site-access grant makes the extension's cookie context work — ahead of D.
   if (SAFARI) {
     const me = await fetchMe();
     diag("getUser", "cookie /api/me", { got: !!me, signedIn: me?.signedIn ?? null });
@@ -178,6 +256,17 @@ async function handleGetUser(): Promise<UserInfo> {
       winningPath = "cookie";
       diag("getUser", "reply", { path: "cookie", signedIn: true });
       return { signedIn: true, name: me.name, email: me.email };
+    }
+  }
+  // Path D — Safari content-script bridge: an open app tab's page context makes
+  // the credentialed same-origin request the extension context can't. Only
+  // engages when A/B/C all came up empty (never on Chrome/Firefox).
+  if (SAFARI) {
+    const bridged = await bridgeGetUser();
+    if (bridged) {
+      winningPath = "bridge";
+      diag("getUser", "reply", { path: "bridge", signedIn: bridged.signedIn });
+      return bridged;
     }
   }
   diag("getUser", "reply", { path: "none", signedIn: false });
@@ -189,7 +278,8 @@ async function handleGetUser(): Promise<UserInfo> {
  * extension signs out of the site too, which is the honest behavior). */
 async function handleSignOut(): Promise<SignOutResult> {
   let ok = false;
-  if (winningPath !== "native" && winningPath !== "cookie") {
+  const tokenlessSafari = winningPath === "cookie" || winningPath === "bridge";
+  if (winningPath !== "native" && !tokenlessSafari) {
     try {
       const clerk = await racedClerkClient();
       if (clerk.session) {
@@ -200,12 +290,13 @@ async function handleSignOut(): Promise<SignOutResult> {
       diag("signOut", "sdk failed", { error: errMsg(e) });
     }
   }
-  if (!ok && winningPath !== "cookie") ok = await nativeSignOut();
+  if (!ok && !tokenlessSafari) ok = await nativeSignOut();
   if (!ok && SAFARI) {
-    // Cookie path: the client token is an HttpOnly cookie we can't present, so we
-    // can't end the shared session from here. Hand off to the web app — the user
-    // signs out there, and the popup's next /api/me poll then 401s to the gate.
-    diag("signOut", "cookie handoff (open web)");
+    // Cookie/bridge path: the client token is an HttpOnly cookie we can't present
+    // (and the bridge is read-only for identity), so we can't end the shared
+    // session from here. Hand off to the web app — the user signs out there, and
+    // the popup's next resolve then reports signed-out to the gate.
+    diag("signOut", "cookie/bridge handoff (open web)");
     return { ok: false, openWeb: true };
   }
   diag("signOut", "done", { ok });
@@ -297,6 +388,32 @@ async function handleRestoreSession(
 export default defineBackground(() => {
   diag("bg", "boot", { browser: import.meta.env.BROWSER, syncHost: CLERK_SYNC_HOST });
   setAuthTokenProvider(getSessionToken);
+
+  // No-token request strategy (Safari): route same-origin app writes through the
+  // content-script bridge when it's the winning path; otherwise attempt a direct
+  // credentialed fetch (works if a site-access grant later opens the cookie jar).
+  // Live-server calls (different origin) can't be bridged — they fall through to
+  // the direct attempt, keeping the documented cross-origin limitation.
+  setNoTokenFetcher(async (url, init) => {
+    if (winningPath === "bridge") {
+      try {
+        const appOrigin = new URL(await getApiBaseUrl()).origin;
+        const target = new URL(url);
+        if (target.origin === appOrigin) {
+          const body = typeof init.body === "string" ? init.body : undefined;
+          const bridged = await bridgeFetch(
+            target.pathname + target.search,
+            (init.method as string) ?? "GET",
+            body,
+          );
+          if (bridged) return bridged;
+        }
+      } catch {
+        // fall through to the direct credentialed attempt
+      }
+    }
+    return fetch(url, { ...init, credentials: "include" });
+  });
 
   // Register the popup↔background message listeners FIRST (still synchronous, so
   // MV3-worker wake is unaffected). If the optional live-tabs wiring below ever

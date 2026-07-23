@@ -235,3 +235,76 @@ export function requestLivePushNow(): Promise<{ ok: boolean }> {
     ok: false,
   }));
 }
+
+/* ── Path D: content-script session bridge (Safari) ──────────────────────────
+ * Safari 26 fully partitions the extension's network/cookie context from the
+ * browser jar, so neither the SDK, the Native-API cookie, nor a direct
+ * credentialed extension fetch can see the web session. These messages go
+ * BACKGROUND → CONTENT SCRIPT (running IN an open app tab, same-origin), which
+ * does the credentialed fetch the page context is trusted for and relays the
+ * result. The content script only accepts messages from our own extension
+ * background (never the page) and only proxies whitelisted /api/ paths. */
+
+/** Background → bridge: who is signed in on this app origin? */
+export const BRIDGE_ME = "BRIDGE_ME" as const;
+/** Background → bridge: perform a same-origin credentialed API request. */
+export const BRIDGE_FETCH = "BRIDGE_FETCH" as const;
+
+export interface BridgeMeMessage {
+  type: typeof BRIDGE_ME;
+}
+
+/** `ok` = the bridge fetch itself completed (not a connection/parse failure);
+ * `signedIn` is the /api/me verdict. */
+export interface BridgeMeResult {
+  ok: boolean;
+  signedIn: boolean;
+  name: string | null;
+  email: string | null;
+}
+
+export function isBridgeMeMessage(message: unknown): message is BridgeMeMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as BridgeMeMessage).type === BRIDGE_ME
+  );
+}
+
+export function requestBridgeMe(): BridgeMeMessage {
+  return { type: BRIDGE_ME };
+}
+
+export interface BridgeFetchMessage {
+  type: typeof BRIDGE_FETCH;
+  /** Relative API path only — validated against isAllowedBridgePath. */
+  path: string;
+  method?: string;
+  /** Pre-serialized JSON request body (bridge sends it with content-type json). */
+  bodyJson?: string;
+}
+
+/** `status` is the upstream HTTP status (0 = the bridge fetch never completed).
+ * `bodyJson` is the raw response text for the caller to parse. */
+export interface BridgeFetchResult {
+  ok: boolean;
+  status: number;
+  bodyJson?: string;
+}
+
+export function isBridgeFetchMessage(message: unknown): message is BridgeFetchMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as BridgeFetchMessage).type === BRIDGE_FETCH &&
+    typeof (message as BridgeFetchMessage).path === "string"
+  );
+}
+
+export function requestBridgeFetch(
+  path: string,
+  method?: string,
+  bodyJson?: string,
+): BridgeFetchMessage {
+  return { type: BRIDGE_FETCH, path, method, bodyJson };
+}
