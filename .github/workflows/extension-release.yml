@@ -1,0 +1,192 @@
+name: extension release
+
+# Builds the browser extension (Chrome MV3 + Firefox MV2) and, on pushes to main,
+# publishes the Chrome build to the Chrome Web Store using the CWS API v2 directly
+# (no third-party marketplace actions — just curl + the Google OAuth refresh flow).
+#
+# TRIGGERS
+#   - push to main touching the extension or its shared contract → verify+build,
+#     and auto-publish to CWS *if* the four CWS_* secrets are present.
+#   - workflow_dispatch → verify+build always; publish only when the `publish`
+#     input is true (and the secrets are present) — so a manual run is build-only
+#     by default.
+#
+# ONE-TIME SETUP + secret list: see apps/extension/RELEASING.md.
+#
+# Required repo secrets for the publish job (job is skipped if any is missing):
+#   CWS_EXTENSION_ID  — the item id from the Chrome Web Store dashboard URL
+#   CWS_CLIENT_ID     — Google OAuth 2.0 client id (Desktop app)
+#   CWS_CLIENT_SECRET — Google OAuth 2.0 client secret
+#   CWS_REFRESH_TOKEN — long-lived refresh token minted once for that client
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/extension/**"
+      - "packages/types/**"
+      - ".github/workflows/extension-release.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the Chrome build to the Web Store (requires CWS_* secrets)"
+        type: boolean
+        default: false
+
+jobs:
+  verify-build:
+    runs-on: ubuntu-latest
+    outputs:
+      # Whether all four CWS_* secrets are set — secrets can't be read in a job-level
+      # `if:`, so we surface their presence as an output the publish job gates on.
+      can_publish: ${{ steps.secret_check.outputs.present }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install (extension subgraph)
+        run: pnpm --filter @bookmark-ai/extension... install --frozen-lockfile
+
+      - name: Test
+        run: pnpm --filter @bookmark-ai/extension test
+
+      - name: Type-check
+        run: pnpm --filter @bookmark-ai/extension check-types
+
+      - name: Build + zip (chrome)
+        run: pnpm --filter @bookmark-ai/extension zip
+
+      - name: Build + zip (firefox)
+        run: pnpm --filter @bookmark-ai/extension zip:firefox
+
+      - name: Upload store zips
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-zips
+          path: apps/extension/.output/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Detect CWS secrets
+        id: secret_check
+        env:
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          if [ -n "$CWS_EXTENSION_ID" ] && [ -n "$CWS_CLIENT_ID" ] \
+             && [ -n "$CWS_CLIENT_SECRET" ] && [ -n "$CWS_REFRESH_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "All four CWS_* secrets present — publish job is eligible to run."
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "One or more CWS_* secrets missing — publish job will be skipped."
+          fi
+
+  publish-chrome:
+    needs: verify-build
+    runs-on: ubuntu-latest
+    # Publish only when: all four CWS_* secrets exist AND
+    #   - this was a push to main (auto-publish), OR
+    #   - this was a manual dispatch with publish=true.
+    if: >
+      needs.verify-build.outputs.can_publish == 'true' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true'))
+    steps:
+      - name: Download store zips
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-zips
+          path: dist
+
+      - name: Locate the chrome zip
+        id: zip
+        run: |
+          set -euo pipefail
+          zip="$(ls dist/*-chrome.zip 2>/dev/null | head -n1 || true)"
+          if [ -z "$zip" ]; then
+            echo "No *-chrome.zip found in the downloaded artifact:"
+            ls -la dist || true
+            exit 1
+          fi
+          echo "Publishing zip: $zip"
+          echo "path=$zip" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to the Chrome Web Store
+        env:
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          ZIP_PATH: ${{ steps.zip.outputs.path }}
+        run: |
+          set -euo pipefail
+
+          echo "::group::Refresh OAuth access token"
+          # Exchange the long-lived refresh token for a short-lived access token.
+          token_resp="$(curl -sS -X POST "https://accounts.google.com/o/oauth2/token" \
+            -d "client_id=${CWS_CLIENT_ID}" \
+            -d "client_secret=${CWS_CLIENT_SECRET}" \
+            -d "refresh_token=${CWS_REFRESH_TOKEN}" \
+            -d "grant_type=refresh_token")"
+          access_token="$(printf '%s' "$token_resp" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))')"
+          if [ -z "$access_token" ]; then
+            echo "Failed to obtain access token. Response:"
+            # Never print the raw response (may echo token material); show error fields only.
+            printf '%s' "$token_resp" | python3 -c 'import sys,json; d=json.load(sys.stdin); print({k:d.get(k) for k in ("error","error_description")})' || echo "(unparseable token response)"
+            exit 1
+          fi
+          echo "Access token acquired."
+          echo "::endgroup::"
+
+          echo "::group::Upload new package"
+          upload_resp="$(curl -sS \
+            -X PUT \
+            -H "Authorization: Bearer ${access_token}" \
+            -H "x-goog-api-version: 2" \
+            -T "${ZIP_PATH}" \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/${CWS_EXTENSION_ID}")"
+          echo "Upload response:"
+          echo "${upload_resp}"
+          upload_state="$(printf '%s' "$upload_resp" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("uploadState",""))' 2>/dev/null || true)"
+          # uploadState is SUCCESS on a clean upload; IN_PROGRESS is also acceptable
+          # (CWS finishes processing async). Anything else (e.g. FAILURE) is fatal.
+          case "$upload_state" in
+            SUCCESS|IN_PROGRESS)
+              echo "Upload accepted (state: $upload_state)."
+              ;;
+            *)
+              echo "Upload FAILED (state: '$upload_state'). See response above."
+              exit 1
+              ;;
+          esac
+          echo "::endgroup::"
+
+          echo "::group::Publish"
+          publish_resp="$(curl -sS \
+            -X POST \
+            -H "Authorization: Bearer ${access_token}" \
+            -H "x-goog-api-version: 2" \
+            -H "Content-Length: 0" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/${CWS_EXTENSION_ID}/publish")"
+          echo "Publish response:"
+          echo "${publish_resp}"
+          # The publish endpoint returns { "status": [...], "statusDetail": [...] }.
+          # OK means queued for review/publish; anything else is fatal.
+          publish_ok="$(printf '%s' "$publish_resp" | python3 -c 'import sys,json; d=json.load(sys.stdin); s=d.get("status",[]); print("OK" if "OK" in s else "NOT_OK")' 2>/dev/null || echo NOT_OK)"
+          if [ "$publish_ok" != "OK" ]; then
+            echo "Publish did NOT return an OK status. See response above."
+            exit 1
+          fi
+          echo "Published — item queued by the Chrome Web Store (may require review before going live)."
+          echo "::endgroup::"
