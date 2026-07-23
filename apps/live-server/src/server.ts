@@ -4,6 +4,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { type Config, loadConfig } from "./config";
 import type { Deps } from "./deps";
 import { makeAuthPreHandler } from "./auth";
+import { LiveFanout } from "./fanout";
 import { LiveStore } from "./live-store";
 import { createRedis, type RedisBundle } from "./redis";
 import { registerForget } from "./routes/forget";
@@ -24,6 +25,11 @@ export async function buildServer(
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: true, bodyLimit: 2_000_000, trustProxy: true });
   const store = new LiveStore(redis, config);
+  const fanout = new LiveFanout(store, {
+    coalesceMs: config.fanoutCoalesceMs,
+    refreshEmitMs: config.refreshEmitMs,
+    ttlHours: config.ttlHours,
+  });
 
   await app.register(cors, {
     origin: config.allowedOrigins.length > 0 ? config.allowedOrigins : true,
@@ -32,7 +38,7 @@ export async function buildServer(
     credentials: false,
   });
 
-  const deps: Deps = { store, config, auth: makeAuthPreHandler(config) };
+  const deps: Deps = { store, config, auth: makeAuthPreHandler(config), fanout };
   registerHealth(app, deps);
   registerPush(app, deps);
   registerList(app, deps);
@@ -41,6 +47,7 @@ export async function buildServer(
   registerSettings(app, deps);
 
   app.addHook("onClose", async () => {
+    fanout.closeAll();
     await redis.close();
   });
 

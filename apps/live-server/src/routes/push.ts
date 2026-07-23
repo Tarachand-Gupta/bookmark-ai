@@ -6,7 +6,10 @@ import type { Deps } from "../deps";
  * POST /live — one checkpoint push from a device. Byte-compatible with the old
  * Vercel route: 403 {ok,enabled:false} when the account flag is off (the extension
  * reads this to stop publishing), 429 when over the daily quota, else
- * 200 {ok:true,enabled:true}. Publishes so open SSE streams re-emit.
+ * 200 {ok:true,enabled:true}. Publishes so open SSE streams re-emit — but ONLY
+ * when the write actually changed visible state (writeSnapshot reports it): a
+ * heartbeat or a no-op push (identical windows/labels) refreshes liveness + TTL
+ * without fanning a full-state re-read out to every connected viewer.
  */
 export function registerPush(app: FastifyInstance, { store, auth }: Deps): void {
   app.post("/live", { preHandler: auth }, async (req, reply) => {
@@ -26,8 +29,10 @@ export function registerPush(app: FastifyInstance, { store, auth }: Deps): void 
       return reply.code(429).send({ error: "Daily push limit reached for this device." });
     }
 
-    await store.writeSnapshot(userId, parsed.data);
-    await store.publish(userId, { type: "push", deviceId: parsed.data.deviceId });
+    const { changed } = await store.writeSnapshot(userId, parsed.data);
+    if (changed) {
+      await store.publish(userId, { type: "push", deviceId: parsed.data.deviceId });
+    }
     return reply.send({ ok: true, enabled: true });
   });
 }

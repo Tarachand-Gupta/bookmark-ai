@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { sseCorsHeaders } from "../cors";
 import type { Deps } from "../deps";
-import { initSse, writeComment, writeEvent } from "../sse";
+import { initSse, writeComment, writeEvent, writeFrame } from "../sse";
 
 const KEEPALIVE_MS = 25_000;
 
@@ -16,14 +16,15 @@ const MAX_STREAMS_PER_USER = 8;
 const streamCounts = new Map<string, number>();
 
 /**
- * GET /live/stream — SSE. Sends a full `state` frame on connect and again on
- * every change for this user (delivered via Redis pub/sub, so any server instance
- * can serve any subscriber — horizontal scale with no sticky sessions). We re-read
- * and send the FULL list per event (not deltas): the payload is tiny and full-state
- * frames make reconnect self-healing (a viewer that missed events converges on
- * reconnect). A `:keepalive` comment every 25s keeps proxies from idling us out.
+ * GET /live/stream — SSE. Sends a full `state` frame IMMEDIATELY on connect (so
+ * connection UX never waits on the coalesce window), then joins the per-user
+ * `LiveFanout` group for all subsequent updates: pub/sub-triggered changes are
+ * coalesced (one read + one serialize broadcast to every viewer) and a viewer-gated
+ * periodic tick keeps idle devices' "last seen" age fresh. Full-state frames make
+ * reconnect self-healing (a viewer that missed events converges on reconnect). A
+ * `:keepalive` comment every 25s keeps proxies from idling us out.
  */
-export function registerStream(app: FastifyInstance, { store, config, auth }: Deps): void {
+export function registerStream(app: FastifyInstance, { store, config, auth, fanout }: Deps): void {
   app.get("/live/stream", { preHandler: auth }, async (req, reply) => {
     const userId = req.userId;
 
@@ -38,21 +39,19 @@ export function registerStream(app: FastifyInstance, { store, config, auth }: De
 
     let closed = false;
 
-    const sendState = async (): Promise<void> => {
-      if (closed) return;
-      try {
-        const enabled = await store.getEnabled(userId);
-        const devices = enabled ? await store.listDevices(userId) : [];
-        writeEvent(raw, "state", { devices, enabled, ttlHours: config.ttlHours });
-      } catch {
-        // transient read error — the next event (or the client's reconnect) recovers
-      }
-    };
+    // Immediate initial frame for THIS connection — never routed through the
+    // coalesce window, so a new viewer sees state at once.
+    try {
+      const enabled = await store.getEnabled(userId);
+      const devices = enabled ? await store.listDevices(userId) : [];
+      writeEvent(raw, "state", { devices, enabled, ttlHours: config.ttlHours });
+    } catch {
+      // transient read error — the fanout group's next frame (or reconnect) recovers
+    }
 
-    await sendState();
-
-    const unsubscribe = store.subscribe(userId, () => {
-      void sendState();
+    // Subsequent updates arrive as pre-serialized frames from the shared per-user group.
+    const leave = fanout.join(userId, (frame) => {
+      if (!closed) writeFrame(raw, frame);
     });
 
     const heartbeat = setInterval(() => {
@@ -67,7 +66,7 @@ export function registerStream(app: FastifyInstance, { store, config, auth }: De
       if (remaining <= 0) streamCounts.delete(userId);
       else streamCounts.set(userId, remaining);
       clearInterval(heartbeat);
-      unsubscribe();
+      leave();
       try {
         raw.end();
       } catch {

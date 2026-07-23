@@ -30,6 +30,13 @@ const rawSchema = z.object({
   LIVE_TTL_DAYS: z.coerce.number().int().positive().default(7),
   LIVE_PUSH_QUOTA_PER_DAY: z.coerce.number().int().positive().default(2000),
 
+  // SSE fan-out tuning. COALESCE_MS: trailing window that batches pubsub-triggered
+  // frames per user into one read+serialize+broadcast (0 = send each immediately).
+  // REFRESH_EMIT_MS: while ≥1 viewer is connected, re-emit a fresh frame this often
+  // so idle devices' "last seen" age stays current (must be > 0 to avoid a busy loop).
+  LIVE_FANOUT_COALESCE_MS: z.coerce.number().int().nonnegative().default(500),
+  LIVE_REFRESH_EMIT_MS: z.coerce.number().int().positive().default(60_000),
+
   // Dev-only tokenless bypass, mirrors the web app's DEV_OPEN_API escape hatch
   // (lets curl / the Zig desktop client smoke-test a local server). Ignored in
   // production. Open-mode requests use the "local" userId sentinel.
@@ -50,6 +57,8 @@ export type Config = {
   ttlSeconds: number;
   ttlHours: number;
   pushQuotaPerDay: number;
+  fanoutCoalesceMs: number;
+  refreshEmitMs: number;
   devOpen: boolean;
   isProduction: boolean;
 };
@@ -95,6 +104,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ttlSeconds: e.LIVE_TTL_DAYS * 24 * 60 * 60,
     ttlHours: e.LIVE_TTL_DAYS * 24,
     pushQuotaPerDay: e.LIVE_PUSH_QUOTA_PER_DAY,
+    fanoutCoalesceMs: e.LIVE_FANOUT_COALESCE_MS,
+    refreshEmitMs: e.LIVE_REFRESH_EMIT_MS,
     devOpen,
     isProduction,
   };

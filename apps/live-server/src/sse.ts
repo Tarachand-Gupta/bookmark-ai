@@ -24,8 +24,20 @@ export function initSse(reply: FastifyReply, corsHeaders: Record<string, string>
   return raw;
 }
 
+/** Serialize an SSE event to its wire frame WITHOUT writing it. The fan-out path
+ * serializes once here and writes the resulting string to every subscriber's
+ * socket (one JSON.stringify for N clients). */
+export function formatEvent(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+/** Write a pre-serialized frame (from `formatEvent`) to one socket. */
+export function writeFrame(raw: ServerResponse, frame: string): void {
+  raw.write(frame);
+}
+
 export function writeEvent(raw: ServerResponse, event: string, data: unknown): void {
-  raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  raw.write(formatEvent(event, data));
 }
 
 /** A comment line — invisible to EventSource, keeps proxies from idling the connection out. */
