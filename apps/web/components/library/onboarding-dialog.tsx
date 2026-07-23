@@ -11,10 +11,10 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { LiveTabsDemo } from "@/components/marketing/live-tabs";
 import { AiSetupCard } from "./ai-setup-card";
 import { ExtensionStoreButton } from "./extension-cta";
-import { BookmarksDemo, MeaningSearchDemo, SavedSessionsDemo } from "./onboarding-visuals";
+import { ThemeShot } from "./onboarding-screenshot";
+import { MeaningSearchDemo, TourSteps } from "./onboarding-visuals";
 
 interface Feature {
   id: string;
@@ -25,8 +25,9 @@ interface Feature {
   render: () => React.ReactNode;
 }
 
-// AI setup is first, per product decision: the user configures their provider
-// before the tour of what the app does with it.
+// Tour order (rail + Next/Back advance): AI setup → Bookmarks → Saved sessions →
+// Live tabs → Search by meaning. AI setup leads so the user can configure (or
+// skip) their provider before touring what the app does with it.
 const FEATURES: Feature[] = [
   {
     id: "ai",
@@ -35,7 +36,14 @@ const FEATURES: Feature[] = [
     title: "Set up your AI",
     description:
       "Connect an AI provider to power chat and answers over your library. OpenRouter is the quickest start — it has free models.",
-    render: () => <AiSetupCard />,
+    render: () => (
+      <div className="space-y-3">
+        <AiSetupCard />
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          You can skip this — AI runs with the built-in provider until you bring your own key.
+        </p>
+      </div>
+    ),
   },
   {
     id: "bookmarks",
@@ -43,11 +51,81 @@ const FEATURES: Feature[] = [
     icon: Bookmark,
     title: "Save from any browser",
     description:
-      "Install the extension and one click saves the page. Each save is read, categorized and tagged for you — no folders to maintain.",
+      "Install the extension, then one click saves the page — read, categorized and tagged for you, with no folders to maintain.",
     render: () => (
       <div className="space-y-4">
-        <BookmarksDemo />
         <ExtensionStoreButton size="sm" />
+        <div>
+          <p className="mb-2 text-xs font-medium text-foreground">How saving works</p>
+          <TourSteps
+            steps={[
+              <>Click the extension icon on any page</>,
+              <>
+                <strong>Save bookmark</strong> — title, icon and link are grabbed for you
+              </>,
+              <>It lands here, categorized and tagged</>,
+            ]}
+          />
+        </div>
+        <ThemeShot name="library" alt="The bookmark library with categorized, tagged cards." />
+      </div>
+    ),
+  },
+  {
+    id: "sessions",
+    navLabel: "Saved sessions",
+    icon: Layers,
+    title: "Snapshot a whole window",
+    description:
+      "A saved session is every tab in a window captured as one snapshot — close them now, bring them all back later.",
+    render: () => (
+      <div className="space-y-4">
+        <TourSteps
+          steps={[
+            <>
+              From the extension popup, <strong>save a whole window</strong> as one session
+            </>,
+            <>
+              Restore it later as a new <strong>window</strong> — or as a <strong>tab group</strong>
+            </>,
+          ]}
+        />
+        <ThemeShot
+          name="saved-sessions"
+          alt="Saved sessions list, each holding a window of tabs to restore."
+        />
+      </div>
+    ),
+  },
+  {
+    id: "live",
+    navLabel: "Live tabs",
+    icon: Radio,
+    title: "See open tabs across devices",
+    description:
+      "Mirror a window's open tabs here in real time, so you can jump to a tab that's open on another device.",
+    render: () => (
+      <div className="space-y-4">
+        <TourSteps
+          steps={[
+            <>
+              In the extension popup, flip <strong>Share window as live session</strong>
+            </>,
+            <>Name this device so you recognize it</>,
+            <>
+              Open <strong>Live sessions</strong> here — or on your phone — and your windows appear
+              live, with a green <strong>LIVE</strong> dot; jump to any tab or Save a window as a
+              session
+            </>,
+          ]}
+        />
+        <ThemeShot
+          name="live-sessions"
+          alt="Live sessions view showing another device's open windows with a live indicator."
+        />
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Opt-in only. Private windows are never sent, and a live session disappears after 7 days.
+        </p>
       </div>
     ),
   },
@@ -60,24 +138,6 @@ const FEATURES: Feature[] = [
       "Search blends keywords with meaning, so the right page surfaces even when you don't remember its exact words. Ask AI to get an answer with citations.",
     render: () => <MeaningSearchDemo />,
   },
-  {
-    id: "live",
-    navLabel: "Live tabs",
-    icon: Radio,
-    title: "See open tabs across devices",
-    description:
-      "Opt in from the extension and your open windows mirror here live — jump to a tab from another device. Nothing is stored until you save it.",
-    render: () => <LiveTabsDemo />,
-  },
-  {
-    id: "sessions",
-    navLabel: "Saved sessions",
-    icon: Layers,
-    title: "Snapshot a whole window",
-    description:
-      "Save every tab in a window as one session, then close them. Restore the whole window later, or open tabs one at a time.",
-    render: () => <SavedSessionsDemo />,
-  },
 ];
 
 export interface OnboardingDialogProps {
@@ -86,14 +146,19 @@ export interface OnboardingDialogProps {
 }
 
 /**
- * First-run feature tour. Left rail (vertical on desktop, horizontal strip on
- * mobile) selects a feature; the right pane shows its heading, a short
- * description and a small self-contained visual. The library page owns the
- * localStorage "seen" flag and mounts this.
+ * First-run product tour. A left rail (vertical on desktop, horizontal strip on
+ * mobile) lists the steps and jumps straight to any of them; the footer is a
+ * stepper (Back / Next, "Get started" on the last step) plus a quiet "Skip tour"
+ * that closes from anywhere. The library page owns the localStorage "seen" flag
+ * and mounts this — closing (skip, get started, or dismiss) persists it.
  */
 export function OnboardingDialog({ open, onOpenChange }: OnboardingDialogProps) {
-  const [activeId, setActiveId] = useState<string>(FEATURES[0].id);
-  const active = FEATURES.find((f) => f.id === activeId) ?? FEATURES[0];
+  const [index, setIndex] = useState(0);
+  const active = FEATURES[index];
+  const isFirst = index === 0;
+  const isLast = index === FEATURES.length - 1;
+
+  const close = () => onOpenChange(false);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -104,21 +169,28 @@ export function OnboardingDialog({ open, onOpenChange }: OnboardingDialogProps) 
         <div className="flex max-h-[85vh] flex-col sm:flex-row">
           {/* Rail: vertical tab list (desktop) / horizontal strip (mobile). */}
           <nav
-            aria-label="Feature tour"
+            aria-label="Product tour"
             className="shrink-0 border-b bg-muted/30 p-3 sm:w-56 sm:border-r sm:border-b-0"
           >
             <DialogHeader className="px-2 pb-3 text-left">
-              <DialogTitle className="text-base">Welcome to Bookmark AI</DialogTitle>
+              <span className="text-[0.7rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                Product tour
+              </span>
+              <DialogTitle className="text-base font-semibold">
+                Welcome to{" "}
+                <span className="whitespace-nowrap">Bookmark AI</span>
+              </DialogTitle>
             </DialogHeader>
             <ul className="flex gap-1 overflow-x-auto sm:flex-col sm:overflow-visible">
-              {FEATURES.map((f) => {
+              {FEATURES.map((f, i) => {
                 const Icon = f.icon;
-                const isActive = f.id === activeId;
+                const isActive = i === index;
                 return (
                   <li key={f.id} className="shrink-0 sm:shrink">
                     <button
                       type="button"
-                      onClick={() => setActiveId(f.id)}
+                      onClick={() => setIndex(i)}
+                      aria-current={isActive ? "step" : undefined}
                       className={cn(
                         "flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm transition-colors",
                         isActive
@@ -135,7 +207,7 @@ export function OnboardingDialog({ open, onOpenChange }: OnboardingDialogProps) 
             </ul>
           </nav>
 
-          {/* Pane: heading + description + visual for the selected feature. */}
+          {/* Pane: heading + description + content for the selected step. */}
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
               <h3 className="text-lg font-semibold tracking-tight">{active.title}</h3>
@@ -144,10 +216,41 @@ export function OnboardingDialog({ open, onOpenChange }: OnboardingDialogProps) 
               </p>
               <div className="mt-5">{active.render()}</div>
             </div>
-            <div className="flex items-center justify-end border-t px-6 py-3">
-              <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
-                Get started
+            <div className="flex items-center justify-between gap-2 border-t px-6 py-3">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                onClick={close}
+              >
+                Skip tour
               </Button>
+              <div className="flex items-center gap-2">
+                {!isFirst && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIndex((i) => Math.max(0, i - 1))}
+                  >
+                    Back
+                  </Button>
+                )}
+                {isLast ? (
+                  <Button type="button" size="sm" onClick={close}>
+                    Get started
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setIndex((i) => Math.min(FEATURES.length - 1, i + 1))}
+                  >
+                    Next
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
