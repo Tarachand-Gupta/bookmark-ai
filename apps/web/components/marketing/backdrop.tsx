@@ -1,28 +1,14 @@
 /**
  * Fixed ambient background. The design language here is LIGHT + BLUR, not a
  * chromatic accent — so this is fully monochrome: two soft light blooms that
- * drift slowly, over a faint graph-paper grid (the visual rhyme for "order").
- * All motion lives in globals.css keyframes and is gated behind
- * prefers-reduced-motion, so a reduced-motion viewer sees a calm static field.
+ * drift slowly. The homepage's graph-paper texture is no longer drawn here — it
+ * has been replaced by the interactive cube lattice (<CubesField />), whose idle
+ * dashed outlines are the "order" motif now. All motion lives in globals.css
+ * keyframes and is gated behind prefers-reduced-motion.
  */
 export function Backdrop() {
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-      {/* Graph-paper grid — near-black on light, near-white on dark. Masked so
-          it fades toward the edges and never reads as a hard tiled texture. */}
-      <div
-        className="marketing-grid absolute inset-0 text-foreground opacity-[0.04] dark:opacity-[0.05]"
-        style={{
-          backgroundImage:
-            "linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)",
-          backgroundSize: "58px 58px",
-          maskImage:
-            "radial-gradient(ellipse 100% 70% at 50% 0%, black 20%, transparent 80%)",
-          WebkitMaskImage:
-            "radial-gradient(ellipse 100% 70% at 50% 0%, black 20%, transparent 80%)",
-        }}
-      />
-
       {/* Primary light bloom — a slow drift from upper-right. */}
       <div
         className="marketing-aurora absolute right-[-10rem] top-[-16rem] size-[46rem] rounded-full opacity-[0.5] blur-[120px]"
