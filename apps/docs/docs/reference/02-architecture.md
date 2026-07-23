@@ -1,6 +1,9 @@
 ---
 slug: /reference/architecture
 title: Architecture
+description: A condensed tour of how Bookmark AI is put together.
+sidebar_custom_props:
+  icon: 🏗
 ---
 
 # Architecture

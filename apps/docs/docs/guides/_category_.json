@@ -1,6 +1,9 @@
 {
   "label": "Guides",
   "position": 3,
+  "customProps": {
+    "icon": "📖"
+  },
   "link": {
     "type": "generated-index",
     "title": "Guides",

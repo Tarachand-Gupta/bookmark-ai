@@ -1,6 +1,9 @@
 ---
 slug: /self-hosting/web-and-api
 title: Web & API
+description: Deploy the Next.js web app and API that serve the whole product.
+sidebar_custom_props:
+  icon: 🌐
 ---
 
 # Web & API

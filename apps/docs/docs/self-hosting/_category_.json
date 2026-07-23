@@ -1,6 +1,9 @@
 {
   "label": "Self-hosting",
   "position": 4,
+  "customProps": {
+    "icon": "🛠"
+  },
   "link": {
     "type": "generated-index",
     "title": "Self-hosting",

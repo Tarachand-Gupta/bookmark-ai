@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 
 export const REPO = "https://github.com/Tarachand-Gupta/bookmark-ai";
 export const REPO_README = `${REPO}#readme`;
+export const DOCS_URL = "https://docs.bookmark-ai.cloud";
 
 /** Utility class helpers scoped to the marketing page. */
 export const mono =

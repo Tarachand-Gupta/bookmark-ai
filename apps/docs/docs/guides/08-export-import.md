@@ -1,6 +1,9 @@
 ---
 slug: /guides/export-import
 title: Export & import
+description: Take your whole library with you and bring it back, losslessly.
+sidebar_custom_props:
+  icon: 📦
 ---
 
 # Export & import

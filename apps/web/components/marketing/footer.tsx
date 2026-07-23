@@ -1,7 +1,8 @@
 import { cn } from "@/lib/utils";
-import { BookmarkMark, mono, REPO, Wordmark } from "./primitives";
+import { BookmarkMark, DOCS_URL, mono, REPO, Wordmark } from "./primitives";
 
 const LINKS = [
+  { label: "Docs", href: DOCS_URL, external: true },
   { label: "GitHub", href: REPO, external: true },
   { label: "Privacy", href: "/privacy", external: false },
   { label: "Terms", href: "/terms", external: false },

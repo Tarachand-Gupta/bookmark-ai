@@ -1,6 +1,9 @@
 {
   "label": "Reference",
   "position": 5,
+  "customProps": {
+    "icon": "📚"
+  },
   "link": {
     "type": "generated-index",
     "title": "Reference",

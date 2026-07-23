@@ -1,6 +1,9 @@
 ---
 slug: /reference/api
 title: API reference
+description: Every REST endpoint, with request and response shapes.
+sidebar_custom_props:
+  icon: 🔗
 ---
 
 # API reference

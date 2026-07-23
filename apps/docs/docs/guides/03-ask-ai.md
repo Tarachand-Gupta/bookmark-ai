@@ -1,6 +1,9 @@
 ---
 slug: /guides/ask-ai
 title: Ask AI
+description: Chat over your own library and get answers with citations.
+sidebar_custom_props:
+  icon: 🤖
 ---
 
 # Ask AI

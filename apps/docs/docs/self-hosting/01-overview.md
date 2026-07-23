@@ -1,6 +1,9 @@
 ---
 slug: /self-hosting/overview
 title: Overview
+description: What you need to run your own Bookmark AI instance.
+sidebar_custom_props:
+  icon: 🧭
 ---
 
 # Self-hosting overview

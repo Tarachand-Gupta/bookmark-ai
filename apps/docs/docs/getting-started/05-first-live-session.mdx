@@ -1,0 +1,62 @@
+---
+slug: /getting-started/first-live-session
+title: Share your first live session
+description: Opt in to mirror your open tabs live across devices in real time.
+sidebar_custom_props:
+  icon: 🟢
+---
+
+import Screenshot from '@site/src/components/Screenshot';
+
+# Share your first live session
+
+A **live session** is a real-time mirror of the tabs you have open **right now**,
+so you can jump to a page you left open on another device. Unlike a
+[saved session](/getting-started/first-session), you don't snapshot anything —
+the view updates live and expires on its own.
+
+Live sessions are **off by default**. Nothing about your open tabs leaves your
+browser until you turn sharing on.
+
+## Turn it on
+
+1. Open the Bookmark AI extension popup on the browser you want to share.
+2. Flip **Share window as live session**.
+3. **Name the device** so it's easy to recognize later (for example
+   "Chrome on Mac" or "work laptop").
+
+That browser now publishes its open tabs to the live server.
+
+## See it appear live
+
+Open the app on another device — or just another window of the same browser —
+and go to **Live sessions** in the sidebar. Your device shows up with its open
+windows, each window listing its tabs, and a green **LIVE** pip while it's
+actively publishing. Open a new tab on the sharing browser and watch it appear
+in the list within moments.
+
+<Screenshot
+  alt="The Live sessions view: a device 'Chrome on Mac - tara' with a green LIVE dot, updated 'as of just now', and three windows each showing their open tabs with Save buttons."
+  dark="/img/screenshots/live-sessions-dark.jpg"
+  light="/img/screenshots/live-sessions-light.jpg"
+  caption="A live device with its open windows — updating as tabs change."
+/>
+
+## Good to know
+
+- **Off by default, opt-in per account.** Turning sharing on enables it; turning
+  it off purges every device's live tabs immediately.
+- **The green LIVE pip** marks a device that's actively publishing right now.
+- **Private/incognito windows are never sent**, and credential-looking URLs are
+  reduced to their origin before they leave your browser.
+- **It expires.** Live tab data ages out automatically after **7 days** of a
+  device going quiet — there's no long-term store of your open tabs.
+- **Nothing is saved until you save it.** To keep a live tab, save it as a
+  bookmark or snapshot the window as a saved session.
+
+Want the full picture, including renaming and forgetting devices? See the
+[Live sessions guide](/guides/live-sessions).
+
+## Next
+
+Take the in-app tour → [The onboarding tour](/getting-started/onboarding-tour).

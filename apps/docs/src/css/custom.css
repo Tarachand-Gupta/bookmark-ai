@@ -38,3 +38,79 @@
 .navbar__logo img {
   border-radius: 6px;
 }
+
+/* ---------------------------------------------------------------------------
+ * Landing / article typography — a touch larger and more confident on the
+ * top of each page, staying within the neutral shadcn scale.
+ * ------------------------------------------------------------------------- */
+.markdown > h1:first-child {
+  font-size: 2.6rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: 1.25rem;
+}
+
+/* The opening paragraph reads as a lead-in. */
+.markdown > h1:first-child + p {
+  font-size: 1.15rem;
+  line-height: 1.6;
+  color: var(--ifm-color-emphasis-700);
+}
+
+/* ---------------------------------------------------------------------------
+ * DocCard grid — used by the generated-index category pages. Each card gets a
+ * frontmatter emoji icon (via the swizzled DocCard), a clean two-line
+ * description, and a subtle lift on hover.
+ * ------------------------------------------------------------------------- */
+article a.theme-doc-card-container.card {
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+  transition:
+    transform var(--ifm-transition-fast) ease,
+    border-color var(--ifm-transition-fast) ease,
+    box-shadow var(--ifm-transition-fast) ease;
+}
+
+article a.theme-doc-card-container.card:hover {
+  transform: translateY(-2px);
+  border-color: var(--ifm-color-emphasis-400);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
+  text-decoration: none;
+}
+
+[data-theme='dark'] article a.theme-doc-card-container.card {
+  border-color: var(--ifm-color-emphasis-300);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
+}
+
+[data-theme='dark'] article a.theme-doc-card-container.card:hover {
+  border-color: var(--ifm-color-emphasis-500);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 45%);
+}
+
+.theme-doc-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 1.15rem;
+}
+
+.theme-doc-card-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* Let descriptions breathe over two lines instead of the ragged single-line
+ * ellipsis the default card uses. */
+.theme-doc-card-description {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.92rem;
+}

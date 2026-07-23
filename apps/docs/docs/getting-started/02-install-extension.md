@@ -1,6 +1,9 @@
 ---
 slug: /getting-started/install-extension
 title: Install the extension
+description: Add the browser extension and mirror your web session into the popup.
+sidebar_custom_props:
+  icon: 🧩
 ---
 
 # Install the extension

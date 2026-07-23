@@ -1,6 +1,9 @@
 ---
 slug: /self-hosting/live-server
 title: Live server
+description: Run the optional Fastify + Redis service that powers live tabs.
+sidebar_custom_props:
+  icon: 🖥
 ---
 
 # Live server

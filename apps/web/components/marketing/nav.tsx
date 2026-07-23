@@ -1,7 +1,7 @@
 import { Github } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
-import { BookmarkMark, mono, REPO, Wordmark } from "./primitives";
+import { BookmarkMark, DOCS_URL, mono, REPO, Wordmark } from "./primitives";
 
 export function Nav() {
   return (
@@ -23,6 +23,17 @@ export function Nav() {
             )}
           >
             Platforms
+          </a>
+          <a
+            href={DOCS_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            className={cn(
+              mono,
+              "hidden rounded-md px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground md:inline-flex",
+            )}
+          >
+            Docs
           </a>
           <a
             href={REPO}

@@ -2,6 +2,9 @@
 slug: /privacy
 sidebar_position: 6
 title: Privacy
+description: Plain-language notes on what Bookmark AI stores and how it protects you.
+sidebar_custom_props:
+  icon: 🔒
 ---
 
 # Privacy

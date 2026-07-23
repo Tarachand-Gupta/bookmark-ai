@@ -1,7 +1,12 @@
 ---
 slug: /guides/live-sessions
 title: Live sessions
+description: An opt-in, real-time mirror of your open tabs across your devices.
+sidebar_custom_props:
+  icon: 🟢
 ---
+
+import Screenshot from '@site/src/components/Screenshot';
 
 # Live sessions
 
@@ -10,6 +15,13 @@ updating in real time. Leave a page open on your laptop and jump to it from your
 phone — without saving anything.
 
 Live sessions are **off by default** and entirely opt-in.
+
+<Screenshot
+  alt="The Live sessions view: a device 'Chrome on Mac - tara' with a green LIVE dot and 'as of just now', three windows with tab counts and Save buttons, and a note that 3 tabs are not shown because they're private or local."
+  dark="/img/screenshots/live-sessions-dark.jpg"
+  light="/img/screenshots/live-sessions-light.jpg"
+  caption="A live device's open windows — private and local tabs are redacted, not sent."
+/>
 
 ## Turning it on
 
@@ -26,6 +38,16 @@ off purges every device's live tabs immediately.
 Each publishing browser shows up as a device you can **rename** (so "laptop" and
 "work desktop" are easy to tell apart) or **forget**. Forgetting a device
 removes its live tabs; it'll reappear if that browser is still sharing.
+
+From **Settings → Devices** you can turn sharing off entirely with the **Show my
+open tabs** toggle, forget individual devices, and point at a custom **Live
+server URL** if you're self-hosting.
+
+<Screenshot
+  alt="Settings → Devices: the 'Show my open tabs' toggle switched on, a list of devices each with a Forget button, and a 'Live server URL' field."
+  dark="/img/screenshots/settings-devices-dark.jpg"
+  caption="Settings → Devices: opt out, forget a device, or set a custom live server."
+/>
 
 ## Privacy guarantees
 

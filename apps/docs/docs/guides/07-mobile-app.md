@@ -1,6 +1,9 @@
 ---
 slug: /guides/mobile-app
 title: Mobile app
+description: The native iOS and Android app reading the same library.
+sidebar_custom_props:
+  icon: 📱
 ---
 
 # Mobile app

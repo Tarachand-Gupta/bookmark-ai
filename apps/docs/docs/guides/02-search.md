@@ -1,6 +1,9 @@
 ---
 slug: /guides/search
 title: Search
+description: Three search modes — text, semantic, and hybrid — over your library.
+sidebar_custom_props:
+  icon: 🔎
 ---
 
 # Search

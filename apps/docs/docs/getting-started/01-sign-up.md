@@ -1,6 +1,9 @@
 ---
 slug: /getting-started/sign-up
 title: Sign up
+description: Create your account and sign in everywhere with one login.
+sidebar_custom_props:
+  icon: 🔑
 ---
 
 # Sign up

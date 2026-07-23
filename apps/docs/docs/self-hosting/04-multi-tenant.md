@@ -1,6 +1,9 @@
 ---
 slug: /self-hosting/multi-tenant
 title: Multi-tenant
+description: Single-DB or per-user databases behind a control plane.
+sidebar_custom_props:
+  icon: 🏢
 ---
 
 # Multi-tenant

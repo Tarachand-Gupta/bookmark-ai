@@ -1,6 +1,9 @@
 ---
 slug: /getting-started/first-session
 title: Save a session
+description: Snapshot a whole window of tabs as one session you can restore later.
+sidebar_custom_props:
+  icon: 🗂
 ---
 
 # Save a session
@@ -30,4 +33,5 @@ your currently-open tabs that expires on its own. See
 
 ## Next
 
-Take the in-app tour → [The onboarding tour](/getting-started/onboarding-tour).
+Mirror your open tabs across devices →
+[Share your first live session](/getting-started/first-live-session).
