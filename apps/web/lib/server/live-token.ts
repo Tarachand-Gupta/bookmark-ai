@@ -9,8 +9,13 @@ import { getUserSettings, type Db } from "@bookmark-ai/db";
  * their live tabs on their behalf).
  */
 
-/** Short-lived by design; never cached server-side. */
-export const LIVE_TOKEN_EXPIRES_IN_SECONDS = 60;
+/** Short-lived by design; never cached server-side. 10 minutes (not Clerk's
+ * default 60s): the Safari extension can only mint through a bridge tab on the
+ * app origin, and its worker restarts every ~2 minutes — a 60s token forced a
+ * bridge round-trip per heartbeat and went dark the moment no app tab was open.
+ * With 10 minutes, pushes survive short app-tab-less windows on a persisted
+ * cache. Still far too short to be worth stealing at rest. */
+export const LIVE_TOKEN_EXPIRES_IN_SECONDS = 600;
 
 /**
  * Mint a fresh STANDARD Clerk session JWT for a given session — the exact token

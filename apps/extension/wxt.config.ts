@@ -101,6 +101,10 @@ export default defineConfig({
     // `alarms` drives the live-tabs heartbeat/backstop (§4.5) — a non-warning
     // permission, which is exactly why live-tabs must be opt-in (§5.1).
     // `tabGroups` (Chrome-only) lets session restore title/color the group.
+    // `scripting` (Safari-only) lets the background re-inject the session
+    // bridge into app tabs that predate the current install — a manifest
+    // content script only reaches tabs opened AFTER install, and Safari's
+    // whole auth path dies with an orphaned bridge.
     permissions: [
       "activeTab",
       "tabs",
@@ -108,6 +112,7 @@ export default defineConfig({
       "alarms",
       "cookies",
       ...(browser === "chrome" ? ["tabGroups"] : []),
+      ...(browser === "safari" ? ["scripting"] : []),
     ],
     host_permissions: HOST_PERMISSIONS,
     ...(browser === "chrome" && {

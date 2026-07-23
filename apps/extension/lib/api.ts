@@ -197,6 +197,15 @@ export async function fetchMe(): Promise<MeResponse | null> {
 const LIVE_TOKEN_SKEW_MS = 10_000;
 let liveTokenCache: CachedToken | null = null;
 
+/** Storage mirror of the live-token cache: Safari restarts the background
+ * worker every couple of minutes, and minting needs a live bridge tab — so a
+ * memory-only cache would re-pay a bridge round-trip (and fail entirely with no
+ * app tab open) on every heartbeat. The token is short-lived (server-set TTL)
+ * and scoped to the live server; value is never logged. */
+const liveTokenItem = storage.defineItem<CachedToken | null>("local:liveToken", {
+  fallback: null,
+});
+
 async function mintLiveToken(): Promise<CachedToken | null> {
   const base = await getApiBaseUrl();
   try {
@@ -218,10 +227,19 @@ async function mintLiveToken(): Promise<CachedToken | null> {
 /** A live-server session JWT, reusing the in-memory cache unless it's within the
  * skew window (or `forceRefresh` after a 401). Null when none can be minted. */
 export async function getLiveToken(forceRefresh = false): Promise<string | null> {
-  if (!forceRefresh && tokenFresh(liveTokenCache, Date.now(), LIVE_TOKEN_SKEW_MS)) {
-    return liveTokenCache!.token;
+  if (!forceRefresh) {
+    if (tokenFresh(liveTokenCache, Date.now(), LIVE_TOKEN_SKEW_MS)) {
+      return liveTokenCache!.token;
+    }
+    // Fresh worker: fall back to the persisted cache before re-minting.
+    const stored = await liveTokenItem.getValue().catch(() => null);
+    if (tokenFresh(stored, Date.now(), LIVE_TOKEN_SKEW_MS)) {
+      liveTokenCache = stored;
+      return stored!.token;
+    }
   }
   liveTokenCache = await mintLiveToken();
+  await liveTokenItem.setValue(liveTokenCache).catch(() => {});
   return liveTokenCache?.token ?? null;
 }
 

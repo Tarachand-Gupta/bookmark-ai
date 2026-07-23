@@ -139,22 +139,54 @@ async function bridgeTabIds(): Promise<number[]> {
   }
 }
 
+/** Re-inject the bridge content script into a tab whose bridge didn't answer.
+ * Manifest content scripts only reach tabs opened AFTER install, so an app tab
+ * from before the current install (or a reinstall/update — Safari orphans the
+ * old script) has no live bridge. The script's own double-injection guard makes
+ * this safe to call on a tab that does have one. */
+async function injectBridge(tabId: number): Promise<boolean> {
+  try {
+    const scripting = (browser as unknown as {
+      scripting?: {
+        executeScript: (opts: { target: { tabId: number }; files: string[] }) => Promise<unknown>;
+      };
+    }).scripting;
+    if (!scripting) return false;
+    await scripting.executeScript({ target: { tabId }, files: ["content-scripts/bridge.js"] });
+    diag("bridge", "re-injected", { tabId });
+    return true;
+  } catch (e) {
+    diag("bridge", "inject failed", { error: errMsg(e) });
+    return false;
+  }
+}
+
+/** sendMessage to a tab's bridge, re-injecting once when it doesn't answer. */
+async function bridgeSend<T>(tabId: number, message: unknown): Promise<T | undefined> {
+  try {
+    const res = (await browser.tabs.sendMessage(tabId, message)) as T | undefined;
+    if (res !== undefined) return res;
+  } catch {
+    // fall through to injection
+  }
+  if (!(await injectBridge(tabId))) return undefined;
+  try {
+    return (await browser.tabs.sendMessage(tabId, message)) as T | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Path D identity: ask an open app tab's bridge who is signed in. Returns null
  * when no tab has a live bridge (predates install / none open). */
 async function bridgeGetUser(): Promise<UserInfo | null> {
   const ids = await bridgeTabIds();
   diag("bridge", "tabs found", { count: ids.length });
   for (const tabId of ids) {
-    try {
-      const res = (await browser.tabs.sendMessage(tabId, requestBridgeMe())) as
-        | BridgeMeResult
-        | undefined;
-      if (res?.ok) {
-        diag("bridge", "BRIDGE_ME result", { got: true, signedIn: res.signedIn });
-        return res.signedIn ? { signedIn: true, name: res.name, email: res.email } : SIGNED_OUT;
-      }
-    } catch {
-      // Tab predates the install (no content script) — try the next.
+    const res = await bridgeSend<BridgeMeResult>(tabId, requestBridgeMe());
+    if (res?.ok) {
+      diag("bridge", "BRIDGE_ME result", { got: true, signedIn: res.signedIn });
+      return res.signedIn ? { signedIn: true, name: res.name, email: res.email } : SIGNED_OUT;
     }
   }
   diag("bridge", "BRIDGE_ME result", { got: false, signedIn: null });
@@ -169,19 +201,13 @@ async function bridgeFetch(
   bodyJson?: string,
 ): Promise<Response | null> {
   const ids = await bridgeTabIds();
+  diag("bridge", "fetch tabs found", { count: ids.length, path });
   for (const tabId of ids) {
-    try {
-      const res = (await browser.tabs.sendMessage(
-        tabId,
-        requestBridgeFetch(path, method, bodyJson),
-      )) as BridgeFetchResult | undefined;
-      if (res && typeof res.status === "number" && res.status > 0) {
-        diag("bridge", "BRIDGE_FETCH", { path, status: res.status });
-        const body = NULL_BODY_STATUS.has(res.status) ? null : (res.bodyJson ?? null);
-        return new Response(body, { status: res.status });
-      }
-    } catch {
-      // Try the next tab.
+    const res = await bridgeSend<BridgeFetchResult>(tabId, requestBridgeFetch(path, method, bodyJson));
+    if (res && typeof res.status === "number" && res.status > 0) {
+      diag("bridge", "BRIDGE_FETCH", { path, status: res.status });
+      const body = NULL_BODY_STATUS.has(res.status) ? null : (res.bodyJson ?? null);
+      return new Response(body, { status: res.status });
     }
   }
   return null;

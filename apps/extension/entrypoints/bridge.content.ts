@@ -63,6 +63,16 @@ export default defineContentScript({
   matches: ["https://bookmark-ai.cloud/*", "https://www.bookmark-ai.cloud/*"],
   include: ["safari"],
   main() {
+    // Double-injection guard: the background re-injects this file into tabs
+    // whose bridge doesn't answer (scripting.executeScript). Within one install
+    // the isolated world is shared, so a second injection must not add a second
+    // listener (a duplicated BRIDGE_FETCH would execute writes twice). After a
+    // REINSTALL the new install gets a fresh isolated world, so the orphan's
+    // flag is invisible and injection proceeds — exactly what we want.
+    const w = window as unknown as { __bookmarkAiBridge?: boolean };
+    if (w.__bookmarkAiBridge) return;
+    w.__bookmarkAiBridge = true;
+
     browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Only our own extension's BACKGROUND may drive the bridge. A web page
       // cannot reach runtime.onMessage at all; still, be explicit: a message
