@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -158,19 +158,31 @@ export function OnboardingDialog({ open, onOpenChange }: OnboardingDialogProps) 
   const isFirst = index === 0;
   const isLast = index === FEATURES.length - 1;
 
+  const railRef = useRef<HTMLUListElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Keep the active tab in view on narrow screens (the strip scrolls
+  // horizontally) and reset the content scroll to the top when stepping.
+  useEffect(() => {
+    railRef.current
+      ?.querySelector<HTMLElement>('[aria-current="step"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    contentRef.current?.scrollTo({ top: 0 });
+  }, [index]);
+
   const close = () => onOpenChange(false);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-3xl">
+      <DialogContent className="w-[calc(100vw-2rem)] gap-0 overflow-hidden p-0 sm:w-full sm:max-w-3xl">
         <DialogDescription className="sr-only">
           A quick tour of what Bookmark AI can do.
         </DialogDescription>
-        <div className="flex max-h-[85vh] flex-col sm:flex-row">
+        <div className="flex max-h-[85dvh] min-w-0 flex-col sm:flex-row">
           {/* Rail: vertical tab list (desktop) / horizontal strip (mobile). */}
           <nav
             aria-label="Product tour"
-            className="shrink-0 border-b bg-muted/30 p-3 sm:w-56 sm:border-r sm:border-b-0"
+            className="min-w-0 shrink-0 border-b bg-muted/30 p-3 sm:w-56 sm:border-r sm:border-b-0"
           >
             <DialogHeader className="px-2 pb-3 text-left">
               <span className="text-[0.7rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
@@ -181,7 +193,11 @@ export function OnboardingDialog({ open, onOpenChange }: OnboardingDialogProps) 
                 <span className="whitespace-nowrap">Bookmark AI</span>
               </DialogTitle>
             </DialogHeader>
-            <ul className="flex gap-1 overflow-x-auto sm:flex-col sm:overflow-visible">
+            <ul
+              ref={railRef}
+              style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
+              className="flex touch-pan-x scroll-smooth gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden sm:flex-col sm:overflow-visible"
+            >
               {FEATURES.map((f, i) => {
                 const Icon = f.icon;
                 const isActive = i === index;
@@ -208,8 +224,8 @@ export function OnboardingDialog({ open, onOpenChange }: OnboardingDialogProps) 
           </nav>
 
           {/* Pane: heading + description + content for the selected step. */}
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto break-words p-6">
               <h3 className="text-lg font-semibold tracking-tight">{active.title}</h3>
               <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-muted-foreground">
                 {active.description}

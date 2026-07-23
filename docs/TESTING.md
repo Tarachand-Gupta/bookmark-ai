@@ -119,12 +119,15 @@ All three must succeed. Live test (needs a real browser via computer use / chrom
   1. `cd apps/extension && xcrun safari-web-extension-converter .output/safari-mv2 --app-name "Bookmark AI" --bundle-identifier ai.bookmark.safari --project-location safari-xcode --macos-only --no-open --no-prompt --force`
      Note: running the converter WITHOUT `--project-location` dumps a duplicate project with
      placeholder `com.yourCompany.*` bundle ids into `apps/extension/Bookmark AI/` — delete it and
-     use the command above. JS/manifest-only changes need NO reconversion: the Xcode folder
-     references pick up a fresh `pnpm build:safari`, so just rebuild in Xcode.
+     use the command above. JS/manifest-only changes need NO reconversion — the Xcode project
+     references `.output/safari-mv2` directly — BUT an incremental `xcodebuild build` will
+     silently keep the previously-copied resources (verified: it reported BUILD SUCCEEDED while
+     embedding a week-old bundle). After any `pnpm build:safari`, rebuild with `clean build`
+     (step 3) so the fresh resources are re-copied into the appex.
   2. The converter mis-namespaces the APP target's bundle id (`ai.bookmark.Bookmark-AI` vs the
      appex's `ai.bookmark.safari.Extension`) and the build fails at ValidateEmbeddedBinary —
      fix: `sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = "ai.bookmark.Bookmark-AI";/PRODUCT_BUNDLE_IDENTIFIER = ai.bookmark.safari;/g' "safari-xcode/Bookmark AI/Bookmark AI.xcodeproj/project.pbxproj"`
-  3. `cd "safari-xcode/Bookmark AI" && xcodebuild -project "Bookmark AI.xcodeproj" -scheme "Bookmark AI" -configuration Debug build` (default sign-to-run-locally; do NOT pass CODE_SIGNING_REQUIRED=NO)
+  3. `cd "safari-xcode/Bookmark AI" && xcodebuild -project "Bookmark AI.xcodeproj" -scheme "Bookmark AI" -configuration Debug clean build` (`clean` matters — see step 1 note; default sign-to-run-locally; do NOT pass CODE_SIGNING_REQUIRED=NO)
   4. `open ~/Library/Developer/Xcode/DerivedData/Bookmark_AI-*/Build/Products/Debug/"Bookmark AI.app"` — running it once registers the extension.
   5. In Safari: Settings → Advanced → "Show features for web developers", then Develop →
      "Allow Unsigned Extensions" (re-arm after each Safari restart), then Settings →
