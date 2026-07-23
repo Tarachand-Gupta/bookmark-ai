@@ -13,6 +13,12 @@ type Props = {
   light?: string;
   /** Optional visible caption under the frame. */
   caption?: ReactNode;
+  /**
+   * Max render width in px. Narrow captures (e.g. the ~360px extension popup)
+   * MUST set this or they upscale to the content width and blur. Omit for
+   * full-bleed app screenshots (they downscale, which stays sharp).
+   */
+  maxWidth?: number;
 };
 
 /**
@@ -26,12 +32,13 @@ export default function Screenshot({
   dark,
   light,
   caption,
+  maxWidth,
 }: Props): ReactNode {
   const darkUrl = useBaseUrl(dark);
   const lightUrl = useBaseUrl(light ?? dark);
 
   return (
-    <figure className={styles.figure}>
+    <figure className={styles.figure} style={maxWidth ? {maxWidth} : undefined}>
       <div className={styles.frame}>
         {light ? (
           <ThemedImage

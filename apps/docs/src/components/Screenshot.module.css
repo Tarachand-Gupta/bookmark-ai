@@ -2,6 +2,11 @@
   margin: 1.75rem 0;
 }
 
+/* A capped figure (e.g. the extension popup) centers instead of stretching. */
+.figure[style] {
+  margin-inline: auto;
+}
+
 .frame {
   border: 1px solid var(--ifm-color-emphasis-200);
   border-radius: 12px;
