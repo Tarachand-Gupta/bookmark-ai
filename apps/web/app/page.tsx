@@ -3,7 +3,6 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { marketingFontVars } from "@/components/marketing/fonts";
 import { Backdrop } from "@/components/marketing/backdrop";
-import { CubesField } from "@/components/marketing/cubes-field";
 import { Nav } from "@/components/marketing/nav";
 import { Hero } from "@/components/marketing/hero";
 import { Features } from "@/components/marketing/features";
@@ -68,7 +67,6 @@ export default async function MarketingPage({
         }}
       />
       <Backdrop />
-      <CubesField />
       <div className="relative z-10">
         <Nav />
         <main>

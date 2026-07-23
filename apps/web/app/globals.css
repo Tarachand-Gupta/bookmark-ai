@@ -28,11 +28,23 @@
  * viewer gets a completely still field. Nothing here affects the /app UI.
  * ---------------------------------------------------------------------- */
 @media (prefers-reduced-motion: no-preference) {
+  .marketing-grid {
+    animation: marketing-grid-pan 90s linear infinite;
+  }
   .marketing-aurora {
     animation: marketing-drift 34s ease-in-out infinite alternate;
   }
   .marketing-aurora-alt {
     animation: marketing-drift-alt 42s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes marketing-grid-pan {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 58px 116px;
   }
 }
 
@@ -52,62 +64,4 @@
   to {
     transform: translate3d(5rem, -2.5rem, 0) scale(1.2);
   }
-}
-
-/* -------------------------------------------------------------------------
- * Marketing landing — the interactive cube lattice IS the homepage background
- * texture (it replaced the old graph-paper grid). Each 3D box sits inside a
- * 58px cell with a small gutter, so the lattice reads as a field of distinct
- * dashed squares (à la the React Bits reference). At idle every cube is flat-on
- * — only its front face shows, a subtle `1px dashed currentColor` outline with
- * a transparent fill, monochrome so it inverts black-on-light / white-on-dark.
- * On hover the cubes near the pointer tilt (GSAP) and their side faces — edge-on
- * and invisible while flat — swing into view, so the squares come alive in 3D.
- * ---------------------------------------------------------------------- */
-.marketing-cubes-scene {
-  display: grid;
-  /* Near-orthographic: a hint of depth without perspective distortion warping
-     the far edges of a wide lattice (the React Bits source used ~ortho too). */
-  perspective: 4200px;
-}
-.marketing-cube {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  transform-style: preserve-3d;
-}
-.marketing-cube-face {
-  position: absolute;
-  inset: 0;
-  background: transparent;
-  /* Side faces: a hair fainter than the front — they only surface once a cube
-     has tilted, and this keeps the emerging 3D box from reading louder than the
-     flat idle lattice. */
-  border: 1px dashed color-mix(in oklab, currentColor 7%, transparent);
-}
-.marketing-cube-face--front {
-  /* Idle appearance: the dashed square you see everywhere at rest. */
-  border-color: color-mix(in oklab, currentColor 9%, transparent);
-  transform: rotateY(-90deg) translateX(50%) rotateY(90deg);
-}
-.marketing-cube-face--top {
-  transform: translateY(-50%) rotateX(90deg);
-}
-.marketing-cube-face--bottom {
-  transform: translateY(50%) rotateX(-90deg);
-}
-.marketing-cube-face--left {
-  transform: translateX(-50%) rotateY(-90deg);
-}
-.marketing-cube-face--right {
-  transform: translateX(50%) rotateY(90deg);
-}
-
-/* Dark theme: white dashes read fainter than black on light at equal alpha, so
-   nudge them up to keep the idle lattice evenly subtle across themes. */
-.dark .marketing-cube-face {
-  border-color: color-mix(in oklab, currentColor 9%, transparent);
-}
-.dark .marketing-cube-face--front {
-  border-color: color-mix(in oklab, currentColor 11%, transparent);
 }
