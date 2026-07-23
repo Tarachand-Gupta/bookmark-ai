@@ -33,7 +33,15 @@ export async function createSession(db: Db, s: InsertSession): Promise<Session> 
 }
 
 export async function listSessions(db: Db): Promise<Session[]> {
-  const rs = await db.execute("SELECT * FROM sessions ORDER BY saved_at DESC LIMIT 200");
+  // Newest first by created_at — the server-stamped insert time — NOT saved_at.
+  // saved_at is client/capture-supplied (the extension uses the device clock, and
+  // a session saved from a live capture can inherit an older/ahead capture time),
+  // so ordering by it can bury a just-saved session behind older rows. created_at
+  // is always `now` at insert, so a fresh save always sorts first. saved_at breaks
+  // ties for any legacy rows that share a created_at.
+  const rs = await db.execute(
+    "SELECT * FROM sessions ORDER BY created_at DESC, saved_at DESC LIMIT 200",
+  );
   return rs.rows.map((r) => rowToSession(r as unknown as Record<string, unknown>));
 }
 
@@ -65,7 +73,7 @@ export async function searchSessions(
     sql: `SELECT *, (name LIKE ? ESCAPE '\\') AS name_hit
           FROM sessions
           WHERE name LIKE ? ESCAPE '\\' OR tabs_json LIKE ? ESCAPE '\\'
-          ORDER BY name_hit DESC, saved_at DESC
+          ORDER BY name_hit DESC, created_at DESC, saved_at DESC
           LIMIT ?`,
     args: [pattern, pattern, pattern, limit],
   });
