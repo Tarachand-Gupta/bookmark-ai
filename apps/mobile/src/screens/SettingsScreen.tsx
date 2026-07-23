@@ -137,7 +137,8 @@ export function SettingsScreen() {
       </Group>
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
         Production requires this signed-in account — the deployed API verifies every request.
-        Local talks to the open dev server on this machine.
+        Local talks to the open dev server on this machine. Each server has its own sign-in, so
+        switching signs you out here and you'll sign in again for the other one.
       </Text>
 
       <GroupLabel>Account</GroupLabel>

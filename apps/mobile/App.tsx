@@ -9,8 +9,8 @@ import {
 } from "react-native-safe-area-context";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { setAuthTokenProvider } from "./src/api";
-import { PreferencesProvider, useAppTheme } from "./src/context/PreferencesContext";
-import { CLERK_PUBLISHABLE_KEY, tokenCache } from "./src/lib/clerk";
+import { PreferencesProvider, useAppTheme, usePreferences } from "./src/context/PreferencesContext";
+import { clerkPublishableKey, tokenCache } from "./src/lib/clerk";
 import { TabBar, type TabKey } from "./src/navigation/TabBar";
 import { LibraryScreen } from "./src/screens/LibraryScreen";
 import { SearchScreen } from "./src/screens/SearchScreen";
@@ -23,15 +23,49 @@ import { SignInScreen } from "./src/screens/SignInScreen";
 LogBox.ignoreLogs([/Clerk has been loaded with development keys/]);
 
 export default function App() {
+  // Preferences (which own the persisted server target) sit OUTSIDE Clerk so the
+  // provider's publishable key can be derived from that target — see ClerkGate.
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
-      <PreferencesProvider>
-        {/* initialMetrics avoids the Android first-frame zero-inset flash
-            (Settings title rendered under the status bar on first mount). */}
-        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-          <Gate />
-        </SafeAreaProvider>
-      </PreferencesProvider>
+    <PreferencesProvider>
+      <ClerkGate />
+    </PreferencesProvider>
+  );
+}
+
+/**
+ * Mounts ClerkProvider with the key for the current server target. Clerk reads
+ * its key once at mount, so:
+ *  - We wait for `hydrated` (the persisted target read from storage) before the
+ *    FIRST mount, so we never briefly load the wrong instance.
+ *  - `key={serverTarget}` forces a full remount when the target changes, which
+ *    tears down the old instance's session — switching servers signs you out of
+ *    the old Clerk instance (expected; the other API wouldn't accept its token).
+ */
+function ClerkGate() {
+  const { colors } = useAppTheme();
+  const { serverTarget, hydrated } = usePreferences();
+
+  if (!hydrated) {
+    return (
+      <View style={[styles.root, { backgroundColor: colors.background }]}>
+        <View style={styles.splash}>
+          <ActivityIndicator color={colors.mutedForeground} />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <ClerkProvider
+      key={serverTarget}
+      publishableKey={clerkPublishableKey(serverTarget)}
+      tokenCache={tokenCache}
+    >
+      {/* initialMetrics avoids the Android first-frame zero-inset flash
+          (Settings title rendered under the status bar on first mount). */}
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <Gate />
+      </SafeAreaProvider>
     </ClerkProvider>
   );
 }

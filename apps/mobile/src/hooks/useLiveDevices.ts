@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AppState } from "react-native";
 import EventSource from "react-native-sse";
 import type { LiveDevice, ListLiveResponse } from "@bookmark-ai/types";
-import { authHeaders, getLiveUrl, listLiveDevices, ProvisioningError } from "../api";
+import { authHeaders, getLiveBaseUrl, listLiveDevices, ProvisioningError } from "../api";
 import { usePreferences } from "../context/PreferencesContext";
 
 export type SessionsSegment = "saved" | "ongoing";
@@ -114,10 +114,10 @@ export function useLiveDevices({
       }
       if (cancelled) return;
 
-      const headers = await authHeaders();
-      if (cancelled) return; // effect torn down while the headers were resolving
+      const [headers, liveBase] = await Promise.all([authHeaders(), getLiveBaseUrl()]);
+      if (cancelled) return; // effect torn down while headers/base were resolving
 
-      const stream = new EventSource<LiveStreamEvent>(`${getLiveUrl()}/live/stream`, {
+      const stream = new EventSource<LiveStreamEvent>(`${liveBase}/live/stream`, {
         headers,
       });
       es = stream;

@@ -14,6 +14,10 @@ interface Preferences {
   setViewMode: (m: ViewMode) => void;
   serverTarget: ServerTarget;
   setServerTarget: (t: ServerTarget) => void;
+  /** True once the persisted preferences have been read from storage. Gates
+   * ClerkProvider so it mounts exactly once with the correct (target-derived)
+   * publishable key instead of flashing the default first. */
+  hydrated: boolean;
   theme: Theme;
 }
 
@@ -27,9 +31,14 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   const system = useColorScheme();
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>("system");
   const [viewMode, setViewModeState] = useState<ViewMode>("list");
-  const [serverTarget, setServerTargetState] = useState<ServerTarget>("local");
+  // Shipping default is production — a fresh install talks to the deployed API
+  // (and, via the target-derived key, the prod Clerk instance). Overridden by a
+  // persisted choice below.
+  const [serverTarget, setServerTargetState] = useState<ServerTarget>("production");
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    syncServerTarget(serverTarget); // keep the hook-free data layer on the same default
     void AsyncStorage.multiGet([THEME_KEY, VIEW_KEY, SERVER_KEY]).then(
       ([[, theme], [, view], [, server]]) => {
         if (theme === "light" || theme === "dark" || theme === "system") {
@@ -40,6 +49,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
           setServerTargetState(server);
           syncServerTarget(server);
         }
+        setHydrated(true);
       },
     );
   }, []);
@@ -67,9 +77,10 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       setViewMode,
       serverTarget,
       setServerTarget,
+      hydrated,
       theme: { colors: dark ? darkColors : lightColors, radius, dark },
     };
-  }, [themePreference, viewMode, serverTarget, system]);
+  }, [themePreference, viewMode, serverTarget, hydrated, system]);
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
 }

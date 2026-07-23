@@ -10,6 +10,7 @@ import type {
   SearchMode,
   SearchResponse,
   Session,
+  UserSettingsResponse,
 } from "@bookmark-ai/types";
 
 /**
@@ -51,6 +52,46 @@ export function getApiUrl(): string {
 export function getLiveUrl(): string {
   if (process.env.EXPO_PUBLIC_LIVE_API_URL) return process.env.EXPO_PUBLIC_LIVE_API_URL;
   return serverTarget === "production" ? PROD_LIVE_URL : LOCAL_LIVE_URL;
+}
+
+/**
+ * The web/extension let a user pin a personal live-server URL in their account
+ * settings (GET /api/settings → `{settings.liveServerUrl}`); mobile honors the
+ * same override so all clients follow one source of truth. Resolution:
+ *   1. `settings.liveServerUrl` when truthy, else
+ *   2. `getLiveUrl()` — the target-based (or EXPO_PUBLIC_LIVE_API_URL) default.
+ * Any failure (offline, 401, provisioning) falls back to `getLiveUrl()` exactly
+ * as before, so live never breaks on a settings hiccup.
+ *
+ * Cached for ~5 min per app session and keyed by server target (the setting is
+ * fetched from whichever API the target points at) — so a target switch, or a
+ * settings change after the TTL, is picked up without a restart.
+ */
+const LIVE_BASE_TTL_MS = 5 * 60 * 1000;
+let liveBaseCache: { url: string; target: ServerTarget; expires: number } | null = null;
+
+export async function getLiveBaseUrl(): Promise<string> {
+  const now = Date.now();
+  if (liveBaseCache && liveBaseCache.target === serverTarget && liveBaseCache.expires > now) {
+    return liveBaseCache.url;
+  }
+  const fallback = getLiveUrl();
+  try {
+    const { settings } = await request<UserSettingsResponse>("/api/settings");
+    const url = settings.liveServerUrl || fallback;
+    // Cache only successful resolutions, so a transient failure retries on the
+    // next live connect instead of pinning the fallback for the whole TTL.
+    liveBaseCache = { url, target: serverTarget, expires: now + LIVE_BASE_TTL_MS };
+    return url;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Drop the cached live base so the next `getLiveBaseUrl()` re-reads settings —
+ * for a future in-app "live server URL" editor (parity with the web's reset). */
+export function resetLiveBaseCache(): void {
+  liveBaseCache = null;
 }
 
 /** Clerk session token (registered from the ClerkProvider tree). Mobile
@@ -166,7 +207,7 @@ export class ProvisioningError extends Error {
  * currently mirroring. Used for the instant first paint before the SSE
  * stream (see useLiveDevices) takes over, and as its reconnect fallback. */
 export async function listLiveDevices(signal?: AbortSignal): Promise<ListLiveResponse> {
-  const res = await fetch(`${getLiveUrl()}/live`, {
+  const res = await fetch(`${await getLiveBaseUrl()}/live`, {
     signal,
     headers: { "content-type": "application/json", ...(await authHeaders()) },
   });
