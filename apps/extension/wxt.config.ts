@@ -160,8 +160,33 @@ export default defineConfig({
       if (wxt.config.manifestVersion !== 2) return;
       const manifestPath = resolve(wxt.config.outDir, "manifest.json");
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-      if (manifest.host_permissions) return;
-      manifest.host_permissions = [...HOST_PERMISSIONS];
+      let changed = false;
+      if (!manifest.host_permissions) {
+        manifest.host_permissions = [...HOST_PERMISSIONS];
+        changed = true;
+      }
+      // Safari does NOT reliably run a PERSISTENT MV2 background page. WXT emits
+      // no `persistent` key (MV2 default = true), and under that default Safari
+      // never even evaluates background.js: the popup's GET_USER sendMessage
+      // finds no receiver, so the auth gate can never promote. Diagnosed with
+      // JavaScriptCore's CLI — the built bundle evaluates CLEAN under a faithful
+      // Safari-background env shim (registers onMessage + all listeners, no
+      // throw), which rules out a code crash and points squarely at startup.
+      // Declaring the background a NON-PERSISTENT event page is Apple's
+      // documented model for Safari: it then wakes the page on the incoming
+      // message, re-runs the script (WXT registers the listeners synchronously
+      // before the first await, so they're in place on each wake), and delivers.
+      // Scoped to Safari only — Firefox's persistent page works and there's no
+      // reason to change its lifecycle.
+      if (
+        wxt.config.browser === "safari" &&
+        manifest.background &&
+        manifest.background.persistent !== false
+      ) {
+        manifest.background.persistent = false;
+        changed = true;
+      }
+      if (!changed) return;
       // Match WXT's own writer: minified in production, pretty otherwise.
       const json =
         wxt.config.mode === "production"

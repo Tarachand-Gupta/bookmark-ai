@@ -39,6 +39,35 @@ const DEGRADED_NOTE =
 
 const SIGNED_OUT: UserInfo = { signedIn: false, name: null, email: null };
 
+/** Popup-side probe of the background page's liveness — the decisive signal for
+ * "does Safari actually run the MV2 background script?". `getBackgroundPage` is
+ * MV2-only (absent on MV3/Chrome) and may be disallowed on Safari, so it's fully
+ * guarded. `hasBackgroundVar` checks the bundle's top-level `var background`,
+ * i.e. whether background.js evaluated at all. Lands in the dev log on any popup
+ * open — no browser console needed. */
+async function probeBackground(): Promise<void> {
+  try {
+    const getBg = (
+      browser.runtime as unknown as {
+        getBackgroundPage?: () => Promise<(Window & { background?: unknown }) | null>;
+      }
+    ).getBackgroundPage;
+    if (typeof getBg !== "function") {
+      diag("popup", "bg probe", { getBackgroundPage: false });
+      return;
+    }
+    const w = await getBg();
+    diag("popup", "bg probe", {
+      gotWindow: !!w,
+      hasBackgroundVar: w ? "background" in w : null,
+      readyState: w?.document?.readyState ?? null,
+      scriptCount: w?.document?.scripts?.length ?? null,
+    });
+  } catch (e) {
+    diag("popup", "bg probe", { err: e instanceof Error ? e.message : String(e) });
+  }
+}
+
 /** Both session buttons are the same control with different verbs — only the
  * label distinguishes them, so they must look identical. */
 const SESSION_BUTTON_CLASS =
@@ -71,6 +100,7 @@ export default function App() {
   // visibility — e.g. returning from the sign-in tab.
   useEffect(() => {
     diag("popup", "mount");
+    void probeBackground();
     let alive = true;
     let responded = false;
     const check = () => {
