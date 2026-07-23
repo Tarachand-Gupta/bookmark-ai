@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Bookmark, Radio, Layers, Search, Sparkles } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { FEATURE_ICONS } from "./feature-icons";
 import { AiSetupCard } from "./ai-setup-card";
 import { ExtensionStoreButton } from "./extension-cta";
 import { ThemeShot } from "./onboarding-screenshot";
@@ -32,7 +32,7 @@ const FEATURES: Feature[] = [
   {
     id: "ai",
     navLabel: "AI setup",
-    icon: Sparkles,
+    icon: FEATURE_ICONS.ai,
     title: "Set up your AI",
     description:
       "Connect an AI provider to power chat and answers over your library. OpenRouter is the quickest start — it has free models.",
@@ -48,7 +48,7 @@ const FEATURES: Feature[] = [
   {
     id: "bookmarks",
     navLabel: "Bookmarks",
-    icon: Bookmark,
+    icon: FEATURE_ICONS.bookmarks,
     title: "Save from any browser",
     description:
       "Install the extension, then one click saves the page — read, categorized and tagged for you, with no folders to maintain.",
@@ -74,7 +74,7 @@ const FEATURES: Feature[] = [
   {
     id: "sessions",
     navLabel: "Saved sessions",
-    icon: Layers,
+    icon: FEATURE_ICONS.sessions,
     title: "Snapshot a whole window",
     description:
       "A saved session is every tab in a window captured as one snapshot — close them now, bring them all back later.",
@@ -100,7 +100,7 @@ const FEATURES: Feature[] = [
   {
     id: "live",
     navLabel: "Live tabs",
-    icon: Radio,
+    icon: FEATURE_ICONS.live,
     title: "See open tabs across devices",
     description:
       "Mirror a window's open tabs here in real time, so you can jump to a tab that's open on another device.",
@@ -132,7 +132,7 @@ const FEATURES: Feature[] = [
   {
     id: "search",
     navLabel: "Search by meaning",
-    icon: Search,
+    icon: FEATURE_ICONS.search,
     title: "Find it by what it means",
     description:
       "Search blends keywords with meaning, so the right page surfaces even when you don't remember its exact words. Ask AI to get an answer with citations.",

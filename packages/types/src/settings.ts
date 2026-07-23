@@ -21,6 +21,9 @@ export const userSettingsSchema = z.object({
   /** Per-user override for the dedicated live server's base URL. Null = use the
    * app's `NEXT_PUBLIC_LIVE_API_URL` default (or, if that's empty too, live off). */
   liveServerUrl: z.string().nullable(),
+  /** ISO timestamp of when the account finished/dismissed the first-run tour, or
+   * null if it hasn't yet — the per-account gate for showing the onboarding tour. */
+  onboardedAt: z.string().nullable(),
 });
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 
@@ -31,10 +34,14 @@ export type UserSettingsResponse = z.infer<typeof userSettingsResponseSchema>;
  * PUT /api/settings body. `apiKey` semantics: absent/undefined = KEEP the
  * existing key, "" (empty string) = CLEAR it, any other string = set it.
  * `baseUrl` must be a http(s) URL and is required only when provider = custom.
+ *
+ * `provider` is optional so a caller can PATCH a single unrelated field (e.g.
+ * `{ onboarded: true }`) WITHOUT resubmitting — and thereby overwriting — the AI
+ * config. The Settings form always sends it; the mark-onboarded path never does.
  */
 export const updateUserSettingsSchema = z
   .object({
-    provider: aiProviderSchema,
+    provider: aiProviderSchema.optional(),
     apiKey: z.string().optional(),
     baseUrl: z.string().url().optional(),
     model: z.string().optional(),
@@ -45,6 +52,10 @@ export const updateUserSettingsSchema = z
       .union([z.literal(""), z.string().max(200).url().regex(/^https?:\/\//i)])
       .nullable()
       .optional(),
+    // Mark the first-run tour as seen. Client sends `onboarded: true` on
+    // dismiss/Get started; the server stamps `onboarded_at` to now. Absent =
+    // leave the marker untouched (there's no need to ever un-set it).
+    onboarded: z.boolean().optional(),
   })
   .refine((v) => v.provider !== "custom" || (!!v.baseUrl && /^https?:\/\//i.test(v.baseUrl)), {
     message: "A http(s) Base URL is required for a custom provider",

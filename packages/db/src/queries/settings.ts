@@ -13,6 +13,8 @@ export interface UserSettingsRow {
   aiModel: string | null;
   /** Per-user override for the live server base URL; null = use the env default. */
   liveServerUrl: string | null;
+  /** When the user finished/dismissed the first-run tour; null = not yet seen. */
+  onboardedAt: string | null;
   updatedAt: string;
 }
 
@@ -26,6 +28,7 @@ export interface UserSettingsPatch {
   aiApiKey?: string | null;
   aiModel?: string | null;
   liveServerUrl?: string | null;
+  onboardedAt?: string | null;
 }
 
 /** Column name for each patch field, in a stable order. */
@@ -35,6 +38,7 @@ const PATCH_COLUMNS: [keyof UserSettingsPatch, string][] = [
   ["aiApiKey", "ai_api_key"],
   ["aiModel", "ai_model"],
   ["liveServerUrl", "live_server_url"],
+  ["onboardedAt", "onboarded_at"],
 ];
 
 export async function getUserSettings(db: Db, userId: string): Promise<UserSettingsRow | null> {
@@ -93,6 +97,7 @@ function rowToSettings(row: Record<string, unknown>): UserSettingsRow {
     aiApiKey: str(row.ai_api_key),
     aiModel: str(row.ai_model),
     liveServerUrl: str(row.live_server_url),
+    onboardedAt: str(row.onboarded_at),
     updatedAt: String(row.updated_at),
   };
 }

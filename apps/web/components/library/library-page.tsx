@@ -17,7 +17,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { deleteBookmark, deleteSession, type LibraryFilters } from "@/lib/api";
+import {
+  deleteBookmark,
+  deleteSession,
+  getSettings,
+  updateSettings,
+  type LibraryFilters,
+} from "@/lib/api";
 import {
   useBookmarks,
   useHealth,
@@ -44,7 +50,9 @@ import { AddBookmarkDialog } from "./add-bookmark-dialog";
 import { OnboardingDialog } from "./onboarding-dialog";
 
 const VIEW_STORAGE_KEY = "bookmark-ai:view";
-/** First-run tour: set once the user dismisses the onboarding dialog. */
+/** First-run tour fast-path: set once this account has dismissed the tour (on
+ * this browser). The server flag `settings.onboardedAt` is the authority — this
+ * only avoids a flash/refetch on subsequent loads before settings resolve. */
 const ONBOARDED_KEY = "bmk:onboarded";
 
 const FILTER_KEYS = ["category", "browser", "device", "day", "tag", "from", "to"] as const;
@@ -150,15 +158,42 @@ export function LibraryPage() {
     shallowReplace(params.size ? `${pathname}?${params}` : pathname);
   }, [shallowReplace, pathname, searchParams]);
 
-  // First-run tour: open once per browser (localStorage), read in an effect so
-  // the server-rendered markup hydrates cleanly. The footer "Tour" item reopens it.
+  // First-run tour: open once per ACCOUNT, on any device. The server flag
+  // (settings.onboardedAt) is the authority — a new account on a browser that
+  // already toured still sees it, and the same account never re-sees it on a new
+  // device. localStorage is only a fast-path so a returning user on THIS browser
+  // doesn't get a flash before settings resolve. Read in an effect so the
+  // server-rendered markup hydrates cleanly; the footer "Tour" item reopens it.
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   useEffect(() => {
-    if (!localStorage.getItem(ONBOARDED_KEY)) setOnboardingOpen(true);
+    if (localStorage.getItem(ONBOARDED_KEY)) return; // already toured on this browser
+    let cancelled = false;
+    getSettings()
+      .then(({ settings }) => {
+        if (cancelled) return;
+        if (settings.onboardedAt) {
+          // Toured on another device — remember locally so we don't flash next load.
+          localStorage.setItem(ONBOARDED_KEY, "1");
+        } else {
+          setOnboardingOpen(true);
+        }
+      })
+      // Settings unavailable (offline / still provisioning) — don't pop the tour
+      // on an error; a later successful load will decide.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
   const closeOnboarding = useCallback((open: boolean) => {
     setOnboardingOpen(open);
-    if (!open) localStorage.setItem(ONBOARDED_KEY, "1");
+    if (!open) {
+      // Fast-path for this browser, plus persist per-account so every device
+      // skips the tour from now on. Fire-and-forget: a failed PUT just means the
+      // tour may reappear on another device until it succeeds.
+      localStorage.setItem(ONBOARDED_KEY, "1");
+      updateSettings({ onboarded: true }).catch(() => {});
+    }
   }, []);
 
   // Display preference, not shareable state → localStorage, not the URL.

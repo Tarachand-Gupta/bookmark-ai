@@ -12,8 +12,6 @@ import {
   Folder,
   Globe,
   Laptop,
-  Layers,
-  Library,
   Monitor,
   Plus,
   Settings,
@@ -38,6 +36,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { LibraryFilters } from "@/lib/api";
+import { FEATURE_ICONS } from "./feature-icons";
 import { ExtensionCard } from "./extension-cta";
 
 /** Facet rows shown before a section needs its "View all" toggle. */
@@ -166,7 +165,7 @@ export function AppSidebar({
                   isActive={noFilter && !sessionsActive && !liveActive}
                   onClick={() => select({})}
                 >
-                  <Library aria-hidden />
+                  <FEATURE_ICONS.bookmarks aria-hidden />
                   <span>All bookmarks</span>
                 </SidebarMenuButton>
                 <CountBadge value={meta?.total} loading={facetsLoading} />
@@ -179,10 +178,10 @@ export function AppSidebar({
                     setOpenMobile(false);
                   }}
                 >
-                  {/* Sessions icon with a "live" pip: same glyph family as Saved
-                      sessions, the green dot is what says "this one is live". */}
+                  {/* Live sessions share the tour's Radio glyph; the emerald
+                      pulse pip is what marks THIS surface as the live one. */}
                   <span className="relative flex shrink-0 items-center justify-center">
-                    <Layers aria-hidden className="size-4" />
+                    <FEATURE_ICONS.live aria-hidden className="size-4" />
                     <span
                       aria-hidden
                       className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-emerald-500 motion-safe:animate-pulse"
@@ -199,7 +198,7 @@ export function AppSidebar({
                     setOpenMobile(false);
                   }}
                 >
-                  <Layers aria-hidden />
+                  <FEATURE_ICONS.sessions aria-hidden />
                   <span>Saved sessions</span>
                 </SidebarMenuButton>
                 <CountBadge

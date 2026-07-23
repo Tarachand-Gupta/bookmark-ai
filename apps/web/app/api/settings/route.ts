@@ -24,6 +24,7 @@ function toApiSettings(row: UserSettingsRow | null): UserSettings {
     apiKeySet: !!key,
     apiKeyLast4: key ? key.slice(-4) : null,
     liveServerUrl: row?.liveServerUrl ?? null,
+    onboardedAt: row?.onboardedAt ?? null,
   };
 }
 
@@ -49,7 +50,7 @@ export async function PUT(req: NextRequest) {
       { status: 400 },
     );
   }
-  const { provider, apiKey, baseUrl, model, liveServerUrl } = parsed.data;
+  const { provider, apiKey, baseUrl, model, liveServerUrl, onboarded } = parsed.data;
 
   // SECURITY (SSRF): a custom provider's base URL is user-supplied and later used
   // by resolveChatModel to build an outbound AI request. Validate it HERE at write
@@ -68,17 +69,23 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  // The form always sends provider/baseUrl/model, so those always overwrite. A
-  // base URL only makes sense for a custom provider — clear it otherwise.
-  const patch: Parameters<typeof upsertUserSettings>[2] = {
-    aiProvider: provider,
-    aiBaseUrl: provider === "custom" ? (baseUrl ?? null) : null,
-    aiModel: model ?? null,
-  };
+  const patch: Parameters<typeof upsertUserSettings>[2] = {};
+  // The Settings form always sends provider/baseUrl/model, so those overwrite
+  // together. A single-field PATCH (e.g. mark-onboarded) omits provider and must
+  // NOT touch the AI config. A base URL only makes sense for a custom provider —
+  // clear it otherwise.
+  if (provider !== undefined) {
+    patch.aiProvider = provider;
+    patch.aiBaseUrl = provider === "custom" ? (baseUrl ?? null) : null;
+    patch.aiModel = model ?? null;
+  }
   // apiKey: absent → keep (omit from patch); "" → clear (store null); else set.
   if (apiKey !== undefined) patch.aiApiKey = apiKey === "" ? null : apiKey;
   // liveServerUrl: absent → keep (omit); "" or null → clear (store null); else set.
   if (liveServerUrl !== undefined) patch.liveServerUrl = liveServerUrl ? liveServerUrl : null;
+  // onboarded: true → stamp onboarded_at to now (marks the tour seen for this
+  // account). Absent/false → leave the marker untouched (never un-set it).
+  if (onboarded) patch.onboardedAt = new Date().toISOString();
 
   const row = await upsertUserSettings(db, settingsKey(userId), patch);
   return NextResponse.json({ settings: toApiSettings(row) });

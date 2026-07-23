@@ -219,4 +219,14 @@ export const TENANT_MIGRATIONS: Migration[] = [
     name: "user-settings-live-server-url",
     statements: ["ALTER TABLE user_settings ADD COLUMN live_server_url TEXT"],
   },
+  // Per-account "seen the first-run tour" marker (user_settings created in v2).
+  // Timestamp set once the user finishes/dismisses onboarding, so the tour opens
+  // once per ACCOUNT (on any device) instead of once per browser. Additive-only
+  // ADD COLUMN, nullable. Not exported (user_settings isn't part of the export
+  // bundle), so SCHEMA_VERSION stays 1.
+  {
+    version: 5,
+    name: "user-settings-onboarded-at",
+    statements: ["ALTER TABLE user_settings ADD COLUMN onboarded_at TEXT"],
+  },
 ];
