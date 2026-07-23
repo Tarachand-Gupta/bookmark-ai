@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { browser } from "wxt/browser";
 import type { Bookmark, Session } from "@bookmark-ai/types";
 import { DEFAULT_WEB_URL, getWebBaseUrl } from "@/lib/api";
+import { diag } from "@/lib/diag";
 import { iconUrl } from "@/lib/icon";
 import {
   requestSaveBookmark,
@@ -69,12 +70,14 @@ export default function App() {
   // Auth check on open (popup mount) + a re-check whenever the popup regains
   // visibility — e.g. returning from the sign-in tab.
   useEffect(() => {
+    diag("popup", "mount");
     let alive = true;
     let responded = false;
     const check = () => {
       void requestUser().then((info) => {
         if (!alive) return;
         responded = true;
+        diag("popup", "auth resolved", { signedIn: info.signedIn });
         setAuth(info);
       });
     };
@@ -84,6 +87,7 @@ export default function App() {
     // retrying, so a later recovery or a real sign-in still promotes the popup.
     const bootTimer = window.setTimeout(() => {
       if (!alive || responded) return;
+      diag("popup", "boot timeout fired");
       setDegraded(true);
       setAuth(SIGNED_OUT);
     }, BOOT_TIMEOUT_MS);
@@ -104,7 +108,10 @@ export default function App() {
   useEffect(() => {
     if (!auth || auth.signedIn) return;
     const id = window.setInterval(() => {
-      void requestUser().then(setAuth);
+      void requestUser().then((info) => {
+        diag("popup", "poll", { signedIn: info.signedIn });
+        setAuth(info);
+      });
     }, AUTH_POLL_MS);
     return () => window.clearInterval(id);
   }, [auth?.signedIn]);

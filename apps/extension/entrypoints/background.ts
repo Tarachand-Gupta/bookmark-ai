@@ -4,6 +4,7 @@ import { createClerkClient } from "@clerk/chrome-extension/background";
 import { createBookmark, getWebBaseUrl, saveSession, setAuthTokenProvider } from "@/lib/api";
 import { CLERK_PUBLISHABLE_KEY, CLERK_SYNC_HOST } from "@/lib/clerk";
 import { detectSource } from "@/lib/detect";
+import { diag } from "@/lib/diag";
 import { fullName } from "@/lib/identity";
 import { getNativeSession, getNativeSessionToken, nativeSignOut } from "@/lib/native-session";
 import { pushLiveNow, registerLiveCheckpoint, setLiveEnabled } from "@/lib/live-checkpoint";
@@ -26,22 +27,74 @@ import {
   type UserInfo,
 } from "@/lib/messages";
 
+const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/** How long to wait for a Clerk SDK call before giving up and using the native
+ * fallback. `@clerk/chrome-extension`'s client can hang indefinitely under
+ * Safari (never resolves, never throws), which is what wedged the popup — so
+ * every SDK interaction is bounded by this and a timeout is treated exactly like
+ * a throw: fall through to the cookie→Native-API path (lib/native-session). */
+const CLERK_RACE_MS = 3000;
+
+type AuthPath = "sdk" | "native";
+/** Which path last resolved a session, cached for THIS background lifetime so
+ * repeat popup opens don't re-pay the SDK race once we know Safari needs native.
+ * A browser restart spins up a fresh background script → `null` again → the SDK
+ * path is retried. Stays null while fully signed out so neither path is skipped
+ * (a pending web sign-in must still be picked up). */
+let winningPath: AuthPath | null = null;
+
+/** Reject if `p` doesn't settle within `ms`. */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolvePromise, rejectPromise) => {
+    const timer = setTimeout(() => rejectPromise(new Error(`${label} timed out after ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolvePromise(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        rejectPromise(e);
+      },
+    );
+  });
+}
+
+/** The Clerk SDK client, bounded by the race timeout. */
+function racedClerkClient() {
+  return withTimeout(
+    createClerkClient({ publishableKey: CLERK_PUBLISHABLE_KEY, syncHost: CLERK_SYNC_HOST }),
+    CLERK_RACE_MS,
+    "createClerkClient",
+  );
+}
+
 /** Clerk session JWT (same syncHost session the popup shows). SDK first (dev
  * instances), then the production Native-API fallback (see lib/native-session).
  * Null when signed out or Clerk is unreachable — saves still work against the
  * open local server; the auth-enforcing deployed server rejects them. */
 async function getSessionToken(): Promise<string | null> {
-  try {
-    const clerk = await createClerkClient({
-      publishableKey: CLERK_PUBLISHABLE_KEY,
-      syncHost: CLERK_SYNC_HOST,
-    });
-    const token = (await clerk.session?.getToken()) ?? null;
-    if (token) return token;
-  } catch {
-    // fall through to native
+  if (winningPath !== "native") {
+    const started = Date.now();
+    try {
+      const clerk = await racedClerkClient();
+      const token = clerk.session
+        ? await withTimeout(Promise.resolve(clerk.session.getToken()), CLERK_RACE_MS, "getToken")
+        : null;
+      diag("token", "sdk settled", { ms: Date.now() - started, hasToken: !!token });
+      if (token) {
+        winningPath = "sdk";
+        return token;
+      }
+    } catch (e) {
+      diag("token", "sdk failed", { ms: Date.now() - started, error: errMsg(e) });
+    }
   }
-  return getNativeSessionToken();
+  const token = await getNativeSessionToken();
+  if (token) winningPath = "native";
+  diag("token", "native fallback", { hasToken: !!token });
+  return token;
 }
 
 const SIGNED_OUT: UserInfo = { signedIn: false, name: null, email: null };
@@ -69,28 +122,40 @@ async function purgeDevEraCookies(): Promise<void> {
  * popup polls this to drive its gate; any failure (Clerk unreachable, no synced
  * session) degrades to signed-out so the popup shows the sign-in prompt. */
 async function handleGetUser(): Promise<UserInfo> {
-  try {
-    await purgeDevEraCookies();
-    const clerk = await createClerkClient({
-      publishableKey: CLERK_PUBLISHABLE_KEY,
-      syncHost: CLERK_SYNC_HOST,
-    });
-    const user = clerk.user;
-    if (clerk.session && user) {
-      return {
-        signedIn: true,
-        name: fullName(user),
-        email: user.primaryEmailAddress?.emailAddress ?? null,
-      };
+  diag("getUser", "entry", { cachedPath: winningPath });
+  if (winningPath !== "native") {
+    const started = Date.now();
+    try {
+      await purgeDevEraCookies();
+      diag("getUser", "purge done");
+      const clerk = await racedClerkClient();
+      diag("getUser", "sdk settled", {
+        ms: Date.now() - started,
+        hasSession: !!clerk.session,
+        hasUser: !!clerk.user,
+      });
+      const user = clerk.user;
+      if (clerk.session && user) {
+        winningPath = "sdk";
+        diag("getUser", "reply", { path: "sdk", signedIn: true });
+        return {
+          signedIn: true,
+          name: fullName(user),
+          email: user.primaryEmailAddress?.emailAddress ?? null,
+        };
+      }
+    } catch (e) {
+      diag("getUser", "sdk failed", { ms: Date.now() - started, error: errMsg(e) });
     }
-  } catch {
-    // fall through to native
   }
   // Production Native-API fallback (see lib/native-session for why).
   const native = await getNativeSession();
   if (native) {
+    winningPath = "native";
+    diag("getUser", "reply", { path: "native", signedIn: true });
     return { signedIn: true, name: native.name, email: native.email };
   }
+  diag("getUser", "reply", { path: "none", signedIn: false });
   return SIGNED_OUT;
 }
 
@@ -99,19 +164,19 @@ async function handleGetUser(): Promise<UserInfo> {
  * extension signs out of the site too, which is the honest behavior). */
 async function handleSignOut(): Promise<{ ok: boolean }> {
   let ok = false;
-  try {
-    const clerk = await createClerkClient({
-      publishableKey: CLERK_PUBLISHABLE_KEY,
-      syncHost: CLERK_SYNC_HOST,
-    });
-    if (clerk.session) {
-      await clerk.signOut();
-      ok = true;
+  if (winningPath !== "native") {
+    try {
+      const clerk = await racedClerkClient();
+      if (clerk.session) {
+        await withTimeout(clerk.signOut(), CLERK_RACE_MS, "signOut");
+        ok = true;
+      }
+    } catch (e) {
+      diag("signOut", "sdk failed", { error: errMsg(e) });
     }
-  } catch {
-    // fall through to native
   }
   if (!ok) ok = await nativeSignOut();
+  diag("signOut", "done", { ok });
   return { ok };
 }
 
@@ -198,6 +263,7 @@ async function handleRestoreSession(
 }
 
 export default defineBackground(() => {
+  diag("bg", "boot", { browser: import.meta.env.BROWSER, syncHost: CLERK_SYNC_HOST });
   setAuthTokenProvider(getSessionToken);
 
   // Register the popup↔background message listeners FIRST (still synchronous, so
@@ -274,9 +340,12 @@ export default defineBackground(() => {
   // in. Wrapped so a browser missing one of the events it subscribes to (Safari)
   // degrades to "no live tabs" instead of taking the whole background down with
   // it — the auth/save listeners above are already live regardless.
+  diag("bg", "listeners registered");
   try {
     registerLiveCheckpoint();
+    diag("bg", "live checkpoint registered");
   } catch (error) {
+    diag("bg", "live checkpoint failed", { error: errMsg(error) });
     console.error("[Bookmark AI] live-tabs checkpoint failed to register", error);
   }
 });

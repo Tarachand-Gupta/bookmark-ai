@@ -1,5 +1,6 @@
 import { browser } from "wxt/browser";
 import { CLERK_PUBLISHABLE_KEY } from "@/lib/clerk";
+import { diag } from "@/lib/diag";
 
 /**
  * Native-API session resolution for PRODUCTION Clerk instances.
@@ -33,11 +34,20 @@ export function fapiOrigin(publishableKey: string = CLERK_PUBLISHABLE_KEY): stri
 /** The client token from the FAPI domain's `__client` cookie, or null. */
 async function readClientToken(): Promise<string | null> {
   const origin = fapiOrigin();
-  if (!origin) return null;
+  if (!origin) {
+    diag("native", "readClientToken", { origin: null });
+    return null;
+  }
   try {
     const cookie = await browser.cookies.get({ url: origin, name: "__client" });
+    // Log presence + length only — NEVER the cookie value.
+    diag("native", "readClientToken", { origin, found: !!cookie?.value, len: cookie?.value?.length ?? 0 });
     return cookie?.value || null;
-  } catch {
+  } catch (e) {
+    diag("native", "readClientToken error", {
+      origin,
+      error: e instanceof Error ? e.message : String(e),
+    });
     return null;
   }
 }
@@ -71,6 +81,7 @@ export async function getNativeSession(): Promise<NativeSession | null> {
     const res = await fetch(`${origin}/v1/client?_is_native=1`, {
       headers: { Authorization: token },
     });
+    diag("native", "GET /v1/client", { status: res.status });
     if (!res.ok) return null;
     const body = (await res.json()) as {
       response?: { sessions?: FapiSession[] } | null;
@@ -105,6 +116,7 @@ export async function getNativeSessionToken(): Promise<string | null> {
       method: "POST",
       headers: { Authorization: token },
     });
+    diag("native", "POST /v1/client/sessions/:id/tokens", { status: res.status });
     if (!res.ok) return null;
     const body = (await res.json()) as { jwt?: string; response?: { jwt?: string } | null };
     return body.jwt ?? body.response?.jwt ?? null;
@@ -126,6 +138,7 @@ export async function nativeSignOut(): Promise<boolean> {
       `${origin}/v1/client/sessions/${session.sessionId}/remove?_is_native=1`,
       { method: "POST", headers: { Authorization: token } },
     );
+    diag("native", "POST /v1/client/sessions/:id/remove", { status: res.status });
     return res.ok;
   } catch {
     return false;
