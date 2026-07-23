@@ -32,18 +32,33 @@ export function makeAuthPreHandler(config: Config) {
       return;
     }
 
-    let claims: { sub?: string };
+    let claims: { sub?: string; azp?: string };
     try {
+      // NB: do NOT pass `authorizedParties` into verifyToken. @clerk/backend's
+      // assertAuthorizedPartiesClaim REJECTS a token whose azp is ABSENT once a
+      // non-empty list is supplied (jwt/index.js: `if (!azp ||
+      // !authorizedParties.includes(azp))` throws) — the OPPOSITE of the semantics
+      // we (and apps/web require-user.ts) want. Server-minted session tokens
+      // (clerkClient sessions.getToken, used by the /api/live-token bridge for the
+      // Safari extension) carry NO azp, so passing the list here 401s them. We
+      // verify signature/exp here, then apply the azp origin rule ourselves below.
       claims = await verifyToken(token, {
         ...(config.clerkJwtKey
           ? { jwtKey: config.clerkJwtKey }
           : { secretKey: config.clerkSecretKey as string }),
         ...(config.clerkIssuer ? { issuer: config.clerkIssuer } : {}),
-        ...(config.authorizedParties.length
-          ? { authorizedParties: config.authorizedParties }
-          : {}),
       });
     } catch {
+      await reply.code(401).send({ error: "Invalid or expired token" });
+      return;
+    }
+
+    // azp origin check with Express semantics (mirrors apps/web require-user.ts):
+    // ABSENT azp passes (server-minted + native mobile tokens), a PRESENT azp must
+    // be an authorized party. Only enforced when a party allowlist is configured —
+    // an empty CLERK_AUTHORIZED_PARTIES means "don't check origin" (self-host default).
+    const azp = claims.azp;
+    if (azp && config.authorizedParties.length > 0 && !config.authorizedParties.includes(azp)) {
       await reply.code(401).send({ error: "Invalid or expired token" });
       return;
     }
