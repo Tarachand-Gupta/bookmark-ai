@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import type { SearchMode } from "@bookmark-ai/types";
 import {
   CalendarDays,
   Chrome,
@@ -34,9 +33,7 @@ import {
 } from "@/hooks/use-library";
 import { NoAccessNotice } from "@/components/no-access-notice";
 import { AccountSetup } from "./account-setup";
-import { AiChat } from "./ai-chat";
 import { AppSidebar } from "./app-sidebar";
-import { ChatPanel } from "./chat-panel";
 import { BookmarkGrid } from "./bookmark-grid";
 import { LibraryHeader, type HeaderCrumb } from "./library-header";
 import { TagChips } from "./tag-chips";
@@ -56,6 +53,11 @@ const VIEW_STORAGE_KEY = "bookmark-ai:view";
 const ONBOARDED_KEY = "bmk:onboarded";
 
 const FILTER_KEYS = ["category", "browser", "device", "day", "tag", "from", "to"] as const;
+
+/** URL flag that opens the Ask AI dock. The dock itself lives at the /app layout
+ * level (see AppChatDock) — this page only reads/toggles the param for the
+ * header button and preserves it across navigation. Keep in sync with the dock. */
+const AI_PARAM = "ai";
 
 /**
  * The whole library view. Facet filters live in the URL (shareable,
@@ -104,10 +106,11 @@ export function LibraryPage() {
       // except when the caller is deliberately leaving search (e.g. chat "jump to library").
       if (!opts?.clearSearch) {
         const q = searchParams.get("q");
-        const m = searchParams.get("mode");
         if (q) params.set("q", q);
-        if (m) params.set("mode", m);
       }
+      // The Ask AI dock is orthogonal panel state — keep it open across any facet
+      // change so the conversation stays put beside the filtered library.
+      if (searchParams.get(AI_PARAM) === "1") params.set(AI_PARAM, "1");
       // push (not replace) so each facet change is a history entry — back button
       // walks the filter states, as docs/TESTING.md promises. Shallow: pushState
       // keeps the URL in sync without an RSC round-trip (no scroll-to-top either,
@@ -118,9 +121,6 @@ export function LibraryPage() {
   );
 
   const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
-  const [mode, setMode] = useState<SearchMode>(() =>
-    searchParams.get("mode") === "ai" ? "ai" : "text",
-  );
   const [addOpen, setAddOpen] = useState(false);
   // Settings modal is owned here (not in the sidebar) so the Ongoing empty state
   // can deep-link into Settings → Devices.
@@ -220,8 +220,6 @@ export function LibraryPage() {
       } else {
         params.delete("q");
       }
-      if (mode === "ai") params.set("mode", mode);
-      else params.delete("mode");
       const next = params.size ? `${pathname}?${params}` : pathname;
       const current = searchParams.size ? `${pathname}?${searchParams}` : pathname;
       // Search results come from the client useSearch hook; the URL is only for
@@ -229,14 +227,14 @@ export function LibraryPage() {
       if (next !== current) shallowReplace(next);
     }, 250);
     return () => clearTimeout(timer);
-  }, [query, mode, pathname, shallowReplace, searchParams]);
+  }, [query, pathname, shallowReplace, searchParams]);
 
   const [refreshKey, refresh] = useRefresh();
   const meta = useMeta(refreshKey);
   const health = useHealth(refreshKey);
   const list = useBookmarks(filters, refreshKey);
   // The grid shows hybrid results (keyword + semantic lists fused with RRF,
-  // most relevant first); "ai" mode opens the chat panel on top of that.
+  // most relevant first); the Ask AI dock (?ai) opens beside that, not over it.
   const search = useSearch(query, "hybrid", refreshKey);
   const sessions = useSessions(refreshKey);
 
@@ -325,18 +323,21 @@ export function LibraryPage() {
     [refresh],
   );
 
-  const showSessions = useCallback(() => {
-    setQuery("");
-    setMode("text");
-    // Section is view-state only (data via useSessions) → shallow, instant swap.
-    shallowPush(`${pathname}?section=sessions`);
-  }, [shallowPush, pathname]);
-
-  const showLive = useCallback(() => {
-    setQuery("");
-    setMode("text");
-    shallowPush(`${pathname}?section=live`);
-  }, [shallowPush, pathname]);
+  // Section is view-state only (data via useSessions) → shallow, instant swap.
+  // The Ask AI dock rides along (?ai preserved) so switching sections never
+  // tears down an open conversation — that persistence is the whole point.
+  const showSection = useCallback(
+    (section: "sessions" | "live") => {
+      setQuery("");
+      const params = new URLSearchParams();
+      params.set("section", section);
+      if (searchParams.get(AI_PARAM) === "1") params.set(AI_PARAM, "1");
+      shallowPush(`${pathname}?${params}`);
+    },
+    [shallowPush, pathname, searchParams],
+  );
+  const showSessions = useCallback(() => showSection("sessions"), [showSection]);
+  const showLive = useCallback(() => showSection("live"), [showSection]);
 
   const handleSessionDelete = useCallback(
     async (id: string) => {
@@ -355,13 +356,25 @@ export function LibraryPage() {
   // Breadcrumb: root view + the active facet; search presents in the content area.
   const crumb = sessionsActive || liveActive ? null : headerCrumb(filters);
   const title = sessionsActive ? "Saved sessions" : liveActive ? "Live sessions" : "All bookmarks";
-  const aiActive = mode === "ai";
 
-  // The chat is a side panel now — the library stays live next to it, so
-  // closing it keeps the current search instead of wiping it.
-  const closeChat = useCallback(() => {
-    setMode("text");
-  }, []);
+  // The Ask AI dock is mounted at the layout level (AppChatDock) and driven
+  // purely by ?ai — this page only reflects the button's pressed state and
+  // toggles the param. Toggling preserves the rest of the URL (facets/search).
+  const aiActive = searchParams.get(AI_PARAM) === "1";
+  const toggleAi = useCallback(() => {
+    const params = new URLSearchParams(searchParams);
+    if (params.get(AI_PARAM) === "1") {
+      params.delete(AI_PARAM);
+    } else {
+      params.set(AI_PARAM, "1");
+      // Flush the live search box into ?q so the dock (which reads the URL, not
+      // this component's state) seeds the fresh chat with what's typed right now,
+      // even if the debounced mirror hasn't fired yet.
+      const q = query.trim();
+      if (q) params.set("q", q);
+    }
+    shallowPush(params.size ? `${pathname}?${params}` : pathname);
+  }, [searchParams, pathname, shallowPush, query]);
 
   return (
     <SidebarProvider>
@@ -389,9 +402,15 @@ export function LibraryPage() {
           query={query}
           aiActive={aiActive}
           onQueryChange={setQuery}
-          onAskAi={() => setMode(aiActive ? "text" : "ai")}
+          onAskAi={toggleAi}
         />
-        <div className="flex min-w-0 flex-1 items-stretch">
+        {/* Reserve right-side space for the layout-level docked chat (side mode
+            only) so content squeezes beside it instead of hiding under it; the
+            var is 0px in overlay/full/closed states. See chat-panel.tsx. */}
+        <div
+          className="flex min-w-0 flex-1 items-stretch"
+          style={{ paddingRight: "var(--chat-dock-w, 0px)" }}
+        >
         <main className="min-w-0 flex-1 p-4">
           {/* Width-capped and centered so content isn't stretched thin on
               widescreen/desktop; full-bleed below the cap on smaller screens. */}
@@ -575,15 +594,6 @@ export function LibraryPage() {
             )}
           </div>
         </main>
-        <ChatPanel open={aiActive}>
-          <AiChat
-            initialQuery={query}
-            onClose={closeChat}
-            // The library is visible beside the chat, so filtering keeps the
-            // conversation open — the facet just applies next to it.
-            onFilter={(next) => setFilters(next, { clearSearch: true })}
-          />
-        </ChatPanel>
         </div>
       </SidebarInset>
       <AddBookmarkDialog open={addOpen} onOpenChange={setAddOpen} onSaved={refresh} />
