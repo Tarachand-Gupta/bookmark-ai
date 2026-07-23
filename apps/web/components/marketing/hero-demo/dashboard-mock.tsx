@@ -1,7 +1,9 @@
 import { Bookmark, Chrome, Compass, Folder, Layers, Library, Search, Settings, Sparkles } from "lucide-react";
+import { FEATURE_ICONS } from "@/components/library/feature-icons";
 import { cn } from "@/lib/utils";
 import { mono } from "../primitives";
 import { BROWSER_FACETS, CATEGORY_FACETS, LIBRARY, QUERY, TOTAL, type DemoCard } from "./data";
+import { LiveView } from "./live-view";
 
 /**
  * The library, restaged.
@@ -28,13 +30,19 @@ export function DashboardMock() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Header />
 
-        <div className="min-h-0 flex-1 px-[1em] pt-[0.85em]">
-          <MetaRow />
-          <div className="mt-[0.7em] grid grid-cols-1 gap-[0.6em] @sm:grid-cols-2">
-            {LIBRARY.map((card) => (
-              <Card key={card.title} card={card} />
-            ))}
+        <div className="relative min-h-0 flex-1 px-[1em] pt-[0.85em]">
+          {/* Act one's grid. Act two, beat C fades this out and the Live
+              sessions view (below) in — the same content-area handoff the real
+              app does when you click "Live sessions" in the sidebar. */}
+          <div data-demo="dash-grid">
+            <MetaRow />
+            <div className="mt-[0.7em] grid grid-cols-1 gap-[0.6em] @sm:grid-cols-2">
+              {LIBRARY.map((card) => (
+                <Card key={card.title} card={card} />
+              ))}
+            </div>
           </div>
+          <LiveView />
         </div>
       </div>
     </div>
@@ -57,8 +65,13 @@ function Sidebar() {
       </div>
 
       <div className="mt-[0.9em] space-y-[0.1em]">
-        <NavRow icon={Library} label="All bookmarks" badge={String(TOTAL)} active />
-        <NavRow icon={Layers} label="Sessions" badge="2" />
+        {/* Active by default — this is act one's finished frame. Act two's
+            sidebar click crossfades the highlight over to Live sessions. */}
+        <NavRow icon={Library} label="All bookmarks" badge={String(TOTAL)} activeDemo="nav-all-active" activeDefault />
+        {/* Live sessions — the real product's Radio glyph + emerald pulse pip,
+            straight from FEATURE_ICONS so it can't drift from the app. */}
+        <NavRow icon={FEATURE_ICONS.live} label="Live sessions" rowDemo="nav-live" activeDemo="nav-live-active" pip />
+        <NavRow icon={Layers} label="Saved sessions" badge="2" />
       </div>
 
       <FacetGroup label="Categories">
@@ -103,38 +116,67 @@ function FacetGroup({ label, children }: { label: string; children: React.ReactN
   );
 }
 
+/**
+ * A sidebar row. Rows with an `activeDemo` render their highlight as a separate
+ * absolutely-positioned element the timeline can cross-fade (so beat B can hand
+ * the active state from "All bookmarks" to "Live sessions" without a reflow);
+ * they also read as primary (foreground text). `rowDemo` tags the row as a
+ * cursor target, `pip` adds the emerald live-pulse dot over the glyph.
+ */
 function NavRow({
   icon: Icon,
   label,
   badge,
-  active,
+  activeDemo,
+  activeDefault,
+  rowDemo,
+  pip,
 }: {
   icon: React.ElementType;
   label: string;
   badge?: string;
-  active?: boolean;
+  activeDemo?: string;
+  activeDefault?: boolean;
+  rowDemo?: string;
+  pip?: boolean;
 }) {
+  const primary = Boolean(activeDemo);
   return (
     <div
-      className={cn(
-        "flex items-center gap-[0.45em] rounded-[0.35em] px-[0.4em] py-[0.3em]",
-        active && "bg-foreground/[0.07] dark:bg-white/[0.09]",
-      )}
+      data-demo={rowDemo}
+      className="relative flex items-center gap-[0.45em] rounded-[0.35em] px-[0.4em] py-[0.3em]"
     >
-      <Icon
-        className={cn("size-[0.7em] shrink-0", active ? "text-foreground" : "text-muted-foreground")}
-        aria-hidden
-      />
+      {activeDemo && (
+        <span
+          data-demo={activeDemo}
+          className={cn(
+            "pointer-events-none absolute inset-0 rounded-[0.35em] bg-foreground/[0.07] dark:bg-white/[0.09]",
+            !activeDefault && "opacity-0",
+          )}
+        />
+      )}
+      <span className="relative flex shrink-0 items-center justify-center">
+        <Icon
+          className={cn("size-[0.7em]", primary ? "text-foreground" : "text-muted-foreground")}
+          aria-hidden
+        />
+        {pip && (
+          <span
+            aria-hidden
+            className="absolute -right-[0.12em] -top-[0.12em] size-[0.3em] rounded-full bg-emerald-500 motion-safe:animate-pulse"
+          />
+        )}
+      </span>
       <span
         className={cn(
-          "truncate text-[0.6em]",
-          active ? "font-medium text-foreground" : "text-muted-foreground",
+          "relative truncate text-[0.6em]",
+          primary ? "font-medium text-foreground" : "text-muted-foreground",
         )}
       >
         {label}
       </span>
       {badge && (
-        <span className={cn(mono, "ml-auto text-[0.5em] tabular-nums text-muted-foreground/70")}>
+        <span className={cn(mono, "relative ml-auto text-[0.5em] tabular-nums text-muted-foreground/70")}>
           {badge}
         </span>
       )}

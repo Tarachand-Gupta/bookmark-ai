@@ -123,16 +123,23 @@ export const TOTAL = LIBRARY.length;
 
 export const SESSION_TABS = 7;
 
+/** The device whose tabs act two mirrors — named the same in the extension
+ * toggle (beat A) and the Live sessions view (beat C), so the journey reads as
+ * one device the whole way through. Mirrors the extension's `getDeviceLabel`
+ * ("<Browser> on <OS>"). */
+export const LIVE_DEVICE = "Chrome on Mac";
+
 /**
- * Act two's cast: the tabs a laptop mirrors onto a phone, live. Same flavor of
- * honest, generic browsing as `live-tabs.tsx`'s demo — this is a separate
- * component authored for the hero's cinematic staging, not a reuse of that
- * one, so the two lists are declared independently on purpose.
+ * Act two's cast: the open tabs the extension is sharing, which arrive live in
+ * the app's Live sessions view. Same flavor of honest, generic browsing as
+ * `live-tabs.tsx`'s demo — a separate list authored for the hero's cinematic
+ * staging, on purpose. Marks stand in for favicons.
  */
 export const LIVE_TABS = [
-  { mark: "M", title: "Server-Sent Events — the guide", host: "developer.mozilla.org" },
+  { mark: "S", title: "Server-Sent Events — the guide", host: "developer.mozilla.org" },
   { mark: "R", title: "Redis pub/sub in production", host: "redis.io" },
   { mark: "F", title: "Fastify streaming responses", host: "fastify.dev" },
+  { mark: "E", title: "Expo Router — file-based routes", host: "docs.expo.dev" },
 ] as const;
 
 /**
@@ -189,9 +196,25 @@ export const sel = {
   cursorRig: "[data-demo='cursor-rig']",
   cursorGlyph: "[data-demo='cursor-glyph']",
 
-  // Act two — live tabs.
-  liveScene: "[data-demo='live-scene']",
+  // Act two — beat A · the extension panel + its live-session toggle.
+  liveExt: "[data-demo='live-ext']",
+  liveSwitch: "[data-demo='live-switch']",
+  liveSwitchKnob: "[data-demo='live-switch-knob']",
+  liveSwitchOn: "[data-demo='live-switch-on']",
+  liveDeviceLine: "[data-demo='live-device-line']",
+
+  // Act two — beat B · the Live sessions sidebar item (and the active-state
+  // highlights the click crossfades between).
+  navLive: "[data-demo='nav-live']",
+  navLiveActive: "[data-demo='nav-live-active']",
+  navAllActive: "[data-demo='nav-all-active']",
+
+  // Act two — beat C · the dashboard's card grid handing off to the Live
+  // sessions view, whose tabs stream in (device list + phone mirror).
+  dashGrid: "[data-demo='dash-grid']",
+  liveView: "[data-demo='live-view']",
   liveTab: "[data-demo='live-tab']",
+  liveTabPhone: "[data-demo='live-tab-phone']",
 
   // The caption above the stage, labelling whichever act is currently
   // playing. Two states stacked, cross-faded — same idiom as meta-all/results.

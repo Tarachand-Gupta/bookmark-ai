@@ -4,9 +4,11 @@ import { QUERY, sel } from "./data";
 /**
  * The storyboard.
  *
- * Five beats, one continuous camera move, ~13s, then a hold and a hard cut back
- * to the slate. Read `buildFullTimeline` top to bottom — the labels are the
- * shot list.
+ * Two acts under one continuous camera. Act one (5 beats, ~14s): the save and
+ * the search. Act two (3 beats, ~15s): the live-tabs journey — flip the switch
+ * ON in the extension, click "Live sessions" in the app, watch the tabs stream
+ * in. ~30s total, then a hold and a hard cut back to the slate. Read
+ * `buildFullTimeline` top to bottom — the labels are the shot list.
  *
  * Two conventions make it resolution-independent:
  *
@@ -207,12 +209,18 @@ function buildFullTimeline(root: HTMLElement): gsap.core.Timeline {
   const pIcon = centerOf(pick(sel.extIcon), stage);
   const pSave = centerOf(pick(sel.saveBtn), stage);
   const pSearch = centerOf(pick(sel.searchField), stage);
+  // Act two's two cursor targets: the extension toggle (framed by the same
+  // pushed-in `shot` as beats 1-3) and the Live sessions sidebar row (at rest).
+  const pSwitch = centerOf(pick(sel.liveSwitch), stage);
+  const pNavLive = centerOf(pick(sel.navLive), stage);
 
   // Beats 1-3 happen under the pushed-in camera, so the pointer's targets go
   // through the pose; beat 5 is at rest, so they don't.
   const sIcon = toScreen(shot, pIcon);
   const sSave = toScreen(shot, pSave);
   const sSearch = toScreen(REST, pSearch);
+  const sSwitch = toScreen(shot, pSwitch);
+  const sNavLive = toScreen(REST, pNavLive);
 
   // The popup grows out of the icon that opened it, so its origin is wherever
   // that icon happens to be relative to the popup's own box.
@@ -251,10 +259,19 @@ function buildFullTimeline(root: HTMLElement): gsap.core.Timeline {
     .set(sel.saveDone, { opacity: 0 }, 0)
     .set(sel.popupUrl, { opacity: 1 }, 0)
     .set(sel.popupChip, { opacity: 0 }, 0)
-    // Act two, wound back to "before" the same way the rest of the slate is:
-    // hidden scene, tabs not yet landed, caption on act one's line.
-    .set(sel.liveScene, { opacity: 0 }, 0)
+    // Act two, wound back to "before": the extension screen hidden with its
+    // switch off, the live view hidden with no tabs arrived, the sidebar on
+    // "All bookmarks", the grid showing, and the caption on act one's line.
+    .set(sel.liveExt, { opacity: 0, scale: 1 }, 0)
+    .set(sel.liveSwitchOn, { opacity: 0 }, 0)
+    .set(sel.liveSwitchKnob, { xPercent: 0 }, 0)
+    .set(sel.liveDeviceLine, { opacity: 0.35 }, 0)
+    .set(sel.navAllActive, { opacity: 1 }, 0)
+    .set(sel.navLiveActive, { opacity: 0 }, 0)
+    .set(sel.dashGrid, { opacity: 1 }, 0)
+    .set(sel.liveView, { opacity: 0 }, 0)
     .set(sel.liveTab, { opacity: 0, yPercent: 18 }, 0)
+    .set(sel.liveTabPhone, { opacity: 0, yPercent: 18 }, 0)
     .set(sel.captionAct1, { opacity: 1 }, 0)
     .set(sel.captionAct2, { opacity: 0 }, 0)
     .set(sel.cursorRig, {
@@ -342,70 +359,114 @@ function buildFullTimeline(root: HTMLElement): gsap.core.Timeline {
   // ── Beat 5 · the search ───────────────────────────────────────────────────
   const end = searchBeat(tl, 7.5, sSearch, typed, render);
 
-  // ── Caption · act two begins ─────────────────────────────────────────────
-  // A beat ahead of the camera move, so the label changes before the scene
-  // does — the viewer always knows what they're about to watch, not what they
-  // just watched.
+  // ═══ ACT TWO · live tabs ═══════════════════════════════════════════════════
+  // Act one's craft, retold for the differentiator: turn the feature ON in the
+  // extension (beat A), find it in the app (beat B), watch the tabs arrive live
+  // (beat C). Three beats, ~15s, same camera/stage model — beat A's closeup is
+  // literally beat 1's `shot`, re-pointed at a different card.
+
+  // The caption swaps a beat ahead of the picture, so the label always names
+  // what you're about to watch, never what you just watched.
   const captionIn = end + 0.3;
   tl.addLabel("act2-caption", captionIn)
     .to(sel.captionAct1, { opacity: 0, duration: 0.4, ease: "power1.inOut" }, captionIn)
     .to(sel.captionAct2, { opacity: 1, duration: 0.4, ease: "power1.inOut" }, captionIn);
 
-  // ── Beat 6 · act two, the return ─────────────────────────────────────────
-  // The camera dollies back into *exactly* the pose beat 1 used to open the
-  // extension — same `shot`, no new survey — and finds a different scene
-  // waiting in that spot: the dashboard dissolves, live tabs take its place.
-  const liveIn = end + 0.6;
-  tl.addLabel("live-in", liveIn)
-    // Promoted only for the dolly itself — see the slate's note on why a
-    // held zoom must stay un-promoted to avoid the GPU-upscale blur.
-    .set(sel.camera, { willChange: "transform" }, liveIn - 0.05)
+  // ── Beat A · turn it on in the extension ──────────────────────────────────
+  // The camera dollies back into *exactly* beat 1's pose and finds the
+  // extension there again — this time its live-session card. The cursor flips
+  // the switch: it goes emerald, the knob slides, the device names itself.
+  const aStart = end + 0.6;
+  tl.addLabel("live-toggle", aStart)
+    // Promoted only for the dolly — see the slate's note on why a held zoom
+    // must stay un-promoted to dodge the GPU-upscale blur.
+    .set(sel.camera, { willChange: "transform" }, aStart - 0.05)
     .to(
       sel.camera,
-      {
-        scale: shot.scale,
-        xPercent: shot.xFrac * 100,
-        yPercent: shot.yFrac * 100,
-        duration: 1.4,
-        ease: "power3.inOut",
-      },
-      liveIn,
+      { scale: shot.scale, xPercent: shot.xFrac * 100, yPercent: shot.yFrac * 100, duration: 1.4, ease: "power3.inOut" },
+      aStart,
     )
-    .set(sel.camera, { willChange: "auto" }, liveIn + 1.4)
-    .to(sel.dashboard, { opacity: 0, duration: 0.7, ease: "power2.in" }, liveIn)
-    .to(sel.liveScene, { opacity: 1, duration: 0.8, ease: "power2.out" }, liveIn + 0.35);
+    .set(sel.camera, { willChange: "auto" }, aStart + 1.4)
+    .to(sel.dashboard, { opacity: 0, duration: 0.6, ease: "power2.in" }, aStart)
+    .fromTo(
+      sel.liveExt,
+      { opacity: 0, scale: 0.985 },
+      { opacity: 1, scale: 1, duration: 0.7, ease: "power2.out" },
+      aStart + 0.4,
+    );
 
-  // ── Beat 7 · the tabs land ────────────────────────────────────────────────
-  // The laptop's tabs were already open (nothing to animate there — same as
-  // beat 1's toolbar just sitting lit); what streams is the phone catching up.
-  const liveArrive = liveIn + 1.5;
-  tl.addLabel("live-arrive", liveArrive).fromTo(
-    sel.liveTab,
-    { yPercent: 18, opacity: 0 },
-    { yPercent: 0, opacity: 1, duration: 0.55, ease: "power2.out", stagger: 0.3 },
-    liveArrive,
-  );
+  const aCursor = aStart + 1.55;
+  tl.set(
+    sel.cursorRig,
+    { xPercent: (sSwitch.x - 0.22) * 100, yPercent: (sSwitch.y + 0.4) * 100 },
+    aCursor,
+  ).to(sel.cursorRig, { opacity: 1, duration: 0.25 }, aCursor + 0.05);
+  glide(tl, sSwitch, aCursor + 0.2, 0.9);
 
-  // ── Beat 8 · hold, then pull back ────────────────────────────────────────
-  // The mirror image of beat 4's pull-back: the camera retreats, this scene
-  // dissolves, and the dashboard — untouched since beat 5, still holding its
-  // search results — reappears to end the loop exactly where it always did.
-  const liveOut = liveArrive + 1.9;
-  tl.addLabel("live-out", liveOut)
-    .set(sel.camera, { willChange: "transform" }, liveOut - 0.05)
+  const aPress = aCursor + 1.2;
+  press(tl, aPress);
+  tl.to(sel.liveSwitchOn, { opacity: 1, duration: 0.28, ease: "power2.out" }, aPress + 0.02)
+    .to(sel.liveSwitchKnob, { xPercent: 108, duration: 0.34, ease: "back.out(2)" }, aPress + 0.02)
+    .to(sel.liveDeviceLine, { opacity: 1, duration: 0.4, ease: "power2.out" }, aPress + 0.18)
+    .to(sel.cursorRig, { opacity: 0, duration: 0.25 }, aPress + 0.55);
+
+  // ── Beat B · find it in the app ───────────────────────────────────────────
+  // Camera pulls back to the dashboard; the cursor clicks "Live sessions" in
+  // the sidebar and the active highlight hands over to it.
+  const bStart = aStart + 4.8;
+  tl.addLabel("live-open", bStart)
+    .set(sel.camera, { willChange: "transform" }, bStart - 0.05)
     .to(
       sel.camera,
       { scale: REST.scale, xPercent: 0, yPercent: 0, duration: 1.4, ease: "power3.inOut" },
-      liveOut,
+      bStart,
     )
-    .set(sel.camera, { willChange: "auto" }, liveOut + 1.4)
-    .to(sel.liveScene, { opacity: 0, duration: 0.6, ease: "power2.in" }, liveOut)
-    .to(sel.dashboard, { opacity: 1, duration: 0.8, ease: "power2.out" }, liveOut + 0.5)
-    .to(sel.captionAct2, { opacity: 0, duration: 0.4, ease: "power1.inOut" }, liveOut + 0.5)
-    .to(sel.captionAct1, { opacity: 1, duration: 0.4, ease: "power1.inOut" }, liveOut + 0.5);
+    .set(sel.camera, { willChange: "auto" }, bStart + 1.4)
+    .to(sel.liveExt, { opacity: 0, duration: 0.55, ease: "power2.in" }, bStart)
+    .to(sel.dashboard, { opacity: 1, duration: 0.7, ease: "power2.out" }, bStart + 0.35);
 
-  const finalEnd = liveOut + 1.6;
-  tl.set({}, {}, finalEnd);
+  const bCursor = bStart + 1.5;
+  tl.set(
+    sel.cursorRig,
+    { xPercent: (sNavLive.x - 0.16) * 100, yPercent: (sNavLive.y + 0.4) * 100 },
+    bCursor,
+  ).to(sel.cursorRig, { opacity: 1, duration: 0.25 }, bCursor + 0.05);
+  glide(tl, sNavLive, bCursor + 0.2, 0.85);
+
+  const bPress = bCursor + 1.15;
+  press(tl, bPress);
+  tl.to(sel.navAllActive, { opacity: 0, duration: 0.25 }, bPress + 0.02)
+    .to(sel.navLiveActive, { opacity: 1, duration: 0.25 }, bPress + 0.02);
+
+  // ── Beat C · see the tabs live ────────────────────────────────────────────
+  // The card grid hands off to the Live sessions view; the device's open tabs
+  // stream in one by one, and the phone catches up a beat later.
+  const cStart = bStart + 3.3;
+  tl.addLabel("live-tabs", cStart)
+    .to(sel.cursorRig, { opacity: 0, duration: 0.25 }, cStart)
+    .to(sel.dashGrid, { opacity: 0, duration: 0.5, ease: "power2.in" }, cStart)
+    .to(sel.liveView, { opacity: 1, duration: 0.6, ease: "power2.out" }, cStart + 0.25);
+
+  tl.fromTo(
+    sel.liveTab,
+    { yPercent: 18, opacity: 0 },
+    { yPercent: 0, opacity: 1, duration: 0.5, ease: "power2.out", stagger: 0.32 },
+    cStart + 0.95,
+  ).fromTo(
+    sel.liveTabPhone,
+    { yPercent: 18, opacity: 0 },
+    { yPercent: 0, opacity: 1, duration: 0.5, ease: "power2.out", stagger: 0.3 },
+    cStart + 1.7,
+  );
+
+  // ── Loop seam · caption back to act one, then the hard cut ────────────────
+  // The scene holds on the live view; the caption returns to act one's line
+  // just before the slate hard-cuts back to beat 1's closeup on the next loop.
+  const cEnd = cStart + 6.5;
+  tl.to(sel.captionAct2, { opacity: 0, duration: 0.4, ease: "power1.inOut" }, cEnd - 0.5)
+    .to(sel.captionAct1, { opacity: 1, duration: 0.4, ease: "power1.inOut" }, cEnd - 0.5);
+
+  tl.set({}, {}, cEnd);
   return tl;
 }
 
@@ -420,10 +481,11 @@ function buildFullTimeline(root: HTMLElement): gsap.core.Timeline {
  *
  * This is a deliberate cut, not a fallback: shrinking the full film to fit would
  * mean shipping an illegible smudge of a UI as the landing page's main visual.
- * Act two is cut for the same reason — `LiveScene` shares `BrowserWindow`'s
- * `@md:flex` floor, so there's nothing to reveal here either — and the caption
- * simply never advances past its act-one line, which is a true statement of
- * what this storyboard actually plays.
+ * Act two is cut for the same reason — its extension panel (`LiveExtension`)
+ * shares `BrowserWindow`'s `@md:flex` floor and its live view needs the wide
+ * dashboard, so there's nothing to reveal here either — and the caption simply
+ * never advances past its act-one line, which is a true statement of what this
+ * storyboard actually plays.
  */
 function buildCompactTimeline(root: HTMLElement): gsap.core.Timeline {
   const pick = <T extends Element = HTMLElement>(s: string) => root.querySelector(s) as T;

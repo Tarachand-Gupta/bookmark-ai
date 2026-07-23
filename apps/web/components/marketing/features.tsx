@@ -1,15 +1,16 @@
-import {
-  BookmarkPlus,
-  FolderTree,
-  Layers,
-  MonitorSmartphone,
-  ScanSearch,
-} from "lucide-react";
+// One icon per feature, shared with the app sidebar and the onboarding tour —
+// the marketing grid must never drift from what the product itself shows.
+import { FEATURE_ICONS } from "@/components/library/feature-icons";
 import { cn } from "@/lib/utils";
 import { CategoryChipsMock, SaveBookmarkMock, SearchDemo, SessionMock } from "./feature-mocks";
 import { LiveTabsDemo } from "./live-tabs";
 import { Reveal } from "./reveal";
 import { display, glass, mono, SectionHead } from "./primitives";
+
+/** Subtle in-copy emphasis: lifts a standout phrase out of muted body text. */
+function Em({ children }: { children: React.ReactNode }) {
+  return <strong className="font-medium text-foreground">{children}</strong>;
+}
 
 export function Features() {
   return (
@@ -37,7 +38,7 @@ export function Features() {
           )}
         >
           <div className="flex items-center gap-2">
-            <MonitorSmartphone className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
+            <FEATURE_ICONS.live className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
             <span
               className={cn(
                 mono,
@@ -55,10 +56,10 @@ export function Features() {
             Live tabs, on every device
           </h3>
           <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-            Every browser you sign in to publishes its open tabs — opt-in — and they
-            appear on your other devices as they change, streamed live. Close the
-            laptop, open your phone, and the tab you were reading is already there.
-            Private to you, and gone after seven days.
+            Every browser you sign in to publishes its open tabs — <Em>opt-in</Em> — and
+            they appear on your other devices as they change, streamed <Em>live</Em>. Close
+            the laptop, open your phone, and the tab you were reading is already there.
+            Private to you, and <Em>gone after seven days</Em>.
           </p>
           <div className="mt-auto">
             <LiveTabsDemo />
@@ -70,14 +71,14 @@ export function Features() {
           data-reveal-item
           className={cn(glass, "flex flex-col rounded-2xl p-7 md:col-span-6")}
         >
-          <ScanSearch className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
+          <FEATURE_ICONS.search className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
           <h3 className={cn(display, "mt-5 text-2xl font-semibold tracking-tight")}>
             Search by meaning
           </h3>
           <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-            Hybrid search blends full-text with semantic vectors, so a vague memory
-            like &ldquo;that article on focus&rdquo; still finds the page — even when
-            those exact words are nowhere on it.
+            Hybrid search blends full-text with <Em>semantic vectors</Em>, so a vague
+            memory like &ldquo;that article on focus&rdquo; still finds the page — even
+            when those exact words are nowhere on it.
           </p>
           <SearchDemo />
         </div>
@@ -88,13 +89,13 @@ export function Features() {
           data-reveal-item
           className={cn(glass, "flex flex-col rounded-2xl p-7 md:col-span-4")}
         >
-          <BookmarkPlus className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
+          <FEATURE_ICONS.bookmarks className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
           <h3 className={cn(display, "mt-5 text-xl font-semibold tracking-tight")}>
             Save bookmarks
           </h3>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            One click from any browser saves the page you&rsquo;re on — the extension
-            grabs its title, icon and link. No copy-pasting URLs.
+            <Em>One click</Em> from <Em>any browser</Em> saves the page you&rsquo;re on —
+            the extension grabs its title, icon and link. No copy-pasting URLs.
           </p>
           <div className="mt-auto pt-6">
             <SaveBookmarkMock />
@@ -105,13 +106,13 @@ export function Features() {
           data-reveal-item
           className={cn(glass, "flex flex-col rounded-2xl p-7 md:col-span-4")}
         >
-          <FolderTree className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
+          <FEATURE_ICONS.ai className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
           <h3 className={cn(display, "mt-5 text-xl font-semibold tracking-tight")}>
             AI categories &amp; tags
           </h3>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            Every save is filed under a clear category with tags — by the AI provider
-            you choose. No folders to maintain, nothing to drag.
+            Every save is filed under a clear category with tags — by <Em>the AI provider
+            you choose</Em>. No folders to maintain, nothing to drag.
           </p>
           <div className="mt-auto pt-6">
             <CategoryChipsMock />
@@ -122,13 +123,13 @@ export function Features() {
           data-reveal-item
           className={cn(glass, "flex flex-col rounded-2xl p-7 md:col-span-4")}
         >
-          <Layers className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
+          <FEATURE_ICONS.sessions className="size-6 text-foreground" strokeWidth={1.6} aria-hidden />
           <h3 className={cn(display, "mt-5 text-xl font-semibold tracking-tight")}>
             Save whole session
           </h3>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            Snapshot an entire window of tabs as one session, then restore the whole
-            set as a tab group later. Park research and pick it back up.
+            Snapshot an entire window of tabs as one session, then <Em>restore the whole
+            set as a tab group</Em> later. Park research and pick it back up.
           </p>
           <div className="mt-auto pt-6">
             <SessionMock />

@@ -9,18 +9,20 @@ import { BrowserWindow } from "./browser-window";
 import { Cursor } from "./cursor";
 import { DashboardMock } from "./dashboard-mock";
 import { GEO, QUERY, sel } from "./data";
-import { LiveScene } from "./live-scene";
+import { LiveExtension } from "./live-extension";
 import { buildDemoTimeline } from "./timeline";
 
 const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 /**
- * The pitch, acted out, in two acts. Act one: click the extension → the popup
- * opens → save the page → pull back to the library it went into → find it
- * again by meaning. Act two: the camera returns to the same spot and finds a
- * different scene — a laptop mirroring its open tabs onto a phone, live. A
- * caption above the frame names whichever act is currently playing. One shot,
- * ~20s, looping. All nine beats live in `./timeline`.
+ * The pitch, acted out, in two acts. Act one (~14s): click the extension → the
+ * popup opens → save the page → pull back to the library it went into → find it
+ * again by meaning. Act two (~15s), the differentiator, told with the same
+ * craft: the camera returns to the extension and the cursor flips ON the
+ * "Share window as live session" switch → pulls back and clicks "Live sessions"
+ * in the sidebar → the view fills with the device's open tabs streaming in
+ * live, mirrored to a phone. A caption above the frame names whichever act is
+ * playing. One shot, ~30s, looping. Every beat lives in `./timeline`.
  *
  * Three structural decisions worth knowing before editing:
  *
@@ -52,6 +54,10 @@ export function HeroDemo() {
     gsap.registerPlugin(ScrollTrigger);
     let ctx: gsap.Context | undefined;
     let compact: boolean | undefined;
+    // The authoritative "resume/pause to the correct state" callback for the
+    // currently-built timeline. Hoisted so the persistent visibility listener
+    // (below) can drive it too, not just ScrollTrigger. Undefined until built.
+    let sync: (() => void) | undefined;
 
     // Which storyboard applies is a question about the *column*, not the
     // viewport — so ask the DOM rather than re-deriving the container query in
@@ -73,15 +79,38 @@ export function HeroDemo() {
           trigger: root,
           start: "top bottom",
           end: "bottom top",
-          onToggle: (self) => (self.isActive ? tl.play() : tl.pause()),
+          // onToggle only fires on an *edge*; a resize-driven ScrollTrigger
+          // refresh can pause us mid-flight and then never fire a matching
+          // "on" edge (from ST's bookkeeping the trigger never left the active
+          // range), which is how the film used to wedge on the search frame
+          // for good. So the play/pause decision is a single authoritative
+          // `sync()` that re-derives the desired state from live inputs, and
+          // it's driven from BOTH the toggle edge AND every refresh — the
+          // refresh is what unwedges the stuck case.
+          onToggle: () => sync?.(),
+          onRefresh: () => sync?.(),
         });
+
+        // Resume/pause to the state the inputs actually imply, idempotently:
+        // play forward from wherever the head is when the hero is on-screen AND
+        // the tab is visible; pause otherwise. `tl.play()`/`tl.pause()` are
+        // both no-ops if already in that state, so calling this repeatedly (on
+        // every toggle, refresh, and visibility change) is free and safe.
+        sync = () => {
+          const shouldPlay = st.isActive && document.visibilityState === "visible";
+          if (shouldPlay) {
+            if (tl.paused()) tl.play();
+          } else if (!tl.paused()) {
+            tl.pause();
+          }
+        };
 
         // Seek to 0 *synchronously* here, inside the layout effect, so the slate
         // is applied before this frame paints. Without the explicit seek the
         // first GSAP tick can land after paint and the finished frame flashes
-        // for one frame before the film starts.
-        if (st.isActive) tl.play(0);
-        else tl.pause(0);
+        // for one frame before the film starts. Then hand off to sync().
+        tl.pause(0);
+        sync();
       }, rootRef);
     };
 
@@ -100,23 +129,28 @@ export function HeroDemo() {
     };
     window.addEventListener("resize", onResize);
 
-    // A tab opened in the background never ticks rAF. Building there would
-    // apply the slate and then freeze on beat 1 until the user looks — so we
-    // don't build at all, and the finished frame stands in until they do.
-    let onVisible: (() => void) | undefined;
-    if (document.visibilityState === "visible") {
-      play();
-    } else {
-      onVisible = () => {
+    // Visibility does double duty. A tab opened in the background never ticks
+    // rAF, so building there would apply the slate and freeze until the user
+    // looks — so we defer the *build* until first visible. And once built, a
+    // hidden→visible transition has to resume a timeline `sync()` paused while
+    // hidden (rAF was stopped) — the old code only ever ran on first show and
+    // so left a returning tab stuck. One persistent listener covers both:
+    // build if we haven't yet, otherwise re-sync.
+    const onVisible = () => {
+      if (!ctx) {
         if (document.visibilityState === "visible") play();
-      };
-      document.addEventListener("visibilitychange", onVisible);
-    }
+      } else {
+        sync?.();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    if (document.visibilityState === "visible") play();
 
     return () => {
-      if (onVisible) document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("resize", onResize);
       clearTimeout(resizeTimer);
+      sync = undefined;
       ctx?.revert();
       // revert() restores inline styles, but the typed query is text content,
       // which it has no idea about.
@@ -155,7 +189,7 @@ export function HeroDemo() {
           )}
         >
           <span aria-hidden className="h-px w-5 shrink-0 bg-border" />
-          Your live tabs, on every device
+          Live tabs — see your open tabs on any device
         </p>
       </div>
 
@@ -172,7 +206,7 @@ export function HeroDemo() {
           "text-[clamp(11px,2.4cqw,16px)]",
         )}
       >
-        {/* The camera. One element, one transform, five beats.
+        {/* The camera. One element, one transform, both acts.
 
             No permanent `will-change: transform` here: it promotes the camera to
             a raster-cached compositing layer that's drawn once at scale-1 size
@@ -188,7 +222,7 @@ export function HeroDemo() {
         >
           <DashboardMock />
           <BrowserWindow />
-          <LiveScene />
+          <LiveExtension />
 
           {/* Beat 1's frame, as a box. The camera measures this at runtime and
               solves its own scale and offset to fit it — so re-composing the
