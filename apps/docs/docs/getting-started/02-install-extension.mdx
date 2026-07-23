@@ -6,6 +6,8 @@ sidebar_custom_props:
   icon: 🧩
 ---
 
+import Screenshot from '@site/src/components/Screenshot';
+
 # Install the extension
 
 Saving happens through the browser extension. It's built for Chrome, Firefox,
@@ -17,6 +19,12 @@ and Safari from one codebase.
    popup picks it up. There's no separate sign-in inside the popup, because
    browsers don't allow OAuth flows there.
 3. Once signed in, the popup shows your name and the save controls.
+
+<Screenshot
+  alt="The extension popup before signing in: the Bookmark AI header with a 'Sign in to get started' prompt and a 'Sign in ↗' button that opens the website."
+  dark="/img/screenshots/popup-signin.png"
+  caption="Until you sign in on the website, the popup just points you there — the session then syncs back into the extension automatically."
+/>
 
 :::note
 Signing out from the extension popup ends the shared session, so it signs you
