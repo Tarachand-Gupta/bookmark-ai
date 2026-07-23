@@ -127,7 +127,12 @@ All three must succeed. Live test (needs a real browser via computer use / chrom
   2. The converter mis-namespaces the APP target's bundle id (`ai.bookmark.Bookmark-AI` vs the
      appex's `ai.bookmark.safari.Extension`) and the build fails at ValidateEmbeddedBinary —
      fix: `sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = "ai.bookmark.Bookmark-AI";/PRODUCT_BUNDLE_IDENTIFIER = ai.bookmark.safari;/g' "safari-xcode/Bookmark AI/Bookmark AI.xcodeproj/project.pbxproj"`
-  3. `cd "safari-xcode/Bookmark AI" && xcodebuild -project "Bookmark AI.xcodeproj" -scheme "Bookmark AI" -configuration Debug clean build` (`clean` matters — see step 1 note; default sign-to-run-locally; do NOT pass CODE_SIGNING_REQUIRED=NO)
+  3. `cd "safari-xcode/Bookmark AI" && xcodebuild -project "Bookmark AI.xcodeproj" -scheme "Bookmark AI" -configuration Debug clean build CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Development: tarachandragupta2784@gmail.com (BB7CP2R7GG)" DEVELOPMENT_TEAM=L3PP7DQZWS PROVISIONING_PROFILE_SPECIFIER=""`
+     (`clean` matters — see step 1 note. The signing flags use the Apple Development
+     cert already in this Mac's keychain: a REAL signature makes Safari keep the
+     extension across restarts with NO "Allow Unsigned Extensions" re-arm. Dropping
+     them falls back to ad-hoc signing, which Safari treats as unsigned and forgets
+     on every restart. Do NOT pass CODE_SIGNING_REQUIRED=NO.)
   4. Install to a STABLE path and keep it the ONLY copy — multiple registered copies of the
      app (DerivedData + /Applications + ~/Applications) make Safari's extension list appear
      empty or doubled, and each rebuild re-registers the DerivedData copy:
