@@ -72,6 +72,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     );
   }
 
+  // Fail closed: an empty CORS allowlist means "reflect any origin" (see
+  // cors.ts resolveAllowedOrigin) — a safe dev default, but a hole in production.
+  // Require LIVE_ALLOWED_ORIGINS to be set explicitly there rather than silently
+  // accepting every origin. Dev keeps reflect-any.
+  if (isProduction && csv(e.LIVE_ALLOWED_ORIGINS).length === 0) {
+    throw new Error(
+      "live-server: production requires LIVE_ALLOWED_ORIGINS (CORS allowlist); refusing to reflect any origin.",
+    );
+  }
+
   return {
     port: e.PORT,
     redisUrl: e.REDIS_URL,

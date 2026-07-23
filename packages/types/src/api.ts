@@ -60,7 +60,9 @@ export type SessionTab = z.infer<typeof sessionTabSchema>;
 /** POST /api/sessions — save a snapshot of the currently open tabs. */
 export const createSessionSchema = z.object({
   name: z.string().max(200).optional(),
-  tabs: z.array(sessionTabSchema).min(1),
+  // Cap tabs per session — generous (a real snapshot is far smaller) but bounds
+  // an abusive payload. Mirrored on the export bundle's session tabs.
+  tabs: z.array(sessionTabSchema).min(1).max(500),
   browser: browserSchema.default("other"),
   device: deviceTypeSchema.default("other"),
   savedAt: z.string().datetime({ offset: true }).optional(),

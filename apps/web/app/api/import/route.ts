@@ -1,9 +1,19 @@
 import { after, NextResponse, type NextRequest } from "next/server";
 import { embedPending, importUserData } from "@bookmark-ai/engine";
-import { getRequestApiContext } from "@/lib/server/api-context";
+import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
 
 // Authed, mutating, per-user — never statically cache.
 export const dynamic = "force-dynamic";
+
+/**
+ * SECURITY: hard cap on the import body. An import bundle is fully user-supplied
+ * and parsed into memory before validation, so bound it up front — first by the
+ * declared Content-Length (cheap, rejects before we read), then by the actual
+ * bytes read (covers chunked/absent Content-Length and a lying header). The
+ * bundle's per-array item caps (packages/types export schema) are the second
+ * line of defence at validation time.
+ */
+const MAX_IMPORT_BYTES = 20 * 1024 * 1024; // 20 MB
 
 /**
  * Import a bundle produced by GET /api/export. `importUserData` validates and
@@ -14,15 +24,38 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
-  const { db, gemini, ready } = ctx;
+  const { db, gemini, ready, userId } = ctx;
   await ready;
 
-  let body: unknown;
+  // Reject an oversized body before reading it, when the client declares one.
+  const declaredLength = Number(req.headers.get("content-length") ?? "");
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_IMPORT_BYTES) {
+    return NextResponse.json({ error: "Import is too large (max 20 MB)" }, { status: 413 });
+  }
+
+  let raw: string;
   try {
-    body = await req.json();
+    raw = await req.text();
   } catch {
     return NextResponse.json({ error: "Request body isn't valid JSON" }, { status: 400 });
   }
+  // Guard the actual size too — covers chunked bodies and a lying Content-Length.
+  if (Buffer.byteLength(raw, "utf8") > MAX_IMPORT_BYTES) {
+    return NextResponse.json({ error: "Import is too large (max 20 MB)" }, { status: 413 });
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return NextResponse.json({ error: "Request body isn't valid JSON" }, { status: 400 });
+  }
+
+  // Meter ONE quota unit per import (not per bookmark) — a legitimate restore can
+  // carry thousands of rows, so charging per row would break it. Reuses the
+  // "saves" bucket. No-op when multi-tenancy is off or in open mode.
+  const overQuota = await enforceQuota(userId, "saves");
+  if (overQuota) return overQuota;
 
   let imported: { bookmarks: number; sessions: number };
   try {

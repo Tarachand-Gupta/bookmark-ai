@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateUserSettingsSchema, type UserSettings } from "@bookmark-ai/types";
 import { getUserSettings, upsertUserSettings, type UserSettingsRow } from "@bookmark-ai/db";
+import { assertSafeUrl } from "@bookmark-ai/engine";
 import { getRequestApiContext } from "@/lib/server/api-context";
 
 /**
@@ -49,6 +50,23 @@ export async function PUT(req: NextRequest) {
     );
   }
   const { provider, apiKey, baseUrl, model, liveServerUrl } = parsed.data;
+
+  // SECURITY (SSRF): a custom provider's base URL is user-supplied and later used
+  // by resolveChatModel to build an outbound AI request. Validate it HERE at write
+  // time against the same net-guard policy the models test route uses (scheme/port
+  // check + DNS resolution rejecting loopback/private/link-local/metadata hosts),
+  // so a hostile base URL never reaches the stored settings. `assertSafeUrl` is
+  // async (it resolves DNS) and throws on a malformed or blocked URL.
+  if (provider === "custom" && baseUrl) {
+    try {
+      await assertSafeUrl(baseUrl);
+    } catch {
+      return NextResponse.json(
+        { error: "Base URL must be a reachable public http(s) endpoint" },
+        { status: 400 },
+      );
+    }
+  }
 
   // The form always sends provider/baseUrl/model, so those always overwrite. A
   // base URL only makes sense for a custom provider — clear it otherwise.

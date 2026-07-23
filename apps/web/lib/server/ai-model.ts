@@ -4,7 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { getUserSettings, type Db } from "@bookmark-ai/db";
-import type { GeminiClient } from "@bookmark-ai/engine";
+import { assertSafeUrl, type GeminiClient } from "@bookmark-ai/engine";
 
 /** The chat model to run, plus a short human label for logging/telemetry. */
 export interface ResolvedChatModel {
@@ -66,6 +66,26 @@ export async function resolveChatModel({
         // A custom OpenAI-compatible endpoint also needs a base URL; without one
         // the config is incomplete, so fall through to the env fallback.
         if (hasText(settings.aiBaseUrl)) {
+          // SECURITY (SSRF defense-in-depth): the base URL is validated at write
+          // time (app/api/settings/route.ts) against the same net-guard policy,
+          // but re-check it here right before building the outbound provider so a
+          // row written by an older build or another path can't point the chat
+          // agent at a loopback/private/link-local/metadata host. `assertSafeUrl`
+          // rejects non-web schemes/ports and DNS-resolves the host, throwing if
+          // any address is private/reserved. A throw → treat this as unconfigured
+          // and fall through to the env fallback (the same null/503 surface the
+          // caller already shows for "AI unavailable").
+          //
+          // NOTE: this is a pre-flight host check, not full TOCTOU parity — the AI
+          // SDK's completion call POSTs a body, which the guard's `followRedirects`
+          // (GET-only, no per-request body/method) can't proxy, so we don't wire a
+          // guarded fetch/dispatcher into createOpenAICompatible. Write-time
+          // validation + this pre-flight check is the SSRF surface we protect.
+          try {
+            await assertSafeUrl(settings.aiBaseUrl);
+          } catch {
+            break;
+          }
           return {
             model: createOpenAICompatible({
               name: "custom",

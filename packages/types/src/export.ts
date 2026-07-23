@@ -39,7 +39,9 @@ export type ExportedBookmark = z.infer<typeof exportedBookmarkSchema>;
 /** A saved tab-session, mirroring the `sessions` table (minus the per-DB id). */
 export const exportedSessionSchema = z.object({
   name: z.string(),
-  tabs: z.array(sessionTabSchema),
+  // SECURITY: cap tabs per session (mirrors createSessionSchema) so an oversized
+  // import bundle can't smuggle a huge tab list past the count caps below.
+  tabs: z.array(sessionTabSchema).max(500),
   tabCount: z.number(),
   browser: z.string(),
   device: z.string(),
@@ -57,8 +59,12 @@ export const exportBundleSchema = z.object({
     bookmarks: z.number(),
     sessions: z.number(),
   }),
-  bookmarks: z.array(exportedBookmarkSchema),
-  sessions: z.array(exportedSessionSchema),
+  // SECURITY: bound the bundle so a malicious/oversized import can't exhaust
+  // memory during validation. Caps are generous (well above any real personal
+  // library) and are a validation tightening only — they add/rename no column, so
+  // SCHEMA_VERSION is unchanged and previously-exported bundles still import.
+  bookmarks: z.array(exportedBookmarkSchema).max(10_000),
+  sessions: z.array(exportedSessionSchema).max(1_000),
 });
 export type ExportBundle = z.infer<typeof exportBundleSchema>;
 
