@@ -1,5 +1,6 @@
 import type { Bookmark, Session } from "@bookmark-ai/types";
 import { browser } from "wxt/browser";
+import { diag } from "./diag";
 
 /** Message contracts between the popup and the background script. */
 
@@ -163,12 +164,22 @@ const SIGNED_OUT_INFO: UserInfo = { signedIn: false, name: null, email: null };
 export function requestUser(): Promise<UserInfo> {
   const message: GetUserMessage = { type: GET_USER };
   return (browser.runtime.sendMessage(message) as Promise<unknown>)
-    .then((info) =>
-      info && typeof info === "object" && typeof (info as UserInfo).signedIn === "boolean"
+    .then((info) => {
+      // Diagnostic: the raw reply shape distinguishes "no listener answered"
+      // (undefined — background never ran) from a real signed-out reply
+      // (object — background ran and answered). Values are never logged.
+      diag("popup", "raw GET_USER reply", {
+        type: typeof info,
+        keys: info && typeof info === "object" ? Object.keys(info).slice(0, 8) : null,
+      });
+      return info && typeof info === "object" && typeof (info as UserInfo).signedIn === "boolean"
         ? (info as UserInfo)
-        : SIGNED_OUT_INFO,
-    )
-    .catch(() => SIGNED_OUT_INFO);
+        : SIGNED_OUT_INFO;
+    })
+    .catch((err: unknown) => {
+      diag("popup", "GET_USER rejected", { error: err instanceof Error ? err.message : String(err) });
+      return SIGNED_OUT_INFO;
+    });
 }
 
 export interface LiveSetEnabledMessage {

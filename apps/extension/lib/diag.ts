@@ -49,7 +49,18 @@ export function diag(scope: string, msg: string, data?: unknown): void {
   }
   // Storage mirror — survives a popup close / background restart.
   void diagLogItem.setValue(ring.slice()).catch(() => {});
-  scheduleFlush();
+  // The background may be an EVENT page (Safari) that gets torn down within
+  // milliseconds of answering a message — a debounced flush would lose every
+  // entry. Flush bg-scope entries immediately; everything else can batch.
+  if (scope === "bg") {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    void flush();
+  } else {
+    scheduleFlush();
+  }
 }
 
 function scheduleFlush(): void {

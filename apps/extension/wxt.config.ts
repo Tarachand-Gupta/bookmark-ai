@@ -156,37 +156,17 @@ export default defineConfig({
     // unknown MV2 key as a harmless warning, and the SDK only checks that the
     // key exists (its contents are never read). MV3 already keeps the key, so
     // this is scoped to MV2.
+    // MV2-ONLY patch. Safari is now built as MV3 (see build:safari --mv3), which
+    // keeps its top-level host_permissions natively, so this only fires for the
+    // Firefox MV2 output. (Modern Safari — 26.x — deprecated MV2 and never even
+    // starts an MV2 background page: the popup's sendMessage found no receiver.
+    // MV3's service worker is the supported path there.)
     "build:done": (wxt) => {
       if (wxt.config.manifestVersion !== 2) return;
       const manifestPath = resolve(wxt.config.outDir, "manifest.json");
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-      let changed = false;
-      if (!manifest.host_permissions) {
-        manifest.host_permissions = [...HOST_PERMISSIONS];
-        changed = true;
-      }
-      // Safari does NOT reliably run a PERSISTENT MV2 background page. WXT emits
-      // no `persistent` key (MV2 default = true), and under that default Safari
-      // never even evaluates background.js: the popup's GET_USER sendMessage
-      // finds no receiver, so the auth gate can never promote. Diagnosed with
-      // JavaScriptCore's CLI — the built bundle evaluates CLEAN under a faithful
-      // Safari-background env shim (registers onMessage + all listeners, no
-      // throw), which rules out a code crash and points squarely at startup.
-      // Declaring the background a NON-PERSISTENT event page is Apple's
-      // documented model for Safari: it then wakes the page on the incoming
-      // message, re-runs the script (WXT registers the listeners synchronously
-      // before the first await, so they're in place on each wake), and delivers.
-      // Scoped to Safari only — Firefox's persistent page works and there's no
-      // reason to change its lifecycle.
-      if (
-        wxt.config.browser === "safari" &&
-        manifest.background &&
-        manifest.background.persistent !== false
-      ) {
-        manifest.background.persistent = false;
-        changed = true;
-      }
-      if (!changed) return;
+      if (manifest.host_permissions) return;
+      manifest.host_permissions = [...HOST_PERMISSIONS];
       // Match WXT's own writer: minified in production, pretty otherwise.
       const json =
         wxt.config.mode === "production"
