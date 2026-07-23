@@ -4,19 +4,23 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { cn } from "@/lib/utils";
-import { glass } from "../primitives";
+import { glass, mono } from "../primitives";
 import { BrowserWindow } from "./browser-window";
 import { Cursor } from "./cursor";
 import { DashboardMock } from "./dashboard-mock";
 import { GEO, QUERY, sel } from "./data";
+import { LiveScene } from "./live-scene";
 import { buildDemoTimeline } from "./timeline";
 
 const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 /**
- * The pitch, acted out: click the extension → the popup opens → save the page →
- * pull back to the library it went into → find it again by meaning. One shot,
- * ~12s, looping. The five beats live in `./timeline`.
+ * The pitch, acted out, in two acts. Act one: click the extension → the popup
+ * opens → save the page → pull back to the library it went into → find it
+ * again by meaning. Act two: the camera returns to the same spot and finds a
+ * different scene — a laptop mirroring its open tabs onto a phone, live. A
+ * caption above the frame names whichever act is currently playing. One shot,
+ * ~20s, looping. All nine beats live in `./timeline`.
  *
  * Three structural decisions worth knowing before editing:
  *
@@ -127,6 +131,34 @@ export function HeroDemo() {
       aria-hidden
       className="@container pointer-events-none relative w-full select-none"
     >
+      {/* The caption — names whichever act is currently playing. Two states
+          stacked and cross-faded by the timeline (same idiom as the
+          dashboard's meta-row), so the swap never reflows the layout above
+          the frame. Default is act one's line, matching the demo's own
+          default DOM state (see below). */}
+      <div className="relative mb-3 h-[1.1rem] @md:mb-4">
+        <p
+          data-demo="caption-1"
+          className={cn(
+            mono,
+            "absolute inset-0 flex items-center gap-2.5 text-[0.7rem] font-medium uppercase tracking-[0.22em] text-muted-foreground",
+          )}
+        >
+          <span aria-hidden className="h-px w-5 shrink-0 bg-border" />
+          Saving bookmarks &amp; finding them anywhere
+        </p>
+        <p
+          data-demo="caption-2"
+          className={cn(
+            mono,
+            "absolute inset-0 flex items-center gap-2.5 text-[0.7rem] font-medium uppercase tracking-[0.22em] text-muted-foreground opacity-0",
+          )}
+        >
+          <span aria-hidden className="h-px w-5 shrink-0 bg-border" />
+          Your live tabs, on every device
+        </p>
+      </div>
+
       <div
         data-demo="stage"
         className={cn(
@@ -156,6 +188,7 @@ export function HeroDemo() {
         >
           <DashboardMock />
           <BrowserWindow />
+          <LiveScene />
 
           {/* Beat 1's frame, as a box. The camera measures this at runtime and
               solves its own scale and offset to fit it — so re-composing the

@@ -124,6 +124,18 @@ export const TOTAL = LIBRARY.length;
 export const SESSION_TABS = 7;
 
 /**
+ * Act two's cast: the tabs a laptop mirrors onto a phone, live. Same flavor of
+ * honest, generic browsing as `live-tabs.tsx`'s demo — this is a separate
+ * component authored for the hero's cinematic staging, not a reuse of that
+ * one, so the two lists are declared independently on purpose.
+ */
+export const LIVE_TABS = [
+  { mark: "M", title: "Server-Sent Events — the guide", host: "developer.mozilla.org" },
+  { mark: "R", title: "Redis pub/sub in production", host: "redis.io" },
+  { mark: "F", title: "Fastify streaming responses", host: "fastify.dev" },
+] as const;
+
+/**
  * Stage geometry, in percent of the stage box.
  *
  * `browser` is where the floating browser window sits over the dashboard.
@@ -176,4 +188,13 @@ export const sel = {
 
   cursorRig: "[data-demo='cursor-rig']",
   cursorGlyph: "[data-demo='cursor-glyph']",
+
+  // Act two — live tabs.
+  liveScene: "[data-demo='live-scene']",
+  liveTab: "[data-demo='live-tab']",
+
+  // The caption above the stage, labelling whichever act is currently
+  // playing. Two states stacked, cross-faded — same idiom as meta-all/results.
+  captionAct1: "[data-demo='caption-1']",
+  captionAct2: "[data-demo='caption-2']",
 } as const;
