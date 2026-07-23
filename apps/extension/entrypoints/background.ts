@@ -200,10 +200,13 @@ async function handleRestoreSession(
 export default defineBackground(() => {
   setAuthTokenProvider(getSessionToken);
 
-  // Live-tabs checkpoint: registers its tab/window/alarm listeners SYNCHRONOUSLY
-  // (must run before the first await, or the MV3 worker won't wake — §4.5). It
-  // gates every wake on the storage flag, so this is inert until the popup opts in.
-  registerLiveCheckpoint();
+  // Register the popup↔background message listeners FIRST (still synchronous, so
+  // MV3-worker wake is unaffected). If the optional live-tabs wiring below ever
+  // throws at init — e.g. a `browser.tabs.*`/`windows.*` event object that a
+  // given browser doesn't expose makes `.addListener` throw, which one thrown
+  // error in an MV2 background SCRIPT (Firefox/Safari) would let escape and kill
+  // the ENTIRE script — the GET_USER/SAVE_* listeners are already installed, so
+  // the popup still gets answers instead of spinning forever with a dead port.
 
   // Web-app handoff (origins allowed via manifest externally_connectable):
   // restore a saved session as ONE new window holding every tab — something
@@ -264,4 +267,16 @@ export default defineBackground(() => {
       return undefined;
     },
   );
+
+  // Live-tabs checkpoint: registers its tab/window/alarm listeners SYNCHRONOUSLY
+  // (must run before the first await, or the MV3 worker won't wake — §4.5). It
+  // gates every wake on the storage flag, so this is inert until the popup opts
+  // in. Wrapped so a browser missing one of the events it subscribes to (Safari)
+  // degrades to "no live tabs" instead of taking the whole background down with
+  // it — the auth/save listeners above are already live regardless.
+  try {
+    registerLiveCheckpoint();
+  } catch (error) {
+    console.error("[Bookmark AI] live-tabs checkpoint failed to register", error);
+  }
 });

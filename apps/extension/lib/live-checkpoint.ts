@@ -265,8 +265,11 @@ export function registerLiveCheckpoint(): void {
     void onChange();
   };
 
-  browser.tabs.onCreated.addListener((tab) => markDirtyUnlessPrivate(tab));
-  browser.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+  // Optional chaining on every event: a browser that doesn't expose one of these
+  // (Safari omits some tabs/windows events) just skips that listener rather than
+  // throwing on `.addListener` and aborting the whole registration.
+  browser.tabs.onCreated?.addListener((tab) => markDirtyUnlessPrivate(tab));
+  browser.tabs.onUpdated?.addListener((_tabId, changeInfo, tab) => {
     // Only changes that alter the tab set or its display fields; the debounce
     // coalesces the loading→title→favicon→complete burst into one push.
     if (
@@ -281,17 +284,17 @@ export function registerLiveCheckpoint(): void {
   });
   // onRemoved/onMoved/onAttached/onDetached/onReplaced carry no incognito flag; the
   // flush re-scan excludes incognito data, so the payload is safe regardless.
-  browser.tabs.onRemoved.addListener(() => markDirty());
-  browser.tabs.onMoved.addListener(() => markDirty());
-  browser.tabs.onAttached.addListener(() => markDirty());
-  browser.tabs.onDetached.addListener(() => markDirty());
-  browser.tabs.onReplaced.addListener(() => markDirty());
-  browser.windows.onCreated.addListener((win) => markDirtyUnlessPrivate(win));
-  browser.windows.onRemoved.addListener(() => {
+  browser.tabs.onRemoved?.addListener(() => markDirty());
+  browser.tabs.onMoved?.addListener(() => markDirty());
+  browser.tabs.onAttached?.addListener(() => markDirty());
+  browser.tabs.onDetached?.addListener(() => markDirty());
+  browser.tabs.onReplaced?.addListener(() => markDirty());
+  browser.windows.onCreated?.addListener((win) => markDirtyUnlessPrivate(win));
+  browser.windows.onRemoved?.addListener(() => {
     void onWindowRemoved();
   });
 
-  browser.alarms.onAlarm.addListener((alarm) => {
+  browser.alarms.onAlarm?.addListener((alarm) => {
     if (alarm.name === HEARTBEAT_ALARM) void flush("alarm");
   });
 

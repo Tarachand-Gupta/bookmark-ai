@@ -153,15 +153,22 @@ export function isGetUserMessage(message: unknown): message is GetUserMessage {
   );
 }
 
+const SIGNED_OUT_INFO: UserInfo = { signedIn: false, name: null, email: null };
+
 /** Popup-side helper: ask the background for the current signed-in user. Never
- * rejects into the caller — an unreachable background resolves to signed-out. */
+ * rejects into the caller — an unreachable background resolves to signed-out.
+ * Also coerces a non-`UserInfo` reply (e.g. `undefined`, which some browsers
+ * hand back when no listener answers instead of rejecting) to signed-out, so
+ * the caller never stores an ambiguous value that would leave the gate stuck. */
 export function requestUser(): Promise<UserInfo> {
   const message: GetUserMessage = { type: GET_USER };
-  return (browser.runtime.sendMessage(message) as Promise<UserInfo>).catch(() => ({
-    signedIn: false,
-    name: null,
-    email: null,
-  }));
+  return (browser.runtime.sendMessage(message) as Promise<unknown>)
+    .then((info) =>
+      info && typeof info === "object" && typeof (info as UserInfo).signedIn === "boolean"
+        ? (info as UserInfo)
+        : SIGNED_OUT_INFO,
+    )
+    .catch(() => SIGNED_OUT_INFO);
 }
 
 export interface LiveSetEnabledMessage {

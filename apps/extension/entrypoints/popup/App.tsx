@@ -25,6 +25,16 @@ const AUTO_CLOSE_MS = 1200;
  * promotes the popup without a reopen (paired with the visibilitychange re-check
  * for when the popup regains focus). */
 const AUTH_POLL_MS = 2000;
+/** How long to wait for the background's first `GET_USER` answer before giving
+ * up and showing the signed-out gate instead of the spinner. The background can
+ * hang indefinitely (e.g. `@clerk/chrome-extension`'s client never settling
+ * under Safari), which would otherwise leave `auth` null and the popup spinning
+ * forever. This is correct on every browser: a boot that can't resolve auth in a
+ * few seconds should still render a usable, actionable UI. */
+const BOOT_TIMEOUT_MS = 5000;
+
+const DEGRADED_NOTE =
+  "Couldn't reach the extension background. Sign in on the website — your session still syncs back here.";
 
 const SIGNED_OUT: UserInfo = { signedIn: false, name: null, email: null };
 
@@ -52,23 +62,38 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [webUrl, setWebUrl] = useState<string>(DEFAULT_WEB_URL);
+  // Set only when the boot timeout fires before any background answer — surfaces
+  // a note on the gate so a stuck background reads as a state, not a bug.
+  const [degraded, setDegraded] = useState(false);
 
   // Auth check on open (popup mount) + a re-check whenever the popup regains
   // visibility — e.g. returning from the sign-in tab.
   useEffect(() => {
     let alive = true;
+    let responded = false;
     const check = () => {
       void requestUser().then((info) => {
-        if (alive) setAuth(info);
+        if (!alive) return;
+        responded = true;
+        setAuth(info);
       });
     };
     check();
+    // Safety net: if the background never answers within the budget, stop
+    // spinning and show the signed-out gate. The 2s auth poll below keeps
+    // retrying, so a later recovery or a real sign-in still promotes the popup.
+    const bootTimer = window.setTimeout(() => {
+      if (!alive || responded) return;
+      setDegraded(true);
+      setAuth(SIGNED_OUT);
+    }, BOOT_TIMEOUT_MS);
     const onVisible = () => {
       if (document.visibilityState === "visible") check();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
+      window.clearTimeout(bootTimer);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
@@ -160,7 +185,7 @@ export default function App() {
 
   // Signed out: the gate is the ONLY thing the popup shows.
   if (!auth.signedIn) {
-    return <SignInGate webUrl={webUrl} />;
+    return <SignInGate webUrl={webUrl} note={degraded ? DEGRADED_NOTE : undefined} />;
   }
 
   const savable = tab !== null && /^https?:/i.test(tab.url);

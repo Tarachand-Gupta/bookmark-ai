@@ -8,7 +8,7 @@ import { iconUrl } from "@/lib/icon";
  * inside extension popups) and Clerk's syncHost mirrors the session back, at
  * which point App's poll promotes the popup to the signed-in UI.
  */
-export function SignInGate({ webUrl }: { webUrl: string }) {
+export function SignInGate({ webUrl, note }: { webUrl: string; note?: string }) {
   return (
     <div className="flex min-w-[20rem] flex-col gap-4 p-5">
       <header className="flex items-center gap-2">
@@ -23,6 +23,14 @@ export function SignInGate({ webUrl }: { webUrl: string }) {
           back here automatically.
         </p>
       </div>
+
+      {/* Shown when the popup fell back to this gate because the background never
+          answered (e.g. a hung Clerk client) rather than a confirmed sign-out. */}
+      {note && (
+        <p className="rounded-md border border-dashed px-3 py-2 text-[11px] leading-snug text-muted-foreground">
+          {note}
+        </p>
+      )}
 
       <button
         type="button"
