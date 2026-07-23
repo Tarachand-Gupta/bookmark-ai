@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useClerk, useUser } from "@clerk/clerk-expo";
 import type { SymbolViewProps } from "expo-symbols";
-import { LOCAL_API_URL, PROD_API_URL, type ServerTarget } from "../api";
+import { getApiUrl, SERVER_TARGET } from "../api";
 import { Symbol } from "../components/Symbol";
 import {
   useAppTheme,
@@ -20,7 +20,7 @@ import {
 } from "../context/PreferencesContext";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 
-const WEB_URL = "https://bookmark-ai-theta.vercel.app";
+const WEB_URL = "https://bookmark-ai.cloud";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "system", label: "System" },
@@ -28,16 +28,16 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "dark", label: "Dark" },
 ];
 
-const SERVER_OPTIONS: { value: ServerTarget; label: string; detail: string }[] = [
-  { value: "local", label: "Local", detail: LOCAL_API_URL.replace(/^https?:\/\//, "") },
-  { value: "production", label: "Production", detail: PROD_API_URL.replace(/^https?:\/\//, "") },
-];
+// Which backend this build talks to, shown read-only. The target is chosen at
+// build time (dev run → local, release → production); there is no in-app switch.
+const SERVER_HOST = getApiUrl().replace(/^https?:\/\//, "");
 
-/** Settings tab: signed-in account card, appearance override, server
- * selector (local dev vs deployed API), links — iOS inset-grouped lists. */
+/** Settings tab: signed-in account card, appearance override, links — iOS
+ * inset-grouped lists. The server is fixed by the build, so it's shown as a
+ * read-only info row rather than a toggle. */
 export function SettingsScreen() {
   const { colors } = useAppTheme();
-  const { themePreference, setThemePreference, serverTarget, setServerTarget } = usePreferences();
+  const { themePreference, setThemePreference } = usePreferences();
   const { user } = useUser();
   const { signOut } = useClerk();
   const tabBarClearance = useTabBarClearance();
@@ -58,9 +58,6 @@ export function SettingsScreen() {
       { text: "Sign Out", style: "destructive", onPress: () => void signOut() },
     ]);
   };
-
-  // Every data hook refetches on serverTarget change — no manual reload.
-  const pickServer = (target: ServerTarget) => setServerTarget(target);
 
   return (
     <ScrollView
@@ -111,23 +108,14 @@ export function SettingsScreen() {
         ))}
       </Group>
 
-      <GroupLabel>Server</GroupLabel>
+      <GroupLabel>About</GroupLabel>
       <Group>
-        {SERVER_OPTIONS.map((option, i) => (
-          <GroupRow
-            key={option.value}
-            first={i === 0}
-            symbol={option.value === "local" ? "laptopcomputer" : "cloud"}
-            label={option.label}
-            detail={option.detail}
-            onPress={() => pickServer(option.value)}
-            trailing={
-              serverTarget === option.value ? (
-                <Symbol name="checkmark" size={16} color={colors.foreground} fallback="✓" weight="semibold" />
-              ) : null
-            }
-          />
-        ))}
+        <GroupRow
+          first
+          symbol={SERVER_TARGET === "local" ? "laptopcomputer" : "cloud"}
+          label="Server"
+          detail={SERVER_HOST}
+        />
         <GroupRow
           symbol="safari"
           label="Open web app"
@@ -135,11 +123,6 @@ export function SettingsScreen() {
           onPress={() => void Linking.openURL(WEB_URL)}
         />
       </Group>
-      <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-        Production requires this signed-in account — the deployed API verifies every request.
-        Local talks to the open dev server on this machine. Each server has its own sign-in, so
-        switching signs you out here and you'll sign in again for the other one.
-      </Text>
 
       <GroupLabel>Account</GroupLabel>
       <Group>

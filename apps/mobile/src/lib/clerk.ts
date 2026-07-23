@@ -1,6 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import type { TokenCache } from "@clerk/clerk-expo";
-import type { ServerTarget } from "../api";
+import { SERVER_TARGET, type ServerTarget } from "../api";
 
 /**
  * Clerk publishable keys per server target — the key MUST follow the API the app
@@ -13,26 +13,23 @@ import type { ServerTarget } from "../api";
  *  - `local` → the dev instance (darling-baboon-13, *.accounts.dev) used against
  *    the local Next dev server.
  *
- * ClerkProvider reads its key once at mount, so App.tsx remounts the provider
- * (key={target}) when the target changes — see App.tsx. Switching targets drops
- * the old instance's session (you're signed out), which is correct: the other
- * API wouldn't accept that token anyway.
+ * The target is a BUILD-TIME constant now (see SERVER_TARGET in ../api), so this
+ * resolves to exactly one key inlined at bundle time — ClerkProvider mounts once
+ * with it and never remounts (no in-app server switch anymore).
  */
-export const CLERK_PUBLISHABLE_KEYS: Record<ServerTarget, string> = {
+const CLERK_PUBLISHABLE_KEYS: Record<ServerTarget, string> = {
   production: "pk_live_Y2xlcmsuYm9va21hcmstYWkuY2xvdWQk",
   local: "pk_test_ZGFybGluZy1iYWJvb24tMTMuY2xlcmsuYWNjb3VudHMuZGV2JA",
 };
 
 /**
- * Publishable key for a server target. `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`, when
- * set, overrides BOTH targets (an escape hatch for a throwaway/staging Clerk
- * instance) — but note it defeats the follow-the-target behavior, so it's
- * normally left unset now that the prod instance has the Native API enabled.
- * Inlined at bundle time, so rebuild after changing it.
+ * Publishable key for this build's server target.
+ * `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`, when set, overrides it (an escape hatch
+ * for a throwaway/staging Clerk instance) — normally left unset. Inlined at
+ * bundle time, so rebuild after changing the target or this env var.
  */
-export function clerkPublishableKey(target: ServerTarget): string {
-  return process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? CLERK_PUBLISHABLE_KEYS[target];
-}
+export const CLERK_PUBLISHABLE_KEY =
+  process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? CLERK_PUBLISHABLE_KEYS[SERVER_TARGET];
 
 /** Clerk session persistence in the iOS keychain / Android keystore. Clerk
  * namespaces its stored keys by publishable key, so each instance's session is

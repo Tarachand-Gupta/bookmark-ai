@@ -37,13 +37,13 @@ or persist it in a gitignored `.env.local` (`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=p
 | Path | What |
 | --- | --- |
 | `App.tsx` | providers (Clerk → preferences → safe-area), auth gate, tab shell, deep links (`bookmarkai://tab/...`) |
-| `src/api.ts` | API client — same contract as the web app; local/production server switch; bearer-token injection |
+| `src/api.ts` | API client — same contract as the web app; build-time server target (`SERVER_TARGET`: dev run → local, release → prod); bearer-token injection |
 | `src/theme.ts` | design tokens — hex ports of `packages/ui/src/theme.css` (sync manually on retheme) |
 | `src/navigation/TabBar.tsx` | floating glass tab bar + `useTabBarClearance()` (content scrolls under it) |
-| `src/screens/` | Library (list/cards, quick filters), Search (keyword \| AI), Settings (account, theme, server), SignIn |
+| `src/screens/` | Library (list/cards, quick filters), Search (keyword \| AI), Settings (account, theme; read-only server), SignIn (email+password, email code, forgot-password; Google on dev) |
 | `src/components/` | FilterSheet (native pageSheet), BookmarkRow/Card, SegmentedControl, Symbol (SF Symbol w/ Android fallback) |
 | `src/hooks/` | `useLibrary` (filters + pagination + meta), `useSearch` (debounced) |
-| `src/context/PreferencesContext.tsx` | theme/view/server persisted in AsyncStorage |
+| `src/context/PreferencesContext.tsx` | theme/view persisted in AsyncStorage (server target is a read-only build constant) |
 | `src/lib/` | Clerk keys + token cache, day grouping, long-press actions |
 
 The `ios/` and `android/` directories are **generated** (`expo prebuild`, gitignored) —

@@ -36,22 +36,38 @@ export const PROD_LIVE_URL = "https://live.bookmark-ai.cloud";
 
 export type ServerTarget = "local" | "production";
 
-// Owned by PreferencesContext (persisted there); mirrored here so the
-// data layer stays hook-free.
-let serverTarget: ServerTarget = "local";
-
-export function setServerTarget(target: ServerTarget): void {
-  serverTarget = target;
+/**
+ * The server target is chosen ONCE at BUILD/BUNDLE time — it is NOT toggleable
+ * in-app. This keeps the API, the live server, and the Clerk instance (see
+ * src/lib/clerk.ts) locked together to a single environment, so a session
+ * minted by one instance is never sent to the other API (which would 401).
+ *
+ * Rule (evaluated at bundle time):
+ *   1. `EXPO_PUBLIC_SERVER_TARGET=local|production` — explicit override, wins.
+ *   2. else `__DEV__` — a dev run (Expo Go / dev client / `expo start`) → local,
+ *      a release build (`eas build` / production bundle) → production.
+ *
+ * So: `expo start` / `expo run:*` in dev talks to the local Next dev server +
+ * dev Clerk instance; a shipped release build talks to bookmark-ai.cloud + the
+ * prod Clerk instance. To point a dev run at prod for testing, run with
+ * `EXPO_PUBLIC_SERVER_TARGET=production`.
+ */
+function resolveServerTarget(): ServerTarget {
+  const explicit = process.env.EXPO_PUBLIC_SERVER_TARGET;
+  if (explicit === "local" || explicit === "production") return explicit;
+  return __DEV__ ? "local" : "production";
 }
+
+export const SERVER_TARGET: ServerTarget = resolveServerTarget();
 
 export function getApiUrl(): string {
   if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
-  return serverTarget === "production" ? PROD_API_URL : LOCAL_API_URL;
+  return SERVER_TARGET === "production" ? PROD_API_URL : LOCAL_API_URL;
 }
 
 export function getLiveUrl(): string {
   if (process.env.EXPO_PUBLIC_LIVE_API_URL) return process.env.EXPO_PUBLIC_LIVE_API_URL;
-  return serverTarget === "production" ? PROD_LIVE_URL : LOCAL_LIVE_URL;
+  return SERVER_TARGET === "production" ? PROD_LIVE_URL : LOCAL_LIVE_URL;
 }
 
 /**
@@ -63,16 +79,15 @@ export function getLiveUrl(): string {
  * Any failure (offline, 401, provisioning) falls back to `getLiveUrl()` exactly
  * as before, so live never breaks on a settings hiccup.
  *
- * Cached for ~5 min per app session and keyed by server target (the setting is
- * fetched from whichever API the target points at) — so a target switch, or a
- * settings change after the TTL, is picked up without a restart.
+ * Cached for ~5 min per app session — so a settings change after the TTL is
+ * picked up without a restart.
  */
 const LIVE_BASE_TTL_MS = 5 * 60 * 1000;
-let liveBaseCache: { url: string; target: ServerTarget; expires: number } | null = null;
+let liveBaseCache: { url: string; expires: number } | null = null;
 
 export async function getLiveBaseUrl(): Promise<string> {
   const now = Date.now();
-  if (liveBaseCache && liveBaseCache.target === serverTarget && liveBaseCache.expires > now) {
+  if (liveBaseCache && liveBaseCache.expires > now) {
     return liveBaseCache.url;
   }
   const fallback = getLiveUrl();
@@ -81,7 +96,7 @@ export async function getLiveBaseUrl(): Promise<string> {
     const url = settings.liveServerUrl || fallback;
     // Cache only successful resolutions, so a transient failure retries on the
     // next live connect instead of pinning the fallback for the whole TTL.
-    liveBaseCache = { url, target: serverTarget, expires: now + LIVE_BASE_TTL_MS };
+    liveBaseCache = { url, expires: now + LIVE_BASE_TTL_MS };
     return url;
   } catch {
     return fallback;

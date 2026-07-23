@@ -10,7 +10,7 @@ import {
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { setAuthTokenProvider } from "./src/api";
 import { PreferencesProvider, useAppTheme, usePreferences } from "./src/context/PreferencesContext";
-import { clerkPublishableKey, tokenCache } from "./src/lib/clerk";
+import { CLERK_PUBLISHABLE_KEY, tokenCache } from "./src/lib/clerk";
 import { TabBar, type TabKey } from "./src/navigation/TabBar";
 import { LibraryScreen } from "./src/screens/LibraryScreen";
 import { SearchScreen } from "./src/screens/SearchScreen";
@@ -23,8 +23,6 @@ import { SignInScreen } from "./src/screens/SignInScreen";
 LogBox.ignoreLogs([/Clerk has been loaded with development keys/]);
 
 export default function App() {
-  // Preferences (which own the persisted server target) sit OUTSIDE Clerk so the
-  // provider's publishable key can be derived from that target — see ClerkGate.
   return (
     <PreferencesProvider>
       <ClerkGate />
@@ -33,17 +31,14 @@ export default function App() {
 }
 
 /**
- * Mounts ClerkProvider with the key for the current server target. Clerk reads
- * its key once at mount, so:
- *  - We wait for `hydrated` (the persisted target read from storage) before the
- *    FIRST mount, so we never briefly load the wrong instance.
- *  - `key={serverTarget}` forces a full remount when the target changes, which
- *    tears down the old instance's session — switching servers signs you out of
- *    the old Clerk instance (expected; the other API wouldn't accept its token).
+ * Mounts ClerkProvider once with this build's publishable key (CLERK_PUBLISHABLE_KEY
+ * is a build-time constant derived from SERVER_TARGET — there is no in-app server
+ * switch, so the provider never needs to remount). We still gate the first paint
+ * on `hydrated` (persisted theme/view read from storage) to avoid a theme flash.
  */
 function ClerkGate() {
   const { colors } = useAppTheme();
-  const { serverTarget, hydrated } = usePreferences();
+  const { hydrated } = usePreferences();
 
   if (!hydrated) {
     return (
@@ -56,11 +51,7 @@ function ClerkGate() {
   }
 
   return (
-    <ClerkProvider
-      key={serverTarget}
-      publishableKey={clerkPublishableKey(serverTarget)}
-      tokenCache={tokenCache}
-    >
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
       {/* initialMetrics avoids the Android first-frame zero-inset flash
           (Settings title rendered under the status bar on first mount). */}
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
