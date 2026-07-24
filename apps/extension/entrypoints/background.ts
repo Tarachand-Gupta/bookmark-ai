@@ -1,4 +1,4 @@
-import { defineBackground } from "#imports";
+import { defineBackground, storage } from "#imports";
 import { browser } from "wxt/browser";
 import { createClerkClient } from "@clerk/chrome-extension/background";
 import {
@@ -120,6 +120,35 @@ async function getSessionToken(): Promise<string | null> {
 }
 
 const SIGNED_OUT: UserInfo = { signedIn: false, name: null, email: null };
+
+/* ── Last-known identity (Safari reconnect UX) ───────────────────────────────
+ * On Safari every auth path needs an OPEN app tab (bridge), so a fresh browser
+ * launch resolves "signed out" even though the web session is alive in the
+ * site's cookie jar. Remember who was signed in (name/email only — NEVER a
+ * token or cookie) so the gate can honestly say "reconnect" instead of asking
+ * for a sign-in that isn't needed. Cleared on a DEFINITIVE signed-out answer
+ * (a bridge tab that says so, or a non-Safari resolve). */
+interface LastIdentity {
+  name: string | null;
+  email: string | null;
+  at: number;
+}
+const LAST_IDENTITY_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+const lastIdentityItem = storage.defineItem<LastIdentity | null>("local:lastIdentity", {
+  fallback: null,
+});
+
+function rememberIdentity(name: string | null, email: string | null): void {
+  void lastIdentityItem.setValue({ name, email, at: Date.now() }).catch(() => {});
+}
+
+async function staleIdentityReply(): Promise<UserInfo> {
+  const last = await lastIdentityItem.getValue().catch(() => null);
+  if (last && Date.now() - last.at < LAST_IDENTITY_MAX_AGE_MS) {
+    return { signedIn: false, name: last.name, email: last.email, stale: true };
+  }
+  return SIGNED_OUT;
+}
 
 /* ── Path D: content-script session bridge (Safari) ─────────────────────────
  * Safari 26 partitions the extension's network/cookie context from the browser
@@ -253,11 +282,9 @@ async function handleGetUser(): Promise<UserInfo> {
       if (clerk.session && user) {
         winningPath = "sdk";
         diag("getUser", "reply", { path: "sdk", signedIn: true });
-        return {
-          signedIn: true,
-          name: fullName(user),
-          email: user.primaryEmailAddress?.emailAddress ?? null,
-        };
+        const email = user.primaryEmailAddress?.emailAddress ?? null;
+        rememberIdentity(fullName(user), email);
+        return { signedIn: true, name: fullName(user), email };
       }
     } catch (e) {
       diag("getUser", "sdk failed", { ms: Date.now() - started, error: errMsg(e) });
@@ -269,6 +296,7 @@ async function handleGetUser(): Promise<UserInfo> {
     if (native) {
       winningPath = "native";
       diag("getUser", "reply", { path: "native", signedIn: true });
+      rememberIdentity(native.name, native.email);
       return { signedIn: true, name: native.name, email: native.email };
     }
   }
@@ -282,6 +310,7 @@ async function handleGetUser(): Promise<UserInfo> {
     if (me?.signedIn) {
       winningPath = "cookie";
       diag("getUser", "reply", { path: "cookie", signedIn: true });
+      rememberIdentity(me.name, me.email);
       return { signedIn: true, name: me.name, email: me.email };
     }
   }
@@ -293,10 +322,22 @@ async function handleGetUser(): Promise<UserInfo> {
     if (bridged) {
       winningPath = "bridge";
       diag("getUser", "reply", { path: "bridge", signedIn: bridged.signedIn });
+      if (bridged.signedIn) {
+        rememberIdentity(bridged.name, bridged.email);
+      } else {
+        // The ONE definitive signed-out signal on Safari: an app tab's own
+        // credentialed request says there is no session. Forget the identity so
+        // the gate goes back to a real sign-in prompt. (Path C's /api/me always
+        // reports signed-out on Safari — partitioned — so it proves nothing.)
+        void lastIdentityItem.setValue(null).catch(() => {});
+      }
       return bridged;
     }
   }
   diag("getUser", "reply", { path: "none", signedIn: false });
+  // Safari with no app tab open: the session is probably alive but invisible.
+  // Offer reconnect instead of a false "sign in" when we knew this account.
+  if (SAFARI) return staleIdentityReply();
   return SIGNED_OUT;
 }
 

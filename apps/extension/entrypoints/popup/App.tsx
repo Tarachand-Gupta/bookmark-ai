@@ -220,9 +220,16 @@ export default function App() {
     );
   }
 
-  // Signed out: the gate is the ONLY thing the popup shows.
+  // Signed out: the gate is the ONLY thing the popup shows. `stale` (Safari,
+  // no app tab open) renders the reconnect variant with the last-known name.
   if (!auth.signedIn) {
-    return <SignInGate webUrl={webUrl} note={degraded ? DEGRADED_NOTE : undefined} />;
+    return (
+      <SignInGate
+        webUrl={webUrl}
+        note={degraded ? DEGRADED_NOTE : undefined}
+        reconnectAs={auth.stale ? (auth.name ?? auth.email ?? "") : undefined}
+      />
+    );
   }
 
   const savable = tab !== null && /^https?:/i.test(tab.url);

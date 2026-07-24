@@ -148,6 +148,11 @@ export interface UserInfo {
   signedIn: boolean;
   name: string | null;
   email: string | null;
+  /** Safari only: no auth path could SEE a session right now (no app tab open
+   * to bridge through), but this account was signed in recently and was never
+   * definitively signed out — the web session is almost certainly still alive.
+   * The gate should offer "reconnect" (open the app) rather than "sign in". */
+  stale?: boolean;
 }
 
 export function isGetUserMessage(message: unknown): message is GetUserMessage {
