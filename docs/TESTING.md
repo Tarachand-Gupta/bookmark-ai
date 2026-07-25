@@ -124,9 +124,14 @@ All three must succeed. Live test (needs a real browser via computer use / chrom
      silently keep the previously-copied resources (verified: it reported BUILD SUCCEEDED while
      embedding a week-old bundle). After any `pnpm build:safari`, rebuild with `clean build`
      (step 3) so the fresh resources are re-copied into the appex.
-  2. The converter mis-namespaces the APP target's bundle id (`ai.bookmark.Bookmark-AI` vs the
-     appex's `ai.bookmark.safari.Extension`) and the build fails at ValidateEmbeddedBinary —
-     fix: `sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = "ai.bookmark.Bookmark-AI";/PRODUCT_BUNDLE_IDENTIFIER = ai.bookmark.safari;/g' "safari-xcode/Bookmark AI/Bookmark AI.xcodeproj/project.pbxproj"`
+  2. `apps/extension/scripts/sync-safari-native.sh` — patches the just-generated (gitignored)
+     project with our COMMITTED native sources in `apps/extension/safari-native/`: it turns the
+     wrapper into a **menu-bar background app** (AppDelegate/ViewController overwrite → NSStatusItem,
+     survives window-close, "Start at Login" via SMAppService), fixes the app target's bundle id
+     (`ai.bookmark.Bookmark-AI` → `ai.bookmark.safari`, else the build fails at ValidateEmbeddedBinary),
+     and sets `LSUIElement=true` in the app Info.plist (no Dock icon). Idempotent — re-run after every
+     reconversion, before xcodebuild. Fails loudly (quoting the converter command) if `safari-xcode/`
+     is missing.
   3. `cd "safari-xcode/Bookmark AI" && xcodebuild -project "Bookmark AI.xcodeproj" -scheme "Bookmark AI" -configuration Debug clean build CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Development: tarachandragupta2784@gmail.com (BB7CP2R7GG)" DEVELOPMENT_TEAM=L3PP7DQZWS PROVISIONING_PROFILE_SPECIFIER=""`
      (`clean` matters — see step 1 note. The signing flags use the Apple Development
      cert already in this Mac's keychain: a REAL signature makes Safari keep the
