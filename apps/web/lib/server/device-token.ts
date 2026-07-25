@@ -11,9 +11,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * time. It's a self-contained HS256 JWT we mint and verify ourselves (Clerk stays the
  * source of identity — a token is only minted for an already-authenticated user).
  *
- * Format (fixed — the extension is built against this in parallel): the `bkd_` prefix
- * followed by standard JWT compact serialization signed HS256 with the raw utf8 bytes
- * of `DEVICE_TOKEN_SECRET`. Claims: `sub` (Clerk user id), `iat`, `exp` = iat + 90d,
+ * Format: the `bkd_` prefix followed by JWT compact serialization with `.` swapped
+ * for `~`, signed HS256 with the raw utf8 bytes of `DEVICE_TOKEN_SECRET`. The swap is
+ * LOAD-BEARING, not cosmetic: a dotted three-segment bearer looks like a session JWT
+ * to Clerk's middleware, which tries to parse it and crashes the whole request with
+ * MIDDLEWARE_INVOCATION_FAILED before requireUser ever runs (verified against prod).
+ * Claims: `sub` (Clerk user id), `iat`, `exp` = iat + 90d,
  * `rti` (root issued-at — the start of the renewal chain, preserved across renewals),
  * `scp` (scope — always `"ext"` today; verifiers REJECT any other value so a future
  * broader scope can never be honored by servers that predate it).
@@ -105,7 +108,8 @@ export function mintDeviceToken(userId: string, rootIatSeconds?: number): Minted
   const signature = base64urlEncode(sign(signingInput, key));
 
   return {
-    token: `${DEVICE_TOKEN_PREFIX}${signingInput}.${signature}`,
+    // `.` → `~` so the bearer is not JWT-shaped on the wire (see header comment).
+    token: `${DEVICE_TOKEN_PREFIX}${`${signingInput}.${signature}`.replaceAll(".", "~")}`,
     expiresInSeconds: DEVICE_TOKEN_TTL_SECONDS,
     expiresAtMs: exp * 1000,
     rti,
@@ -122,7 +126,7 @@ export function verifyDeviceToken(token: string): VerifiedDeviceToken | null {
   if (!key) return null;
   if (typeof token !== "string" || !token.startsWith(DEVICE_TOKEN_PREFIX)) return null;
 
-  const compact = token.slice(DEVICE_TOKEN_PREFIX.length);
+  const compact = token.slice(DEVICE_TOKEN_PREFIX.length).replaceAll("~", ".");
   const parts = compact.split(".");
   if (parts.length !== 3) return null;
   const [headerB64, payloadB64, signatureB64] = parts;

@@ -9,8 +9,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * deps beyond @bookmark-ai/types, so the ~40 lines below are copied intentionally.
  * Keep them byte-compatible with the web verifier if the format ever changes.
  *
- * Format: `bkd_` prefix + JWT compact serialization, HS256 over the utf8 bytes of
- * DEVICE_TOKEN_SECRET. Claims: sub (Clerk user id), iat, exp, rti (root issued-at),
+ * Format: `bkd_` prefix + JWT compact serialization with `.` swapped for `~` (a
+ * dotted bearer looks like a session JWT to Clerk middleware on the web app and
+ * crashes it — the swap keeps device tokens invisible to JWT parsers), HS256 over
+ * the utf8 bytes of DEVICE_TOKEN_SECRET.
+ * Claims: sub (Clerk user id), iat, exp, rti (root issued-at),
  * scp (scope — must be "ext"; any other value is rejected so tokens minted with a
  * future broader scope are never honored by a server that predates it). Live ops
  * are entirely within the extension scope, so no per-route check is needed here.
@@ -46,7 +49,7 @@ export function verifyDeviceToken(token: string, secret: string | undefined): Ve
   const key = Buffer.from(secret, "utf8");
   if (typeof token !== "string" || !token.startsWith(DEVICE_TOKEN_PREFIX)) return null;
 
-  const compact = token.slice(DEVICE_TOKEN_PREFIX.length);
+  const compact = token.slice(DEVICE_TOKEN_PREFIX.length).replaceAll("~", ".");
   const parts = compact.split(".");
   if (parts.length !== 3) return null;
   const [headerB64, payloadB64, signatureB64] = parts;
