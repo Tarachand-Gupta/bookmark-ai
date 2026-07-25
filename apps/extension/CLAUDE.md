@@ -93,6 +93,16 @@ Auth (Clerk, syncHost pattern):
   `Authorization` with `?_is_native=1` for identity, session-JWT minting, and sign-out. Sign-out
   ends the shared client session, so it signs the user out of the website too. Dev instances
   keep the SDK path; the fallback only runs when the SDK resolves no session.
+- **SAFARI runs on a long-lived device token** (`lib/device-token.ts`) — Safari partitions the
+  extension from the web session entirely (SDK, cookies, credentialed fetches all blind), so the
+  background mints a 90-day `bkd_` token from `POST /api/device-token` through the content-script
+  bridge the first time an app tab is open after sign-in, persists it in `storage.local`, and
+  attaches it as `Authorization: Bearer` to every API and live-server call from then on (no app
+  tab needed again). Ladder order: SDK → native → **device** → cookie → bridge. It self-renews
+  (≤1 attempt/24h once past 1/3 TTL, renewal chain capped server-side at 365d → `code:"reauth"`
+  forces a bridge re-mint). Server-side the token is SCOPED to the extension's save/live surface
+  only (see `DEVICE_TOKEN_ROUTES` in apps/web/lib/server/require-user.ts). Sign-out and a
+  definitive bridge signed-out clear it. NEVER log token values — presence/length/status only.
 - **Signed-out gate**: `App.tsx` shows ONLY `SignInGate` (a sign-in prompt whose button opens
   `<appOrigin>/sign-in`) when no session — no save/session UI at all. The gate's auth source is
   the background `GET_USER` message (createClerkClient reads the mirrored session), NOT the popup

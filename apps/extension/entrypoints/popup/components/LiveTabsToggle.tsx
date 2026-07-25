@@ -33,6 +33,12 @@ export function LiveTabsToggle() {
   const [windowId, setWindowId] = useState<number | null>(null);
   const [windowShared, setWindowShared] = useState(true);
   const [windowBusy, setWindowBusy] = useState(false);
+  // This device's new-window policy (mirrored from the server) and whether to show
+  // the one-line hint under the main toggle. The hint appears only when the user
+  // flips live ON in THIS interaction (not on every open); its wording depends on
+  // the policy default.
+  const [policyDefault, setPolicyDefault] = useState(true);
+  const [showPolicyHint, setShowPolicyHint] = useState(false);
 
   useEffect(() => {
     void liveEnabledItem.getValue().then(setEnabled);
@@ -41,7 +47,10 @@ export function LiveTabsToggle() {
     void browser.windows.getCurrent().then((win) => {
       if (typeof win.id !== "number") return;
       setWindowId(win.id);
-      void requestLiveWindowGet(win.id).then((r) => setWindowShared(r.shared));
+      void requestLiveWindowGet(win.id).then((r) => {
+        setWindowShared(r.shared);
+        setPolicyDefault(r.policyDefault);
+      });
     });
   }, []);
 
@@ -54,6 +63,9 @@ export function LiveTabsToggle() {
     try {
       const result = await requestSetLiveEnabled(next);
       setEnabled(result.enabled);
+      // Surface the "future windows…" hint only when the user just turned live ON
+      // and it stuck; turning off (or a failed turn-on) hides it.
+      setShowPolicyHint(next && result.enabled);
       if (!result.ok) {
         setError(
           next
@@ -63,6 +75,7 @@ export function LiveTabsToggle() {
       }
     } catch {
       setEnabled(!next); // background unreachable — revert the optimistic flip
+      setShowPolicyHint(false);
       setError("Couldn't reach the extension background. Try reopening the popup.");
     } finally {
       setBusy(false);
@@ -94,6 +107,14 @@ export function LiveTabsToggle() {
 
   function openLive() {
     void browser.tabs.create({ url: `${webUrl}/app?section=live` });
+    window.close();
+  }
+
+  // Deep-link into Settings → Live sessions, where the per-device "Enable live
+  // session on any new window" policy lives (the idiomatic ?settings=<section>
+  // hook the web app already handles).
+  function openLiveSettings() {
+    void browser.tabs.create({ url: `${webUrl}/app?settings=devices` });
     window.close();
   }
 
@@ -135,9 +156,29 @@ export function LiveTabsToggle() {
           </svg>
         </div>
 
+        {/* One-line policy hint, shown only right after the user turns live ON in
+            this popup. Wording follows the device's new-window policy; "settings"
+            deep-links to Settings → Live sessions where the policy is changed. */}
+        {showPolicyHint && enabled && (
+          <p className="border-t px-3 py-2 text-[11px] leading-snug text-muted-foreground">
+            {policyDefault
+              ? "All future windows will have live sessions enabled by default. Change this behavior in "
+              : "New windows won't join live sessions by default. Change this in "}
+            <button
+              type="button"
+              onClick={openLiveSettings}
+              className="font-medium underline underline-offset-2 transition-colors hover:text-foreground"
+            >
+              settings
+            </button>
+            .
+          </p>
+        )}
+
         {/* Subordinate per-window control: only meaningful once publishing is on.
-            Off here EXCLUDES the current window from pushes (dropped from the
-            mirror immediately, since pushes are full-replace); on re-includes it. */}
+            The switch reflects this window's resolved decision (override ?? policy).
+            Off here drops the current window from pushes (removed from the mirror
+            immediately, since pushes are full-replace); on shares it. */}
         {enabled && windowId !== null && (
           <div className="flex items-center gap-2.5 border-t px-3 py-2.5">
             <Switch

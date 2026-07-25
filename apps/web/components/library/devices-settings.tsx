@@ -19,6 +19,7 @@ import {
   getSettings,
   resetLiveBaseCache,
   setLiveEnabled,
+  updateLiveDeviceSettings,
   updateSettings,
 } from "@/lib/api";
 import { deviceFreshness, formatDeviceAge } from "@/lib/live-format";
@@ -130,6 +131,21 @@ export function DevicesSection() {
     }
   };
 
+  // Per-device "new windows share by default" policy. Optimistic: flip the local
+  // device immediately, revert (to the opposite of what we set) if the PATCH fails.
+  const setNewWindows = async (id: string, shared: boolean) => {
+    setActionError(null);
+    setDevices((ds) => ds.map((d) => (d.deviceId === id ? { ...d, newWindowsShared: shared } : d)));
+    try {
+      await updateLiveDeviceSettings(id, { newWindowsShared: shared });
+    } catch (e) {
+      setActionError((e as Error).message);
+      setDevices((ds) =>
+        ds.map((d) => (d.deviceId === id ? { ...d, newWindowsShared: !shared } : d)),
+      );
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -206,6 +222,7 @@ export function DevicesSection() {
                       device={device}
                       busy={busyId === device.deviceId}
                       onForget={() => forget(device.deviceId)}
+                      onSetNewWindows={(shared) => setNewWindows(device.deviceId, shared)}
                     />
                   ))}
                 </div>
@@ -391,40 +408,67 @@ function DeviceRow({
   device,
   busy,
   onForget,
+  onSetNewWindows,
 }: {
   device: LiveDevice;
   busy: boolean;
   onForget: () => void;
+  onSetNewWindows: (shared: boolean) => void | Promise<void>;
 }) {
   const { filled } = deviceFreshness(device.lastSeenAgeSeconds);
   const BrowserIcon = BROWSER_ICONS[device.browser] ?? Globe;
+  // Absent policy ⇒ new windows share by default (matches the server default).
+  const newWindowsShared = device.newWindowsShared ?? true;
+  const [savingPolicy, setSavingPolicy] = useState(false);
+  const togglePolicy = async () => {
+    setSavingPolicy(true);
+    try {
+      await onSetNewWindows(!newWindowsShared);
+    } finally {
+      setSavingPolicy(false);
+    }
+  };
+  const policyId = `newwin-${device.deviceId}`;
 
   return (
-    <div className="flex items-center gap-2.5 px-3 py-2.5">
-      <span
-        aria-hidden
-        className={cn(
-          "size-2 shrink-0 rounded-full",
-          filled ? "bg-emerald-500" : "border border-muted-foreground/50",
-        )}
-      />
-      <BrowserIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{device.label || "Unnamed device"}</p>
-        <p className="truncate text-xs capitalize text-muted-foreground">
-          {device.browser} · <span className="normal-case">{formatDeviceAge(device.lastSeenAgeSeconds)}</span>
-        </p>
+    <div className="space-y-2.5 px-3 py-2.5">
+      <div className="flex items-center gap-2.5">
+        <span
+          aria-hidden
+          className={cn(
+            "size-2 shrink-0 rounded-full",
+            filled ? "bg-emerald-500" : "border border-muted-foreground/50",
+          )}
+        />
+        <BrowserIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{device.label || "Unnamed device"}</p>
+          <p className="truncate text-xs capitalize text-muted-foreground">
+            {device.browser} · <span className="normal-case">{formatDeviceAge(device.lastSeenAgeSeconds)}</span>
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onForget}
+          disabled={busy}
+          className="h-7 shrink-0 text-xs text-muted-foreground hover:text-destructive"
+        >
+          {busy ? "Forgetting…" : "Forget"}
+        </Button>
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={onForget}
-        disabled={busy}
-        className="h-7 shrink-0 text-xs text-muted-foreground hover:text-destructive"
-      >
-        {busy ? "Forgetting…" : "Forget"}
-      </Button>
+      <div className="flex items-center justify-between gap-4 pl-[26px]">
+        <label htmlFor={policyId} className="text-xs text-muted-foreground">
+          Enable live session on any new window
+        </label>
+        <Switch
+          id={policyId}
+          checked={newWindowsShared}
+          disabled={savingPolicy}
+          onChange={() => void togglePolicy()}
+        />
+      </div>
     </div>
   );
 }

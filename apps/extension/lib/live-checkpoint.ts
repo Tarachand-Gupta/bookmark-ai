@@ -11,7 +11,15 @@ import {
   liveDirtyItem,
   liveEnabledItem,
 } from "./live-storage";
-import { isWindowExcluded, pruneExcludedWindows } from "./live-windows";
+import {
+  getNewWindowsPolicy,
+  isWindowShared,
+  migrateLegacyExclusions,
+  overrideExistingWindowsShared,
+  pruneWindowOverrides,
+  resolveWindowShared,
+  setNewWindowsPolicy,
+} from "./live-windows";
 
 /**
  * The event-driven, debounced live-tabs push loop (§4.1 rework, §4.5).
@@ -135,21 +143,25 @@ async function baseState(): Promise<Omit<PushLiveStateInput, "windows" | "hidden
  * ever builds a payload (§4.1). */
 async function buildFullPush(): Promise<PushLiveStateInput> {
   const windows = (await browser.windows.getAll({ populate: true })) as LiveInputWindow[];
-  // Remove windows the user opted OUT of BEFORE building the payload, so tab and
-  // hidden counts reflect only what's actually shared (a window filtered here
-  // never contributes to hiddenTabCount). Prune first, against the ids we just
-  // scanned, so the exclude list can't accumulate closed-window ids over time.
-  const excluded = new Set(
-    await pruneExcludedWindows(
-      windows.map((w) => w.id).filter((id): id is number => typeof id === "number"),
-    ),
-  );
-  const shared =
-    excluded.size === 0
-      ? windows
-      : windows.filter((w) => !(typeof w.id === "number" && excluded.has(w.id)));
+  // Keep only windows that are SHARED (explicit override, else the device policy)
+  // BEFORE building the payload, so tab and hidden counts reflect only what's
+  // actually shared (a window filtered here never contributes to hiddenTabCount).
+  // Prune the override map first, against the ids we just scanned, so it can't
+  // accumulate closed-window ids over time.
+  const ids = windows.map((w) => w.id).filter((id): id is number => typeof id === "number");
+  const [overrides, policy] = await Promise.all([pruneWindowOverrides(ids), getNewWindowsPolicy()]);
+  const shared = windows.filter((w) => resolveWindowShared(overrides, policy, w.id));
   const built = buildLiveWindows(shared);
   return { ...(await baseState()), hiddenTabCount: built.hiddenTabCount, windows: built.windows };
+}
+
+/** Mirror the device new-window policy the server echoed on a successful push, so
+ * the popup + checkpoint filter see policy changes made in the web app (picked up
+ * within ~2min via the heartbeat even when idle). No-op when the body omitted it. */
+async function mirrorPolicy(outcome: PushOutcome): Promise<void> {
+  if (outcome.ok && typeof outcome.newWindowsShared === "boolean") {
+    await setNewWindowsPolicy(outcome.newWindowsShared);
+  }
 }
 
 /** Turn a non-ok push into the right silent reaction. */
@@ -195,8 +207,10 @@ async function flush(reason: "debounce" | "alarm" | "windowRemoved"): Promise<vo
       // (absent = heartbeat; sending [] would wipe the mirror, §4.3).
       const outcome = await pushLiveState({ ...(await baseState()), hiddenTabCount: 0 });
       diag("live", "heartbeat push", { ok: outcome.ok });
-      if (outcome.ok) await resetBackoff();
-      else await reactToFailure(outcome);
+      if (outcome.ok) {
+        await resetBackoff();
+        await mirrorPolicy(outcome);
+      } else await reactToFailure(outcome);
       return;
     }
 
@@ -207,6 +221,7 @@ async function flush(reason: "debounce" | "alarm" | "windowRemoved"): Promise<vo
     diag("live", "full push", { reason, ok: outcome.ok });
     if (outcome.ok) {
       await resetBackoff();
+      await mirrorPolicy(outcome);
     } else {
       await liveDirtyItem.setValue(true); // failed — keep the pending change for retry
       await reactToFailure(outcome);
@@ -247,6 +262,22 @@ export async function setLiveEnabled(enabled: boolean): Promise<LiveEnabledResul
   }
 
   await liveEnabledItem.setValue(true);
+  // Enable-time window treatment: windows OPEN right now are treated as existing
+  // shared windows (explicit override → true), so turning live on actually shows
+  // something even if this device's policy is OFF. Only windows created AFTER this
+  // carry no override and follow the policy. Incognito windows are skipped — the
+  // sanitizer drops their content anyway, so an override for them is meaningless.
+  try {
+    const wins = await browser.windows.getAll();
+    await overrideExistingWindowsShared(
+      wins
+        .filter((w) => !w.incognito)
+        .map((w) => w.id)
+        .filter((id): id is number => typeof id === "number"),
+    );
+  } catch {
+    // best-effort — a scan failure just means those windows follow the policy
+  }
   await setBadge(true);
   await ensureAlarm();
   const armed = await updateLiveSettings({ enabled: true });
@@ -325,9 +356,14 @@ export function registerLiveCheckpoint(): void {
   browser.tabs.onAttached?.addListener((_tabId, info) => markDirty(info?.newWindowId));
   browser.tabs.onDetached?.addListener((_tabId, info) => markDirty(info?.oldWindowId));
   browser.tabs.onReplaced?.addListener(() => markDirty());
-  // A brand-new window is always shared (it can't be excluded yet), so never pass
-  // its id — it must trigger a push so the window appears in the mirror.
-  browser.windows.onCreated?.addListener((win) => markDirtyUnlessPrivate({ incognito: win.incognito }));
+  // A brand-new window has no override, so forwarding its id makes `onChange`
+  // judge it by the device policy: policy ON → push so it appears in the mirror;
+  // policy OFF → skip (it isn't shared, so a push would rebuild to identical
+  // filtered output). Enabling live overrides pre-existing windows to shared, so
+  // this only gates windows opened AFTER live was turned on.
+  browser.windows.onCreated?.addListener((win) =>
+    markDirtyUnlessPrivate({ incognito: win.incognito, windowId: win.id }),
+  );
   browser.windows.onRemoved?.addListener(() => {
     void onWindowRemoved();
   });
@@ -341,10 +377,12 @@ export function registerLiveCheckpoint(): void {
 
 async function onChange(windowId?: number): Promise<void> {
   if (!(await liveEnabledItem.getValue())) return; // off costs zero (§5.2)
-  // When the change is cheaply attributable to an EXCLUDED window it can't alter
+  // When the change is cheaply attributable to a NON-SHARED window it can't alter
   // the shared payload, so skip the dirty flag + debounce entirely rather than
-  // schedule a push that would rebuild to identical filtered output.
-  if (typeof windowId === "number" && (await isWindowExcluded(windowId))) return;
+  // schedule a push that would rebuild to identical filtered output. A brand-new
+  // window (no override) is judged by the device policy, so a change in it is
+  // skipped when the policy is OFF and honored when it's ON.
+  if (typeof windowId === "number" && !(await isWindowShared(windowId))) return;
   await liveDirtyItem.setValue(true);
   armDebounce();
 }
@@ -362,6 +400,9 @@ async function onWindowRemoved(): Promise<void> {
  * Never forces a push on a clean boot — dirty gates the retry.
  */
 async function bootReconcile(): Promise<void> {
+  // Fold the old exclusion list into the override map once per boot, then it's
+  // gone (idempotent — a cheap empty-read + remove after the first run).
+  await migrateLegacyExclusions().catch(() => {});
   if (!(await liveEnabledItem.getValue())) {
     await clearAlarm();
     await setBadge(false);

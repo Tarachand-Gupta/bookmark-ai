@@ -1,6 +1,14 @@
 import type { LiveDevice, LiveWindow, PushLiveStateInput } from "@bookmark-ai/types";
 import type { Config } from "./config";
-import { channelKey, devKey, enabledKey, indexKey, quotaKey, winNamesKey } from "./keys";
+import {
+  channelKey,
+  devKey,
+  enabledKey,
+  indexKey,
+  newWindowsKey,
+  quotaKey,
+  winNamesKey,
+} from "./keys";
 import type { RedisBundle } from "./redis";
 import type { LiveEvent } from "./types";
 
@@ -18,6 +26,13 @@ const QUOTA_TTL_SECONDS = 26 * 60 * 60; // > 24h so the counter self-cleans past
  */
 export interface WriteResult {
   changed: boolean;
+  /**
+   * This device's "new windows share by default" policy (absent key ⇒ true).
+   * Read on every write and returned so POST /live echoes it in the 200 body —
+   * the extension mirrors the policy from the push it already sends, no extra
+   * request. Independent of `changed`; a heartbeat reports it too.
+   */
+  newWindowsShared: boolean;
 }
 
 /**
@@ -109,16 +124,21 @@ export class LiveStore {
     const dk = devKey(userId, input.deviceId);
     const ik = indexKey(userId);
 
+    // Read the per-device new-window policy alongside the write so the push
+    // response can echo it (absent key ⇒ shared). Cheap single GET; on every path.
+    const newWindowsShared =
+      (await this.redis.command.get(newWindowsKey(userId, input.deviceId))) !== "0";
+
     if (input.windows === undefined) {
       const exists = await this.redis.command.exists(dk);
-      if (!exists) return { changed: false };
+      if (!exists) return { changed: false, newWindowsShared };
       await this.redis.command
         .multi()
         .hset(dk, "lastSeenAt", nowIso)
         .zadd(ik, now, input.deviceId)
         .expire(dk, this.ttlSeconds)
         .exec();
-      return { changed: false };
+      return { changed: false, newWindowsShared };
     }
 
     const windows = input.windows;
@@ -151,7 +171,7 @@ export class LiveStore {
         .zadd(ik, now, input.deviceId)
         .expire(dk, this.ttlSeconds)
         .exec();
-      return { changed: false };
+      return { changed: false, newWindowsShared };
     }
 
     await this.redis.command
@@ -161,7 +181,25 @@ export class LiveStore {
       .zadd(ik, now, input.deviceId)
       .expire(dk, this.ttlSeconds)
       .exec();
-    return { changed: true };
+    return { changed: true, newWindowsShared };
+  }
+
+  // ── per-device new-window policy ──────────────────────────────────────────
+  /**
+   * Set this device's "new windows share by default" policy. `shared=true` DELs
+   * the key (absent = the default ON); `false` SETs "0". No TTL — a preference
+   * must outlive the 7-day snapshot TTL. Publishes the usual `push` envelope so
+   * open viewers re-read the (now updated) device state.
+   */
+  async setDeviceNewWindowsShared(
+    userId: string,
+    deviceId: string,
+    shared: boolean,
+  ): Promise<void> {
+    const key = newWindowsKey(userId, deviceId);
+    if (shared) await this.redis.command.del(key);
+    else await this.redis.command.set(key, "0");
+    await this.publish(userId, { type: "push", deviceId });
   }
 
   // ── window names (viewer-side overrides) ──────────────────────────────────
@@ -199,11 +237,12 @@ export class LiveStore {
     const deviceIds = await this.redis.command.zrevrange(ik, 0, -1);
     if (deviceIds.length === 0) return [];
 
-    // Two reads per device, interleaved: [devHash, winNames, devHash, winNames, …].
+    // Three reads per device, interleaved: [devHash, winNames, newWin, …].
     const pipeline = this.redis.command.pipeline();
     for (const id of deviceIds) {
       pipeline.hgetall(devKey(userId, id));
       pipeline.hgetall(winNamesKey(userId, id));
+      pipeline.get(newWindowsKey(userId, id));
     }
     const results = await pipeline.exec();
 
@@ -212,8 +251,9 @@ export class LiveStore {
     const orphaned: string[] = [];
 
     deviceIds.forEach((id, i) => {
-      const devEntry = results?.[i * 2];
-      const nameEntry = results?.[i * 2 + 1];
+      const devEntry = results?.[i * 3];
+      const nameEntry = results?.[i * 3 + 1];
+      const newWinEntry = results?.[i * 3 + 2];
       const err = devEntry?.[0];
       const h = (devEntry?.[1] ?? null) as Record<string, string> | null;
       if (err || !h || Object.keys(h).length === 0) {
@@ -221,7 +261,9 @@ export class LiveStore {
         return;
       }
       const names = (nameEntry?.[1] ?? null) as Record<string, string> | null;
-      devices.push(hashToDevice(id, h, now, names));
+      // ABSENT/anything-but-"0" ⇒ shared (the default); overlay false ONLY on "0".
+      const newWindowsShared = (newWinEntry?.[1] ?? null) !== "0";
+      devices.push(hashToDevice(id, h, now, names, newWindowsShared));
     });
 
     if (orphaned.length > 0) await this.redis.command.zrem(ik, ...orphaned);
@@ -234,6 +276,7 @@ export class LiveStore {
       .multi()
       .del(devKey(userId, deviceId))
       .del(winNamesKey(userId, deviceId))
+      .del(newWindowsKey(userId, deviceId))
       .zrem(indexKey(userId), deviceId)
       .exec();
     await this.publish(userId, { type: "delete", deviceId });
@@ -246,6 +289,7 @@ export class LiveStore {
     for (const id of ids) {
       multi.del(devKey(userId, id));
       multi.del(winNamesKey(userId, id));
+      multi.del(newWindowsKey(userId, id));
     }
     multi.del(ik);
     await multi.exec();
@@ -276,6 +320,7 @@ function hashToDevice(
   h: Record<string, string>,
   now: number,
   names?: Record<string, string> | null,
+  newWindowsShared = true,
 ): LiveDevice {
   let windows: LiveWindow[] = [];
   try {
@@ -308,5 +353,8 @@ function hashToDevice(
     hiddenTabCount: Number(h.hiddenTabCount ?? "0"),
     lastSeenAt,
     lastSeenAgeSeconds: ageSeconds,
+    // Only overlay the explicit opt-out; absent (default true) stays undefined so
+    // the wire payload matches "absent = shared".
+    ...(newWindowsShared ? {} : { newWindowsShared: false }),
   };
 }

@@ -241,16 +241,17 @@ export function requestLivePushNow(): Promise<{ ok: boolean }> {
   }));
 }
 
-/* ── Per-window share opt-out ─────────────────────────────────────────────────
- * The global live toggle shares every window by default; these let the popup
- * read and flip whether the CURRENT window is excluded from this device's pushes.
- * The popup resolves its own window id (background contexts can't), so it travels
- * in the message. */
+/* ── Per-window share control ─────────────────────────────────────────────────
+ * A window is shared when it has an explicit popup override, else the device's
+ * new-window policy (mirrored from the server). These let the popup read and flip
+ * whether the CURRENT window is shared. The popup resolves its own window id
+ * (background contexts can't), so it travels in the message. */
 
 /** Popup → background: is the current window shared? `enabled` is the global live
- * toggle; `shared` is this window not being on the exclude list. */
+ * toggle; `shared` is the resolved decision (override ?? policy); `policyDefault`
+ * is this device's new-window policy, so the popup can word its hint. */
 export const LIVE_WINDOW_GET = "LIVE_WINDOW_GET" as const;
-/** Popup → background: include/exclude the current window, then push immediately. */
+/** Popup → background: share/unshare the current window, then push immediately. */
 export const LIVE_WINDOW_SET = "LIVE_WINDOW_SET" as const;
 
 export interface LiveWindowGetMessage {
@@ -258,8 +259,9 @@ export interface LiveWindowGetMessage {
   windowId: number;
 }
 
-/** `enabled` = the global publish switch; `shared` = this window is not excluded. */
-export type LiveWindowGetResult = { enabled: boolean; shared: boolean };
+/** `enabled` = the global publish switch; `shared` = the resolved per-window
+ * decision (override ?? policy); `policyDefault` = the device new-window policy. */
+export type LiveWindowGetResult = { enabled: boolean; shared: boolean; policyDefault: boolean };
 
 export function isLiveWindowGetMessage(message: unknown): message is LiveWindowGetMessage {
   return (
@@ -296,6 +298,7 @@ export function requestLiveWindowGet(windowId: number): Promise<LiveWindowGetRes
   return (browser.runtime.sendMessage(message) as Promise<LiveWindowGetResult>).catch(() => ({
     enabled: false,
     shared: true,
+    policyDefault: true,
   }));
 }
 

@@ -35,3 +35,13 @@ export function channelKey(userId: string): string {
 export function winNamesKey(userId: string, deviceId: string): string {
   return `live:{${userId}}:winnames:${deviceId}`;
 }
+
+/**
+ * Per-device "new windows join live sessions by default" policy. Holds "0" when
+ * the policy is OFF; ABSENT = ON (the default). Deliberately carries NO TTL — a
+ * preference must survive the 7-day snapshot TTL — but is deleted by
+ * forget-one/forget-all alongside the winnames key.
+ */
+export function newWindowsKey(userId: string, deviceId: string): string {
+  return `live:{${userId}}:newwin:${deviceId}`;
+}

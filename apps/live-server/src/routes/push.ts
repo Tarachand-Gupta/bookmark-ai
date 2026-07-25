@@ -29,10 +29,12 @@ export function registerPush(app: FastifyInstance, { store, auth }: Deps): void 
       return reply.code(429).send({ error: "Daily push limit reached for this device." });
     }
 
-    const { changed } = await store.writeSnapshot(userId, parsed.data);
+    const { changed, newWindowsShared } = await store.writeSnapshot(userId, parsed.data);
     if (changed) {
       await store.publish(userId, { type: "push", deviceId: parsed.data.deviceId });
     }
-    return reply.send({ ok: true, enabled: true });
+    // Echo the per-device new-window policy so the extension mirrors it off the
+    // push it already sends (no extra request). Absent key ⇒ true.
+    return reply.send({ ok: true, enabled: true, newWindowsShared });
   });
 }

@@ -337,6 +337,21 @@ export async function renameLiveWindow(
   }
 }
 
+/** Set a device's "new windows join live sessions by default" policy (PATCH
+ * /live/:deviceId/settings). Follows renameLiveWindow's shape; throws on failure
+ * so the optimistic Settings toggle can revert. */
+export async function updateLiveDeviceSettings(
+  deviceId: string,
+  input: { newWindowsShared: boolean },
+): Promise<void> {
+  const res = await fetch(`${await requireLiveUrl()}/live/${deviceId}/settings`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`Update failed (${res.status})`);
+}
+
 // ── Settings ────────────────────────────────────────────────────────────────
 
 export function getSettings(signal?: AbortSignal): Promise<UserSettingsResponse> {

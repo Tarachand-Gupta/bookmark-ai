@@ -25,7 +25,7 @@ import { diag } from "@/lib/diag";
 import { fullName } from "@/lib/identity";
 import { getNativeSession, getNativeSessionToken, nativeSignOut } from "@/lib/native-session";
 import { pushLiveNow, registerLiveCheckpoint, setLiveEnabled } from "@/lib/live-checkpoint";
-import { isWindowExcluded, setWindowShared } from "@/lib/live-windows";
+import { getNewWindowsPolicy, isWindowShared, setWindowShared } from "@/lib/live-windows";
 import { liveEnabledItem } from "@/lib/live-storage";
 import { closeWindowsAndOpen, gatherOpenTabs } from "@/lib/session";
 import {
@@ -532,14 +532,18 @@ async function handleSaveSession(message: SaveSessionMessage): Promise<SaveSessi
   }
 }
 
-/** Read whether the popup's window is currently shared: the global publish
- * switch plus this window not being on the exclude list. */
+/** Read whether the popup's window is currently shared: the global publish switch,
+ * the resolved per-window decision (override ?? policy), and the device policy
+ * itself (so the popup can word its "future windows…" hint). */
 async function handleLiveWindowGet(
   message: LiveWindowGetMessage,
 ): Promise<LiveWindowGetResult> {
-  const enabled = await liveEnabledItem.getValue();
-  const shared = !(await isWindowExcluded(message.windowId));
-  return { enabled, shared };
+  const [enabled, shared, policyDefault] = await Promise.all([
+    liveEnabledItem.getValue(),
+    isWindowShared(message.windowId),
+    getNewWindowsPolicy(),
+  ]);
+  return { enabled, shared, policyDefault };
 }
 
 /** Include/exclude the popup's window, then force an IMMEDIATE full push so the

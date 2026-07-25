@@ -65,6 +65,15 @@ export const liveDeviceSchema = z.object({
   hiddenTabCount: z.number().int(),
   lastSeenAt: z.string().datetime(),
   lastSeenAgeSeconds: z.number().int(),
+  /**
+   * This device's "new windows join live sessions by default" policy. ABSENT =
+   * true (the fail-safe default — an unconfigured/new device auto-shares new
+   * windows). Only present-and-false means the user opted the device out, so its
+   * windows created after that are not shared unless individually turned on in the
+   * extension popup. Set from the web app (PATCH /live/:deviceId/settings) and
+   * mirrored into the extension from the push response.
+   */
+  newWindowsShared: z.boolean().optional(),
 });
 export type LiveDevice = z.infer<typeof liveDeviceSchema>;
 
@@ -81,6 +90,28 @@ export const updateLiveSettingsSchema = z.object({
   enabled: z.boolean(),
 });
 export type UpdateLiveSettingsInput = z.infer<typeof updateLiveSettingsSchema>;
+
+/**
+ * PATCH /live/:deviceId/settings body — the per-device "new windows join live
+ * sessions by default" policy. Off means windows opened on that device after the
+ * change are NOT shared unless individually turned on in the extension popup.
+ */
+export const updateLiveDeviceSettingsSchema = z.object({
+  newWindowsShared: z.boolean(),
+});
+export type UpdateLiveDeviceSettingsInput = z.infer<typeof updateLiveDeviceSettingsSchema>;
+
+/**
+ * POST /live 200 response. `enabled` echoes the account flag; `newWindowsShared`
+ * is this device's new-window policy (absent = the default "true"), returned on
+ * every push so the extension mirrors the policy with no extra request.
+ */
+export const pushLiveResponseSchema = z.object({
+  ok: z.literal(true),
+  enabled: z.literal(true),
+  newWindowsShared: z.boolean().optional(),
+});
+export type PushLiveResponse = z.infer<typeof pushLiveResponseSchema>;
 
 /**
  * PATCH /live/:deviceId/windows/:windowId body — rename one live window. An empty

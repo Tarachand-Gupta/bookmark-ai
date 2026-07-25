@@ -10,12 +10,15 @@ import { authFetch, getLiveBaseUrl } from "./api";
  */
 
 export type PushOutcome =
-  | { ok: true }
+  // On success the server echoes this device's new-window policy so we mirror it
+  // off the push we already send (absent in the body ⇒ leave the mirror alone).
+  | { ok: true; newWindowsShared?: boolean }
   | { ok: false; disabled: boolean }; // disabled = server 403, the account flag is off (§5.2)
 
 /** POST /live (dedicated live server, no /api prefix). 200 → ok; 403 → the
  * account flag is off, stop publishing; anything else (401 signed-out, 429
- * quota, 5xx, network) → transient, back off. */
+ * quota, 5xx, network) → transient, back off. On 200 the body carries the
+ * per-device `newWindowsShared` policy, surfaced for the caller to mirror. */
 export async function pushLiveState(body: PushLiveStateInput): Promise<PushOutcome> {
   const base = await getLiveBaseUrl();
   let res: Response;
@@ -28,7 +31,16 @@ export async function pushLiveState(body: PushLiveStateInput): Promise<PushOutco
   } catch {
     return { ok: false, disabled: false }; // offline / unreachable — transient
   }
-  if (res.ok) return { ok: true };
+  if (res.ok) {
+    let newWindowsShared: boolean | undefined;
+    try {
+      const parsed = (await res.json()) as { newWindowsShared?: boolean };
+      if (typeof parsed?.newWindowsShared === "boolean") newWindowsShared = parsed.newWindowsShared;
+    } catch {
+      // Body is optional metadata — a parse failure never fails the push.
+    }
+    return { ok: true, newWindowsShared };
+  }
   return { ok: false, disabled: res.status === 403 };
 }
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { PushLiveStateInput } from "@bookmark-ai/types";
 import type { Config } from "./config";
-import { devKey, indexKey, winNamesKey } from "./keys";
+import { devKey, indexKey, newWindowsKey, winNamesKey } from "./keys";
 import { LiveStore } from "./live-store";
 import type { RedisBundle } from "./redis";
 import type { LiveEvent } from "./types";
@@ -71,6 +71,11 @@ function makeHarness(initial?: Record<string, string>): Harness {
     async hmget(_key: string, ...fields: string[]) {
       return fields.map((f) => (hash.has(f) ? (hash.get(f) as string) : null));
     },
+    // The new-window policy key is separate from the device hash; this fake models
+    // one device hash only, so the policy key is always absent ⇒ default shared.
+    async get(_key: string) {
+      return null;
+    },
     multi() {
       return makeMulti(hash, ops);
     },
@@ -121,6 +126,7 @@ test("first-ever push → changed, publishes, writes full hash", async () => {
   const { store, ops, hash } = makeHarness();
   const res = await store.writeSnapshot(USER, BASE_PUSH);
   assert.equal(res.changed, true);
+  assert.equal(res.newWindowsShared, true, "absent policy key ⇒ default shared");
   assert.equal(hash.get("label"), "Laptop");
   assert.equal(hash.get("windowsJson"), JSON.stringify(BASE_PUSH.windows));
   assert.ok(ops.some((o) => o.cmd === "hsetnx")); // createdAt written once
@@ -261,12 +267,14 @@ interface StoreHarness {
   store: LiveStore;
   hashes: Map<string, Map<string, string>>;
   zset: Map<string, number>;
+  strings: Map<string, string>;
   published: LiveEvent[];
 }
 
 function makeStoreHarness(): StoreHarness {
   const hashes = new Map<string, Map<string, string>>();
   const zset = new Map<string, number>();
+  const strings = new Map<string, string>();
   const published: LiveEvent[] = [];
   const hashFor = (key: string): Map<string, string> => {
     let h = hashes.get(key);
@@ -298,6 +306,7 @@ function makeStoreHarness(): StoreHarness {
       },
       del(key: string) {
         hashes.delete(key);
+        strings.delete(key);
         return chain;
       },
       zadd(_key: string, score: number, member: string) {
@@ -329,16 +338,41 @@ function makeStoreHarness(): StoreHarness {
       for (const m of members) zset.delete(m);
       return members.length;
     },
+    async get(key: string) {
+      return strings.has(key) ? (strings.get(key) as string) : null;
+    },
+    async set(key: string, value: string) {
+      strings.set(key, value);
+      return "OK";
+    },
+    async exists(key: string) {
+      return hashes.has(key) ? 1 : 0;
+    },
+    async hmget(key: string, ...fields: string[]) {
+      const h = hashes.get(key);
+      return fields.map((f) => (h?.has(f) ? (h.get(f) as string) : null));
+    },
+    async del(key: string) {
+      const had = hashes.delete(key) || strings.delete(key);
+      return had ? 1 : 0;
+    },
     pipeline() {
-      const keys: string[] = [];
+      // Records the mixed read stream (hgetall | get) so exec returns entries in
+      // the same [err, value] shape and order the real ioredis pipeline does.
+      const reads: Array<{ kind: "hgetall" | "get"; key: string }> = [];
       const p = {
         hgetall(key: string) {
-          keys.push(key);
+          reads.push({ kind: "hgetall", key });
+          return p;
+        },
+        get(key: string) {
+          reads.push({ kind: "get", key });
           return p;
         },
         async exec() {
-          return keys.map((key): [null, Record<string, string>] => {
-            const h = hashes.get(key);
+          return reads.map((r): [null, Record<string, string> | string | null] => {
+            if (r.kind === "get") return [null, strings.has(r.key) ? (strings.get(r.key) as string) : null];
+            const h = hashes.get(r.key);
             return [null, h ? Object.fromEntries(h) : {}];
           });
         },
@@ -352,7 +386,7 @@ function makeStoreHarness(): StoreHarness {
 
   const redis = { command } as unknown as RedisBundle;
   const config = { ttlSeconds: 604800, pushQuotaPerDay: 2000, ttlHours: 168 } as Config;
-  return { store: new LiveStore(redis, config), hashes, zset, published };
+  return { store: new LiveStore(redis, config), hashes, zset, strings, published };
 }
 
 const DEV = BASE_PUSH.deviceId;
@@ -419,4 +453,60 @@ test("deleteDevice removes the winnames hash", async () => {
   await h.store.deleteDevice(USER, DEV);
   assert.equal(h.hashes.has(winNamesKey(USER, DEV)), false);
   assert.equal(h.hashes.has(devKey(USER, DEV)), false);
+});
+
+// ── per-device new-window policy ─────────────────────────────────────────────
+
+test("setDeviceNewWindowsShared(false) → SET '0' + publishes push", async () => {
+  const h = makeStoreHarness();
+  await h.store.setDeviceNewWindowsShared(USER, DEV, false);
+  assert.equal(h.strings.get(newWindowsKey(USER, DEV)), "0");
+  assert.deepEqual(h.published, [{ type: "push", deviceId: DEV }]);
+});
+
+test("setDeviceNewWindowsShared(true) → DEL clears the opt-out + publishes", async () => {
+  const h = makeStoreHarness();
+  h.strings.set(newWindowsKey(USER, DEV), "0");
+  await h.store.setDeviceNewWindowsShared(USER, DEV, true);
+  assert.equal(h.strings.has(newWindowsKey(USER, DEV)), false, "true DELs the key (absent = default on)");
+  assert.deepEqual(h.published, [{ type: "push", deviceId: DEV }]);
+});
+
+test("listDevices overlays newWindowsShared:false only when the key is '0'", async () => {
+  const h = makeStoreHarness();
+  seedDevice(h);
+  h.strings.set(newWindowsKey(USER, DEV), "0");
+  const devices = await h.store.listDevices(USER);
+  assert.equal(devices[0]?.newWindowsShared, false);
+});
+
+test("listDevices leaves newWindowsShared undefined when the policy key is absent", async () => {
+  const h = makeStoreHarness();
+  seedDevice(h);
+  const devices = await h.store.listDevices(USER);
+  assert.equal(devices[0]?.newWindowsShared, undefined, "absent key ⇒ default (field omitted)");
+});
+
+test("writeSnapshot echoes newWindowsShared:false when the policy key is '0'", async () => {
+  const h = makeStoreHarness();
+  seedDevice(h);
+  h.strings.set(newWindowsKey(USER, DEV), "0");
+  const res = await h.store.writeSnapshot(USER, BASE_PUSH);
+  assert.equal(res.newWindowsShared, false, "push body reflects the stored opt-out");
+});
+
+test("deleteDevice removes the new-window policy key", async () => {
+  const h = makeStoreHarness();
+  seedDevice(h);
+  h.strings.set(newWindowsKey(USER, DEV), "0");
+  await h.store.deleteDevice(USER, DEV);
+  assert.equal(h.strings.has(newWindowsKey(USER, DEV)), false);
+});
+
+test("deleteAllDevices removes every device's new-window policy key", async () => {
+  const h = makeStoreHarness();
+  seedDevice(h);
+  h.strings.set(newWindowsKey(USER, DEV), "0");
+  await h.store.deleteAllDevices(USER);
+  assert.equal(h.strings.has(newWindowsKey(USER, DEV)), false);
 });
