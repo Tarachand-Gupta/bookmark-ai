@@ -3,7 +3,12 @@ import { browser } from "wxt/browser";
 import { DEFAULT_WEB_URL, getWebBaseUrl } from "@/lib/api";
 import { getDeviceLabel, setDeviceLabel } from "@/lib/device-id";
 import { liveEnabledItem } from "@/lib/live-storage";
-import { requestLivePushNow, requestSetLiveEnabled } from "@/lib/messages";
+import {
+  requestLivePushNow,
+  requestLiveWindowGet,
+  requestLiveWindowSet,
+  requestSetLiveEnabled,
+} from "@/lib/messages";
 
 /**
  * The authoritative on/off control for publishing this browser's open tabs
@@ -22,11 +27,22 @@ export function LiveTabsToggle() {
   const [labelSaved, setLabelSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [webUrl, setWebUrl] = useState(DEFAULT_WEB_URL);
+  // The popup's own window (the background can't resolve it) and whether it is
+  // currently shared. Default shared: a window is only ever hidden by an explicit
+  // opt-out, so "unknown yet" reads as included.
+  const [windowId, setWindowId] = useState<number | null>(null);
+  const [windowShared, setWindowShared] = useState(true);
+  const [windowBusy, setWindowBusy] = useState(false);
 
   useEffect(() => {
     void liveEnabledItem.getValue().then(setEnabled);
     void getDeviceLabel().then(setLabel);
     void getWebBaseUrl().then(setWebUrl);
+    void browser.windows.getCurrent().then((win) => {
+      if (typeof win.id !== "number") return;
+      setWindowId(win.id);
+      void requestLiveWindowGet(win.id).then((r) => setWindowShared(r.shared));
+    });
   }, []);
 
   async function toggle() {
@@ -50,6 +66,19 @@ export function LiveTabsToggle() {
       setError("Couldn't reach the extension background. Try reopening the popup.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function toggleWindow() {
+    if (windowBusy || windowId === null) return;
+    const next = !windowShared;
+    setWindowBusy(true);
+    setWindowShared(next); // optimistic; corrected by the settled result
+    try {
+      const result = await requestLiveWindowSet(windowId, next);
+      setWindowShared(result.shared);
+    } finally {
+      setWindowBusy(false);
     }
   }
 
@@ -106,6 +135,23 @@ export function LiveTabsToggle() {
           </svg>
         </div>
 
+        {/* Subordinate per-window control: only meaningful once publishing is on.
+            Off here EXCLUDES the current window from pushes (dropped from the
+            mirror immediately, since pushes are full-replace); on re-includes it. */}
+        {enabled && windowId !== null && (
+          <div className="flex items-center gap-2.5 border-t px-3 py-2.5">
+            <Switch
+              checked={windowShared}
+              disabled={windowBusy}
+              onToggle={() => void toggleWindow()}
+              ariaLabel="Share this window"
+            />
+            <span className="flex-1 text-xs font-medium leading-tight text-muted-foreground">
+              Share this window
+            </span>
+          </div>
+        )}
+
         {expanded && (
           <div className="flex flex-col gap-2 border-t px-3 pb-3 pt-2">
             <p className="text-[11px] leading-snug text-muted-foreground">
@@ -161,17 +207,19 @@ function Switch({
   checked,
   disabled,
   onToggle,
+  ariaLabel = "Share window as live session",
 }: {
   checked: boolean;
   disabled: boolean;
   onToggle: () => void;
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
-      aria-label="Share window as live session"
+      aria-label={ariaLabel}
       disabled={disabled}
       onClick={(e) => {
         e.stopPropagation();

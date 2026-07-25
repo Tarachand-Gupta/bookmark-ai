@@ -7,6 +7,7 @@ describe("isAllowedBridgePath", () => {
     expect(isAllowedBridgePath("/api/bookmarks")).toBe(true);
     expect(isAllowedBridgePath("/api/sessions?limit=40")).toBe(true);
     expect(isAllowedBridgePath("/api/bookmarks/abc-123")).toBe(true);
+    expect(isAllowedBridgePath("/api/device-token")).toBe(true); // bridge device-token mint
   });
 
   it("rejects non-/api/ paths", () => {

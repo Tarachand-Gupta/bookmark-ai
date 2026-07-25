@@ -5,6 +5,10 @@
  * anything that could point off-path or off-origin (absolute URLs, scheme-
  * relative `//host`, or `..` traversal). Standalone (no `wxt/browser` import) so
  * it is unit-testable in plain node.
+ *
+ * The `/api/...` prefix intentionally covers `/api/device-token` — the Clerk-
+ * authed device-token MINT is proxied through the bridge the one moment an app
+ * tab is open (see lib/device-token.ts), so it must be a permitted bridge path.
  */
 export function isAllowedBridgePath(path: unknown): path is string {
   return (

@@ -5,6 +5,7 @@ import type {
   Session,
 } from "@bookmark-ai/types";
 import { storage } from "#imports";
+import { getStoredDeviceToken, renewDeviceTokenIfNeeded } from "./device-token";
 import { diag } from "./diag";
 import { tokenFresh, type CachedToken } from "./live-token";
 
@@ -227,6 +228,21 @@ async function mintLiveToken(): Promise<CachedToken | null> {
 /** A live-server session JWT, reusing the in-memory cache unless it's within the
  * skew window (or `forceRefresh` after a 401). Null when none can be minted. */
 export async function getLiveToken(forceRefresh = false): Promise<string | null> {
+  // Safari: once a long-lived device token exists it's a plain Bearer the LIVE
+  // server accepts DIRECTLY (contract) — no /api/live-token mint or its caches.
+  // `forceRefresh` is a 401-retry: give the token its chance to self-renew, then
+  // reuse whatever's stored (often unchanged). Only if there's no device token
+  // (never minted / cleared) do we fall through to the legacy live-token mint.
+  if (SAFARI) {
+    if (forceRefresh) {
+      await renewDeviceTokenIfNeeded();
+      const renewed = await getStoredDeviceToken();
+      if (renewed) return renewed;
+    } else {
+      const deviceToken = await getStoredDeviceToken();
+      if (deviceToken) return deviceToken;
+    }
+  }
   if (!forceRefresh) {
     if (tokenFresh(liveTokenCache, Date.now(), LIVE_TOKEN_SKEW_MS)) {
       return liveTokenCache!.token;

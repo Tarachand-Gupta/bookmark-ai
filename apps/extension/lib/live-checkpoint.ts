@@ -11,6 +11,7 @@ import {
   liveDirtyItem,
   liveEnabledItem,
 } from "./live-storage";
+import { isWindowExcluded, pruneExcludedWindows } from "./live-windows";
 
 /**
  * The event-driven, debounced live-tabs push loop (§4.1 rework, §4.5).
@@ -134,7 +135,20 @@ async function baseState(): Promise<Omit<PushLiveStateInput, "windows" | "hidden
  * ever builds a payload (§4.1). */
 async function buildFullPush(): Promise<PushLiveStateInput> {
   const windows = (await browser.windows.getAll({ populate: true })) as LiveInputWindow[];
-  const built = buildLiveWindows(windows);
+  // Remove windows the user opted OUT of BEFORE building the payload, so tab and
+  // hidden counts reflect only what's actually shared (a window filtered here
+  // never contributes to hiddenTabCount). Prune first, against the ids we just
+  // scanned, so the exclude list can't accumulate closed-window ids over time.
+  const excluded = new Set(
+    await pruneExcludedWindows(
+      windows.map((w) => w.id).filter((id): id is number => typeof id === "number"),
+    ),
+  );
+  const shared =
+    excluded.size === 0
+      ? windows
+      : windows.filter((w) => !(typeof w.id === "number" && excluded.has(w.id)));
+  const built = buildLiveWindows(shared);
   return { ...(await baseState()), hiddenTabCount: built.hiddenTabCount, windows: built.windows };
 }
 
@@ -270,18 +284,27 @@ export async function pushLiveNow(): Promise<void> {
  * tabs or builds a payload; the flush does the full re-scan.
  */
 export function registerLiveCheckpoint(): void {
-  const markDirty = (): void => {
-    void onChange();
+  const markDirty = (windowId?: number): void => {
+    void onChange(windowId);
   };
-  const markDirtyUnlessPrivate = (context?: { incognito?: boolean }): void => {
+  const markDirtyUnlessPrivate = (context?: { incognito?: boolean; windowId?: number }): void => {
     if (context?.incognito) return; // never even wake for private activity where we can tell
-    void onChange();
+    void onChange(context?.windowId);
   };
 
   // Optional chaining on every event: a browser that doesn't expose one of these
   // (Safari omits some tabs/windows events) just skips that listener rather than
   // throwing on `.addListener` and aborting the whole registration.
-  browser.tabs.onCreated?.addListener((tab) => markDirtyUnlessPrivate(tab));
+  //
+  // Every listener that can name its window cheaply forwards the id so `onChange`
+  // can drop the change when that window is EXCLUDED — an excluded window is
+  // filtered out of the payload anyway (buildFullPush), so marking dirty for it
+  // would only schedule a push that rebuilds to identical output. onReplaced
+  // exposes no window id, so it falls back to an unconditional mark (its full
+  // re-scan still filters correctly — just possibly one redundant push).
+  browser.tabs.onCreated?.addListener((tab) =>
+    markDirtyUnlessPrivate({ incognito: tab.incognito, windowId: tab.windowId }),
+  );
   browser.tabs.onUpdated?.addListener((_tabId, changeInfo, tab) => {
     // Only changes that alter the tab set or its display fields; the debounce
     // coalesces the loading→title→favicon→complete burst into one push.
@@ -293,16 +316,18 @@ export function registerLiveCheckpoint(): void {
     ) {
       return;
     }
-    markDirtyUnlessPrivate(tab);
+    markDirtyUnlessPrivate({ incognito: tab.incognito, windowId: tab.windowId });
   });
   // onRemoved/onMoved/onAttached/onDetached/onReplaced carry no incognito flag; the
   // flush re-scan excludes incognito data, so the payload is safe regardless.
-  browser.tabs.onRemoved?.addListener(() => markDirty());
-  browser.tabs.onMoved?.addListener(() => markDirty());
-  browser.tabs.onAttached?.addListener(() => markDirty());
-  browser.tabs.onDetached?.addListener(() => markDirty());
+  browser.tabs.onRemoved?.addListener((_tabId, info) => markDirty(info?.windowId));
+  browser.tabs.onMoved?.addListener((_tabId, info) => markDirty(info?.windowId));
+  browser.tabs.onAttached?.addListener((_tabId, info) => markDirty(info?.newWindowId));
+  browser.tabs.onDetached?.addListener((_tabId, info) => markDirty(info?.oldWindowId));
   browser.tabs.onReplaced?.addListener(() => markDirty());
-  browser.windows.onCreated?.addListener((win) => markDirtyUnlessPrivate(win));
+  // A brand-new window is always shared (it can't be excluded yet), so never pass
+  // its id — it must trigger a push so the window appears in the mirror.
+  browser.windows.onCreated?.addListener((win) => markDirtyUnlessPrivate({ incognito: win.incognito }));
   browser.windows.onRemoved?.addListener(() => {
     void onWindowRemoved();
   });
@@ -314,8 +339,12 @@ export function registerLiveCheckpoint(): void {
   void bootReconcile();
 }
 
-async function onChange(): Promise<void> {
+async function onChange(windowId?: number): Promise<void> {
   if (!(await liveEnabledItem.getValue())) return; // off costs zero (§5.2)
+  // When the change is cheaply attributable to an EXCLUDED window it can't alter
+  // the shared payload, so skip the dirty flag + debounce entirely rather than
+  // schedule a push that would rebuild to identical filtered output.
+  if (typeof windowId === "number" && (await isWindowExcluded(windowId))) return;
   await liveDirtyItem.setValue(true);
   armDebounce();
 }

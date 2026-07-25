@@ -241,6 +241,77 @@ export function requestLivePushNow(): Promise<{ ok: boolean }> {
   }));
 }
 
+/* ── Per-window share opt-out ─────────────────────────────────────────────────
+ * The global live toggle shares every window by default; these let the popup
+ * read and flip whether the CURRENT window is excluded from this device's pushes.
+ * The popup resolves its own window id (background contexts can't), so it travels
+ * in the message. */
+
+/** Popup → background: is the current window shared? `enabled` is the global live
+ * toggle; `shared` is this window not being on the exclude list. */
+export const LIVE_WINDOW_GET = "LIVE_WINDOW_GET" as const;
+/** Popup → background: include/exclude the current window, then push immediately. */
+export const LIVE_WINDOW_SET = "LIVE_WINDOW_SET" as const;
+
+export interface LiveWindowGetMessage {
+  type: typeof LIVE_WINDOW_GET;
+  windowId: number;
+}
+
+/** `enabled` = the global publish switch; `shared` = this window is not excluded. */
+export type LiveWindowGetResult = { enabled: boolean; shared: boolean };
+
+export function isLiveWindowGetMessage(message: unknown): message is LiveWindowGetMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as LiveWindowGetMessage).type === LIVE_WINDOW_GET &&
+    typeof (message as LiveWindowGetMessage).windowId === "number"
+  );
+}
+
+export interface LiveWindowSetMessage {
+  type: typeof LIVE_WINDOW_SET;
+  windowId: number;
+  shared: boolean;
+}
+
+/** `ok` = the storage write succeeded; `shared` echoes the settled state. */
+export type LiveWindowSetResult = { ok: boolean; shared: boolean };
+
+export function isLiveWindowSetMessage(message: unknown): message is LiveWindowSetMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as LiveWindowSetMessage).type === LIVE_WINDOW_SET &&
+    typeof (message as LiveWindowSetMessage).windowId === "number" &&
+    typeof (message as LiveWindowSetMessage).shared === "boolean"
+  );
+}
+
+/** Popup-side helper: read the current window's share state. Never rejects — an
+ * unreachable background resolves to "off, shared" so the row simply doesn't show. */
+export function requestLiveWindowGet(windowId: number): Promise<LiveWindowGetResult> {
+  const message: LiveWindowGetMessage = { type: LIVE_WINDOW_GET, windowId };
+  return (browser.runtime.sendMessage(message) as Promise<LiveWindowGetResult>).catch(() => ({
+    enabled: false,
+    shared: true,
+  }));
+}
+
+/** Popup-side helper: include/exclude the current window. Never rejects — a
+ * failure reports `ok:false` and leaves the requested `shared` for the optimistic UI. */
+export function requestLiveWindowSet(
+  windowId: number,
+  shared: boolean,
+): Promise<LiveWindowSetResult> {
+  const message: LiveWindowSetMessage = { type: LIVE_WINDOW_SET, windowId, shared };
+  return (browser.runtime.sendMessage(message) as Promise<LiveWindowSetResult>).catch(() => ({
+    ok: false,
+    shared,
+  }));
+}
+
 /* ── Path D: content-script session bridge (Safari) ──────────────────────────
  * Safari 26 fully partitions the extension's network/cookie context from the
  * browser jar, so neither the SDK, the Native-API cookie, nor a direct

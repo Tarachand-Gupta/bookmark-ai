@@ -13,16 +13,28 @@ import {
 } from "@/lib/api";
 import { CLERK_PUBLISHABLE_KEY, CLERK_SYNC_HOST } from "@/lib/clerk";
 import { detectSource } from "@/lib/detect";
+import {
+  clearDeviceToken,
+  getStoredDeviceToken,
+  isDeviceTokenRenewalDue,
+  renewDeviceTokenIfNeeded,
+  storeDeviceToken,
+  type DeviceTokenResponse,
+} from "@/lib/device-token";
 import { diag } from "@/lib/diag";
 import { fullName } from "@/lib/identity";
 import { getNativeSession, getNativeSessionToken, nativeSignOut } from "@/lib/native-session";
 import { pushLiveNow, registerLiveCheckpoint, setLiveEnabled } from "@/lib/live-checkpoint";
+import { isWindowExcluded, setWindowShared } from "@/lib/live-windows";
+import { liveEnabledItem } from "@/lib/live-storage";
 import { closeWindowsAndOpen, gatherOpenTabs } from "@/lib/session";
 import {
   isBookmarkAiPingMessage,
   isGetUserMessage,
   isLivePushNowMessage,
   isLiveSetEnabledMessage,
+  isLiveWindowGetMessage,
+  isLiveWindowSetMessage,
   isRestoreSessionMessage,
   isSaveBookmarkMessage,
   isSaveSessionMessage,
@@ -32,6 +44,10 @@ import {
   type BridgeFetchResult,
   type BridgeMeResult,
   type LiveSetEnabledResult,
+  type LiveWindowGetMessage,
+  type LiveWindowGetResult,
+  type LiveWindowSetMessage,
+  type LiveWindowSetResult,
   type RestoreSessionMessage,
   type SaveBookmarkMessage,
   type SaveBookmarkResult,
@@ -54,13 +70,15 @@ const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(
  * a throw: fall through to the cookie→Native-API path (lib/native-session). */
 const CLERK_RACE_MS = 3000;
 
-type AuthPath = "sdk" | "native" | "cookie" | "bridge";
+type AuthPath = "sdk" | "native" | "device" | "cookie" | "bridge";
 /** Which path last resolved a session, cached for THIS background lifetime so
  * repeat popup opens don't re-pay the SDK race once we know which path works.
  * A browser restart spins up a fresh background script → `null` again → the SDK
  * path is retried. Stays null while fully signed out so no path is skipped (a
  * pending web sign-in must still be picked up). "cookie" = the Safari
- * credentialed /api/me path (SDK + native cookie both blind). */
+ * credentialed /api/me path (SDK + native cookie both blind); "device" = the
+ * Safari long-lived device-token bearer (a token-bearing path, like sdk/native —
+ * see lib/device-token.ts). */
 let winningPath: AuthPath | null = null;
 
 /** Reject if `p` doesn't settle within `ms`. */
@@ -94,6 +112,14 @@ function racedClerkClient() {
  * Null when signed out or Clerk is unreachable — saves still work against the
  * open local server; the auth-enforcing deployed server rejects them. */
 async function getSessionToken(): Promise<string | null> {
+  // Device path (Safari): the persisted device token IS the bearer — a
+  // token-bearing path like sdk/native, so skip the SDK race and native mint and
+  // hand it straight to authFetch. If it vanished (cleared out from under us),
+  // fall through to re-resolve.
+  if (SAFARI && winningPath === "device") {
+    const deviceToken = await getStoredDeviceToken();
+    if (deviceToken) return deviceToken;
+  }
   // Cookie/bridge paths yield no mintable token — writes go out via authFetch's
   // no-token strategy (bridge tab, else credentialed fetch) — so short-circuit.
   if (winningPath === "cookie" || winningPath === "bridge") return null;
@@ -116,7 +142,19 @@ async function getSessionToken(): Promise<string | null> {
   const token = await getNativeSessionToken();
   if (token) winningPath = "native";
   diag("token", "native fallback", { hasToken: !!token });
-  return token;
+  if (token) return token;
+  // Safari fallback: the SDK/native mints came up empty, but a device token may
+  // persist (a fresh worker boots winningPath === null; the token survives in
+  // storage.local). Attach it so authFetch carries a Bearer on every API call.
+  if (SAFARI) {
+    const deviceToken = await getStoredDeviceToken();
+    if (deviceToken) {
+      winningPath = "device";
+      diag("token", "device token fallback", { hasToken: true });
+      return deviceToken;
+    }
+  }
+  return token; // null
 }
 
 const SIGNED_OUT: UserInfo = { signedIn: false, name: null, email: null };
@@ -242,6 +280,39 @@ async function bridgeFetch(
   return null;
 }
 
+/** Once-per-worker guard so a bridge re-mint fires at most once per boot instead
+ * of on every bridge-resolved getUser/write (Safari respawns the worker often). */
+let bridgeMintAttempted = false;
+
+/** Bootstrap (or re-mint) the long-lived device token THROUGH an open app tab's
+ * bridge — the one context that can reach the web Clerk session. Called from the
+ * bridge-signed-in paths, so a live bridge tab is present. Mints when there's no
+ * usable stored token, or when the stored one is renewal-due but the plain-Bearer
+ * renewal is blocked on "reauth" (only a fresh Clerk-authed mint can replace it).
+ * Best-effort: a failure just leaves the extension on the bridge/cookie paths. */
+async function mintDeviceTokenViaBridge(): Promise<void> {
+  if (bridgeMintAttempted) return;
+  const existing = await getStoredDeviceToken();
+  if (existing && !(await isDeviceTokenRenewalDue())) return; // fresh token, nothing to do
+  bridgeMintAttempted = true;
+  const res = await bridgeFetch("/api/device-token", "POST", "{}");
+  if (!res) {
+    diag("deviceToken", "bridge mint: no bridge tab");
+    return;
+  }
+  if (!res.ok) {
+    diag("deviceToken", "device token minted via bridge", { ok: false, status: res.status });
+    return;
+  }
+  try {
+    const body = (await res.json()) as DeviceTokenResponse;
+    if (body?.token) await storeDeviceToken(body);
+    diag("deviceToken", "device token minted via bridge", { ok: !!body?.token, status: res.status });
+  } catch {
+    diag("deviceToken", "bridge mint: parse failed", { status: res.status });
+  }
+}
+
 /** TEMP migration cleanup: the domain switched Clerk instances (dev → prod) on
  * 2026-07-22; browsers that used the dev era carry stale dev-suffixed cookies
  * (`*_vm2h_-wW`) that can shadow the prod session for the sync SDK. Surgically
@@ -267,7 +338,12 @@ async function purgeDevEraCookies(): Promise<void> {
 async function handleGetUser(): Promise<UserInfo> {
   diag("getUser", "entry", { cachedPath: winningPath });
   // Path A — SDK (dev instances; settles empty on the prod custom domain).
-  if (winningPath !== "native" && winningPath !== "cookie" && winningPath !== "bridge") {
+  if (
+    winningPath !== "native" &&
+    winningPath !== "device" &&
+    winningPath !== "cookie" &&
+    winningPath !== "bridge"
+  ) {
     const started = Date.now();
     try {
       await purgeDevEraCookies();
@@ -291,13 +367,48 @@ async function handleGetUser(): Promise<UserInfo> {
     }
   }
   // Path B — Native API via the FAPI __client cookie (see lib/native-session).
-  if (winningPath !== "cookie" && winningPath !== "bridge") {
+  if (winningPath !== "device" && winningPath !== "cookie" && winningPath !== "bridge") {
     const native = await getNativeSession();
     if (native) {
       winningPath = "native";
       diag("getUser", "reply", { path: "native", signedIn: true });
       rememberIdentity(native.name, native.email);
       return { signedIn: true, name: native.name, email: native.email };
+    }
+  }
+  // Path B.5 — device token (Safari): a long-lived bearer minted once through the
+  // bridge (right after sign-in) and silently self-renewing, so identity resolves
+  // with NO app tab open — Chrome-parity. Header auth works in Safari's
+  // partitioned context where the cookie jar is invisible; tried BEFORE the
+  // cookie/bridge paths (both of which need an open app tab).
+  if (SAFARI) {
+    const deviceToken = await getStoredDeviceToken();
+    if (deviceToken) {
+      const base = await getApiBaseUrl();
+      try {
+        const res = await fetch(`${base}/api/me`, {
+          headers: { accept: "application/json", authorization: `Bearer ${deviceToken}` },
+        });
+        diag("getUser", "device /api/me", { status: res.status });
+        if (res.ok) {
+          const body = (await res.json()) as { name?: string | null; email?: string | null };
+          winningPath = "device";
+          rememberIdentity(body.name ?? null, body.email ?? null);
+          diag("getUser", "reply", { path: "device", signedIn: true });
+          void renewDeviceTokenIfNeeded();
+          return { signedIn: true, name: body.name ?? null, email: body.email ?? null };
+        }
+        if (res.status === 401) {
+          // Token invalid (not merely aging) — drop it and fall through to the
+          // cookie/bridge paths, which may still see a live session.
+          await clearDeviceToken();
+          diag("getUser", "device token invalid (cleared)", { status: 401 });
+        }
+        // Any other status → leave the token, fall through.
+      } catch (e) {
+        // Network error — leave the token in place, fall through to other paths.
+        diag("getUser", "device /api/me error", { error: errMsg(e) });
+      }
     }
   }
   // Path C — Safari cookie path: /api/me authenticated by the SITE's own session
@@ -324,12 +435,17 @@ async function handleGetUser(): Promise<UserInfo> {
       diag("getUser", "reply", { path: "bridge", signedIn: bridged.signedIn });
       if (bridged.signedIn) {
         rememberIdentity(bridged.name, bridged.email);
+        // Seize the open-tab moment to mint (or re-mint) the device token, so the
+        // NEXT resolve — and every API call — needs no app tab at all (Path B.5).
+        void mintDeviceTokenViaBridge();
       } else {
         // The ONE definitive signed-out signal on Safari: an app tab's own
         // credentialed request says there is no session. Forget the identity so
-        // the gate goes back to a real sign-in prompt. (Path C's /api/me always
-        // reports signed-out on Safari — partitioned — so it proves nothing.)
+        // the gate goes back to a real sign-in prompt (Path C's /api/me always
+        // reports signed-out on Safari — partitioned — so it proves nothing), and
+        // drop the device token — the session it represented is gone.
         void lastIdentityItem.setValue(null).catch(() => {});
+        void clearDeviceToken();
       }
       return bridged;
     }
@@ -345,8 +461,15 @@ async function handleGetUser(): Promise<UserInfo> {
  * (which ends the same client session the WEB app uses — signing out of the
  * extension signs out of the site too, which is the honest behavior). */
 async function handleSignOut(): Promise<SignOutResult> {
+  // The device token is our OWN long-lived bearer, not a Clerk session — clear it
+  // locally on any sign-out so it's never reused. Ending the shared web session
+  // itself still happens via the SDK/native paths below or the web handoff.
+  if (SAFARI) void clearDeviceToken();
   let ok = false;
-  const tokenlessSafari = winningPath === "cookie" || winningPath === "bridge";
+  // "device" joins cookie/bridge as tokenless-for-sign-out: a device token can't
+  // end the shared Clerk session, so we hand off to the web app just like those.
+  const tokenlessSafari =
+    winningPath === "cookie" || winningPath === "bridge" || winningPath === "device";
   if (winningPath !== "native" && !tokenlessSafari) {
     try {
       const clerk = await racedClerkClient();
@@ -407,6 +530,28 @@ async function handleSaveSession(message: SaveSessionMessage): Promise<SaveSessi
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/** Read whether the popup's window is currently shared: the global publish
+ * switch plus this window not being on the exclude list. */
+async function handleLiveWindowGet(
+  message: LiveWindowGetMessage,
+): Promise<LiveWindowGetResult> {
+  const enabled = await liveEnabledItem.getValue();
+  const shared = !(await isWindowExcluded(message.windowId));
+  return { enabled, shared };
+}
+
+/** Include/exclude the popup's window, then force an IMMEDIATE full push so the
+ * mirror gains or drops the window right away (pushes are full-replace) instead
+ * of waiting for the next tab change. Reply after the storage write; the push is
+ * fire-and-forget, mirroring the rename path (LIVE_PUSH_NOW). */
+async function handleLiveWindowSet(
+  message: LiveWindowSetMessage,
+): Promise<LiveWindowSetResult> {
+  await setWindowShared(message.windowId, message.shared);
+  void pushLiveNow();
+  return { ok: true, shared: message.shared };
 }
 
 // Tab-group APIs are Chrome ≥89; webextension-polyfill types don't know them.
@@ -488,7 +633,12 @@ export default defineBackground(() => {
           (init.method as string) ?? "GET",
           body,
         );
-        if (bridged) return bridged;
+        if (bridged) {
+          // A working bridge proves an app tab is open and signed in — the moment
+          // to seed the device token so future calls need no tab (once per worker).
+          void mintDeviceTokenViaBridge();
+          return bridged;
+        }
       } else if (appOrigin && target.origin !== appOrigin) {
         const withBearer = (t: string): Promise<Response> =>
           fetch(url, {
@@ -549,6 +699,8 @@ export default defineBackground(() => {
           | SaveBookmarkResult
           | SaveSessionResult
           | LiveSetEnabledResult
+          | LiveWindowGetResult
+          | LiveWindowSetResult
           | UserInfo
           | SignOutResult
           | { ok: boolean },
@@ -576,6 +728,14 @@ export default defineBackground(() => {
       }
       if (isLivePushNowMessage(message)) {
         void pushLiveNow().then(() => sendResponse({ ok: true }));
+        return true;
+      }
+      if (isLiveWindowGetMessage(message)) {
+        void handleLiveWindowGet(message).then(sendResponse);
+        return true;
+      }
+      if (isLiveWindowSetMessage(message)) {
+        void handleLiveWindowSet(message).then(sendResponse);
         return true;
       }
       return undefined;
