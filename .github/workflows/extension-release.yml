@@ -73,6 +73,9 @@ jobs:
           name: extension-zips
           path: apps/extension/.output/*.zip
           if-no-files-found: error
+          # `.output` is a dot-dir; upload-artifact@v4 skips hidden paths by
+          # default, which made this step "find no files" while both zips existed.
+          include-hidden-files: true
           retention-days: 30
 
       - name: Detect CWS secrets
