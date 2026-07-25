@@ -47,6 +47,21 @@ const isIdentifierNotFound = (err: unknown): boolean =>
     (e) => e.code === "form_identifier_not_found",
   ) ?? false;
 
+/** Clerk error codes that mean the in-flight signUp/signIn resource is stale —
+ * expired, already verified, or gone. Re-attempting the same code against it is
+ * a dead end; the only recovery is to restart the attempt from a clean resource. */
+const STALE_RESOURCE_CODES = new Set([
+  "verification_expired",
+  "verification_already_verified",
+  "verification_missing",
+  "sign_up_not_found",
+  "resource_not_found",
+]);
+const isStaleResourceError = (err: unknown): boolean =>
+  (err as { errors?: { code?: string }[] })?.errors?.some(
+    (e) => e.code != null && STALE_RESOURCE_CODES.has(e.code),
+  ) ?? false;
+
 type Mode = "signIn" | "signUp" | "reset";
 
 /**
@@ -194,6 +209,10 @@ export function SignInScreen() {
     if (!identifier || !password) return;
     setError(null);
     setBusy(true);
+    // Start from a clean slate so a leftover code/verification from a previous
+    // (failed or abandoned) attempt can't leak into this one.
+    setCode("");
+    setNewPassword("");
     activeSignIn.current = null;
     activeSignUp.current = null;
     try {
@@ -243,6 +262,8 @@ export function SignInScreen() {
     if (!isLoaded || !email.trim()) return;
     setError(null);
     setBusy(true);
+    setCode("");
+    setNewPassword("");
     activeSignIn.current = null;
     activeSignUp.current = null;
     const identifier = email.trim();
@@ -284,6 +305,8 @@ export function SignInScreen() {
     }
     setError(null);
     setBusy(true);
+    setCode("");
+    setNewPassword("");
     activeSignIn.current = null;
     try {
       const attempt = await signIn.create({ identifier });
@@ -326,7 +349,23 @@ export function SignInScreen() {
     const value = code.trim();
     try {
       if (mode === "signUp") {
-        const signUpRes = activeSignUp.current ?? signUp;
+        // Verify against the resource returned by the send step, never the
+        // useSignUp() hook object — that can be a stale/empty attempt. If we
+        // lost it, the flow can't be recovered here, so restart cleanly.
+        const signUpRes = activeSignUp.current;
+        if (!signUpRes) {
+          resetToCredentials();
+          setBusy(false);
+          setError("Your sign-up session expired. Enter your email again to restart.");
+          return;
+        }
+        // A prior attempt may already have verified the email (re-tapped Verify,
+        // returned to the screen). Don't re-attempt — Clerk throws "already
+        // verified" — just finish with the session it already minted.
+        if (signUpRes.status === "complete" && signUpRes.createdSessionId) {
+          await setActive({ session: signUpRes.createdSessionId });
+          return;
+        }
         const result = await signUpRes.attemptEmailAddressVerification({ code: value });
         activeSignUp.current = result as NonNullable<typeof signUp>;
         if (result.status === "complete" && result.createdSessionId) {
@@ -375,6 +414,15 @@ export function SignInScreen() {
         setBusy(false);
       }
     } catch (err) {
+      // Expired / already-verified / lost resource: the code step is a dead end
+      // now, so drop back to the start (email + password kept) instead of
+      // leaving a button that keeps failing on the same stale attempt.
+      if (isStaleResourceError(err)) {
+        resetToCredentials();
+        setBusy(false);
+        setError("That verification expired. Enter your email again to restart.");
+        return;
+      }
       failed(err);
     }
   };
