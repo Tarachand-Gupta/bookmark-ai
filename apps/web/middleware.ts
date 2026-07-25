@@ -62,7 +62,12 @@ function handleApiCors(request: NextRequest): NextResponse | null {
   if (request.method === "OPTIONS") {
     return new NextResponse(null, { status: 204, headers });
   }
-  const response = NextResponse.next();
+  // Trusted route stamp for requireUser()'s device-token scope check. ALWAYS
+  // overwritten here (never passed through), so a client cannot spoof it —
+  // requireUser rejects device tokens outright when the stamp is missing.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-bkm-route", `${request.method} ${request.nextUrl.pathname}`);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
   for (const [key, value] of Object.entries(headers)) response.headers.set(key, value);
   return response;
 }

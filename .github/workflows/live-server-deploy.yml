@@ -67,6 +67,41 @@ jobs:
             -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes" \
             out/ "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:${{ secrets.VM_APP_DIR }}/"
 
+      - name: Ensure device-token secret in VM env
+        # Idempotently upsert DEVICE_TOKEN_SECRET into the VM's .env (never synced
+        # by rsync). The extension's device tokens are HMAC-signed with this shared
+        # secret; the live server verifies them offline. GH masks the secret in logs;
+        # we still avoid echoing it (no `set -x`, value passed via an env var).
+        env:
+          DEVICE_TOKEN_SECRET: ${{ secrets.LIVE_DEVICE_TOKEN_SECRET }}
+        run: |
+          if [ -z "$DEVICE_TOKEN_SECRET" ]; then
+            echo "LIVE_DEVICE_TOKEN_SECRET not set — skipping"
+            exit 0
+          fi
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+            "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
+            "DEVICE_TOKEN_SECRET='$DEVICE_TOKEN_SECRET' ENV_FILE='${{ secrets.VM_APP_DIR }}/.env' sh -s" <<'REMOTE'
+          set -eu
+          touch "$ENV_FILE"
+          line="DEVICE_TOKEN_SECRET=$DEVICE_TOKEN_SECRET"
+          if grep -q '^DEVICE_TOKEN_SECRET=' "$ENV_FILE"; then
+            current=$(grep '^DEVICE_TOKEN_SECRET=' "$ENV_FILE" | head -n1 | cut -d= -f2-)
+            if [ "$current" = "$DEVICE_TOKEN_SECRET" ]; then
+              echo "DEVICE_TOKEN_SECRET already up to date"
+            else
+              tmp=$(mktemp)
+              grep -v '^DEVICE_TOKEN_SECRET=' "$ENV_FILE" > "$tmp" || true
+              printf '%s\n' "$line" >> "$tmp"
+              mv "$tmp" "$ENV_FILE"
+              echo "DEVICE_TOKEN_SECRET updated"
+            fi
+          else
+            printf '%s\n' "$line" >> "$ENV_FILE"
+            echo "DEVICE_TOKEN_SECRET appended"
+          fi
+          REMOTE
+
       - name: Restart service (our unit only — never touch Caddy)
         run: |
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \

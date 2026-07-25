@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { AUTHORIZED_PARTIES } from "@/lib/authorized-parties";
+import { DEVICE_TOKEN_PREFIX, verifyDeviceToken } from "@/lib/server/device-token";
 import { checkRateLimit } from "@/lib/server/rate-limit";
 
 function csv(value: string | undefined): string[] {
@@ -53,17 +54,43 @@ function warnAuthMisconfig(): void {
  *  - `{ ok: false }` → an error response to return as-is (429/401/403).
  *  - `{ ok: true, userId }` → allowed. `userId` is null in the OPEN modes
  *    (keyless self-host / dev bypass), where no Clerk user exists — those never
- *    route to a tenant DB (they use the shared/local DB).
+ *    route to a tenant DB (they use the shared/local DB). `via` records how the
+ *    caller authenticated ("clerk" session vs. a long-lived "device" token); it's
+ *    absent for the open modes and used by /api/device-token to enforce the
+ *    renewal-chain cap.
  */
 export type Gate =
   | { ok: false; response: NextResponse }
-  | { ok: true; userId: string | null };
+  | { ok: true; userId: string | null; via?: "clerk" | "device" };
+
+/**
+ * The ONLY routes a device token may call — the extension's save/live surface.
+ * Everything else 403s with code "token-scope" even with a valid token. Keep this
+ * list in lockstep with what apps/extension actually calls via its device token
+ * (the live server is a separate origin with its own device-token acceptance).
+ */
+const DEVICE_TOKEN_ROUTES = new Set([
+  "POST /api/bookmarks",
+  "POST /api/sessions",
+  "GET /api/me",
+  "POST /api/device-token",
+  "GET /api/settings",
+]);
+
+/** `x-bkm-route` → canonical "METHOD /path" (trailing slash stripped). */
+function normalizeRoute(stamp: string | null): string {
+  if (!stamp) return "";
+  const [method, path] = stamp.split(" ");
+  if (!method || !path) return "";
+  return `${method.toUpperCase()} ${path.length > 1 ? path.replace(/\/+$/, "") : path}`;
+}
 
 /**
  * API-route gate, mirroring the Express auth middleware: rate limiting, then
- * open-mode shortcuts (keyless self-host / dev bypass), then a Clerk session
- * (browser cookie or `Authorization: Bearer` session JWT — clerkMiddleware
- * verifies both), an azp origin check with Express semantics (absent = pass,
+ * open-mode shortcuts (keyless self-host / dev bypass), then a long-lived device
+ * token (`Bearer bkd_…`, verified locally — the Safari extension's header-auth
+ * path), then a Clerk session (browser cookie or `Authorization: Bearer` session
+ * JWT — clerkMiddleware verifies both), an azp origin check with Express semantics (absent = pass,
  * so native mobile tokens work; wrong = reject), and an optional user-id
  * allowlist. Order and semantics are byte-equivalent to the previous
  * `NextResponse | null` version — only the return shape changed.
@@ -102,6 +129,47 @@ export async function requireUser(): Promise<Gate> {
     return { ok: true, userId: null };
   }
 
+  // Long-lived device token (Safari extension header-auth — see device-token.ts).
+  // Verified BEFORE Clerk's auth() because it's a self-contained JWT we sign; a
+  // device token carries no azp, so it skips the origin check. Same allowlist.
+  const authHeader = h.get("authorization");
+  const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  if (bearer.startsWith(DEVICE_TOKEN_PREFIX)) {
+    const verified = verifyDeviceToken(bearer);
+    if (!verified) {
+      return {
+        ok: false,
+        response: NextResponse.json({ error: "Invalid or expired token" }, { status: 401 }),
+      };
+    }
+    // SCOPE: device tokens are extension credentials, not full-power sessions —
+    // they're honored ONLY on the routes the extension needs. The route comes from
+    // the middleware's `x-bkm-route` stamp (always overwritten there, unspoofable);
+    // a missing stamp fails CLOSED. Everything else — list/search/export, deletes,
+    // chat, imports — requires a real Clerk session, so a stolen token can't
+    // read or destroy the library.
+    if (!DEVICE_TOKEN_ROUTES.has(normalizeRoute(h.get("x-bkm-route")))) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "This token may not access this endpoint", code: "token-scope" },
+          { status: 403 },
+        ),
+      };
+    }
+    const allowedDevice = csv(process.env.CLERK_ALLOWED_USER_IDS);
+    if (allowedDevice.length > 0 && !allowedDevice.includes(verified.userId)) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "This account may not use this API", code: "forbidden" },
+          { status: 403 },
+        ),
+      };
+    }
+    return { ok: true, userId: verified.userId, via: "device" };
+  }
+
   const { userId, sessionClaims } = await auth();
   if (!userId) {
     return {
@@ -131,5 +199,5 @@ export async function requireUser(): Promise<Gate> {
       ),
     };
   }
-  return { ok: true, userId };
+  return { ok: true, userId, via: "clerk" };
 }

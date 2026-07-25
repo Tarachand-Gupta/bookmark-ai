@@ -1,6 +1,7 @@
 import { verifyToken } from "@clerk/backend";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { type Config, LOCAL_USER } from "./config";
+import { DEVICE_TOKEN_PREFIX, verifyDeviceToken } from "./device-token";
 
 /**
  * Clerk session-JWT verification as a Fastify preHandler, OFFLINE — the same
@@ -29,6 +30,26 @@ export function makeAuthPreHandler(config: Config) {
     const token = header?.startsWith("Bearer ") ? header.slice(7).trim() : "";
     if (!token) {
       await reply.code(401).send({ error: "Missing or invalid bearer token" });
+      return;
+    }
+
+    // Long-lived device token (Safari extension header-auth) — a self-contained
+    // HS256 JWT we verify locally, minted by the web app (apps/web/lib/server/
+    // device-token.ts). No azp, so it skips the origin check; same allowlist.
+    if (token.startsWith(DEVICE_TOKEN_PREFIX)) {
+      const verified = verifyDeviceToken(token, config.deviceTokenSecret);
+      if (!verified) {
+        await reply.code(401).send({ error: "Invalid or expired token" });
+        return;
+      }
+      if (
+        config.allowedUserIds.length > 0 &&
+        !config.allowedUserIds.includes(verified.userId)
+      ) {
+        await reply.code(403).send({ error: "This account may not use this API" });
+        return;
+      }
+      req.userId = verified.userId;
       return;
     }
 

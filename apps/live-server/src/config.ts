@@ -27,6 +27,11 @@ const rawSchema = z.object({
   CLERK_AUTHORIZED_PARTIES: z.string().optional(),
   LIVE_ALLOWED_ORIGINS: z.string().optional(),
 
+  // Long-lived device tokens (Safari extension header-auth). Verified here with
+  // the same HMAC secret the web app mints with — see src/device-token.ts. Optional:
+  // the Clerk path stays primary, so a missing secret just declines `bkd_…` tokens.
+  DEVICE_TOKEN_SECRET: z.string().optional(),
+
   LIVE_TTL_DAYS: z.coerce.number().int().positive().default(7),
   LIVE_PUSH_QUOTA_PER_DAY: z.coerce.number().int().positive().default(2000),
 
@@ -53,6 +58,7 @@ export type Config = {
   allowedUserIds: string[];
   authorizedParties: string[];
   allowedOrigins: string[];
+  deviceTokenSecret: string | undefined;
   ttlDays: number;
   ttlSeconds: number;
   ttlHours: number;
@@ -100,6 +106,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     allowedUserIds: csv(e.CLERK_ALLOWED_USER_IDS),
     authorizedParties: csv(e.CLERK_AUTHORIZED_PARTIES),
     allowedOrigins: csv(e.LIVE_ALLOWED_ORIGINS),
+    deviceTokenSecret: e.DEVICE_TOKEN_SECRET,
     ttlDays: e.LIVE_TTL_DAYS,
     ttlSeconds: e.LIVE_TTL_DAYS * 24 * 60 * 60,
     ttlHours: e.LIVE_TTL_DAYS * 24,
