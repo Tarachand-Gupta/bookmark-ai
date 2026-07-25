@@ -65,6 +65,9 @@ export const createSessionSchema = z.object({
   tabs: z.array(sessionTabSchema).min(1).max(500),
   browser: browserSchema.default("other"),
   device: deviceTypeSchema.default("other"),
+  // Free-form OS string as the client reports it ("macOS", "Windows", "iOS", …);
+  // rendered as an identifier badge. Capped like the live-push OS field.
+  os: z.string().max(40).nullish(),
   savedAt: z.string().datetime({ offset: true }).optional(),
 });
 export type CreateSessionInput = z.infer<typeof createSessionSchema>;
@@ -82,6 +85,7 @@ export const sessionSchema = z.object({
   tabCount: z.number(),
   browser: browserSchema,
   device: deviceTypeSchema,
+  os: z.string().nullable(),
   savedAt: z.string(),
   createdAt: z.string(),
 });

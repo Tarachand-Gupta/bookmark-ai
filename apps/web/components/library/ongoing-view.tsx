@@ -4,19 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LiveDevice, LiveTab, LiveWindow } from "@bookmark-ai/types";
 import {
   ChevronDown,
-  Chrome,
-  Compass,
-  Flame,
   Globe,
-  Laptop,
   Loader2,
   Lock,
-  Monitor,
   MonitorSmartphone,
   Pencil,
   Save,
-  Smartphone,
-  Tablet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -34,23 +27,7 @@ import {
 import type { SectionId } from "./settings-dialog";
 import { ExtensionStoreButton } from "./extension-cta";
 import { safeHref } from "@/lib/safe-href";
-
-const BROWSER_ICONS: Record<string, React.ElementType> = {
-  chrome: Chrome,
-  firefox: Flame,
-  safari: Compass,
-  edge: Globe,
-  arc: Globe,
-  other: Globe,
-};
-
-const DEVICE_ICONS: Record<string, React.ElementType> = {
-  desktop: Monitor,
-  laptop: Laptop,
-  mobile: Smartphone,
-  tablet: Tablet,
-  other: MonitorSmartphone,
-};
+import { BROWSER_ICONS, DEVICE_ICONS } from "./device-badges";
 
 const windowKey = (deviceId: string, windowId: number) => `${deviceId}:${windowId}`;
 
@@ -425,6 +402,7 @@ function SaveWindowButton({
         })),
         browser: device.browser,
         device: device.device,
+        os: device.os,
       });
       setStatus("saved");
       onSaved();

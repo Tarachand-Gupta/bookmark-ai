@@ -517,6 +517,7 @@ async function handleSaveSession(message: SaveSessionMessage): Promise<SaveSessi
       tabs,
       browser: src.browser,
       device: src.device,
+      os: src.os,
       savedAt: src.savedAt,
     });
     // Saved successfully — only now is it safe to close the window + open the app.

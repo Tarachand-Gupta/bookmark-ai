@@ -266,4 +266,14 @@ export const TENANT_MIGRATIONS: Migration[] = [
       `,
     ],
   },
+  // Free-form OS string captured at save time ("macOS", "Windows", "iOS", …),
+  // rendered as an identifier badge on saved-session rows. Additive-only ADD
+  // COLUMN, nullable — old rows read back null and the render layer omits the
+  // badge. sessions ARE exported user data, so SCHEMA_VERSION bumps to 3 with a
+  // v2→v3 upgrader (see packages/types/src/export.ts).
+  {
+    version: 7,
+    name: "sessions-os",
+    statements: ["ALTER TABLE sessions ADD COLUMN os TEXT"],
+  },
 ];

@@ -19,6 +19,7 @@ import { aiNameSession, renameSession } from "@/lib/api";
 import { restoreSessionViaExtension, type RestoreMode } from "@/lib/extension-bridge";
 import { safeHref } from "@/lib/safe-href";
 import { SessionsEmpty } from "./sessions-empty";
+import { SessionIdentity } from "./device-badges";
 
 export interface SessionsViewProps {
   sessions: Session[] | null;
@@ -223,10 +224,17 @@ export function SessionCard({
           {renameError ? (
             <p className="text-xs text-destructive">Rename failed. Try again.</p>
           ) : (
-            <p className="text-xs text-muted-foreground">
-              {session.tabCount} tab{session.tabCount === 1 ? "" : "s"} ·{" "}
-              {formatWhen(session.savedAt)}
-            </p>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+              <span>
+                {session.tabCount} tab{session.tabCount === 1 ? "" : "s"} ·{" "}
+                {formatWhen(session.savedAt)}
+              </span>
+              <SessionIdentity
+                os={session.os}
+                browser={session.browser}
+                device={session.device}
+              />
+            </div>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">

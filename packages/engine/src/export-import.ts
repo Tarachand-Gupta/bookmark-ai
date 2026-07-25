@@ -40,7 +40,7 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
       ORDER BY created_at ASC
     `),
     db.execute(`
-      SELECT name, tabs_json, tab_count, browser, device, saved_at, created_at
+      SELECT name, tabs_json, tab_count, browser, device, os, saved_at, created_at
       FROM sessions
       ORDER BY created_at ASC
     `),
@@ -69,6 +69,7 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
     tabCount: Number(r.tab_count ?? 0),
     browser: String(r.browser),
     device: String(r.device),
+    os: (r.os as string | null) ?? null,
     savedAt: String(r.saved_at),
     createdAt: String(r.created_at),
   }));
@@ -167,6 +168,7 @@ export async function importUserData(
         tabs: s.tabs,
         browser: s.browser,
         device: s.device,
+        os: s.os,
         savedAt: s.savedAt,
         createdAt: s.createdAt,
       });

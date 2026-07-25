@@ -7,6 +7,7 @@ export interface InsertSession {
   tabs: SessionTab[];
   browser: string;
   device: string;
+  os: string | null;
   savedAt: string;
   createdAt: string;
 }
@@ -14,8 +15,8 @@ export interface InsertSession {
 /** Save a snapshot of open tabs as a named session. */
 export async function createSession(db: Db, s: InsertSession): Promise<Session> {
   await db.execute({
-    sql: `INSERT INTO sessions (id, name, tabs_json, tab_count, browser, device, saved_at, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO sessions (id, name, tabs_json, tab_count, browser, device, os, saved_at, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       s.id,
       s.name,
@@ -23,6 +24,7 @@ export async function createSession(db: Db, s: InsertSession): Promise<Session> 
       s.tabs.length,
       s.browser,
       s.device,
+      s.os,
       s.savedAt,
       s.createdAt,
     ],
@@ -102,6 +104,7 @@ function rowToSession(row: Record<string, unknown>): Session {
     tabCount: Number(row.tab_count ?? tabs.length),
     browser: String(row.browser) as Session["browser"],
     device: String(row.device) as Session["device"],
+    os: (row.os as string | null) ?? null,
     savedAt: String(row.saved_at),
     createdAt: String(row.created_at),
   };

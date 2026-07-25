@@ -14,6 +14,7 @@ export async function saveSession(db: Db, input: CreateSessionInput): Promise<Se
     tabs: input.tabs,
     browser: input.browser,
     device: input.device,
+    os: input.os ?? null,
     savedAt,
     createdAt: now,
   });
