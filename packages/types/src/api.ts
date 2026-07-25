@@ -69,6 +69,12 @@ export const createSessionSchema = z.object({
 });
 export type CreateSessionInput = z.infer<typeof createSessionSchema>;
 
+/** PATCH /api/sessions/:id — rename a saved session. */
+export const updateSessionSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(200),
+});
+export type UpdateSessionInput = z.infer<typeof updateSessionSchema>;
+
 export const sessionSchema = z.object({
   id: z.string(),
   name: z.string(),

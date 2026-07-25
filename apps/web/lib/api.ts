@@ -190,6 +190,21 @@ export async function deleteSession(id: string): Promise<void> {
   if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
 }
 
+/** Rename a saved session → the updated session. */
+export function renameSession(id: string, name: string): Promise<{ session: Session }> {
+  return request<{ session: Session }>(`/api/sessions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+/** Ask the server to name a session from its tabs (Gemini or heuristic) and apply it. */
+export function aiNameSession(id: string): Promise<{ session: Session; fallback?: boolean }> {
+  return request<{ session: Session; fallback?: boolean }>(`/api/sessions/${id}/ai-name`, {
+    method: "POST",
+  });
+}
+
 /** Save a snapshot of tabs as a session (the extension's POST /api/sessions).
  * Used by the Ongoing view's per-window Save — promotion needs no new endpoint. */
 export function saveSession(input: CreateSessionInput): Promise<{ session: Session }> {
@@ -299,6 +314,27 @@ export async function forgetAllLiveDevices(): Promise<void> {
     headers: await authHeaders(),
   });
   if (!res.ok && res.status !== 404) throw new Error(`Forget all failed (${res.status})`);
+}
+
+/** Rename one window of a live device (server-side override, survives pushes).
+ * An empty `name` clears the override back to the default "Window N". Best-effort:
+ * mirrors the other live mutators — swallows failures (the SSE stream re-delivers
+ * the authoritative state) rather than throwing. */
+export async function renameLiveWindow(
+  deviceId: string,
+  windowId: number | string,
+  name: string,
+): Promise<void> {
+  try {
+    await fetch(`${await requireLiveUrl()}/live/${deviceId}/windows/${windowId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...(await authHeaders()) },
+      body: JSON.stringify({ name }),
+    });
+  } catch {
+    // Best-effort: the optimistic local update already showed the new name and the
+    // next SSE frame reconciles; a rename failure shouldn't surface as an error.
+  }
 }
 
 // ── Settings ────────────────────────────────────────────────────────────────

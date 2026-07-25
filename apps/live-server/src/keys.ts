@@ -29,3 +29,9 @@ export function quotaKey(userId: string, deviceId: string, dayUtc: string): stri
 export function channelKey(userId: string): string {
   return `live:{${userId}}:events`;
 }
+
+/** Per-device Hash of user-set window names (field = windowId, value = name).
+ * Overlaid onto the device's windows on read; TTL'd alongside the device snapshot. */
+export function winNamesKey(userId: string, deviceId: string): string {
+  return `live:{${userId}}:winnames:${deviceId}`;
+}

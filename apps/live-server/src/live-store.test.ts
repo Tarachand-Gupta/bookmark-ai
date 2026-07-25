@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { PushLiveStateInput } from "@bookmark-ai/types";
 import type { Config } from "./config";
+import { devKey, indexKey, winNamesKey } from "./keys";
 import { LiveStore } from "./live-store";
 import type { RedisBundle } from "./redis";
+import type { LiveEvent } from "./types";
 
 /**
  * No-op publish suppression tests. These exercise `writeSnapshot` against an
@@ -248,4 +250,173 @@ test("heartbeat against missing snapshot → no publish, no ghost", async () => 
   assert.equal(res.changed, false);
   assert.equal(hash.size, 0, "must not create a windowless ghost");
   assert.equal(ops.length, 0, "no write at all");
+});
+
+// ── window-name overrides ────────────────────────────────────────────────────
+// A richer multi-key fake: a map of Redis-key → Hash, a single-user ZSET index,
+// and a publish recorder. Enough to exercise setWindowName (HSET/HDEL + EXPIRE +
+// publish), the listDevices overlay, and winnames deletion on device removal.
+
+interface StoreHarness {
+  store: LiveStore;
+  hashes: Map<string, Map<string, string>>;
+  zset: Map<string, number>;
+  published: LiveEvent[];
+}
+
+function makeStoreHarness(): StoreHarness {
+  const hashes = new Map<string, Map<string, string>>();
+  const zset = new Map<string, number>();
+  const published: LiveEvent[] = [];
+  const hashFor = (key: string): Map<string, string> => {
+    let h = hashes.get(key);
+    if (!h) {
+      h = new Map();
+      hashes.set(key, h);
+    }
+    return h;
+  };
+
+  const makeMulti = () => {
+    const chain = {
+      hset(key: string, fieldOrObj: string | Record<string, string>, value?: string) {
+        if (typeof fieldOrObj === "string") hashFor(key).set(fieldOrObj, value as string);
+        else for (const [k, v] of Object.entries(fieldOrObj)) hashFor(key).set(k, v);
+        return chain;
+      },
+      hdel(key: string, field: string) {
+        hashes.get(key)?.delete(field);
+        return chain;
+      },
+      hsetnx(key: string, field: string, value: string) {
+        const h = hashFor(key);
+        if (!h.has(field)) h.set(field, value);
+        return chain;
+      },
+      expire(_key: string, _seconds: number) {
+        return chain;
+      },
+      del(key: string) {
+        hashes.delete(key);
+        return chain;
+      },
+      zadd(_key: string, score: number, member: string) {
+        zset.set(member, score);
+        return chain;
+      },
+      zrem(_key: string, member: string) {
+        zset.delete(member);
+        return chain;
+      },
+      async exec() {
+        return [];
+      },
+    };
+    return chain;
+  };
+
+  const command = {
+    multi() {
+      return makeMulti();
+    },
+    async zrevrange(_key: string, _s: number, _e: number) {
+      return [...zset.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m);
+    },
+    async zrange(_key: string, _s: number, _e: number) {
+      return [...zset.entries()].sort((a, b) => a[1] - b[1]).map(([m]) => m);
+    },
+    async zrem(_key: string, ...members: string[]) {
+      for (const m of members) zset.delete(m);
+      return members.length;
+    },
+    pipeline() {
+      const keys: string[] = [];
+      const p = {
+        hgetall(key: string) {
+          keys.push(key);
+          return p;
+        },
+        async exec() {
+          return keys.map((key): [null, Record<string, string>] => {
+            const h = hashes.get(key);
+            return [null, h ? Object.fromEntries(h) : {}];
+          });
+        },
+      };
+      return p;
+    },
+    async publish(_channel: string, payload: string) {
+      published.push(JSON.parse(payload) as LiveEvent);
+    },
+  };
+
+  const redis = { command } as unknown as RedisBundle;
+  const config = { ttlSeconds: 604800, pushQuotaPerDay: 2000, ttlHours: 168 } as Config;
+  return { store: new LiveStore(redis, config), hashes, zset, published };
+}
+
+const DEV = BASE_PUSH.deviceId;
+
+/** Seed one device with BASE_PUSH's window (windowId 1) into the index + hash. */
+function seedDevice(h: StoreHarness): void {
+  h.zset.set(DEV, Date.now());
+  const dev = new Map<string, string>([
+    ["label", "Laptop"],
+    ["browser", "chrome"],
+    ["device", "desktop"],
+    ["os", "macOS"],
+    ["windowsJson", JSON.stringify(BASE_PUSH.windows)],
+    ["tabCount", "1"],
+    ["hiddenTabCount", "0"],
+    ["lastSeenAt", new Date().toISOString()],
+  ]);
+  h.hashes.set(devKey(USER, DEV), dev);
+}
+
+test("setWindowName (non-empty) → HSET stored + publishes push", async () => {
+  const h = makeStoreHarness();
+  await h.store.setWindowName(USER, DEV, "1", "Research");
+  assert.equal(h.hashes.get(winNamesKey(USER, DEV))?.get("1"), "Research");
+  assert.deepEqual(h.published, [{ type: "push", deviceId: DEV }]);
+});
+
+test("setWindowName (empty) → HDEL clears + still publishes", async () => {
+  const h = makeStoreHarness();
+  h.hashes.set(winNamesKey(USER, DEV), new Map([["1", "Research"]]));
+  await h.store.setWindowName(USER, DEV, "1", "   ");
+  assert.equal(h.hashes.get(winNamesKey(USER, DEV))?.has("1"), false);
+  assert.deepEqual(h.published, [{ type: "push", deviceId: DEV }]);
+});
+
+test("listDevices overlays the window name onto the matching window", async () => {
+  const h = makeStoreHarness();
+  seedDevice(h);
+  h.hashes.set(winNamesKey(USER, DEV), new Map([["1", "Research"], ["99", "Ghost"]]));
+  const devices = await h.store.listDevices(USER);
+  assert.equal(devices.length, 1);
+  assert.equal(devices[0]?.windows[0]?.name, "Research");
+});
+
+test("listDevices ignores overrides for windowIds not in the snapshot", async () => {
+  const h = makeStoreHarness();
+  seedDevice(h);
+  h.hashes.set(winNamesKey(USER, DEV), new Map([["42", "Stale"]]));
+  const devices = await h.store.listDevices(USER);
+  assert.equal(devices[0]?.windows[0]?.name, undefined);
+});
+
+test("listDevices with no overrides leaves name undefined", async () => {
+  const h = makeStoreHarness();
+  seedDevice(h);
+  const devices = await h.store.listDevices(USER);
+  assert.equal(devices[0]?.windows[0]?.name, undefined);
+});
+
+test("deleteDevice removes the winnames hash", async () => {
+  const h = makeStoreHarness();
+  seedDevice(h);
+  h.hashes.set(winNamesKey(USER, DEV), new Map([["1", "Research"]]));
+  await h.store.deleteDevice(USER, DEV);
+  assert.equal(h.hashes.has(winNamesKey(USER, DEV)), false);
+  assert.equal(h.hashes.has(devKey(USER, DEV)), false);
 });

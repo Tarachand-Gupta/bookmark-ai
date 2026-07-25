@@ -51,6 +51,16 @@ export async function getSession(db: Db, id: string): Promise<Session | null> {
   return row ? rowToSession(row as unknown as Record<string, unknown>) : null;
 }
 
+/** Rename a saved session. Returns the updated session, or null if no such id. */
+export async function renameSession(db: Db, id: string, name: string): Promise<Session | null> {
+  const rs = await db.execute({
+    sql: "UPDATE sessions SET name = ? WHERE id = ?",
+    args: [name, id],
+  });
+  if (rs.rowsAffected === 0) return null;
+  return getSession(db, id);
+}
+
 export async function deleteSession(db: Db, id: string): Promise<boolean> {
   const rs = await db.execute({ sql: "DELETE FROM sessions WHERE id = ?", args: [id] });
   return rs.rowsAffected > 0;

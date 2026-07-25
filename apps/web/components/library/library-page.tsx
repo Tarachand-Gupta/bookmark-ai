@@ -432,6 +432,7 @@ export function LibraryPage() {
                 savedLoading={sessions.loading}
                 savedError={sessions.error}
                 onDeleteSaved={handleSessionDelete}
+                onRenamedSaved={refresh}
               />
             ) : (
               <>
@@ -506,6 +507,7 @@ export function LibraryPage() {
                         key={session.id}
                         session={session}
                         onDelete={handleSessionDelete}
+                        onRenamed={refresh}
                         highlight={query}
                       />
                     ))}

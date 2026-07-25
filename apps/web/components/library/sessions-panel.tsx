@@ -16,6 +16,8 @@ export interface SessionsPanelProps {
   savedLoading: boolean;
   savedError: string | null;
   onDeleteSaved: (id: string) => void;
+  /** Refetch after a rename so re-sort (Name A–Z) reflects the new name. */
+  onRenamedSaved?: () => void;
 }
 
 type SortKey = "newest" | "oldest" | "tabs" | "name";
@@ -63,6 +65,7 @@ export function SessionsPanel({
   savedLoading,
   savedError,
   onDeleteSaved,
+  onRenamedSaved,
 }: SessionsPanelProps) {
   // Display preference, not shareable state → localStorage (matches the library
   // view idiom). Read in an effect so SSR markup hydrates with the default.
@@ -111,6 +114,7 @@ export function SessionsPanel({
         loading={savedLoading}
         error={savedError}
         onDelete={onDeleteSaved}
+        onRenamed={onRenamedSaved}
       />
     </div>
   );

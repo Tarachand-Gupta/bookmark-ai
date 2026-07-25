@@ -1,6 +1,6 @@
 import type { LiveDevice, LiveWindow, PushLiveStateInput } from "@bookmark-ai/types";
 import type { Config } from "./config";
-import { channelKey, devKey, enabledKey, indexKey, quotaKey } from "./keys";
+import { channelKey, devKey, enabledKey, indexKey, quotaKey, winNamesKey } from "./keys";
 import type { RedisBundle } from "./redis";
 import type { LiveEvent } from "./types";
 
@@ -164,31 +164,64 @@ export class LiveStore {
     return { changed: true };
   }
 
+  // ── window names (viewer-side overrides) ──────────────────────────────────
+  /**
+   * Set (or clear) the user's display name for ONE window of a device. An empty
+   * name HDELs the field (restores the default label); a non-empty name HSETs it.
+   * The winnames hash is TTL'd to match the device snapshot on every write so it
+   * expires alongside the device rather than lingering. Publishes a `push` so open
+   * SSE streams re-read and re-emit the overlaid state (a rename IS visible).
+   * `windowId` is stored exactly as it arrives in the URL — the same string the
+   * pushed windows' numeric windowId serializes to — so the read-side overlay matches.
+   */
+  async setWindowName(
+    userId: string,
+    deviceId: string,
+    windowId: string,
+    name: string,
+  ): Promise<void> {
+    const wk = winNamesKey(userId, deviceId);
+    const trimmed = name.trim();
+    const multi = this.redis.command.multi();
+    if (trimmed.length === 0) multi.hdel(wk, windowId);
+    else multi.hset(wk, windowId, trimmed);
+    multi.expire(wk, this.ttlSeconds);
+    await multi.exec();
+    await this.publish(userId, { type: "push", deviceId });
+  }
+
   // ── read ──────────────────────────────────────────────────────────────────
-  /** ZSET (newest first) → pipelined HGETALL → drop index members whose hash
-   * TTL'd out (lazy GC) → map, computing lastSeenAgeSeconds server-side. */
+  /** ZSET (newest first) → pipelined HGETALL (device hash + its winnames hash) →
+   * drop index members whose hash TTL'd out (lazy GC) → map, overlaying window
+   * names and computing lastSeenAgeSeconds server-side. */
   async listDevices(userId: string): Promise<LiveDevice[]> {
     const ik = indexKey(userId);
     const deviceIds = await this.redis.command.zrevrange(ik, 0, -1);
     if (deviceIds.length === 0) return [];
 
+    // Two reads per device, interleaved: [devHash, winNames, devHash, winNames, …].
     const pipeline = this.redis.command.pipeline();
-    for (const id of deviceIds) pipeline.hgetall(devKey(userId, id));
+    for (const id of deviceIds) {
+      pipeline.hgetall(devKey(userId, id));
+      pipeline.hgetall(winNamesKey(userId, id));
+    }
     const results = await pipeline.exec();
 
     const now = Date.now();
     const devices: LiveDevice[] = [];
     const orphaned: string[] = [];
 
-    results?.forEach(([err, hash], i) => {
-      const id = deviceIds[i];
-      if (id === undefined) return;
-      const h = hash as Record<string, string> | null;
+    deviceIds.forEach((id, i) => {
+      const devEntry = results?.[i * 2];
+      const nameEntry = results?.[i * 2 + 1];
+      const err = devEntry?.[0];
+      const h = (devEntry?.[1] ?? null) as Record<string, string> | null;
       if (err || !h || Object.keys(h).length === 0) {
         orphaned.push(id);
         return;
       }
-      devices.push(hashToDevice(id, h, now));
+      const names = (nameEntry?.[1] ?? null) as Record<string, string> | null;
+      devices.push(hashToDevice(id, h, now, names));
     });
 
     if (orphaned.length > 0) await this.redis.command.zrem(ik, ...orphaned);
@@ -200,6 +233,7 @@ export class LiveStore {
     await this.redis.command
       .multi()
       .del(devKey(userId, deviceId))
+      .del(winNamesKey(userId, deviceId))
       .zrem(indexKey(userId), deviceId)
       .exec();
     await this.publish(userId, { type: "delete", deviceId });
@@ -209,7 +243,10 @@ export class LiveStore {
     const ik = indexKey(userId);
     const ids = await this.redis.command.zrange(ik, 0, -1);
     const multi = this.redis.command.multi();
-    for (const id of ids) multi.del(devKey(userId, id));
+    for (const id of ids) {
+      multi.del(devKey(userId, id));
+      multi.del(winNamesKey(userId, id));
+    }
     multi.del(ik);
     await multi.exec();
     await this.publish(userId, { type: "reset" });
@@ -234,12 +271,27 @@ export class LiveStore {
   }
 }
 
-function hashToDevice(deviceId: string, h: Record<string, string>, now: number): LiveDevice {
+function hashToDevice(
+  deviceId: string,
+  h: Record<string, string>,
+  now: number,
+  names?: Record<string, string> | null,
+): LiveDevice {
   let windows: LiveWindow[] = [];
   try {
     windows = JSON.parse(h.windowsJson ?? "[]") as LiveWindow[];
   } catch {
     windows = [];
+  }
+
+  // Overlay user-set window names. Match by the windowId's string form (the same
+  // key the rename route stored). Stale entries for windowIds no longer present
+  // are simply not applied. Non-empty only — an empty stored value = no override.
+  if (names) {
+    for (const w of windows) {
+      const override = names[String(w.windowId)];
+      if (override) w.name = override;
+    }
   }
   const lastSeenAt = h.lastSeenAt ?? new Date(now).toISOString();
   const seenMs = Date.parse(lastSeenAt);

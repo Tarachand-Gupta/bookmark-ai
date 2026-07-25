@@ -25,6 +25,13 @@ export const liveWindowSchema = z.object({
   windowId: z.number().int(),
   focused: z.boolean().optional(),
   tabs: z.array(liveTabSchema).max(100),
+  /**
+   * User-set display name for this window, overlaid onto list/stream responses
+   * from a server-side per-device store (keyed by windowId). Absent/null = fall
+   * back to the default "Window N" label. Never pushed by devices — it's a
+   * viewer-side override, so the capture path leaves it undefined.
+   */
+  name: z.string().nullish(),
 });
 export type LiveWindow = z.infer<typeof liveWindowSchema>;
 
@@ -74,3 +81,12 @@ export const updateLiveSettingsSchema = z.object({
   enabled: z.boolean(),
 });
 export type UpdateLiveSettingsInput = z.infer<typeof updateLiveSettingsSchema>;
+
+/**
+ * PATCH /live/:deviceId/windows/:windowId body — rename one live window. An empty
+ * string (after trim) CLEARS the override, restoring the default "Window N" label.
+ */
+export const renameLiveWindowSchema = z.object({
+  name: z.string().trim().max(80),
+});
+export type RenameLiveWindowInput = z.infer<typeof renameLiveWindowSchema>;

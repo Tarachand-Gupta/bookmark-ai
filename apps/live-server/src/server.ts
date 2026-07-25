@@ -11,6 +11,7 @@ import { registerForget } from "./routes/forget";
 import { registerHealth } from "./routes/health";
 import { registerList } from "./routes/list";
 import { registerPush } from "./routes/push";
+import { registerRename } from "./routes/rename";
 import { registerSettings } from "./routes/settings";
 import { registerStream } from "./routes/stream";
 import "./types";
@@ -33,7 +34,7 @@ export async function buildServer(
 
   await app.register(cors, {
     origin: config.allowedOrigins.length > 0 ? config.allowedOrigins : true,
-    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Authorization", "Content-Type"],
     credentials: false,
   });
@@ -44,6 +45,7 @@ export async function buildServer(
   registerList(app, deps);
   registerStream(app, deps);
   registerForget(app, deps);
+  registerRename(app, deps);
   registerSettings(app, deps);
 
   app.addHook("onClose", async () => {

@@ -13,6 +13,7 @@ import {
   Lock,
   Monitor,
   MonitorSmartphone,
+  Pencil,
   Save,
   Smartphone,
   Tablet,
@@ -21,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { saveSession } from "@/lib/api";
+import { renameLiveWindow, saveSession } from "@/lib/api";
 import { useLiveDevices } from "@/hooks/use-live";
 import {
   deviceFreshness,
@@ -297,25 +298,87 @@ function WindowCard({
 }) {
   const subtitle = windowSubtitle(win.tabs);
 
+  // The authoritative override comes from the server (overlaid onto win.name).
+  // `optimistic` holds a just-typed value so the label updates instantly; it's
+  // dropped as soon as a fresh SSE frame lands (win.name changes) so the local
+  // value never fights the server's overlaid state.
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [optimistic, setOptimistic] = useState<string | null>(null);
+  useEffect(() => {
+    setOptimistic(null);
+  }, [win.name]);
+
+  const override = optimistic ?? (win.name?.trim() ?? "");
+  const label = override || `Window ${ordinal}`;
+
+  const startEdit = () => {
+    setDraft(override);
+    setEditing(true);
+  };
+  const commit = () => {
+    const next = draft.trim();
+    setEditing(false);
+    setOptimistic(next);
+    void renameLiveWindow(device.deviceId, win.windowId, next);
+  };
+
   return (
     <Collapsible
       open={open}
       onOpenChange={onToggle}
       className="rounded-xl border bg-card text-card-foreground shadow-sm"
     >
-      <div className="flex items-center gap-3 p-3">
-        <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-2 text-left">
-          <ChevronDown
-            className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
-            aria-hidden
-          />
-          <div className="min-w-0">
-            <p className="font-medium">
-              Window {ordinal} · {win.tabs.length} tab{win.tabs.length === 1 ? "" : "s"}
-            </p>
-            {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
+      <div className="group flex items-center gap-3 p-3">
+        {editing ? (
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <input
+              autoFocus
+              value={draft}
+              maxLength={80}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commit();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setEditing(false);
+                }
+              }}
+              onBlur={() => setEditing(false)}
+              aria-label={`Rename ${label}`}
+              placeholder={`Window ${ordinal}`}
+              className="min-w-0 flex-1 rounded-md border bg-background px-2 py-0.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
           </div>
-        </CollapsibleTrigger>
+        ) : (
+          <>
+            <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-2 text-left">
+              <ChevronDown
+                className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+                aria-hidden
+              />
+              <div className="min-w-0">
+                <p className="truncate font-medium">
+                  {label} · {win.tabs.length} tab{win.tabs.length === 1 ? "" : "s"}
+                </p>
+                {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
+              </div>
+            </CollapsibleTrigger>
+            <button
+              type="button"
+              onClick={startEdit}
+              aria-label={`Rename ${label}`}
+              title="Rename window"
+              className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              <Pencil className="size-3.5" aria-hidden />
+            </button>
+          </>
+        )}
         <SaveWindowButton device={device} win={win} ordinal={ordinal} stale={stale} onSaved={onSaved} />
       </div>
 

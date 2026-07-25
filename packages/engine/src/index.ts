@@ -16,7 +16,7 @@ export {
 } from "./embeddings";
 export { saveBookmarkFast, enrichBookmark } from "./ingest";
 export { performSearch, type SearchParams } from "./search";
-export { saveSession } from "./sessions";
+export { saveSession, renameSession, suggestSessionName } from "./sessions";
 export {
   applyDeviceSnapshot,
   listLiveDevices,

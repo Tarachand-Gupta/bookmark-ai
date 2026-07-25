@@ -2,9 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Session, SessionTab } from "@bookmark-ai/types";
-import { AppWindow, ChevronDown, Globe, Layers, SquareStack, Trash2 } from "lucide-react";
+import {
+  AppWindow,
+  ChevronDown,
+  Globe,
+  Layers,
+  Loader2,
+  Pencil,
+  Sparkles,
+  SquareStack,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { aiNameSession, renameSession } from "@/lib/api";
 import { restoreSessionViaExtension, type RestoreMode } from "@/lib/extension-bridge";
 import { safeHref } from "@/lib/safe-href";
 import { SessionsEmpty } from "./sessions-empty";
@@ -14,10 +25,12 @@ export interface SessionsViewProps {
   loading: boolean;
   error: string | null;
   onDelete: (id: string) => void;
+  /** Refetch trigger after a rename lands, so sort/search stay in sync. */
+  onRenamed?: () => void;
 }
 
 /** Saved browser sessions: each expands to its tabs, with open-all / per-tab open / delete. */
-export function SessionsView({ sessions, loading, error, onDelete }: SessionsViewProps) {
+export function SessionsView({ sessions, loading, error, onDelete, onRenamed }: SessionsViewProps) {
   if (error) {
     return (
       <div className="flex flex-col items-center gap-2 py-20 text-center">
@@ -44,7 +57,7 @@ export function SessionsView({ sessions, loading, error, onDelete }: SessionsVie
   return (
     <div className="space-y-4">
       {sessions.map((s) => (
-        <SessionCard key={s.id} session={s} onDelete={onDelete} />
+        <SessionCard key={s.id} session={s} onDelete={onDelete} onRenamed={onRenamed} />
       ))}
     </div>
   );
@@ -53,10 +66,13 @@ export function SessionsView({ sessions, loading, error, onDelete }: SessionsVie
 export function SessionCard({
   session,
   onDelete,
+  onRenamed,
   highlight,
 }: {
   session: Session;
   onDelete: (id: string) => void;
+  /** Refetch trigger fired once a rename (manual or AI) has committed. */
+  onRenamed?: () => void;
   /** Search query — tabs whose title/url contain it get a subtle tint. */
   highlight?: string;
 }) {
@@ -68,6 +84,60 @@ export function SessionCard({
   const [open, setOpen] = useState(matchCount > 0);
   const [openAllNote, setOpenAllNote] = useState<string | null>(null);
 
+  // ── Rename (inline + AI) ──────────────────────────────────────────────────
+  // Local display name is the optimistic source of truth; it re-syncs whenever
+  // the server-supplied prop changes (i.e. after onRenamed → refetch lands), so
+  // an optimistic value and its committed value never fight.
+  const [name, setName] = useState(session.name);
+  useEffect(() => setName(session.name), [session.name]);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(session.name);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  const startEdit = () => {
+    setDraft(name);
+    setRenameError(null);
+    setEditing(true);
+  };
+
+  const commitEdit = async () => {
+    if (!editing) return; // guard: blur after an Enter-commit must not re-run
+    const next = draft.trim();
+    setEditing(false);
+    if (!next || next === name) return;
+    const prev = name;
+    setName(next); // optimistic
+    setRenameError(null);
+    try {
+      const { session: updated } = await renameSession(session.id, next);
+      setName(updated.name);
+      onRenamed?.();
+    } catch (err) {
+      setName(prev); // revert
+      setRenameError((err as Error).message);
+    }
+  };
+
+  const cancelEdit = () => setEditing(false);
+
+  const aiRename = async () => {
+    if (aiBusy) return;
+    setAiBusy(true);
+    setRenameError(null);
+    const prev = name;
+    try {
+      const { session: updated } = await aiNameSession(session.id);
+      setName(updated.name);
+      onRenamed?.();
+    } catch (err) {
+      setName(prev);
+      setRenameError((err as Error).message);
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   // Restore: prefer the extension — it opens every tab as ONE new window or
   // as a titled tab group in this window. The page-side fallback (window.open
   // per tab) gets popup-blocked after the first tab, so when that happens we
@@ -76,7 +146,7 @@ export function SessionCard({
     const urls = session.tabs.map((t) => t.url).filter((u) => /^https?:/i.test(u));
     if (urls.length === 0) return;
     setOpenAllNote(null);
-    if (await restoreSessionViaExtension(urls, { mode, name: session.name })) return;
+    if (await restoreSessionViaExtension(urls, { mode, name })) return;
     if (mode === "group") {
       setOpenAllNote(
         "Tab groups need the Bookmark AI extension (Chrome). Install it — or reload it if it's already installed — then try again, or use “New window”.",
@@ -100,12 +170,64 @@ export function SessionCard({
         <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
           <Layers className="size-4 text-muted-foreground" aria-hidden />
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="line-clamp-1 font-medium">{session.name}</p>
-          <p className="text-xs text-muted-foreground">
-            {session.tabCount} tab{session.tabCount === 1 ? "" : "s"} ·{" "}
-            {formatWhen(session.savedAt)}
-          </p>
+        <div className="group/name min-w-0 flex-1">
+          {editing ? (
+            <input
+              autoFocus
+              value={draft}
+              maxLength={200}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void commitEdit();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancelEdit();
+                }
+              }}
+              onBlur={cancelEdit}
+              aria-label={`Rename ${name}`}
+              className="w-full rounded-md border bg-background px-2 py-0.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          ) : (
+            <div className="flex items-center gap-1">
+              <p className="line-clamp-1 font-medium">{name}</p>
+              <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/name:opacity-100">
+                <button
+                  type="button"
+                  onClick={startEdit}
+                  aria-label={`Rename ${name}`}
+                  title="Rename"
+                  className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Pencil className="size-3.5" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void aiRename()}
+                  disabled={aiBusy}
+                  aria-label={`Rename ${name} with AI`}
+                  title="Rename with AI"
+                  className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+                >
+                  {aiBusy ? (
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <Sparkles className="size-3.5" aria-hidden />
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+          {renameError ? (
+            <p className="text-xs text-destructive">Rename failed. Try again.</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {session.tabCount} tab{session.tabCount === 1 ? "" : "s"} ·{" "}
+              {formatWhen(session.savedAt)}
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <span className="hidden text-xs text-muted-foreground md:inline">Open all in:</span>
@@ -133,7 +255,7 @@ export function SessionCard({
         <button
           type="button"
           onClick={() => onDelete(session.id)}
-          aria-label={`Delete ${session.name}`}
+          aria-label={`Delete ${name}`}
           className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
         >
           <Trash2 className="size-4" aria-hidden />
