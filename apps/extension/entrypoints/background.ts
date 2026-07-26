@@ -398,11 +398,18 @@ async function handleGetUser(): Promise<UserInfo> {
           void renewDeviceTokenIfNeeded();
           return { signedIn: true, name: body.name ?? null, email: body.email ?? null };
         }
-        if (res.status === 401) {
+        if (res.status === 401 && !res.redirected) {
           // Token invalid (not merely aging) — drop it and fall through to the
           // cookie/bridge paths, which may still see a live session.
           await clearDeviceToken();
           diag("getUser", "device token invalid (cleared)", { status: 401 });
+        } else if (res.status === 401) {
+          // 401 AFTER a redirect proves nothing about the token: browsers strip
+          // the Authorization header on a cross-origin hop (this exact failure
+          // signed everyone out when the build targeted the apex domain and
+          // Vercel 308'd every /api call to www). Keep the token; the base URL
+          // is what needs fixing.
+          diag("getUser", "device /api/me 401 via redirect (token kept)", { url: res.url });
         }
         // Any other status → leave the token, fall through.
       } catch (e) {
