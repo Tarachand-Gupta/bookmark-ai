@@ -88,7 +88,7 @@ extension background via `createClerkClient` from `@clerk/chrome-extension/backg
 mobile via Clerk Expo. The route handlers delegate to `packages/engine` — change behavior THERE.
 
 - `POST /api/bookmarks` — body `CreateBookmarkInput` `{url, title?, browser?, device?, deviceName?, os?, savedAt?}` (`browser`/`device` default to `"other"` when omitted) → `201 {bookmark}`. Upserts by URL (re-save updates + clears embedding).
-- `GET /api/bookmarks?category=&browser=&device=&day=YYYY-MM-DD&tag=&limit=&offset=` → `{bookmarks, total}`
+- `GET /api/bookmarks?category=&browser=&device=&day=YYYY-MM-DD&tag=&url=&limit=&offset=` → `{bookmarks, total}` (`url` = exact match, Clerk sessions only — device tokens may not list bookmarks)
 - `GET /api/search?q=…&mode=text|ai|hybrid&limit=` → `{mode, results:[{bookmark,score}], fallback?}` (`hybrid` = RRF blend of FTS + vector lists; the web grid and mobile both use it, limit 40)
 - `GET /api/meta` → sidebar facets + tag rail `{categories, browsers, devices, days, tags, total}`
 - `GET /api/health` → `{ok, ai}` · `DELETE /api/bookmarks/:id` → 204

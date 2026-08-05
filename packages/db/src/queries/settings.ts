@@ -15,6 +15,9 @@ export interface UserSettingsRow {
   liveServerUrl: string | null;
   /** When the user finished/dismissed the first-run tour; null = not yet seen. */
   onboardedAt: string | null;
+  /** Native browser-sync toggles (migration v8) — stored as INTEGER 0/1. */
+  nativeSyncEnabled: boolean;
+  nativeSyncFull: boolean;
   updatedAt: string;
 }
 
@@ -29,6 +32,8 @@ export interface UserSettingsPatch {
   aiModel?: string | null;
   liveServerUrl?: string | null;
   onboardedAt?: string | null;
+  nativeSyncEnabled?: boolean;
+  nativeSyncFull?: boolean;
 }
 
 /** Column name for each patch field, in a stable order. */
@@ -39,6 +44,8 @@ const PATCH_COLUMNS: [keyof UserSettingsPatch, string][] = [
   ["aiModel", "ai_model"],
   ["liveServerUrl", "live_server_url"],
   ["onboardedAt", "onboarded_at"],
+  ["nativeSyncEnabled", "native_sync_enabled"],
+  ["nativeSyncFull", "native_sync_full"],
 ];
 
 export async function getUserSettings(db: Db, userId: string): Promise<UserSettingsRow | null> {
@@ -63,12 +70,14 @@ export async function upsertUserSettings(
   const updatedAt = new Date().toISOString();
 
   const cols: string[] = [];
-  const values: (string | null)[] = [];
+  const values: (string | number | null)[] = [];
   const conflictSets: string[] = [];
   for (const [key, col] of PATCH_COLUMNS) {
     if (key in patch) {
       cols.push(col);
-      values.push(patch[key] ?? null);
+      const v = patch[key];
+      // Boolean flags store as SQLite INTEGER 0/1.
+      values.push(typeof v === "boolean" ? (v ? 1 : 0) : (v ?? null));
       conflictSets.push(`${col} = excluded.${col}`);
     }
   }
@@ -98,6 +107,11 @@ function rowToSettings(row: Record<string, unknown>): UserSettingsRow {
     aiModel: str(row.ai_model),
     liveServerUrl: str(row.live_server_url),
     onboardedAt: str(row.onboarded_at),
+    // Fallbacks match the migration defaults (sync on, full sync off) for rows
+    // that predate v8 and didn't get the column backfilled.
+    nativeSyncEnabled:
+      row.native_sync_enabled == null ? true : Boolean(Number(row.native_sync_enabled)),
+    nativeSyncFull: row.native_sync_full == null ? false : Boolean(Number(row.native_sync_full)),
     updatedAt: String(row.updated_at),
   };
 }

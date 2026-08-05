@@ -63,7 +63,9 @@ Body:
 
 Only `url` is required. `browser` (`chrome` \| `firefox` \| `safari` \| `edge` \|
 `arc` \| `other`) and `device` (`desktop` \| `laptop` \| `mobile` \| `tablet` \|
-`other`) default to `other`.
+`other`) default to `other`. Optional `tags` (array of ≤10 short strings) are
+merged into the auto-generated tags — the extension's native-sync uses this for
+reading-list saves (`reading`, `article`).
 
 Returns `201 { "bookmark": Bookmark }`.
 
@@ -78,9 +80,9 @@ curl -X POST https://bookmark-ai.cloud/api/bookmarks \
 
 List bookmarks with optional facet filters.
 
-Query params: `category`, `browser`, `device`, `tag`, `day` (`YYYY-MM-DD`),
-`from` / `to` (`YYYY-MM-DD` range bounds), `limit` (1–200, default 100),
-`offset` (default 0).
+Query params: `category`, `browser`, `device`, `tag`, `url` (exact match),
+`day` (`YYYY-MM-DD`), `from` / `to` (`YYYY-MM-DD` range bounds), `limit`
+(1–200, default 100), `offset` (default 0).
 
 Returns `{ "bookmarks": Bookmark[], "total": number }`.
 

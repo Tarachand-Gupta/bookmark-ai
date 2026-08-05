@@ -64,10 +64,11 @@ export type Gate =
   | { ok: true; userId: string | null; via?: "clerk" | "device" };
 
 /**
- * The ONLY routes a device token may call — the extension's save/live surface.
- * Everything else 403s with code "token-scope" even with a valid token. Keep this
- * list in lockstep with what apps/extension actually calls via its device token
- * (the live server is a separate origin with its own device-token acceptance).
+ * The ONLY routes a device token may call — the extension's save/live/native-sync
+ * surface. Everything else 403s with code "token-scope" even with a valid token.
+ * Keep this list in lockstep with what apps/extension actually calls via its
+ * device token (the live server is a separate origin with its own device-token
+ * acceptance).
  */
 const DEVICE_TOKEN_ROUTES = new Set([
   "POST /api/bookmarks",
@@ -76,6 +77,12 @@ const DEVICE_TOKEN_ROUTES = new Set([
   "POST /api/device-token",
   "GET /api/settings",
 ]);
+
+/** Dynamic-suffix device-token scope: "METHOD /prefix" entries match by prefix —
+ * needed for per-id paths. `DELETE /api/bookmarks/:id` is the native-sync "full
+ * sync" remove mirror: the extension keeps a local url→id map of mirroring adds,
+ * so a device token never needs (or gets) list/read access to the library. */
+const DEVICE_TOKEN_ROUTE_PREFIXES = ["DELETE /api/bookmarks/"];
 
 /** `x-bkm-route` → canonical "METHOD /path" (trailing slash stripped). */
 function normalizeRoute(stamp: string | null): string {
@@ -145,10 +152,15 @@ export async function requireUser(): Promise<Gate> {
     // SCOPE: device tokens are extension credentials, not full-power sessions —
     // they're honored ONLY on the routes the extension needs. The route comes from
     // the middleware's `x-bkm-route` stamp (always overwritten there, unspoofable);
-    // a missing stamp fails CLOSED. Everything else — list/search/export, deletes,
-    // chat, imports — requires a real Clerk session, so a stolen token can't
-    // read or destroy the library.
-    if (!DEVICE_TOKEN_ROUTES.has(normalizeRoute(h.get("x-bkm-route")))) {
+    // a missing stamp fails CLOSED. Everything else — list/search/export, chat,
+    // imports — requires a real Clerk session, so a stolen token can't read or
+    // destroy the library (the only destructive capability a device token gets is
+    // per-id deletes, the opt-in native-sync mirror surface).
+    const route = normalizeRoute(h.get("x-bkm-route"));
+    const inScope =
+      DEVICE_TOKEN_ROUTES.has(route) ||
+      DEVICE_TOKEN_ROUTE_PREFIXES.some((prefix) => route.startsWith(prefix));
+    if (!inScope) {
       return {
         ok: false,
         response: NextResponse.json(

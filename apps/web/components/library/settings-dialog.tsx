@@ -40,6 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 import { DevicesSection } from "./devices-settings";
 import { FEATURE_ICONS } from "./feature-icons";
+import { SyncSection } from "./sync-settings";
 
 export interface SettingsDialogProps {
   open: boolean;
@@ -52,6 +53,7 @@ export interface SettingsDialogProps {
 const SECTIONS = [
   { id: "ai", label: "AI", icon: Sparkles },
   { id: "data", label: "Data", icon: Database },
+  { id: "sync", label: "Sync", icon: FEATURE_ICONS.bookmarks },
   { id: "devices", label: "Live sessions", icon: FEATURE_ICONS.live },
   { id: "account", label: "Account", icon: UserRound },
 ] as const;
@@ -382,6 +384,8 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             )}
 
             {section === "data" && <DataSection />}
+
+            {section === "sync" && <SyncSection />}
 
             {section === "devices" && <DevicesSection />}
 

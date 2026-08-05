@@ -98,20 +98,25 @@ export default defineConfig({
     // The filter is what enforces this; session-filter.test.ts is what keeps
     // it enforced. Deleting the filter turns those tests red.
     // `cookies` lets Clerk's syncHost read the web app's session cookie.
-    // `alarms` drives the live-tabs heartbeat/backstop (§4.5) — a non-warning
-    // permission, which is exactly why live-tabs must be opt-in (§5.1).
+    // `alarms` drives the live-tabs heartbeat/backstop (§4.5) and the native-sync
+    // settings refresh — a non-warning permission, which is exactly why
+    // live-tabs must be opt-in (§5.1).
     // `tabGroups` (Chrome-only) lets session restore title/color the group.
     // `scripting` (Safari-only) lets the background re-inject the session
     // bridge into app tabs that predate the current install — a manifest
     // content script only reaches tabs opened AFTER install, and Safari's
     // whole auth path dies with an orphaned bridge.
+    // `bookmarks` (Chrome/Firefox — Safari exposes no bookmarks API) mirrors
+    // native bookmark add/remove into the library (lib/native-sync.ts).
+    // `readingList` (Chrome 120-only) mirrors Reading List additions.
     permissions: [
       "activeTab",
       "tabs",
       "storage",
       "alarms",
       "cookies",
-      ...(browser === "chrome" ? ["tabGroups"] : []),
+      ...(browser === "chrome" ? ["bookmarks", "readingList", "tabGroups"] : []),
+      ...(browser === "firefox" ? ["bookmarks"] : []),
       ...(browser === "safari" ? ["scripting"] : []),
     ],
     host_permissions: HOST_PERMISSIONS,

@@ -27,6 +27,10 @@ function toApiSettings(row: UserSettingsRow | null): UserSettings {
     apiKeyLast4: key ? key.slice(-4) : null,
     liveServerUrl: row?.liveServerUrl ?? null,
     onboardedAt: row?.onboardedAt ?? null,
+    // Defaults (sync on / full sync off) come from the row mapper for existing
+    // rows; absent row = fresh account, so restate them here.
+    nativeSyncEnabled: row?.nativeSyncEnabled ?? true,
+    nativeSyncFull: row?.nativeSyncFull ?? false,
   };
 }
 
@@ -52,7 +56,7 @@ export async function PUT(req: NextRequest) {
       { status: 400 },
     );
   }
-  const { provider, apiKey, baseUrl, model, liveServerUrl, onboarded } = parsed.data;
+  const { provider, apiKey, baseUrl, model, liveServerUrl, onboarded, nativeSyncEnabled, nativeSyncFull } = parsed.data;
 
   // SECURITY (SSRF): a custom provider's base URL is user-supplied and later used
   // by resolveChatModel to build an outbound AI request. Validate it HERE at write
@@ -90,6 +94,9 @@ export async function PUT(req: NextRequest) {
   // onboarded: true → stamp onboarded_at to now (marks the tour seen for this
   // account). Absent/false → leave the marker untouched (never un-set it).
   if (onboarded) patch.onboardedAt = new Date().toISOString();
+  // Native-sync toggles: absent → keep; the Sync section PATCHes exactly one.
+  if (nativeSyncEnabled !== undefined) patch.nativeSyncEnabled = nativeSyncEnabled;
+  if (nativeSyncFull !== undefined) patch.nativeSyncFull = nativeSyncFull;
 
   const row = await upsertUserSettings(db, settingsKey(userId), patch);
   return NextResponse.json({ settings: toApiSettings(row) });

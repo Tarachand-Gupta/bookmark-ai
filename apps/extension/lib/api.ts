@@ -228,20 +228,19 @@ async function mintLiveToken(): Promise<CachedToken | null> {
 /** A live-server session JWT, reusing the in-memory cache unless it's within the
  * skew window (or `forceRefresh` after a 401). Null when none can be minted. */
 export async function getLiveToken(forceRefresh = false): Promise<string | null> {
-  // Safari: once a long-lived device token exists it's a plain Bearer the LIVE
-  // server accepts DIRECTLY (contract) — no /api/live-token mint or its caches.
+  // Once a long-lived device token exists it's a plain Bearer the LIVE server
+  // accepts DIRECTLY (contract) — no /api/live-token mint or its caches. This
+  // holds on every browser now that the device token is minted cross-browser.
   // `forceRefresh` is a 401-retry: give the token its chance to self-renew, then
   // reuse whatever's stored (often unchanged). Only if there's no device token
   // (never minted / cleared) do we fall through to the legacy live-token mint.
-  if (SAFARI) {
-    if (forceRefresh) {
-      await renewDeviceTokenIfNeeded();
-      const renewed = await getStoredDeviceToken();
-      if (renewed) return renewed;
-    } else {
-      const deviceToken = await getStoredDeviceToken();
-      if (deviceToken) return deviceToken;
-    }
+  if (forceRefresh) {
+    await renewDeviceTokenIfNeeded();
+    const renewed = await getStoredDeviceToken();
+    if (renewed) return renewed;
+  } else {
+    const deviceToken = await getStoredDeviceToken();
+    if (deviceToken) return deviceToken;
   }
   if (!forceRefresh) {
     if (tokenFresh(liveTokenCache, Date.now(), LIVE_TOKEN_SKEW_MS)) {
@@ -288,4 +287,30 @@ export async function createBookmark(input: CreateBookmarkInput): Promise<Bookma
 export async function saveSession(input: CreateSessionInput): Promise<Session> {
   const data = await postJson<{ session: Session }>("/api/sessions", input);
   return data.session;
+}
+
+/** DELETE /api/bookmarks/:id — the native-sync "full sync" remove mirror. */
+export async function deleteBookmark(id: string): Promise<void> {
+  const base = await getApiBaseUrl();
+  const res = await authFetch(`${base}/api/bookmarks/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+}
+
+export interface SyncSettingsResponse {
+  settings?: { nativeSyncEnabled?: boolean; nativeSyncFull?: boolean };
+}
+
+/** GET /api/settings — used by the native-sync settings refresh (device-token
+ * scope includes this route). Returns null on any failure (keep cached flags). */
+export async function fetchSyncSettings(): Promise<SyncSettingsResponse["settings"] | null> {
+  const base = await getApiBaseUrl();
+  try {
+    const res = await authFetch(`${base}/api/settings`, {
+      headers: { accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    return ((await res.json()) as SyncSettingsResponse).settings ?? null;
+  } catch {
+    return null;
+  }
 }

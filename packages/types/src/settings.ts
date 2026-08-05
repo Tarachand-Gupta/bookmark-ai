@@ -24,6 +24,12 @@ export const userSettingsSchema = z.object({
   /** ISO timestamp of when the account finished/dismissed the first-run tour, or
    * null if it hasn't yet — the per-account gate for showing the onboarding tour. */
   onboardedAt: z.string().nullable(),
+  /** Extension → Bookmark AI mirroring of native browser bookmarks (Chrome
+   * reading list included). Add-sync on by default; full sync (deletes
+   * propagate) off by default — removing a native bookmark keeps the saved copy
+   * unless the user opts into full sync. */
+  nativeSyncEnabled: z.boolean(),
+  nativeSyncFull: z.boolean(),
 });
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 
@@ -56,6 +62,10 @@ export const updateUserSettingsSchema = z
     // dismiss/Get started; the server stamps `onboarded_at` to now. Absent =
     // leave the marker untouched (there's no need to ever un-set it).
     onboarded: z.boolean().optional(),
+    // Native-sync toggles. Same absent = keep semantics as everything above —
+    // the Sync section PATCHes exactly one of these at a time.
+    nativeSyncEnabled: z.boolean().optional(),
+    nativeSyncFull: z.boolean().optional(),
   })
   .refine((v) => v.provider !== "custom" || (!!v.baseUrl && /^https?:\/\//i.test(v.baseUrl)), {
     message: "A http(s) Base URL is required for a custom provider",

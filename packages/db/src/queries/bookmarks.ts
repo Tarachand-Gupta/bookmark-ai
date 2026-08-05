@@ -154,6 +154,11 @@ export async function listBookmarks(
     where.push("EXISTS (SELECT 1 FROM json_each(bookmarks.tags_json) WHERE json_each.value = ?)");
     args.push(q.tag);
   }
+  if (q.url) {
+    // Exact match (url has a UNIQUE index) — the native-sync delete path.
+    where.push("url = ?");
+    args.push(q.url);
+  }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const [rows, count] = await Promise.all([

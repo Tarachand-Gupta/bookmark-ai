@@ -276,4 +276,26 @@ export const TENANT_MIGRATIONS: Migration[] = [
     name: "sessions-os",
     statements: ["ALTER TABLE sessions ADD COLUMN os TEXT"],
   },
+  // Native browser-sync toggles (user_settings created in v2): extension mirrors
+  // native bookmarks (+ Chrome reading list) into the library. enabled=1 default
+  // (add-only sync), full=0 default (deleting a native bookmark does NOT delete
+  // the saved copy unless the user opts into full sync). Additive-only ADD
+  // COLUMN with constant DEFAULTs — existing rows backfill from the defaults.
+  // Marked tolerant so a retry after a partial apply (duplicate column) records
+  // the version instead of wedging the runner. Not exported (user_settings
+  // isn't part of the export bundle), so SCHEMA_VERSION stays 3.
+  {
+    version: 8,
+    name: "user-settings-native-sync",
+    statements: [
+      {
+        sql: "ALTER TABLE user_settings ADD COLUMN native_sync_enabled INTEGER NOT NULL DEFAULT 1",
+        tolerant: true,
+      },
+      {
+        sql: "ALTER TABLE user_settings ADD COLUMN native_sync_full INTEGER NOT NULL DEFAULT 0",
+        tolerant: true,
+      },
+    ],
+  },
 ];

@@ -11,6 +11,11 @@ export const createBookmarkSchema = z.object({
   deviceName: z.string().nullish(),
   os: z.string().nullish(),
   savedAt: z.string().datetime({ offset: true }).optional(),
+  /** Caller-supplied tags merged into the heuristic/AI tags (lowercased here so
+   * they match the stored/FTS vocabulary; capped — tags are a search aid, not a
+   * payload). Used by the native-sync extension paths (e.g. reading-list saves
+   * get "reading" + "article" so they're findable later). */
+  tags: z.array(z.string().trim().toLowerCase().min(1).max(40)).max(10).optional(),
 });
 export type CreateBookmarkInput = z.infer<typeof createBookmarkSchema>;
 
@@ -21,6 +26,9 @@ export const listBookmarksQuerySchema = z.object({
   device: deviceTypeSchema.optional(),
   /** Exact tag match (tags are stored lowercased). */
   tag: z.string().optional(),
+  /** Exact URL match — the native-sync delete path resolves a bookmark id from
+   * the URL the browser just removed. */
+  url: httpUrlSchema.optional(),
   /** YYYY-MM-DD — bookmarks saved on this day. */
   day: z
     .string()

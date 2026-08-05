@@ -474,8 +474,9 @@ function DeviceRow({
 }
 
 /** Minimal accessible switch — no shadcn Switch primitive is installed, and the
- * CLI that would add one rewrites globals.css theme tokens. */
-function Switch({
+ * CLI that would add one rewrites globals.css theme tokens. Shared with
+ * sync-settings.tsx. */
+export function Switch({
   checked,
   disabled,
   onChange,

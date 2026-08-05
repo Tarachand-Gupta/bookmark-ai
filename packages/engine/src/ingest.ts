@@ -46,7 +46,13 @@ export async function saveBookmarkFast(db: Db, input: CreateBookmarkInput): Prom
       savedAt: input.savedAt ?? now,
     },
     category: existing?.category ?? heuristic.category,
-    tags: existing && existing.tags.length > 0 ? existing.tags : heuristic.tags,
+    // Caller-supplied tags (native-sync markers like "reading"/"article") merge
+    // into the heuristic tags; an existing enriched row keeps its tags (they're
+    // a superset — enrichment merges caller tags again on re-save).
+    tags:
+      existing && existing.tags.length > 0
+        ? existing.tags
+        : Array.from(new Set([...(input.tags ?? []), ...heuristic.tags])),
     createdAt: existing?.createdAt ?? now,
   });
 }
@@ -83,5 +89,13 @@ export async function enrichBookmark(
     existingTags,
   );
 
-  await updateBookmarkContent(db, id, { title, description, og: scraped.og, category, tags });
+  // Enrichment REPLACES the row's tags, so caller-supplied tags (the
+  // native-sync markers) are re-merged here to survive it.
+  await updateBookmarkContent(db, id, {
+    title,
+    description,
+    og: scraped.og,
+    category,
+    tags: Array.from(new Set([...(input.tags ?? []), ...tags])),
+  });
 }

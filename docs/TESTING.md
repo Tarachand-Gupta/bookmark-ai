@@ -102,7 +102,7 @@ Checklist:
 ```bash
 pnpm --filter @bookmark-ai/extension build           # .output/chrome-mv3
 pnpm --filter @bookmark-ai/extension build:firefox   # .output/firefox-mv2
-pnpm --filter @bookmark-ai/extension build:safari    # .output/safari-mv2
+pnpm --filter @bookmark-ai/extension build:safari    # .output/safari-mv3
 ```
 
 All three must succeed. Live test (needs a real browser via computer use / chrome MCP):
@@ -114,13 +114,26 @@ All three must succeed. Live test (needs a real browser via computer use / chrom
 4. Error path: stop the server, save → "Is the Bookmark AI server running?" message.
 5. Settings row persists a custom API URL (storage.local). Note: non-localhost origins may
    need extra `host_permissions` in `wxt.config.ts`.
-- Firefox: `about:debugging` → Load Temporary Add-on → `.output/firefox-mv2/manifest.json`.
-- Safari (verified recipe — needs full Xcode):
-  1. `cd apps/extension && xcrun safari-web-extension-converter .output/safari-mv2 --app-name "Bookmark AI" --bundle-identifier ai.bookmark.safari --project-location safari-xcode --macos-only --no-open --no-prompt --force`
+6. Native-sync (Chrome/Firefox popup reload not needed — listeners live in the background):
+   - Web app → Settings → "Sync" shows the two toggles (master ON, full sync OFF by default).
+   - With sync on: press Ctrl/Cmd+D in Chrome and save the bookmark → it appears in the web
+     app within moments (categorized/enriched shortly after), `browser:"chrome"`.
+   - Chrome Reading List: side panel → "+ Add current tab" → saved with the `reading` and
+     `article` tags (searchable via the tag rail).
+   - Full sync off: remove that native bookmark → the Bookmark AI copy stays. Full sync on:
+     native remove → the copy deletes (mirrored by url→id map; requires the add to have been
+     mirrored by that same install).
+   - Turning the master toggle off in Settings → Sync stops new mirrors within ≤6h (the
+     extension's settings refresh runs at boot + on the 6h auth alarm).
+- Firefox: `about:debugging` → Load Temporary Add-on → `.output/firefox-mv2/manifest.json`
+  (native-sync bookmark mirror works there too; Firefox has no reading list).
+- Safari (verified recipe — needs full Xcode; note: native-sync is a compile-time no-op in
+  Safari — Apple exposes no bookmarks/Reading List API to extensions):
+  1. `cd apps/extension && xcrun safari-web-extension-converter .output/safari-mv3 --app-name "Bookmark AI" --bundle-identifier ai.bookmark.safari --project-location safari-xcode --macos-only --no-open --no-prompt --force`
      Note: running the converter WITHOUT `--project-location` dumps a duplicate project with
      placeholder `com.yourCompany.*` bundle ids into `apps/extension/Bookmark AI/` — delete it and
      use the command above. JS/manifest-only changes need NO reconversion — the Xcode project
-     references `.output/safari-mv2` directly — BUT an incremental `xcodebuild build` will
+     references `.output/safari-mv3` directly — BUT an incremental `xcodebuild build` will
      silently keep the previously-copied resources (verified: it reported BUILD SUCCEEDED while
      embedding a week-old bundle). After any `pnpm build:safari`, rebuild with `clean build`
      (step 3) so the fresh resources are re-copied into the appex.

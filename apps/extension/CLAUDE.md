@@ -71,6 +71,18 @@ Layout (keep multi-file — the user explicitly banned monolith files):
   `GET_USER`, POSTs to the API / reads the Clerk session, replies result/error. `GET_USER`
   resolves `{signedIn, name, email}` from the mirrored web session (createClerkClient + syncHost)
   — this is what the popup gate polls.
+- `lib/native-sync.ts` — NATIVE browser-sync mirror (Chrome/Firefox only — Safari exposes no
+  bookmarks/Reading List API, so the module no-ops and the manifest omits the permissions there).
+  `registerNativeSync()` (called synchronously in `defineBackground`) hooks
+  `bookmarks.onCreated`/`onRemoved` (+ `chrome.readingList.onEntryAdded/Removed`, Chrome 120+;
+  Chrome's import flood is suppressed via onImportBegan/Ended). Additions save with
+  `detectSource()` metadata; reading-list entries carry the `reading`+`article` tags (the server
+  merges caller-supplied `tags` from `CreateBookmarkInput` into the AI tags). Removals only
+  propagate under "full sync" (off by default) via a local capped `local:nativeSyncIds` url→id
+  map — device tokens can't list the library, so there's no server-side lookup. The two toggles
+  (`local:nativeSyncEnabled` default ON, `local:nativeSyncFull` default OFF) are cached copies of
+  the ACCOUNT-level `user_settings` columns (migration v8), refreshed from `GET /api/settings`
+  at boot + on the 6h auth alarm; the UI lives in the web app Settings → "Sync" section.
 - `entrypoints/popup/` — `App.tsx` (auth gate: loading → `SignInGate` → full UI) + `components/`
   (SignInGate, SignOutButton, SaveCard, SavedResult, ErrorNote, LiveTabsToggle, SettingsRow, Spinner)
 - `lib/messages.ts` — typed popup↔background contract (incl. `GET_USER`/`UserInfo`/`requestUser`)
@@ -93,14 +105,19 @@ Auth (Clerk, syncHost pattern):
   `Authorization` with `?_is_native=1` for identity, session-JWT minting, and sign-out. Sign-out
   ends the shared client session, so it signs the user out of the website too. Dev instances
   keep the SDK path; the fallback only runs when the SDK resolves no session.
-- **SAFARI runs on a long-lived device token** (`lib/device-token.ts`) — Safari partitions the
-  extension from the web session entirely (SDK, cookies, credentialed fetches all blind), so the
-  background mints a 90-day `bkd_` token from `POST /api/device-token` through the content-script
-  bridge the first time an app tab is open after sign-in, persists it in `storage.local`, and
-  attaches it as `Authorization: Bearer` to every API and live-server call from then on (no app
-  tab needed again). Ladder order: SDK → native → **device** → cookie → bridge. It self-renews
-  (≤1 attempt/24h once past 1/3 TTL, renewal chain capped server-side at 365d → `code:"reauth"`
-  forces a bridge re-mint). Server-side the token is SCOPED to the extension's save/live surface
+- **All browsers run on a long-lived device token** (`lib/device-token.ts`) — a 90-day
+  `bkd_` token minted from `POST /api/device-token`, persisted in `storage.local`, attached as
+  `Authorization: Bearer` to every API and live-server call, and self-renewing (≤1 attempt/24h
+  once past 1/3 TTL; renewal chain capped server-side at 365d → `code:"reauth"` forces a fresh
+  re-mint). This removes the dependency on the live server-side Clerk session at request time,
+  which is what caused saves to 401 ~7 days after sign-in (the session expired but identity still
+  showed). **Bootstrap path differs by browser**: Chrome/Firefox mint DIRECTLY from the background
+  using the Native-API session JWT (`mintDeviceToken` in `entrypoints/background.ts`, triggered on
+  `handleGetUser` success + a 6h `browser.alarms` wake + at boot — no app tab needed); Safari
+  partitions the extension from the web session entirely (SDK, cookies, credentialed fetches all
+  blind), so it mints through the content-script bridge the first time an app tab is open
+  (`mintDeviceTokenViaBridge`). Ladder order in `getSessionToken`: device (if stored) → SDK → native
+  → **device** (fallback). Server-side the token is SCOPED to the extension's save/live surface
   only (see `DEVICE_TOKEN_ROUTES` in apps/web/lib/server/require-user.ts). Sign-out and a
   definitive bridge signed-out clear it. NEVER log token values — presence/length/status only.
 - **Signed-out gate**: `App.tsx` shows ONLY `SignInGate` (a sign-in prompt whose button opens
