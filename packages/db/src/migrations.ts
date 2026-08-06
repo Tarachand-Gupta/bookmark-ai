@@ -298,41 +298,4 @@ export const TENANT_MIGRATIONS: Migration[] = [
       },
     ],
   },
-  // New Tab Canvas: user-authored chat-designed new-tab templates + the page's
-  // own settings (active template mirror, chat launcher position, sidebar
-  // state). NEW TABLES, no ALTERs — a new table dissolves the ADD-COLUMN
-  // re-entry hazard, and every statement is IF NOT EXISTS (runMigrations has
-  // no transaction, so a partial apply must re-run safely). newtab_templates
-  // rows ARE user data and DO round-trip through the export bundle (except
-  // is_preset rows, which re-seed), so SCHEMA_VERSION bumps to 4 (see
-  // packages/types/src/export.ts). newtab_settings is UI state, not content —
-  // NOT exported. Design: docs/features/newtab-canvas.md §4.2.
-  {
-    version: 9,
-    name: "newtab-canvas",
-    statements: [
-      `
-        CREATE TABLE IF NOT EXISTS newtab_templates (
-          id          TEXT PRIMARY KEY,
-          name        TEXT NOT NULL,
-          html        TEXT NOT NULL,
-          config_json TEXT NOT NULL DEFAULT '{}',
-          is_preset   INTEGER NOT NULL DEFAULT 0,
-          is_active   INTEGER NOT NULL DEFAULT 0,
-          created_at  TEXT NOT NULL,
-          updated_at  TEXT NOT NULL
-        )
-      `,
-      "CREATE INDEX IF NOT EXISTS idx_newtab_templates_active ON newtab_templates(is_active)",
-      `
-        CREATE TABLE IF NOT EXISTS newtab_settings (
-          user_id            TEXT PRIMARY KEY,
-          active_template_id TEXT,
-          launcher_position  TEXT NOT NULL DEFAULT 'bottom-right',
-          sidebar_collapsed  INTEGER NOT NULL DEFAULT 0,
-          updated_at         TEXT NOT NULL
-        )
-      `,
-    ],
-  },
 ];

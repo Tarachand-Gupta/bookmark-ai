@@ -91,13 +91,6 @@ mobile via Clerk Expo. The route handlers delegate to `packages/engine` — chan
 - `GET /api/bookmarks?category=&browser=&device=&day=YYYY-MM-DD&tag=&url=&limit=&offset=` → `{bookmarks, total}` (`url` = exact match, Clerk sessions only — device tokens may not list bookmarks)
 - `GET /api/search?q=…&mode=text|ai|hybrid&limit=` → `{mode, results:[{bookmark,score}], fallback?}` (`hybrid` = RRF blend of FTS + vector lists; the web grid and mobile both use it, limit 40)
 - `GET /api/meta` → sidebar facets + tag rail `{categories, browsers, devices, days, tags, total}`
-- **New Tab Canvas** (`docs/features/newtab-canvas.md`): `GET/POST /api/newtab/templates`,
-  `PATCH/DELETE /api/newtab/templates/:id`, `POST .../:id/activate`, `GET/PATCH
-  /api/newtab/settings`, `GET /api/newtab/wizard` (one-hop derivations: favorites/recent/
-  continue/working-on/most-used/time-spent). The chat agent has `listNewTabTemplates`/
-  `readActiveTemplate`/`writeNewTabTemplate`; create/edit is metered `newtabTemplates`
-  (default 50/day, `QUOTA_NEWTAB_TEMPLATES_PER_DAY`). Tenant migration v9 = the two tables;
-  SCHEMA_VERSION is 4 (custom templates export, presets re-seed).
 - `GET /api/health` → `{ok, ai}` · `DELETE /api/bookmarks/:id` → 204
 - `POST /api/sessions` — body `{name?, tabs:[{url,title?,favIconUrl?,windowId?}], browser?, device?, savedAt?}` → `201 {session}` (a saved browser-tab snapshot). `GET /api/sessions` → `{sessions}` · `DELETE /api/sessions/:id` → 204
 - `POST /api/chat` — the one route that's a full agent, not a thin engine adapter: AI SDK v7
@@ -136,10 +129,6 @@ mobile via Clerk Expo. The route handlers delegate to `packages/engine` — chan
    owns it: Next's `serverExternalPackages` can only externalize packages the app itself can
    resolve (pnpm isolation), otherwise webpack tries to bundle the native `libsql` bindings
    and the build fails on its README/LICENSE files.
-10. **WXT auto-maps `entrypoints/newtab/` → `chrome_url_overrides.newtab` for EVERY
-    browser** — no manifest key is needed in `wxt.config.ts`, and per-browser gating must
-    happen by deleting the key in the `build:done` hook (that's how New Tab Canvas stays
-    Chrome-only: firefox-mv2/safari-mv3 manifests get the key stripped post-write).
 
 ## Adding features — where things go
 

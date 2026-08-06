@@ -2,7 +2,6 @@ import { z } from "zod";
 import { httpUrlSchema } from "./bookmark";
 import { sessionTabSchema } from "./api";
 import { storedChatMessageSchema } from "./chat";
-import { newTabTemplateSchema } from "./newtab";
 
 /**
  * Version of the export bundle format. Bump this whenever the exported shape of
@@ -15,11 +14,8 @@ import { newTabTemplateSchema } from "./newtab";
  *    a tenant schema change to user data bumps this + adds an upgrader.
  *  - v3: adds the saved-session `os` column (identifier badge). Additive tenant
  *    migration on user data, so this bumps + adds a v2→v3 upgrader.
- *  - v4: adds user-authored new-tab templates (`newtabTemplates`) — the output
- *    of paid agent turns, not regenerable, so they export like bookmarks do.
- *    Preset rows are NOT exported (they re-seed from engine constants).
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 3;
 
 /**
  * A single bookmark, flattened to mirror its real DB columns (see
@@ -82,16 +78,6 @@ export const exportedConversationSchema = z.object({
 });
 export type ExportedConversation = z.infer<typeof exportedConversationSchema>;
 
-/**
- * A user-authored new-tab template (v4). The full template row MINUS the
- * preset rows — presets re-seed on first templates read, so exporting them
- * would duplicate them on import (and they aren't user-authored).
- * Reuses newTabTemplateSchema verbatim (id included: import restores by
- * original id with INSERT OR REPLACE, keeping re-import idempotent).
- */
-export const exportedNewTabTemplateSchema = newTabTemplateSchema.omit({ isPreset: true });
-export type ExportedNewTabTemplate = z.infer<typeof exportedNewTabTemplateSchema>;
-
 /** The full, versioned, lossless export of a user's data. */
 export const exportBundleSchema = z.object({
   schemaVersion: z.number(),
@@ -103,8 +89,6 @@ export const exportBundleSchema = z.object({
     // Optional so a v1 bundle upgraded in place (conversations defaulted to [])
     // still validates without the caller having to synthesize a count.
     conversations: z.number().optional(),
-    // Same treatment for v4's templates.
-    newtabTemplates: z.number().optional(),
   }),
   // SECURITY: bound the bundle so a malicious/oversized import can't exhaust
   // memory during validation. Caps are generous (well above any real personal
@@ -113,8 +97,6 @@ export const exportBundleSchema = z.object({
   sessions: z.array(exportedSessionSchema).max(1_000),
   // Defaulted so a v1→v2-upgraded bundle (no `conversations` key) parses cleanly.
   conversations: z.array(exportedConversationSchema).max(5_000).default([]),
-  // Defaulted so any pre-v4 bundle (no `newtabTemplates` key) parses cleanly.
-  newtabTemplates: z.array(exportedNewTabTemplateSchema).max(500).default([]),
 });
 export type ExportBundle = z.infer<typeof exportBundleSchema>;
 
@@ -174,20 +156,6 @@ export function migrateExportBundle(raw: unknown): ExportBundle {
           schemaVersion: 3,
         };
         version = 3;
-        break;
-      case 3:
-        // v3 → v4: new-tab templates were added. Older bundles had none; the
-        // schema defaults `newtabTemplates` to [], so only the version stamp
-        // (+ matching count for tidy bundles) needs bumping.
-        data = {
-          ...(data as Record<string, unknown>),
-          schemaVersion: 4,
-          counts: {
-            ...(((data as Record<string, unknown>).counts as Record<string, unknown>) ?? {}),
-            newtabTemplates: 0,
-          },
-        };
-        version = 4;
         break;
       default:
         throw new Error(`No upgrade path from export schemaVersion ${version}`);

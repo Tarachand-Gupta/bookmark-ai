@@ -59,13 +59,6 @@ export {
   type ImportUserDataOptions,
 } from "./export-import";
 export {
-  saveNewTabTemplate,
-  seedPresetsIfEmpty,
-  getWizardData,
-  type SaveNewTabTemplateInput,
-} from "./newtab";
-export { NEWTAB_PRESETS, type NewTabPreset } from "./newtab-presets";
-export {
   encryptApiKey,
   decryptApiKey,
   isEncryptedApiKey,

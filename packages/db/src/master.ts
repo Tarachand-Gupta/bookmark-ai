@@ -13,15 +13,9 @@ export interface Tenant {
 }
 
 /** Per-day usage counters a tenant is metered against. */
-export type UsageField = "saves" | "sessions" | "chats" | "searches" | "newtabTemplates";
+export type UsageField = "saves" | "sessions" | "chats" | "searches";
 
-const USAGE_FIELDS: readonly UsageField[] = [
-  "saves",
-  "sessions",
-  "chats",
-  "searches",
-  "newtabTemplates",
-];
+const USAGE_FIELDS: readonly UsageField[] = ["saves", "sessions", "chats", "searches"];
 
 /**
  * The master/control-plane schema as versioned migrations. v1 "baseline": the
@@ -72,21 +66,6 @@ export const MASTER_MIGRATIONS: Migration[] = [
           updated_at TEXT NOT NULL
         )
       `,
-    ],
-  },
-  // New Tab Canvas template create/patch is a PAID agent turn (it calls
-  // Gemini), so it's metered per-day like chats (docs/features/newtab-canvas.md
-  // §4.10). Additive ADD COLUMN with a constant DEFAULT — backfills existing
-  // rows to 0. Marked tolerant so a retry after a partial apply (duplicate
-  // column) records the version instead of wedging the runner. Not user data.
-  {
-    version: 3,
-    name: "usage-newtab-templates",
-    statements: [
-      {
-        sql: "ALTER TABLE usage ADD COLUMN newtabTemplates INTEGER NOT NULL DEFAULT 0",
-        tolerant: true,
-      },
     ],
   },
 ];

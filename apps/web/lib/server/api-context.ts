@@ -85,17 +85,12 @@ const QUOTA_ENV: Record<UsageField, string> = {
   sessions: "QUOTA_SESSIONS_PER_DAY",
   chats: "QUOTA_CHATS_PER_DAY",
   searches: "QUOTA_SEARCHES_PER_DAY",
-  newtabTemplates: "QUOTA_NEWTAB_TEMPLATES_PER_DAY",
 };
 const QUOTA_DEFAULT: Record<UsageField, number> = {
   saves: 200,
   sessions: 50,
   chats: 100,
   searches: 500,
-  // Template create/edit is a paid Gemini turn (docs/features/newtab-canvas.md
-  // §4.10): 50/day is generous for fiddling, tight enough to bound a runaway
-  // agent loop.
-  newtabTemplates: 50,
 };
 
 function quotaFor(field: UsageField): number {

@@ -57,9 +57,9 @@ export async function POST(req: NextRequest) {
   const overQuota = await enforceQuota(userId, "saves");
   if (overQuota) return overQuota;
 
-  let imported: { bookmarks: number; sessions: number; conversations: number; newtabTemplates: number };
+  let imported: { bookmarks: number; sessions: number; conversations: number };
   try {
-    imported = await importUserData(db, body, { userId });
+    imported = await importUserData(db, body);
   } catch (err) {
     // migrateExportBundle / validation throws land here (invalid, unknown, or
     // newer-than-supported schemaVersion) — all client-fixable → 400.

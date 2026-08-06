@@ -58,21 +58,6 @@ export {
   type UserSettingsPatch,
 } from "./queries/settings";
 export {
-  insertNewTabTemplate,
-  seedNewTabPresets,
-  listNewTabTemplates,
-  getNewTabTemplate,
-  getActiveNewTabTemplate,
-  updateNewTabTemplate,
-  deleteNewTabTemplate,
-  activateNewTabTemplate,
-  TemplatePresetReadOnlyError,
-  getNewTabSettings,
-  upsertNewTabSettings,
-  type InsertNewTabTemplate,
-  type UpdateNewTabTemplatePatch,
-} from "./queries/newtab";
-export {
   insertConversation,
   getConversation,
   listConversations,

@@ -229,9 +229,8 @@ Returns `{ "models": [{ "id": "...", "label": "..." }] }`.
 
 ### GET /api/export
 
-Download a lossless, versioned bundle of your data (bookmarks + saved sessions +
-chat conversations + custom new-tab templates). Embeddings are omitted (regenerable).
-Returns an export bundle JSON object.
+Download a lossless, versioned bundle of your data (bookmarks + saved sessions).
+Embeddings are omitted (regenerable). Returns an export bundle JSON object.
 
 ```bash
 curl https://bookmark-ai.cloud/api/export \
@@ -241,7 +240,7 @@ curl https://bookmark-ai.cloud/api/export \
 ### POST /api/import
 
 Import an export bundle. Bookmarks upsert by URL (re-importing merges rather than
-duplicates). Returns `{ "imported": { "bookmarks": number, "sessions": number, "conversations": number, "newtabTemplates": number } }`.
+duplicates). Returns `{ "imported": { "bookmarks": number, "sessions": number } }`.
 
 ```bash
 curl -X POST https://bookmark-ai.cloud/api/import \
@@ -249,45 +248,6 @@ curl -X POST https://bookmark-ai.cloud/api/import \
   -H "Content-Type: application/json" \
   --data @bookmark-ai-export.json
 ```
-
----
-
-## New Tab Canvas
-
-Server side of the Chrome extension's new-tab page (chat-designed HTML templates
-rendering live bookmark data in a sandbox). Design: `docs/features/newtab-canvas.md`.
-
-### GET /api/newtab/templates
-
-Returns `{ "templates": NewTabTemplate[] }`, newest updated first. The six built-in
-presets are seeded on the first read of an empty table.
-
-### POST /api/newtab/templates
-
-Create a template with `{ html, config, name?, activate? }` → `201 { "template" }`.
-`config` = `{ launcherPosition, thumbnail, themeTokens? }`.
-
-### PATCH /api/newtab/templates/:id
-
-Update name/html/config (config merges partial-over-current). Presets are read-only → `409`.
-
-### DELETE /api/newtab/templates/:id
-
-`204`. Presets → `409`. Deleting the active template re-activates a preset fallback.
-
-### POST /api/newtab/templates/:id/activate
-
-Make a template the active tab. `200 { "template" }`.
-
-### GET /api/newtab/settings · PATCH /api/newtab/settings
-
-Launcher corner + sidebar collapse. GET returns `{ "settings": null }` while no row
-exists — that's what makes the first-run wizard render.
-
-### GET /api/newtab/wizard
-
-All six "wizard features" in one read-only fan-out: favorites, recent,
-continueWhereYouLeft, workingOn, mostUsed, timeSpent.
 
 ---
 
