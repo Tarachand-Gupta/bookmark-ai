@@ -85,6 +85,17 @@ Layout (keep multi-file — the user explicitly banned monolith files):
   at boot + on the 6h auth alarm; the UI lives in the web app Settings → "Sync" section.
 - `entrypoints/popup/` — `App.tsx` (auth gate: loading → `SignInGate` → full UI) + `components/`
   (SignInGate, SignOutButton, SaveCard, SavedResult, ErrorNote, LiveTabsToggle, SettingsRow, Spinner)
+- `entrypoints/newtab/` — **New Tab Canvas** (Chrome only; design: docs/features/newtab-canvas.md):
+  WXT auto-maps this dir to `chrome_url_overrides.newtab`, and `wxt.config.ts` `build:done` strips
+  that key from firefox/safari manifests. `App.tsx` (wizard ↔ sidebar+sandboxed-iframe+launcher),
+  `bridge.ts` (the ONLY channel out of the agent-HTML iframe: zod-validated fixed postMessage
+  vocabulary → authed `/api/*` — NEVER add write message types or `allow-same-origin`, §5),
+  `SandboxIframe` (srcdoc + `sandbox="allow-scripts"` + belt-and-braces `csp` attr, connects the
+  bridge and exposes the rendered-data snapshot), components/ (Wizard, Sidebar, ChatPopover,
+  SandboxIframe), `api.ts` (newtab REST helpers + the hand-rolled minimal chat SSE client),
+  `thumbs.ts` (preset tiles + §5.5 data-URL thumbnail sanitization). Auth is page-context
+  ClerkProvider like the popup (`AuthProviderBridge` in main.tsx registers `useAuth().getToken()`
+  as lib/api.ts's token provider — no device tokens involved in the page).
 - `lib/messages.ts` — typed popup↔background contract (incl. `GET_USER`/`UserInfo`/`requestUser`)
   · `lib/api.ts` — fetch helper (API base from `local:apiUrl` storage; default is the build-target
   origin via `WXT_APP_URL`. Web/sign-in links share the API origin — `getWebBaseUrl` === API base,

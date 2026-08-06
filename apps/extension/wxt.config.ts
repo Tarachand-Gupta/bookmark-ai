@@ -154,29 +154,35 @@ export default defineConfig({
     },
   }),
   hooks: {
-    // @clerk/chrome-extension validateManifest requires a top-level
-    // host_permissions key even on MV2 (when syncHost is set); without it the
-    // SDK throws inside ClerkProvider's effect and React blanks the popup on
-    // Firefox/Safari. MV2 has no native host_permissions, so WXT folds those
-    // hosts into `permissions` and DELETES the top-level key. Crucially, that
-    // fold (generateManifest -> moveHostPermissionsToPermissions) runs AFTER
-    // the build:manifestGenerated hook, so re-adding the key there never
-    // survives — verified empirically. We instead patch the written manifest in
-    // build:done, which fires after writeManifest. Firefox/Safari treat the
-    // unknown MV2 key as a harmless warning, and the SDK only checks that the
-    // key exists (its contents are never read). MV3 already keeps the key, so
-    // this is scoped to MV2.
-    // MV2-ONLY patch. Safari is now built as MV3 (see build:safari --mv3), which
-    // keeps its top-level host_permissions natively, so this only fires for the
-    // Firefox MV2 output. (Modern Safari — 26.x — deprecated MV2 and never even
-    // starts an MV2 background page: the popup's sendMessage found no receiver.
-    // MV3's service worker is the supported path there.)
+    // Patches applied to the WRITTEN manifest (build:done fires after
+    // writeManifest — WXT's own MV2 config fold and entrypoint-derived keys
+    // are final by then, so only a post-write patch survives).
     "build:done": (wxt) => {
-      if (wxt.config.manifestVersion !== 2) return;
       const manifestPath = resolve(wxt.config.outDir, "manifest.json");
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-      if (manifest.host_permissions) return;
-      manifest.host_permissions = [...HOST_PERMISSIONS];
+      let mutated = false;
+
+      // New Tab Canvas is CHROME-ONLY for now (design §4.9/§10): WXT auto-maps
+      // entrypoints/newtab/ to chrome_url_overrides.newtab for every browser,
+      // but Firefox ships later (iframe-csp attr verification pending) and
+      // Safari has no new-tab override key at all — strip it on both.
+      if (wxt.config.browser !== "chrome" && manifest.chrome_url_overrides) {
+        delete manifest.chrome_url_overrides;
+        mutated = true;
+      }
+
+      // @clerk/chrome-extension validateManifest requires a top-level
+      // host_permissions key even on MV2 (when syncHost is set); without it the
+      // SDK throws inside ClerkProvider's effect and React blanks the popup on
+      // Firefox. MV2's fold-and-delete runs AFTER build:manifestGenerated, so
+      // this re-add only survives when patched into the WRITTEN manifest here.
+      // Covers the Firefox MV2 output only (Safari builds MV3 and keeps the key).
+      if (wxt.config.manifestVersion === 2 && !manifest.host_permissions) {
+        manifest.host_permissions = [...HOST_PERMISSIONS];
+        mutated = true;
+      }
+
+      if (!mutated) return;
       // Match WXT's own writer: minified in production, pretty otherwise.
       const json =
         wxt.config.mode === "production"

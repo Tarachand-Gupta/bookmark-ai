@@ -158,9 +158,23 @@ All three must succeed. Live test (needs a real browser via computer use / chrom
      (where `DD_APP=~/Library/Developer/Xcode/DerivedData/Bookmark_AI-*/Build/Products/Debug/"Bookmark AI.app"`).
      Running the app once registers the extension; verify a single registration with
      `pluginkit -mAvvv | grep -A1 ai.bookmark`.
-  5. In Safari: Settings → Advanced → "Show features for web developers", then Develop →
-     "Allow Unsigned Extensions" (re-arm after each Safari restart), then Settings →
-     Extensions → enable Bookmark AI. `safari-xcode/` is gitignored (generated).
+   5. In Safari: Settings → Advanced → "Show features for web developers", then Develop →
+      "Allow Unsigned Extensions" (re-arm after each Safari restart), then Settings →
+      Extensions → enable Bookmark AI. `safari-xcode/` is gitignored (generated).
+7. New Tab Canvas (Chrome-only; design + test matrix: docs/features/newtab-canvas.md §8):
+   - Manifest: `.output/chrome-mv3/manifest.json` must have `chrome_url_overrides.newtab`;
+     the firefox-mv2 + safari-mv3 manifests must NOT (stripped in `build:done`).
+   - First run: open a new tab (signed in) → first-run wizard (preset grid + chat box).
+     Pick "Favorites" → it activates → any later new tab renders it, no wizard.
+   - Chat → template (§8.4): in the wizard chat say "a 3-column grid of my most-used
+     domains with a search box on top" → the agent writes it and the wizard hand-offs.
+   - Edit in place (§8.5): on an active tab, click the chat launcher (💬, corner per
+     Settings; right-click switches corners) → "make the cards rounded" → iframe swaps.
+   - Sidebar (§8.6): ☰ toggle → rows with thumbnails; click swaps; × deletes customs
+     (presets refuse). Deleting the active custom re-activates a preset.
+   - Sandbox (§8.1/8.2): a template whose HTML tries `chrome.tabs`, `document.cookie` in
+     the PARENT, or `fetch(...)` must fail silently (DevTools console for the iframe
+     shows origin null); `{type:"saveBookmark"}` messages are dropped by the bridge.
 
 ## 4. Desktop (native SDK — GUI session required)
 

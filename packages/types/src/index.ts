@@ -4,3 +4,4 @@ export * from "./settings";
 export * from "./live";
 export * from "./chat";
 export * from "./export";
+export * from "./newtab";

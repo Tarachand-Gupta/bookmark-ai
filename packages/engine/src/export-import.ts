@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  activateNewTabTemplate,
   createSession,
   insertBookmark,
   insertConversation,
@@ -10,19 +11,25 @@ import {
 } from "@bookmark-ai/db";
 import {
   migrateExportBundle,
+  newTabTemplateConfigSchema,
   SCHEMA_VERSION,
   type Browser,
   type DeviceType,
   type ExportBundle,
   type ExportedBookmark,
   type ExportedConversation,
+  type ExportedNewTabTemplate,
   type ExportedSession,
   type OpenGraph,
   type SessionTab,
 } from "@bookmark-ai/types";
 
-/** Options for {@link importUserData}. Reserved for future tuning (none yet). */
-export type ImportUserDataOptions = Record<string, never>;
+/** Options for {@link importUserData}. `userId` scopes the new-tab settings
+ *  mirror written when an imported active template is re-activated (open mode
+ *  collapses to the "local" sentinel). */
+export interface ImportUserDataOptions {
+  userId?: string | null;
+}
 
 /**
  * Export every bookmark and session in a tenant DB as a versioned, lossless
@@ -94,6 +101,24 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
     }),
   );
 
+  // New-tab templates (v4): user-authored rows only — presets (is_preset=1)
+  // re-seed on first read, so exporting them would duplicate them on import.
+  const templateRows = await db.execute(`
+    SELECT id, name, html, config_json, is_active, created_at, updated_at
+    FROM newtab_templates
+    WHERE is_preset = 0
+    ORDER BY created_at ASC
+  `);
+  const newtabTemplates: ExportedNewTabTemplate[] = templateRows.rows.map((r) => ({
+    id: String(r.id),
+    name: String(r.name),
+    html: String(r.html),
+    config: parseTemplateConfig(r.config_json),
+    isActive: Boolean(Number(r.is_active)),
+    createdAt: String(r.created_at),
+    updatedAt: String(r.updated_at),
+  }));
+
   return {
     schemaVersion: SCHEMA_VERSION,
     exportedAt,
@@ -101,10 +126,12 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
       bookmarks: bookmarks.length,
       sessions: sessions.length,
       conversations: conversations.length,
+      newtabTemplates: newtabTemplates.length,
     },
     bookmarks,
     sessions,
     conversations,
+    newtabTemplates,
   };
 }
 
@@ -122,8 +149,8 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
 export async function importUserData(
   db: Db,
   bundle: unknown,
-  _opts?: ImportUserDataOptions,
-): Promise<{ bookmarks: number; sessions: number; conversations: number }> {
+  opts?: ImportUserDataOptions,
+): Promise<{ bookmarks: number; sessions: number; conversations: number; newtabTemplates: number }> {
   const migrated = migrateExportBundle(bundle);
 
   let bookmarks = 0;
@@ -199,7 +226,28 @@ export async function importUserData(
     conversations++;
   }
 
-  return { bookmarks, sessions, conversations };
+  // New-tab templates (v4): restore by ORIGINAL id with INSERT OR REPLACE so
+  // re-importing the same bundle is idempotent. Imported rows land inactive;
+  // afterwards the ONE exported-active template is re-activated through the
+  // normal activate path, which re-normalizes the at-most-one invariant
+  // against whatever the target tenant already had (e.g. seeded presets).
+  let newtabTemplates = 0;
+  let importedActiveId: string | null = null;
+  for (const t of migrated.newtabTemplates) {
+    await db.execute({
+      sql: `INSERT OR REPLACE INTO newtab_templates
+            (id, name, html, config_json, is_preset, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 0, 0, ?, ?)`,
+      args: [t.id, t.name, t.html, JSON.stringify(t.config), t.createdAt, t.updatedAt],
+    });
+    if (t.isActive) importedActiveId = t.id;
+    newtabTemplates++;
+  }
+  if (importedActiveId) {
+    await activateNewTabTemplate(db, importedActiveId, opts?.userId ?? "local");
+  }
+
+  return { bookmarks, sessions, conversations, newtabTemplates };
 }
 
 function parseStringArray(raw: unknown): string[] {
@@ -226,5 +274,14 @@ function parseOpenGraph(raw: string): OpenGraph {
     return parsed && typeof parsed === "object" ? (parsed as OpenGraph) : {};
   } catch {
     return {};
+  }
+}
+
+function parseTemplateConfig(raw: unknown): ExportedNewTabTemplate["config"] {
+  try {
+    return newTabTemplateConfigSchema.parse(JSON.parse(String(raw ?? "{}")));
+  } catch {
+    // A degenerate stored config still exports a coherent (defaulted) one.
+    return newTabTemplateConfigSchema.parse({});
   }
 }
