@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@clerk/chrome-extension";
 import type { NewTabSettings, NewTabTemplate, NewTabWizardData } from "@bookmark-ai/types";
 import { DEFAULT_WEB_URL, getWebBaseUrl } from "@/lib/api";
-import { requestUser, type UserInfo } from "@/lib/messages";
 import {
   activateTemplate,
   deleteTemplate,
@@ -26,15 +26,8 @@ import { SignInGate } from "../popup/components/SignInGate";
  */
 
 
-const SIGNED_OUT: UserInfo = { signedIn: false, name: null, email: null };
-/** Same poll rhythm as the popup: the gate re-resolves without a reload after
- *  the user signs in on the opened web tab. */
-const AUTH_POLL_MS = 2000;
-const BOOT_TIMEOUT_MS = 5000;
-
 export default function App() {
-  // `null` = auth still loading; gate/full UI render only once it resolves.
-  const [auth, setAuth] = useState<UserInfo | null>(null);
+  const { isLoaded, isSignedIn } = useAuth();
   const [settings, setSettings] = useState<NewTabSettings | null | undefined>(undefined);
   const [templates, setTemplates] = useState<NewTabTemplate[]>([]);
   const [bootError, setBootError] = useState<string | null>(null);
@@ -74,53 +67,12 @@ export default function App() {
     }
   }, []);
 
-  // Auth via the BACKGROUND (GET_USER) — the page intentionally has no Clerk
-  // SDK: page-context syncHost can't see the prod session (FAPI-domain HttpOnly
-  // client cookie), the popup's gate uses this same message, and the API proxy
-  // rides the matching token ladder. Poll while the gate is up so returning
-  // from the sign-in tab promotes the page without a reload.
   useEffect(() => {
-    let alive = true;
-    let responded = false;
-    const check = () => {
-      void requestUser().then((info) => {
-        if (!alive) return;
-        responded = true;
-        setAuth(info);
-      });
-    };
-    check();
-    const bootTimer = window.setTimeout(() => {
-      if (!alive || responded) return;
-      setAuth(SIGNED_OUT);
-    }, BOOT_TIMEOUT_MS);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") check();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      alive = false;
-      window.clearTimeout(bootTimer);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, []);
-  useEffect(() => {
-    if (!auth || auth.signedIn) return;
-    const id = window.setInterval(() => {
-      void requestUser().then((info) => setAuth(info));
-    }, AUTH_POLL_MS);
-    return () => window.clearInterval(id);
-  }, [auth?.signedIn]);
-
-  useEffect(() => {
-    if (auth?.signedIn !== true) return;
+    if (!isLoaded || !isSignedIn) return;
     void getWizard().catch(() => null); // warm the cache; bridge reuses it
     void load();
-  }, [auth?.signedIn, getWizard, load]);
-
-  useEffect(() => {
     void getWebBaseUrl().then(setWebUrl);
-  }, []);
+  }, [isLoaded, isSignedIn, getWizard, load]);
 
   const active = useMemo(() => templates.find((t) => t.isActive) ?? null, [templates]);
 
@@ -208,7 +160,7 @@ export default function App() {
     });
   }
 
-  if (!auth) {
+  if (!isLoaded) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Spinner />
@@ -216,13 +168,10 @@ export default function App() {
     );
   }
 
-  if (!auth.signedIn) {
+  if (!isSignedIn) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <SignInGate
-          webUrl={webUrl}
-          reconnectAs={auth.stale ? (auth.name ?? auth.email ?? "") : undefined}
-        />
+        <SignInGate webUrl={webUrl} />
       </div>
     );
   }

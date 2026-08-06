@@ -64,25 +64,15 @@ export type Gate =
   | { ok: true; userId: string | null; via?: "clerk" | "device" };
 
 /**
- * The ONLY routes a device token may call — the extension's client surface:
- * save/live/native-sync, plus the New Tab Canvas page's reads (templates,
- * wizard bundle, search/meta/bookmarks/sessions) and its chat popover. Reads
- * are the user's OWN data, bounded by the per-IP rate limit and per-day
- * quotas (chats/newtabTemplates/searches are metered; the free-tier weekly AI
- * token cap bounds chat). Still OUT: export/import bulk exfil, admin, account,
- * device management, and the live-server admin surface. Everything else 403s
- * with code "token-scope" even with a valid token. Keep this list in lockstep
- * with what apps/extension actually calls via its device token (the newtab
- * page proxies its API calls through the background's authFetch, same ladder).
+ * The ONLY routes a device token may call — the extension's save/live/native-sync
+ * surface. Everything else 403s with code "token-scope" even with a valid token.
+ * Keep this list in lockstep with what apps/extension actually calls via its
+ * device token (the live server is a separate origin with its own device-token
+ * acceptance).
  */
 const DEVICE_TOKEN_ROUTES = new Set([
   "POST /api/bookmarks",
   "POST /api/sessions",
-  "POST /api/chat",
-  "GET /api/bookmarks",
-  "GET /api/search",
-  "GET /api/meta",
-  "GET /api/sessions",
   "GET /api/me",
   "POST /api/device-token",
   "GET /api/settings",
@@ -90,16 +80,9 @@ const DEVICE_TOKEN_ROUTES = new Set([
 
 /** Dynamic-suffix device-token scope: "METHOD /prefix" entries match by prefix —
  * needed for per-id paths. `DELETE /api/bookmarks/:id` is the native-sync "full
- * sync" remove mirror (the extension keeps a local url→id map of mirroring
- * adds). `/api/newtab/*` is the New Tab Canvas template CRUD + settings +
- * wizard group the extension's new-tab page manages. */
-const DEVICE_TOKEN_ROUTE_PREFIXES = [
-  "DELETE /api/bookmarks/",
-  "GET /api/newtab/",
-  "POST /api/newtab/",
-  "PATCH /api/newtab/",
-  "DELETE /api/newtab/",
-];
+ * sync" remove mirror: the extension keeps a local url→id map of mirroring adds,
+ * so a device token never needs (or gets) list/read access to the library. */
+const DEVICE_TOKEN_ROUTE_PREFIXES = ["DELETE /api/bookmarks/"];
 
 /** `x-bkm-route` → canonical "METHOD /path" (trailing slash stripped). */
 function normalizeRoute(stamp: string | null): string {
