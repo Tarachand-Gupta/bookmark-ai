@@ -39,10 +39,9 @@ export async function insertNewTabTemplate(
   return row;
 }
 
-/** Seed the six presets keyed on their stable ids: INSERT OR IGNORE creates
- *  them on first use; the ON CONFLICT clause refreshes OUR preset bodies
- *  (name/html/config — the source of truth is the shipped code, and presets
- *  are read-only, so overwriting is safe) while leaving is_active alone. */
+/** Seed the six presets with INSERT OR IGNORE keyed on their stable ids —
+ *  idempotent and safe to call on every list. No-op when any rows exist
+ *  (caller checks emptiness; see seedPresetsIfEmpty in the engine). */
 export async function seedNewTabPresets(
   db: Db,
   presets: { id: string; name: string; html: string; config: NewTabTemplateConfig }[],
@@ -50,16 +49,9 @@ export async function seedNewTabPresets(
   const now = new Date().toISOString();
   await db.batch(
     presets.map((p) => ({
-      sql: `INSERT INTO newtab_templates
+      sql: `INSERT OR IGNORE INTO newtab_templates
             (id, name, html, config_json, is_preset, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 1, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              name = excluded.name,
-              html = excluded.html,
-              config_json = excluded.config_json
-            WHERE newtab_templates.html != excluded.html
-               OR newtab_templates.name != excluded.name
-               OR newtab_templates.config_json != excluded.config_json`,
+            VALUES (?, ?, ?, ?, 1, ?, ?)`,
       args: [p.id, p.name, p.html, JSON.stringify(p.config), now, now],
     })),
     "write",
