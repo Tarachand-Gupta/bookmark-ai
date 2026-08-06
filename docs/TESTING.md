@@ -8,22 +8,8 @@ fails, the regression is real. Commands assume repo root unless noted.
 ```bash
 pnpm install
 pnpm turbo build check-types        # builds + typechecks every package
-pnpm test                           # 74 extension tests + 32 engine tests
 cd apps/desktop && native check && native test   # markup+contract clean, 11/11 tests
 ```
-
-Unit coverage of the New Tab Canvas (run with `pnpm test`):
-- `packages/engine/src/newtab.test.ts` — DB-backed: preset seeding/refresh, save/create/merge,
-  preset read-only 409 class, delete-active fallback, wizard derivations, export round-trip.
-- `packages/engine/src/newtab-presets.test.ts` — executes every preset's real <script> in a
-  node VM against a mock parent bridge: every postMessage validates against
-  `bridgeRequestSchema`, `ready` precedes data calls, canned data renders, card clicks post
-  `openUrl` with http(s) URLs, static contract scan (no fetch/chrome.*/script-src/storage).
-- `apps/extension/entrypoints/newtab/bridge.test.ts` — parent dispatch: source+origin guards,
-  unknown vocabulary dropped with no reply, proxy paths, §4.8 rendered-data snapshot, openUrl
-  scheme gate, error replies.
-- `apps/extension/lib/messages.test.ts` — `API_PROXY` allowlist path boundaries (the newtab
-  page's only network path; prefix-confusable decoys must NOT match).
 
 ## 1. API + database
 

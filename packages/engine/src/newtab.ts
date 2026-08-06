@@ -99,22 +99,18 @@ export async function saveNewTabTemplate(
 }
 
 /**
- * Make the presets coherent with the shipped code on every templates read
- * (§4.6): missing presets are inserted, STALE preset bodies are refreshed
- * (presets are our code — read-only to users, so overwriting them is safe).
- * On the very first read (empty table) preset:favorites is made the
+ * Seed the six presets on the FIRST templates read of an empty table (§4.6).
+ * Idempotent (INSERT OR IGNORE on stable ids) and marks preset:favorites the
  * table-level active WITHOUT writing newtab_settings — the settings row's
  * absence is what makes the first-run wizard render.
  */
-export async function ensureNewTabPresets(db: Db): Promise<void> {
+export async function seedPresetsIfEmpty(db: Db): Promise<void> {
   const existing = await listNewTabTemplates(db);
-  const firstRun = existing.length === 0;
+  if (existing.length > 0) return;
   await seedNewTabPresets(db, NEWTAB_PRESETS);
-  if (firstRun) {
-    await activateNewTabTemplate(db, NEWTAB_PRESETS[0]!.id, settingsKey(null), {
-      mirrorSettings: false,
-    });
-  }
+  await activateNewTabTemplate(db, NEWTAB_PRESETS[0]!.id, settingsKey(null), {
+    mirrorSettings: false,
+  });
 }
 
 function toWizardBookmark(b: {
