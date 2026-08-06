@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createNewTabTemplateSchema } from "@bookmark-ai/types";
 import { listNewTabTemplates } from "@bookmark-ai/db";
-import { saveNewTabTemplate, seedPresetsIfEmpty } from "@bookmark-ai/engine";
+import { saveNewTabTemplate, ensureNewTabPresets } from "@bookmark-ai/engine";
 import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export async function GET() {
   const { db, ready } = ctx;
   await ready;
 
-  await seedPresetsIfEmpty(db);
+  await ensureNewTabPresets(db);
   return NextResponse.json({ templates: await listNewTabTemplates(db) });
 }
 

@@ -12,6 +12,7 @@ import {
   sendChat,
 } from "./api";
 import { SandboxIframe } from "./components/SandboxIframe";
+import type { BridgeHandle } from "./bridge";
 import { ChatPopover } from "./components/ChatPopover";
 import { Sidebar } from "./components/Sidebar";
 import { Wizard } from "./components/Wizard";
@@ -57,7 +58,7 @@ export default function App() {
   // The bridge records every data response per message type; the SandboxIframe
   // exposes its bridge handle through this ref so the popover can snapshot
   // "what's on screen" at send time.
-  const bridgeRef = useRef<{ getRenderedSnapshot(): Record<string, unknown> } | null>(null);
+  const bridgeRef = useRef<BridgeHandle | null>(null);
   const getRenderedData = useCallback(
     () => bridgeRef.current?.getRenderedSnapshot() ?? {},
     [],
@@ -268,42 +269,58 @@ export default function App() {
   const launcherRight = (settings?.launcherPosition ?? "bottom-right") === "bottom-right";
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-background text-foreground">
-      {!sidebarCollapsed && (
-        <Sidebar
-          templates={templates}
-          activeId={active?.id ?? null}
-          onActivate={(id) => void handleActivate(id)}
-          onDelete={(id) => void handleDelete(id)}
-          onNewCustom={() => setChatOpen(true)}
-        />
-      )}
-
-      <main className="relative min-w-0 flex-1">
-        {active ? (
-          <SandboxIframe template={active} getWizard={getWizard} bridgeRef={bridgeRef} />
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            {bootError ? (
-              <p className="text-sm text-destructive">{bootError}</p>
-            ) : settings === undefined ? (
-              <Spinner />
-            ) : (
-              <p className="text-sm text-muted-foreground">No active template.</p>
-            )}
-          </div>
-        )}
-
-        {/* Sidebar toggle — always our chrome, never the sandbox's. */}
+    <div className="relative flex h-screen flex-col overflow-hidden bg-background text-foreground">
+      {/* Our chrome (never the sandbox's): sidebar toggle + active template name
+          + the new-template affordance. A real strip, not an overlay — template
+          content never hides behind our controls. */}
+      <header className="flex h-10 shrink-0 items-center gap-3 border-b bg-background/95 px-3">
         <button
           type="button"
           onClick={() => void toggleSidebarCollapsed()}
-          title={sidebarCollapsed ? "Show templates" : "Hide templates"}
-          className="absolute left-3 top-3 z-10 rounded-lg border bg-background/80 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-foreground"
+          title={sidebarCollapsed ? "Show your templates" : "Hide your templates"}
+          className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
-          {sidebarCollapsed ? "☰ tabs" : "☰"}
+          <span aria-hidden>☰</span> Your tabs
         </button>
-      </main>
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">
+          {active?.name ?? ""}
+        </span>
+        <button
+          type="button"
+          onClick={() => setChatOpen(true)}
+          className="shrink-0 rounded-md border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          + Describe a new tab…
+        </button>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        {!sidebarCollapsed && (
+          <Sidebar
+            templates={templates}
+            activeId={active?.id ?? null}
+            onActivate={(id) => void handleActivate(id)}
+            onDelete={(id) => void handleDelete(id)}
+            onNewCustom={() => setChatOpen(true)}
+          />
+        )}
+
+        <main className="relative min-w-0 flex-1">
+          {active ? (
+            <SandboxIframe template={active} getWizard={getWizard} bridgeRef={bridgeRef} />
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              {bootError ? (
+                <p className="text-sm text-destructive">{bootError}</p>
+              ) : settings === undefined ? (
+                <Spinner />
+              ) : (
+                <p className="text-sm text-muted-foreground">No active template.</p>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
 
       {/* Chat launcher (§4.7): position is the user's setting. */}
       <button

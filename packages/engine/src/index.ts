@@ -60,7 +60,7 @@ export {
 } from "./export-import";
 export {
   saveNewTabTemplate,
-  seedPresetsIfEmpty,
+  ensureNewTabPresets,
   getWizardData,
   type SaveNewTabTemplateInput,
 } from "./newtab";

@@ -1,5 +1,5 @@
 import { bridgeRequestSchema, type BridgeRequest, type NewTabWizardData } from "@bookmark-ai/types";
-import { requestApiProxy } from "@/lib/messages";
+import { requestApiProxy } from "../../lib/messages";
 
 /**
  * The newtab page's bridge (docs/features/newtab-canvas.md §4.4/§4.5) — the
@@ -42,14 +42,27 @@ export interface BridgeHandle {
   getRenderedSnapshot(): Record<string, unknown>;
 }
 
+/** Structural minimums so unit tests can drive the bridge without a DOM. The
+ *  real iframe and `window` satisfy these; tests inject fakes. */
+export interface BridgeIframeLike {
+  contentWindow: { postMessage(data: unknown, targetOrigin: string): void } | null;
+}
+export interface BridgeListenTarget {
+  addEventListener(type: "message", fn: (event: MessageEvent) => unknown): unknown;
+  removeEventListener(type: "message", fn: (event: MessageEvent) => unknown): unknown;
+}
+
 export function attachBridge(opts: {
-  iframe: HTMLIFrameElement;
+  iframe: BridgeIframeLike;
   /** Wizard cache provider (cold-open prefetched by the app; lazily fetched
    *  here on first use). Serves the wizard-feature message types. */
   getWizard: () => Promise<NewTabWizardData>;
   onOpenUrl: (url: string) => void;
+  /** Event source — defaults to the page's window; tests inject a fake. */
+  listenOn?: BridgeListenTarget;
 }): BridgeHandle {
   const rendered = new Map<string, unknown>();
+  const listenOn: BridgeListenTarget = opts.listenOn ?? window;
 
   function reply(id: string, body: Record<string, unknown>): void {
     try {
@@ -167,10 +180,10 @@ export function attachBridge(opts: {
     if (!parsed.success) return;
     void handle(parsed.data);
   };
-  window.addEventListener("message", listener);
+  listenOn.addEventListener("message", listener);
 
   return {
-    detach: () => window.removeEventListener("message", listener),
+    detach: () => listenOn.removeEventListener("message", listener),
     getRenderedSnapshot: () => Object.fromEntries(rendered),
   };
 }

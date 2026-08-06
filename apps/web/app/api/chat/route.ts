@@ -20,7 +20,7 @@ import {
   messageText,
   recordWeeklyUsage,
   saveNewTabTemplate,
-  seedPresetsIfEmpty,
+  ensureNewTabPresets,
   type GeminiClient,
   type IncomingChatMessage,
 } from "@bookmark-ai/engine";
@@ -177,7 +177,7 @@ async function runListSessions(ctx: ToolContext, query: string | undefined, limi
 async function runListNewTabTemplates(ctx: ToolContext) {
   try {
     await ctx.ready;
-    await seedPresetsIfEmpty(ctx.db);
+    await ensureNewTabPresets(ctx.db);
     const templates = await listNewTabTemplates(ctx.db);
     return {
       templates: templates.map((t) => ({
