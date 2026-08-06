@@ -123,17 +123,6 @@ export default defineConfig({
     ...(browser === "chrome" && {
       // Per-target key → distinct, stable id per install (prod/dev/local).
       key: targetFor(mode).key,
-      // New Tab Canvas: manifest-sandboxed frame page — the ONLY Chrome
-      // document whose CSP may allow inline template scripts. The `sandbox` CSP
-      // directive (allow-scripts, NO allow-same-origin) keeps the frame an
-      // opaque-origin, chrome.*-less, network-less world regardless
-      // (docs/features/newtab-canvas.md §5; why NOT srcdoc: see
-      // public/newtab-frame.html's header).
-      sandbox: { pages: ["newtab-frame.html"] },
-      content_security_policy: {
-        sandbox:
-          "sandbox allow-scripts; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: https:; connect-src 'none'; object-src 'none'; base-uri 'none';",
-      },
       // Lets the web app hand off "restore session" — a page on these origins
       // may message the extension (background onMessageExternal), which opens
       // one window containing every tab. window.open can't do this (popup
@@ -175,16 +164,10 @@ export default defineConfig({
 
       // New Tab Canvas is CHROME-ONLY for now (design §4.9/§10): WXT auto-maps
       // entrypoints/newtab/ to chrome_url_overrides.newtab for every browser,
-      // and the sandbox frame page is chrome-only by construction (its
-      // `sandbox`/`content_security_policy.sandbox` keys are only added for
-      // the chrome target — strip our map-added override key on the others).
+      // but Firefox ships later (iframe-csp attr verification pending) and
+      // Safari has no new-tab override key at all — strip it on both.
       if (wxt.config.browser !== "chrome" && manifest.chrome_url_overrides) {
         delete manifest.chrome_url_overrides;
-        mutated = true;
-      }
-      if (wxt.config.browser !== "chrome" && manifest.sandbox) {
-        delete manifest.sandbox;
-        delete manifest.content_security_policy?.sandbox;
         mutated = true;
       }
 

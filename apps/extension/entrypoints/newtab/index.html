@@ -4,22 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>New Tab</title>
-    <style>
-      /* The shared assets/tailwind.css carries a POPUP-only body width
-         (360px); this page is a full window — the class selector outranks
-         the element rule regardless of load order. */
-      body.newtab-page {
-        width: 100%;
-        min-width: 0;
-        height: 100%;
-        margin: 0;
-      }
-      body.newtab-page #root {
-        min-height: 100vh;
-      }
-    </style>
   </head>
-  <body class="newtab-page">
+  <body>
     <div id="root"></div>
     <script type="module" src="./main.tsx"></script>
   </body>

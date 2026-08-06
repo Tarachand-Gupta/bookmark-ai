@@ -77,10 +77,6 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-  }
-  /* The 360px body width is POPUP-ONLY — full-window pages (newtab) must not
-     inherit it. Scoped by class on the popup's <body>. */
-  body.popup-page {
     width: 360px;
   }
 }
