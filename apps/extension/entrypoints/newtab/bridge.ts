@@ -1,12 +1,13 @@
 import { bridgeRequestSchema, type BridgeRequest, type NewTabWizardData } from "@bookmark-ai/types";
-import { authFetch, getApiBaseUrl } from "@/lib/api";
+import { requestApiProxy } from "@/lib/messages";
 
 /**
  * The newtab page's bridge (docs/features/newtab-canvas.md §4.4/§4.5) — the
  * ONLY channel out of the sandboxed iframe. The iframe posts one of the fixed
  * vocabulary messages; this validates it (zod — malformed drops silently),
- * translates it into an authed /api/* call, and replies. The iframe never sees
- * a token, never sees chrome.*, only the JSON we choose to return.
+ * translates it into an authed /api/* call (proxied through the background,
+ * which holds the auth ladder), and replies. The iframe never sees a token,
+ * never sees chrome.*, only the JSON we choose to return.
  *
  * SECURITY invariants (never weaken — §5):
  *  - event.source must be OUR iframe's contentWindow.
@@ -20,6 +21,20 @@ import { authFetch, getApiBaseUrl } from "@/lib/api";
  *  is on the screen" for the readActiveTemplate tool (§4.8). Cap each entry's
  *  serialized size — renderedData rides inside every chat request. */
 const RENDERED_CACHE_CAP = 24_000;
+
+/** One proxied GET to the JSON API: throws {status} sentinel-shaped errors. */
+async function proxyGetJson(path: string): Promise<{ ok: boolean; status: number; body: unknown }> {
+  const res = await requestApiProxy("GET", path);
+  let body: unknown = {};
+  if (res.bodyJson) {
+    try {
+      body = JSON.parse(res.bodyJson);
+    } catch {
+      body = {};
+    }
+  }
+  return { ok: res.ok && res.status >= 200 && res.status < 300, status: res.status, body };
+}
 
 export interface BridgeHandle {
   detach(): void;
@@ -66,14 +81,16 @@ export function attachBridge(opts: {
         return;
       }
       case "search": {
-        const base = await getApiBaseUrl();
-        const res = await authFetch(
-          `${base}/api/search?q=${encodeURIComponent(req.q)}&mode=${req.mode}&limit=${req.limit}`,
-          { headers: { accept: "application/json" } },
+        const out = await proxyGetJson(
+          `/api/search?q=${encodeURIComponent(req.q)}&mode=${req.mode}&limit=${req.limit}`,
         );
-        const data = res.ok ? await res.json() : { error: `Search failed (${res.status})` };
-        reply(req.id, res.ok ? { ok: true, data } : { ok: false, error: (data as { error?: string }).error });
-        if (res.ok) recordRendered("search", data);
+        reply(
+          req.id,
+          out.ok
+            ? { ok: true, data: out.body }
+            : { ok: false, error: `Search failed (${out.status})` },
+        );
+        if (out.ok) recordRendered("search", out.body);
         return;
       }
       case "listBookmarks": {
@@ -81,26 +98,26 @@ export function attachBridge(opts: {
         if (req.category) params.set("category", req.category);
         if (req.tag) params.set("tag", req.tag);
         if (req.day) params.set("day", req.day);
-        const base = await getApiBaseUrl();
-        const res = await authFetch(`${base}/api/bookmarks?${params}`, {
-          headers: { accept: "application/json" },
-        });
-        const data = res.ok ? await res.json() : { error: `List failed (${res.status})` };
-        reply(req.id, res.ok ? { ok: true, data } : { ok: false, error: (data as { error?: string }).error });
-        if (res.ok) recordRendered("listBookmarks", data);
+        const out = await proxyGetJson(`/api/bookmarks?${params}`);
+        reply(
+          req.id,
+          out.ok
+            ? { ok: true, data: out.body }
+            : { ok: false, error: `List failed (${out.status})` },
+        );
+        if (out.ok) recordRendered("listBookmarks", out.body);
         return;
       }
       case "getMeta":
       case "listSessions": {
         const path = req.type === "getMeta" ? "/api/meta" : "/api/sessions";
-        const base = await getApiBaseUrl();
-        const res = await authFetch(`${base}${path}`, { headers: { accept: "application/json" } });
-        const raw = res.ok ? ((await res.json()) as Record<string, unknown>) : null;
-        if (!res.ok || !raw) {
-          reply(req.id, { ok: false, error: `Request failed` });
+        const out = await proxyGetJson(path);
+        if (!out.ok) {
+          reply(req.id, { ok: false, error: `Request failed (${out.status})` });
           return;
         }
-        let data = raw;
+        const raw = out.body as Record<string, unknown>;
+        let data: unknown = raw;
         if (req.type === "listSessions") {
           const q = (req.query ?? "").trim().toLowerCase();
           const sessions = Array.isArray(raw.sessions) ? raw.sessions : [];

@@ -5,26 +5,35 @@ import type {
   NewTabWizardData,
   UpdateNewTabSettingsInput,
 } from "@bookmark-ai/types";
-import { authFetch, getApiBaseUrl } from "@/lib/api";
+import { requestApiProxy } from "@/lib/messages";
 
 /**
  * The newtab page's client for /api/newtab/* (+ the wizard bundle and /api/chat).
- * Plain authed fetch via lib/api.ts — the page context registers a Clerk
- * session-token provider at boot (main.tsx), so these ride the same session
- * the popup mirrors. No device-token involvement: a page can host the full
- * SDK, unlike the background worker.
+ * Every call goes through the BACKGROUND (the API_PROXY message) — the page is
+ * a trusted extension page but holds NO token: page-context Clerk syncHost can't
+ * see the production session (HttpOnly client cookie lives on the FAPI domain),
+ * so the background's auth ladder (device token first — survives the ~7-day
+ * server-side session expiry) provides auth. See lib/messages.ts API_PROXY.
  */
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const base = await getApiBaseUrl();
-  const res = await authFetch(`${base}${path}`, {
-    headers: { "content-type": "application/json", accept: "application/json" },
-    ...init,
-  });
-  if (res.status === 204) return undefined as T;
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new ApiError(res.status, (body as { error?: string }).error ?? `Request failed (${res.status})`);
+async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+  const res = await requestApiProxy(
+    init?.method ?? "GET",
+    path,
+    init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+  );
+  if (res.status === 204 || res.status === 0) {
+    if (res.status === 204) return undefined as T;
+    throw new ApiError(0, "Couldn't reach the extension background.");
+  }
+  let body: Record<string, unknown> = {};
+  try {
+    body = res.bodyJson ? (JSON.parse(res.bodyJson) as Record<string, unknown>) : {};
+  } catch {
+    throw new ApiError(res.status, "Bad response from the API.");
+  }
+  if (res.status >= 400) {
+    throw new ApiError(res.status, (body.error as string | undefined) ?? `Request failed (${res.status})`);
   }
   return body as T;
 }
@@ -54,7 +63,7 @@ export async function patchNewTabSettings(
 ): Promise<NewTabSettings> {
   const data = await api<{ settings: NewTabSettings }>("/api/newtab/settings", {
     method: "PATCH",
-    body: JSON.stringify(patch),
+    body: patch,
   });
   return data.settings;
 }
@@ -62,7 +71,7 @@ export async function patchNewTabSettings(
 export async function activateTemplate(id: string): Promise<NewTabTemplate> {
   const data = await api<{ template: NewTabTemplate }>(
     `/api/newtab/templates/${encodeURIComponent(id)}/activate`,
-    { method: "POST", body: "{}" },
+    { method: "POST", body: {} },
   );
   return data.template;
 }
@@ -79,7 +88,8 @@ export async function fetchWizard(): Promise<NewTabWizardData> {
  * Minimal hand-rolled UI-message-stream client — the extension has no AI-SDK
  * React dep, and we only need: accumulated assistant text, the conversation id
  * header, and whether writeNewTabTemplate produced a template (whose output we
- * surface to the app for the hot-swap). */
+ * surface to the app for the hot-swap). The proxy buffers the whole stream and
+ * returns it as text; we parse the `data: {json}` SSE frames out of it. */
 
 export interface ChatSendInput {
   messages: { id: string; role: "user"; parts: { type: "text"; text: string }[] }[];
@@ -95,58 +105,53 @@ export interface ChatSendResult {
 }
 
 export async function sendChat(input: ChatSendInput): Promise<ChatSendResult> {
-  const base = await getApiBaseUrl();
-  const res = await authFetch(`${base}/api/chat`, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "text/event-stream" },
-    body: JSON.stringify({
+  const res = await requestApiProxy(
+    "POST",
+    "/api/chat",
+    JSON.stringify({
       messages: input.messages,
       ...(input.conversationId ? { conversationId: input.conversationId } : {}),
       ...(input.activeContext ? { activeContext: input.activeContext } : {}),
     }),
-  });
-  if (!res.ok || !res.body) {
-    const body = await res.json().catch(() => ({}));
-    const msg = (body as { error?: string }).error ?? `Chat failed (${res.status})`;
+  );
+  if (!res.ok || res.status === 0) {
+    throw new ApiError(0, "Couldn't reach the extension background.");
+  }
+  if (res.status >= 400) {
+    let msg = `Chat failed (${res.status})`;
+    try {
+      msg = (JSON.parse(res.bodyJson ?? "") as { error?: string }).error ?? msg;
+    } catch {
+      // keep the generic message
+    }
     throw new ApiError(res.status, msg);
   }
 
-  const conversationId = res.headers.get("x-conversation-id");
+  const conversationId = res.headers?.["x-conversation-id"] ?? null;
+  const raw = res.bodyJson ?? "";
   let text = "";
   let template: NewTabTemplate | null = null;
   const toolNames = new Map<string, string>();
 
-  // Parse `data: {json}` SSE frames.
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let idx;
-    while ((idx = buffer.indexOf("\n\n")) !== -1) {
-      const frame = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-      for (const line of frame.split("\n")) {
-        if (!line.startsWith("data: ")) continue;
-        let event: Record<string, unknown>;
-        try {
-          event = JSON.parse(line.slice(6));
-        } catch {
-          continue;
-        }
-        const type = event.type;
-        if (type === "text-delta" && typeof event.delta === "string") {
-          text += event.delta;
-        } else if (type === "tool-input-available") {
-          toolNames.set(String(event.toolCallId), String(event.toolName ?? ""));
-        } else if (type === "tool-output-available") {
-          const name = toolNames.get(String(event.toolCallId)) ?? "";
-          const output = event.output as { template?: NewTabTemplate } | undefined;
-          if (name === "writeNewTabTemplate" && output?.template) {
-            template = output.template;
-          }
+  for (const frame of raw.split("\n\n")) {
+    for (const line of frame.split("\n")) {
+      if (!line.startsWith("data: ")) continue;
+      let event: Record<string, unknown>;
+      try {
+        event = JSON.parse(line.slice(6));
+      } catch {
+        continue;
+      }
+      const type = event.type;
+      if (type === "text-delta" && typeof event.delta === "string") {
+        text += event.delta;
+      } else if (type === "tool-input-available") {
+        toolNames.set(String(event.toolCallId), String(event.toolName ?? ""));
+      } else if (type === "tool-output-available") {
+        const name = toolNames.get(String(event.toolCallId)) ?? "";
+        const output = event.output as { template?: NewTabTemplate } | undefined;
+        if (name === "writeNewTabTemplate" && output?.template) {
+          template = output.template;
         }
       }
     }

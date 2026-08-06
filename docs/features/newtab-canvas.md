@@ -25,6 +25,16 @@
 > - The chat popover is a **hand-rolled minimal SSE client** (no AI-SDK React dep in
 >   the extension); it watches for the writeNewTabTemplate tool output and hot-swaps
 >   the iframe with the returned row.
+> - **Auth is background-proxied, NOT a page-context ClerkProvider** (deviation from
+>   §4.9, discovered on first real run): the prod client cookie is HttpOnly on the
+>   FAPI domain so page-context syncHost comes up empty — the page showed SignInGate
+>   while the popup was signed in. Instead the newtab page polls `GET_USER` (popup's
+>   gate) and proxies every API call through the background via the allowlisted
+>   `API_PROXY` message (`lib/messages.ts`); the background's device-token ladder
+>   keeps the page authenticated for the full 90-day TTL. This is also why the
+>   device-token scope (require-user.ts) now includes GET /api/bookmarks + search/
+>   meta/sessions + POST /api/chat + /api/newtab/* — the extension's newtab surface
+>   is read-heavy by design (export/import/admin stay out of scope).
 This doc is deliberately long. It exists because the feature idea must survive being
 picked up cold, months from now, without this conversation. It preserves the *reasoning*,
 including the arguments that were rejected — that is what stops the next person
@@ -684,6 +694,14 @@ from auth's perspective. The signed-out state shows a `SignInGate` (reuse the po
 component) that opens the web app's `/sign-in`; on return, the page re-checks and renders.
 **Do not build a sign-in UI in the newtab page** — same rule as the popup, for the same
 reason (OAuth unsupported in extension contexts; syncHost is the proven path).
+
+> **As-implemented correction (2026-08-06):** page-context syncHost was PROVEN broken on
+> the production instance on first run — the `__client` cookie is HttpOnly on the FAPI
+> domain (`clerk.bookmark-ai.cloud`), so the page-side SDK sees no session and showed the
+> gate while the popup was signed in. Shipped instead: the page polls the background's
+> `GET_USER` for the gate and proxies every API call through the background's auth ladder
+> via the allowlisted `API_PROXY` message (device token first — 90-day, immune to the
+> 7-day server-side session expiry). `lib/clerk.ts` is unused by the newtab entrypoint.
 
 **Build targets**: this feature ships on **all three build targets** (prod/dev/local),
 because the user needs to iterate on their template against their own data. Each target's

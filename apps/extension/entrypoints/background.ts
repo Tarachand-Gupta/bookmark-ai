@@ -4,6 +4,7 @@ import { createClerkClient } from "@clerk/chrome-extension/background";
 import {
   createBookmark,
   fetchMe,
+  authFetch,
   getApiBaseUrl,
   getLiveToken,
   getWebBaseUrl,
@@ -30,6 +31,8 @@ import { getNewWindowsPolicy, isWindowShared, setWindowShared } from "@/lib/live
 import { liveEnabledItem } from "@/lib/live-storage";
 import { closeWindowsAndOpen, gatherOpenTabs } from "@/lib/session";
 import {
+  isApiProxyMessage,
+  isApiProxyPathAllowed,
   isBookmarkAiPingMessage,
   isGetUserMessage,
   isLivePushNowMessage,
@@ -42,6 +45,8 @@ import {
   isSignOutMessage,
   requestBridgeFetch,
   requestBridgeMe,
+  type ApiProxyMessage,
+  type ApiProxyResult,
   type BridgeFetchResult,
   type BridgeMeResult,
   type LiveSetEnabledResult,
@@ -593,6 +598,36 @@ async function handleSignOut(): Promise<SignOutResult> {
   return { ok };
 }
 
+/**
+ * New Tab Canvas: the newtab PAGE proxies its API calls through here. The page
+ * holds NO token (page-context Clerk can't see the prod session — the client
+ * cookie is HttpOnly on the FAPI domain, so syncHost comes up empty); the
+ * background's authFetch ladder (device token → SDK → native → device) is the
+ * proven one and survives the ~7-day server-side session expiry. Path is
+ * allowlisted (isApiProxyPathAllowed); method whitelisted by the message guard.
+ * The full response body is buffered (the page's chat client parses the SSE
+ * text itself; bodies are small JSON or a bounded chat stream).
+ */
+async function handleApiProxy(message: ApiProxyMessage): Promise<ApiProxyResult> {
+  if (!isApiProxyPathAllowed(message.path)) return { ok: false, status: 403 };
+  try {
+    const base = await getApiBaseUrl();
+    const res = await authFetch(`${base}${message.path}`, {
+      method: message.method.toUpperCase(),
+      ...(message.bodyJson
+        ? { headers: { "content-type": "application/json" }, body: message.bodyJson }
+        : {}),
+    });
+    const headers: Record<string, string> = {};
+    const convId = res.headers.get("x-conversation-id");
+    if (convId) headers["x-conversation-id"] = convId;
+    return { ok: true, status: res.status, bodyJson: await res.text(), headers };
+  } catch (err) {
+    diag("bg", "api proxy failed", { path: message.path, error: errMsg(err) });
+    return { ok: false, status: 0 };
+  }
+}
+
 async function handleSaveBookmark(message: SaveBookmarkMessage): Promise<SaveBookmarkResult> {
   try {
     const bookmark = await createBookmark({
@@ -807,6 +842,7 @@ export default defineBackground(() => {
           | LiveWindowSetResult
           | UserInfo
           | SignOutResult
+          | ApiProxyResult
           | { ok: boolean },
       ) => void,
     ) => {
@@ -840,6 +876,10 @@ export default defineBackground(() => {
       }
       if (isLiveWindowSetMessage(message)) {
         void handleLiveWindowSet(message).then(sendResponse);
+        return true;
+      }
+      if (isApiProxyMessage(message)) {
+        void handleApiProxy(message).then(sendResponse);
         return true;
       }
       return undefined;

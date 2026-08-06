@@ -93,9 +93,14 @@ Layout (keep multi-file — the user explicitly banned monolith files):
   `SandboxIframe` (srcdoc + `sandbox="allow-scripts"` + belt-and-braces `csp` attr, connects the
   bridge and exposes the rendered-data snapshot), components/ (Wizard, Sidebar, ChatPopover,
   SandboxIframe), `api.ts` (newtab REST helpers + the hand-rolled minimal chat SSE client),
-  `thumbs.ts` (preset tiles + §5.5 data-URL thumbnail sanitization). Auth is page-context
-  ClerkProvider like the popup (`AuthProviderBridge` in main.tsx registers `useAuth().getToken()`
-  as lib/api.ts's token provider — no device tokens involved in the page).
+  `thumbs.ts` (preset tiles + §5.5 data-URL thumbnail sanitization). **Auth runs through the
+  BACKGROUND, not a page ClerkProvider**: page-context syncHost can't see the prod session
+  (identity cookies live on the FAPI domain), so the gate polls `GET_USER` exactly like the
+  popup, and EVERY API call (templates, wizard, bridge reads, chat) goes through the
+  `API_PROXY` message (`lib/messages.ts`, allowlisted paths, verb whitelist on the guard),
+  which the background answers via its authFetch ladder (device token first — so the page
+  stays authenticated the full 90-day TTL, immune to the ~7-day server-side session expiry).
+  There is NO Clerk import anywhere under `entrypoints/newtab/`.
 - `lib/messages.ts` — typed popup↔background contract (incl. `GET_USER`/`UserInfo`/`requestUser`)
   · `lib/api.ts` — fetch helper (API base from `local:apiUrl` storage; default is the build-target
   origin via `WXT_APP_URL`. Web/sign-in links share the API origin — `getWebBaseUrl` === API base,
@@ -128,8 +133,10 @@ Auth (Clerk, syncHost pattern):
   partitions the extension from the web session entirely (SDK, cookies, credentialed fetches all
   blind), so it mints through the content-script bridge the first time an app tab is open
   (`mintDeviceTokenViaBridge`). Ladder order in `getSessionToken`: device (if stored) → SDK → native
-  → **device** (fallback). Server-side the token is SCOPED to the extension's save/live surface
-  only (see `DEVICE_TOKEN_ROUTES` in apps/web/lib/server/require-user.ts). Sign-out and a
+  → **device** (fallback). Server-side the token is SCOPED to the extension's client surface —
+  save/live/native-sync plus the newtab page's reads and chat (see `DEVICE_TOKEN_ROUTES` in
+  apps/web/lib/server/require-user.ts; bounded by rate limits + per-day quotas; export/import,
+  admin, and account routes stay out). Sign-out and a
   definitive bridge signed-out clear it. NEVER log token values — presence/length/status only.
 - **Signed-out gate**: `App.tsx` shows ONLY `SignInGate` (a sign-in prompt whose button opens
   `<appOrigin>/sign-in`) when no session — no save/session UI at all. The gate's auth source is

@@ -387,3 +387,83 @@ export function requestBridgeFetch(
 ): BridgeFetchMessage {
   return { type: BRIDGE_FETCH, path, method, bodyJson };
 }
+
+/* ── API proxy (extension page → background → API) ───────────────────────────
+ * The New Tab Canvas page is a full extension page, but page-context Clerk
+ * (syncHost) CANNOT see the production session: the prod client token is an
+ * HttpOnly cookie on the FAPI domain (clerk.bookmark-ai.cloud), not on the
+ * syncHost — the exact condition lib/native-session.ts exists for. So instead
+ * of holding a token, the page asks the BACKGROUND to call the API: the
+ * background's auth ladder (device token → SDK → native → device) is the proven
+ * one, and the device token survives the server-side session's ~7-day expiry.
+ * Allowlisted paths only (below) — the proxy is never a general relay. */
+
+export const API_PROXY = "API_PROXY" as const;
+
+/** HTTP-style verbs the proxy will perform. */
+const API_PROXY_METHODS = new Set(["GET", "POST", "PATCH", "DELETE"]);
+
+/** Relative /api paths an extension PAGE may proxy. A path matches if it equals
+ *  an entry or continues it with "/" or "?" (path-boundary safe). */
+export const API_PROXY_PATHS = [
+  "/api/newtab/templates",
+  "/api/newtab/settings",
+  "/api/newtab/wizard",
+  "/api/chat",
+  "/api/search",
+  "/api/meta",
+  "/api/sessions",
+  "/api/bookmarks",
+] as const;
+
+export function isApiProxyPathAllowed(path: string): boolean {
+  return API_PROXY_PATHS.some(
+    (p) => path === p || path.startsWith(`${p}/`) || path.startsWith(`${p}?`),
+  );
+}
+
+export interface ApiProxyMessage {
+  type: typeof API_PROXY;
+  method: string;
+  path: string;
+  /** Pre-serialized JSON body (sent with content-type: application/json). */
+  bodyJson?: string;
+}
+
+/** `ok` = the request round-tripped (not a connection failure). `status` is the
+ *  upstream HTTP status; `bodyJson` the raw response body; `headers` carries the
+ *  few response headers callers legitimately need (X-Conversation-Id). */
+export interface ApiProxyResult {
+  ok: boolean;
+  status: number;
+  bodyJson?: string;
+  headers?: Record<string, string>;
+}
+
+export function isApiProxyMessage(message: unknown): message is ApiProxyMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as ApiProxyMessage).type === API_PROXY &&
+    typeof (message as ApiProxyMessage).path === "string" &&
+    API_PROXY_METHODS.has(String((message as ApiProxyMessage).method).toUpperCase())
+  );
+}
+
+/** Page-side helper: call an allowlisted /api path through the background's
+ *  authenticated fetch. Never rejects — a dead background resolves to a
+ *  failure result so the page renders its error state, not a spinner. */
+export function requestApiProxy(
+  method: string,
+  path: string,
+  bodyJson?: string,
+): Promise<ApiProxyResult> {
+  const message: ApiProxyMessage = { type: API_PROXY, method, path, bodyJson };
+  return (browser.runtime.sendMessage(message) as Promise<unknown>)
+    .then((res) =>
+      res && typeof res === "object" && typeof (res as ApiProxyResult).status === "number"
+        ? (res as ApiProxyResult)
+        : { ok: false, status: 0 },
+    )
+    .catch(() => ({ ok: false, status: 0 }));
+}
