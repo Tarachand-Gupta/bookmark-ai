@@ -25,6 +25,24 @@ export const CURRENT_DEVICE: DeviceType =
   Platform.OS === "ios" && Platform.isPad ? "tablet" : "mobile";
 
 /**
+ * This build's save provenance — the mobile counterpart of the web/extension
+ * `detectSource()`. `browser: "other"` because a save comes from the app, not a
+ * browser (even a share from Safari arrives through our own extension). One
+ * source of truth for the Add sheet AND the share-sheet save path.
+ */
+export function detectSource(): Pick<
+  CreateBookmarkInput,
+  "browser" | "device" | "deviceName" | "os"
+> {
+  return {
+    browser: "other",
+    device: CURRENT_DEVICE,
+    deviceName: Platform.OS === "ios" ? (Platform.isPad ? "iPad" : "iPhone") : "Android",
+    os: Platform.OS,
+  };
+}
+
+/**
  * API client — same contract as apps/web/lib/api.ts. Two selectable servers:
  * the local Next dev server (iOS simulator reaches the host's localhost
  * directly; the Android emulator sees it as 10.0.2.2) and the deployed API —
@@ -195,6 +213,16 @@ export function searchBookmarks(
   // blend room; relevance decays down the list.
   const params = new URLSearchParams({ q, mode, limit: "40" });
   return request<SearchResponse>(`/api/search?${params}`, { signal });
+}
+
+/**
+ * Exact-URL lookup (`GET /api/bookmarks?url=`). Used right after a share-sheet
+ * save to pick up the title the server scrapes a moment later, so the
+ * confirmation banner can show the real page title instead of the raw link.
+ */
+export function getBookmarkByUrl(url: string, signal?: AbortSignal): Promise<ListBookmarksResponse> {
+  const params = new URLSearchParams({ url, limit: "1" });
+  return request<ListBookmarksResponse>(`/api/bookmarks?${params}`, { signal });
 }
 
 /** Save a URL — the server scrapes OG data, categorizes, and embeds it. */

@@ -44,11 +44,35 @@ never sent to the other environment's API — no manual pairing needed:
 instance). `EXPO_PUBLIC_*` values are inlined at bundle time, so **rebuild** after
 changing any of them.
 
+## "Save to Bookmark AI" (system share sheet)
+
+Any app that can share a link can save to Bookmark AI — Chrome/Safari, chat apps,
+anything that emits `ACTION_SEND text/*` (Android) or a web URL/page (iOS).
+
+Native plumbing: the `expo-share-intent` plugin block in `app.json` (iOS share-extension
+target `ai.purecode.bookmarkai.ShareExtension`, Android `ACTION_SEND` filters on
+MainActivity) plus `plugins/withAndroidShareLabel.js`, which puts
+`android:label="Save to Bookmark AI"` on the SEND intent filter — Android resolves a share
+target's name from the filter first, so this names the action **without** renaming the
+launcher icon. On iOS the extension's `CFBundleDisplayName` is `Save to Bookmark AI`; iOS
+26's share sheet labels the row with the containing app's name (`Bookmark AI`) regardless.
+
+JS side is `src/lib/share-intent.ts`: extract the first URL from the shared text (it is
+prose as often as a bare link), auto-save it via `createBookmark`, confirm in
+`ShareSavedBanner` (the scraped title replaces the raw link when the refetch lands). A
+failed save opens the Add Bookmark sheet prefilled instead of losing the link; a share that
+arrives while signed out is held in memory (never persisted) and completes right after
+sign-in.
+
+Both native folders are generated, so after touching any of this: `npx expo prebuild
+--clean` and rebuild both apps.
+
 ## Layout
 
 | Path | What |
 | --- | --- |
-| `App.tsx` | providers (Clerk → preferences → safe-area), auth gate, tab shell, deep links (`bookmarkai://tab/...`) |
+| `App.tsx` | providers (share-intent → Clerk → preferences → safe-area), auth gate, tab shell, deep links (`bookmarkai://tab/...`), share-sheet save + confirmation banner |
+| `plugins/withAndroidShareLabel.js` | local config plugin: names the Android share-sheet action "Save to Bookmark AI" |
 | `src/api.ts` | API client — same contract as the web app; build-time server target (`SERVER_TARGET`: dev run → local, release → prod); bearer-token injection |
 | `src/theme.ts` | design tokens — hex ports of `packages/ui/src/theme.css` (sync manually on retheme) |
 | `src/navigation/TabBar.tsx` | floating glass tab bar + `useTabBarClearance()` (content scrolls under it) |
@@ -56,7 +80,7 @@ changing any of them.
 | `src/components/` | FilterSheet (native pageSheet), BookmarkRow/Card, SegmentedControl, Symbol (SF Symbol w/ Android fallback) |
 | `src/hooks/` | `useLibrary` (filters + pagination + meta), `useSearch` (debounced) |
 | `src/context/PreferencesContext.tsx` | theme/view persisted in AsyncStorage (server target is a read-only build constant) |
-| `src/lib/` | Clerk keys + token cache, day grouping, long-press actions |
+| `src/lib/` | Clerk keys + token cache, day grouping, long-press actions, share-intent capture/URL parsing/auto-save |
 
 The `ios/` and `android/` directories are **generated** (`expo prebuild`, gitignored) —
 never edit them; change `app.json` instead.

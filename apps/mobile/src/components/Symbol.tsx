@@ -11,6 +11,7 @@ const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   "books.vertical": "library-outline",
   "books.vertical.fill": "library",
   checkmark: "checkmark",
+  "checkmark.circle.fill": "checkmark-circle",
   "chevron.down": "chevron-down",
   "chevron.right": "chevron-forward",
   "chevron.up": "chevron-up",

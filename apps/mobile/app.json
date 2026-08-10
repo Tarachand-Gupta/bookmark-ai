@@ -31,7 +31,21 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/withAndroidShareLabel",
+      [
+        "expo-share-intent",
+        {
+          "iosShareExtensionName": "Save to Bookmark AI",
+          "iosShareExtensionBundleIdentifier": "ai.purecode.bookmarkai.ShareExtension",
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "androidIntentFilters": ["text/*"]
+        }
+      ]
     ]
   }
 }

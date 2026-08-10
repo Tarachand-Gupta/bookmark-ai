@@ -8,10 +8,18 @@ import {
   SafeAreaView,
 } from "react-native-safe-area-context";
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
+import { ShareIntentProvider } from "expo-share-intent";
 import { setAuthTokenProvider } from "./src/api";
+import { ShareSavedBanner } from "./src/components/ShareSavedBanner";
 import { PreferencesProvider, useAppTheme, usePreferences } from "./src/context/PreferencesContext";
 import type { SessionsSegment } from "./src/hooks/useLiveDevices";
 import { CLERK_PUBLISHABLE_KEY, tokenCache } from "./src/lib/clerk";
+import {
+  SHARE_INTENT_OPTIONS,
+  usePendingSharedLink,
+  useSharedLinkSave,
+  type SharedLink,
+} from "./src/lib/share-intent";
 import type { NavTarget } from "./src/navigation/intents";
 import { TabBar, type TabKey } from "./src/navigation/TabBar";
 import { HomeScreen } from "./src/screens/HomeScreen";
@@ -27,9 +35,14 @@ LogBox.ignoreLogs([/Clerk has been loaded with development keys/]);
 
 export default function App() {
   return (
-    <PreferencesProvider>
-      <ClerkGate />
-    </PreferencesProvider>
+    // "Save to Bookmark AI" in the iOS/Android share sheets lands here. The
+    // provider has to sit above every other provider (it reads the launch URL /
+    // Android intent on mount), so it is the outermost thing in the tree.
+    <ShareIntentProvider options={SHARE_INTENT_OPTIONS}>
+      <PreferencesProvider>
+        <ClerkGate />
+      </PreferencesProvider>
+    </ShareIntentProvider>
   );
 }
 
@@ -73,6 +86,11 @@ const SKIP_AUTH = __DEV__ && process.env.EXPO_PUBLIC_SKIP_AUTH === "1";
 function Gate() {
   const { colors, dark } = useAppTheme();
   const { isLoaded, isSignedIn, getToken } = useAuth();
+  // Captured HERE, above the sign-in/app branch: a share that arrives while
+  // signed out is held in memory (never persisted) through the whole sign-in
+  // round trip and handed to the Shell the moment a session exists.
+  const share = usePendingSharedLink();
+  const signedIn = isSignedIn || SKIP_AUTH;
 
   useEffect(() => {
     setAuthTokenProvider(() => getToken());
@@ -84,12 +102,12 @@ function Gate() {
         <View style={styles.splash}>
           <ActivityIndicator color={colors.mutedForeground} />
         </View>
-      ) : !isSignedIn && !SKIP_AUTH ? (
+      ) : !signedIn ? (
         <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.body}>
           <SignInScreen />
         </SafeAreaView>
       ) : (
-        <Shell />
+        <Shell pendingShare={share.pending} onShareConsumed={share.clear} />
       )}
       <StatusBar style={dark ? "light" : "dark"} />
     </View>
@@ -114,7 +132,14 @@ function initialTab(): TabKey {
   return INITIAL === "filters" ? "library" : "home";
 }
 
-function Shell() {
+function Shell({
+  pendingShare,
+  onShareConsumed,
+}: {
+  /** A link handed over by the system share sheet, waiting to be saved. */
+  pendingShare: SharedLink | null;
+  onShareConsumed: () => void;
+}) {
   const [tab, setTab] = useState<TabKey>(initialTab);
   const [filterSheetOpen, setFilterSheetOpen] = useState(INITIAL === "filters");
 
@@ -122,22 +147,50 @@ function Shell() {
   // mounted, so a "navigation" is a tab switch plus a request the target screen
   // consumes and clears — no nav library, no route table.
   const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [addSheetUrl, setAddSheetUrl] = useState<string | null>(null);
   const [libraryTag, setLibraryTag] = useState<string | null>(null);
   const [sessionsSegment, setSessionsSegment] = useState<SessionsSegment | null>(null);
   // A counter, not a boolean: tapping Home's search field twice must re-focus
   // the Search field both times.
   const [searchFocus, setSearchFocus] = useState(0);
 
+  // Bumped after a share-sheet save so the already-mounted Home/Library tabs
+  // show it without a pull-to-refresh (their own staleness window is 60s).
+  const [savedSignal, setSavedSignal] = useState(0);
+
+  // Auto-save the shared link, confirm it in a banner, and fall back to the Add
+  // sheet (prefilled) if the API call fails so the link is never lost.
+  const share = useSharedLinkSave({
+    pending: pendingShare,
+    onConsumed: onShareConsumed,
+    onSaved: () => setSavedSignal((n) => n + 1),
+    onFailed: (link) => {
+      setAddSheetUrl(link.url);
+      setTab("library");
+      setAddSheetOpen(true);
+    },
+  });
+
   const navigate = useCallback((target: NavTarget) => {
     setTab(target.tab);
     if (target.tab === "library") {
       if (target.tag !== undefined) setLibraryTag(target.tag);
-      if (target.add === true) setAddSheetOpen(true);
+      if (target.add === true) {
+        setAddSheetUrl(null);
+        setAddSheetOpen(true);
+      }
     } else if (target.tab === "sessions") {
       if (target.segment !== undefined) setSessionsSegment(target.segment);
     } else if (target.tab === "search") {
       if (target.focus === true) setSearchFocus((n) => n + 1);
     }
+  }, []);
+
+  // Closing the sheet also drops any share-failure prefill, so the next manual
+  // "+" opens on an empty field rather than a link from a past failed share.
+  const changeAddSheet = useCallback((open: boolean) => {
+    setAddSheetOpen(open);
+    if (!open) setAddSheetUrl(null);
   }, []);
 
   const clearLibraryTag = useCallback(() => setLibraryTag(null), []);
@@ -171,7 +224,7 @@ function Shell() {
       <BlurTargetView ref={blurTargetRef} style={styles.body}>
         <SafeAreaView edges={["top", "left", "right"]} style={styles.body}>
           <View style={[styles.screen, tab !== "home" && styles.hidden]}>
-            <HomeScreen active={tab === "home"} onNavigate={navigate} />
+            <HomeScreen active={tab === "home"} onNavigate={navigate} refreshSignal={savedSignal} />
           </View>
           <View style={[styles.screen, tab !== "library" && styles.hidden]}>
             <LibraryScreen
@@ -179,9 +232,11 @@ function Shell() {
               filterSheetOpen={filterSheetOpen}
               onFilterSheetChange={setFilterSheetOpen}
               addSheetOpen={addSheetOpen}
-              onAddSheetChange={setAddSheetOpen}
+              onAddSheetChange={changeAddSheet}
+              addSheetUrl={addSheetUrl}
               requestedTag={libraryTag}
               onRequestedTagHandled={clearLibraryTag}
+              refreshSignal={savedSignal}
             />
           </View>
           <View style={[styles.screen, tab !== "sessions" && styles.hidden]}>
@@ -201,6 +256,9 @@ function Shell() {
         </SafeAreaView>
       </BlurTargetView>
       <TabBar tab={tab} onChange={setTab} blurTarget={blurTargetRef} />
+      {share.notice !== null && (
+        <ShareSavedBanner notice={share.notice} onDismiss={share.dismiss} />
+      )}
     </>
   );
 }

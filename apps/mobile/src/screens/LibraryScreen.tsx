@@ -33,8 +33,10 @@ export function LibraryScreen({
   onFilterSheetChange,
   addSheetOpen,
   onAddSheetChange,
+  addSheetUrl = null,
   requestedTag = null,
   onRequestedTagHandled,
+  refreshSignal = 0,
 }: {
   /** Foreground-tab flag: gates useLibrary's stale-on-focus refetch. */
   active: boolean;
@@ -44,11 +46,18 @@ export function LibraryScreen({
    * "Add a bookmark" pointer), exactly like the filter sheet. */
   addSheetOpen: boolean;
   onAddSheetChange: (open: boolean) => void;
+  /** Prefills the add sheet's link field — set when a share-sheet save failed
+   * and the Shell is handing the link back to the user. */
+  addSheetUrl?: string | null;
   /** One-shot tag filter from the Shell (Home's "Reading queue → See all").
    * Applied on arrival and cleared, so the user's own filter taps afterwards
    * are never fought over. */
   requestedTag?: string | null;
   onRequestedTagHandled?: () => void;
+  /** Counter bumped by the Shell after a save it owns (a share-sheet save) —
+   * this list is mounted behind the tab switcher, so it would otherwise sit on
+   * stale data for the rest of its 60s staleness window. */
+  refreshSignal?: number;
 }) {
   const { colors } = useAppTheme();
   const { viewMode, setViewMode } = usePreferences();
@@ -64,6 +73,16 @@ export function LibraryScreen({
     lib.setFilterExact("tag", requestedTag);
     onRequestedTagHandled?.();
   }, [requestedTag, onRequestedTagHandled, lib.setFilterExact]);
+
+  useEffect(() => {
+    if (refreshSignal === 0) return;
+    lib.refresh();
+    // ...and again once the server's scrape has filled in the title/preview,
+    // matching what the add sheet does for its own saves.
+    const timer = setTimeout(lib.refresh, 4000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on the signal only
+  }, [refreshSignal]);
 
   const header = (
     <View style={styles.header}>
@@ -176,6 +195,7 @@ export function LibraryScreen({
       />
       <AddBookmarkSheet
         visible={addSheetOpen}
+        initialUrl={addSheetUrl}
         onClose={() => onAddSheetChange(false)}
         onSaved={() => {
           lib.refresh();

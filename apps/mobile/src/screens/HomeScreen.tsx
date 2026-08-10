@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { BookmarkRow } from "../components/BookmarkRow";
@@ -38,10 +39,14 @@ const READING_TAG = "reading";
 export function HomeScreen({
   active,
   onNavigate,
+  refreshSignal = 0,
 }: {
   /** Home is the foreground tab — gates the live stream and the staleness refetch. */
   active: boolean;
   onNavigate: (target: NavTarget) => void;
+  /** Counter bumped by the Shell after a save it owns (a share-sheet save), so
+   * "Recently saved" picks it up without waiting out the staleness window. */
+  refreshSignal?: number;
 }) {
   const { colors, radius } = useAppTheme();
   const tabBarClearance = useTabBarClearance();
@@ -53,6 +58,15 @@ export function HomeScreen({
   // failure leaves `devices` empty and is NEVER surfaced here — the live card
   // and strip simply don't render (§4.2: no error states on the landing page).
   const live = useLiveDevices({ active, segment: "ongoing", expanded: false });
+
+  useEffect(() => {
+    if (refreshSignal === 0) return;
+    dash.refresh();
+    // ...and again once the server's scrape has filled in the title/preview.
+    const timer = setTimeout(dash.refresh, 4000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on the signal only
+  }, [refreshSignal]);
 
   const data = dash.data;
   const continueTarget = pickContinueTarget({

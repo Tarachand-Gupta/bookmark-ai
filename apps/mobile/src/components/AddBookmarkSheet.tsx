@@ -13,22 +13,10 @@ import {
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { createBookmark, CURRENT_DEVICE } from "../api";
+import { createBookmark, detectSource } from "../api";
 import { useAppTheme } from "../context/PreferencesContext";
+import { normalizeUrl } from "../lib/share-intent";
 import { Symbol } from "./Symbol";
-
-/** "https://x.co" from "x.co"; null when the text can't be a URL at all. */
-function normalizeUrl(text: string): string | null {
-  const trimmed = text.trim();
-  if (!trimmed || /\s/.test(trimmed) || !trimmed.includes(".")) return null;
-  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  try {
-    new URL(candidate);
-    return candidate;
-  } catch {
-    return null;
-  }
-}
 
 /** Native save sheet: URL (+ optional title) → POST /api/bookmarks. The
  * server fills in OG data, category, and tags, so this stays a two-field form. */
@@ -36,10 +24,14 @@ export function AddBookmarkSheet({
   visible,
   onClose,
   onSaved,
+  initialUrl = null,
 }: {
   visible: boolean;
   onClose: () => void;
   onSaved: () => void;
+  /** Prefills the link field — the recovery path for a share-sheet save whose
+   * API call failed, so the shared link is never lost (see src/lib/share-intent.ts). */
+  initialUrl?: string | null;
 }) {
   const { colors, radius } = useAppTheme();
   const [url, setUrl] = useState("");
@@ -47,15 +39,16 @@ export function AddBookmarkSheet({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fresh form every time the sheet opens.
+  // Fresh form every time the sheet opens — apart from `initialUrl`, which the
+  // share-intent recovery path hands in.
   useEffect(() => {
     if (visible) {
-      setUrl("");
+      setUrl(initialUrl ?? "");
       setTitle("");
       setError(null);
       setSaving(false);
     }
-  }, [visible]);
+  }, [visible, initialUrl]);
 
   const normalized = normalizeUrl(url);
   const canSave = normalized !== null && !saving;
@@ -73,12 +66,10 @@ export function AddBookmarkSheet({
       await createBookmark({
         url: normalized,
         title: title.trim() || undefined,
-        browser: "other", // saved from the app, not a browser
-        // one source of truth for this build's device class — the dashboard
-        // sends the same value as ?device= so it can exclude our own saves
-        device: CURRENT_DEVICE,
-        deviceName: Platform.OS === "ios" ? (Platform.isPad ? "iPad" : "iPhone") : "Android",
-        os: Platform.OS,
+        // one source of truth for this build's save provenance (see api.ts) —
+        // the dashboard sends the same device class as ?device= so it can
+        // exclude our own saves
+        ...detectSource(),
         savedAt: new Date().toISOString(),
       });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
