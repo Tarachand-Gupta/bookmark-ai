@@ -5,7 +5,8 @@ import type {
   Session,
 } from "@bookmark-ai/types";
 import { storage } from "#imports";
-import { getStoredDeviceToken, renewDeviceTokenIfNeeded } from "./device-token";
+import { refreshCredential } from "./auth-refresh";
+import { getUsableDeviceToken } from "./device-token";
 import { diag } from "./diag";
 import { tokenFresh, type CachedToken } from "./live-token";
 
@@ -131,17 +132,19 @@ export async function authHeaders(): Promise<Record<string, string>> {
 }
 
 /**
- * Authenticated fetch — the single choke point for every background-originated
- * API call. Attaches the bearer token when one is mintable (unchanged path for
- * Chrome/Firefox and for Safari's SDK/native paths when they ever work). When NO
- * token is mintable, on Safari ONLY it retries the request credentialed:
- * `credentials:'include'` makes Safari attach the SITE's own Clerk session cookie
- * to a host-permission origin without the extension reading it, and
- * `requireUser()` accepts a cookie session (its azp = the web origin, which
- * passes the azp check). Chrome/Firefox with no token = signed out, so no
+ * One attempt at an authenticated request. Attaches the bearer token when one is
+ * mintable (unchanged path for Chrome/Firefox and for Safari's SDK/native paths
+ * when they ever work). When NO token is mintable, on Safari ONLY it sends the
+ * request credentialed: `credentials:'include'` makes Safari attach the SITE's own
+ * Clerk session cookie to a host-permission origin without the extension reading
+ * it, and `requireUser()` accepts a cookie session (its azp = the web origin,
+ * which passes the azp check). Chrome/Firefox with no token = signed out, so no
  * fallback — the request goes out exactly as before and 401s if auth is enforced.
+ *
+ * The token is re-resolved on every call, which is what makes the 401 retry in
+ * `authFetch` meaningful: the second attempt picks up whatever the refresh stored.
  */
-export async function authFetch(url: string, init: RequestInit = {}): Promise<Response> {
+async function sendAuthed(url: string, init: RequestInit): Promise<Response> {
   const token = await authTokenProvider?.().catch(() => null);
   const headers: Record<string, string> = {
     ...(init.headers as Record<string, string> | undefined),
@@ -158,6 +161,56 @@ export async function authFetch(url: string, init: RequestInit = {}): Promise<Re
     return fetch(url, { ...init, headers, credentials: "include" });
   }
   return fetch(url, { ...init, headers });
+}
+
+/** A body we can put on the wire a SECOND time. Streams and one-shot sources
+ * can't be replayed, so a 401 on one of those is returned as-is rather than
+ * silently sending a truncated retry. Every caller in this extension sends a
+ * JSON string or no body at all. */
+function isReplayableBody(body: BodyInit | null | undefined): boolean {
+  return body === undefined || body === null || typeof body === "string";
+}
+
+/** Path only — a query string can carry a search term, so it never gets logged. */
+function logPath(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return "?";
+  }
+}
+
+/**
+ * Authenticated fetch — the single choke point for every background-originated
+ * API call, WITH one-shot 401 recovery on every build target.
+ *
+ * A 401 means the credential we attached is no longer accepted, and the cure is
+ * always the same: force a credential refresh (renew the device token, else mint
+ * a fresh one — see lib/auth-refresh.ts) and send the request again, exactly
+ * once. That is what stops a user from ever having to open the web app to
+ * un-stick a save; Safari had a narrow version of this for live-server calls,
+ * and now bookmark saves, session saves, native-sync mirrors, settings reads,
+ * and live pushes all get it on Chrome and Firefox too.
+ *
+ * Only ONE retry, and the refresh itself is single-flight + cooldown-guarded, so
+ * a burst of failing calls costs one refresh and one extra request each.
+ * `retryOn401: false` opts a call out (nothing needs it today; it exists so a
+ * future auth-probing call can't recurse through here).
+ */
+export async function authFetch(
+  url: string,
+  init: RequestInit = {},
+  options: { retryOn401?: boolean } = {},
+): Promise<Response> {
+  const res = await sendAuthed(url, init);
+  if (res.status !== 401) return res;
+  if (options.retryOn401 === false || !isReplayableBody(init.body)) return res;
+  const path = logPath(url);
+  diag("authRetry", "401 on api call", { path, method: init.method ?? "GET" });
+  if (!(await refreshCredential())) return res;
+  const retried = await sendAuthed(url, init);
+  diag("authRetry", "retried after refresh", { path, status: retried.status });
+  return retried;
 }
 
 export interface MeResponse {
@@ -231,15 +284,16 @@ export async function getLiveToken(forceRefresh = false): Promise<string | null>
   // Once a long-lived device token exists it's a plain Bearer the LIVE server
   // accepts DIRECTLY (contract) — no /api/live-token mint or its caches. This
   // holds on every browser now that the device token is minted cross-browser.
-  // `forceRefresh` is a 401-retry: give the token its chance to self-renew, then
-  // reuse whatever's stored (often unchanged). Only if there's no device token
-  // (never minted / cleared) do we fall through to the legacy live-token mint.
+  // `forceRefresh` is a 401-retry: run the full recovery ladder (forced renewal,
+  // else a fresh Clerk-authed mint), then reuse whatever's stored. Only if there's
+  // no device token at all (never minted / cleared) do we fall through to the
+  // legacy live-token mint.
   if (forceRefresh) {
-    await renewDeviceTokenIfNeeded();
-    const renewed = await getStoredDeviceToken();
+    await refreshCredential();
+    const renewed = await getUsableDeviceToken();
     if (renewed) return renewed;
   } else {
-    const deviceToken = await getStoredDeviceToken();
+    const deviceToken = await getUsableDeviceToken();
     if (deviceToken) return deviceToken;
   }
   if (!forceRefresh) {

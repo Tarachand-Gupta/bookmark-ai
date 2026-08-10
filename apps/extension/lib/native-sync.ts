@@ -3,6 +3,7 @@ import { browser } from "wxt/browser";
 import { createBookmark, deleteBookmark, fetchSyncSettings } from "@/lib/api";
 import { detectSource } from "@/lib/detect";
 import { diag } from "@/lib/diag";
+import { drainMirrorQueue, enqueueMirrorAdd } from "@/lib/native-sync-queue";
 
 /**
  * NATIVE BROWSER SYNC — mirror native bookmark additions (and Chrome's Reading
@@ -89,7 +90,28 @@ let importing = false;
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 const isHttp = (url: string | undefined): url is string => !!url && /^https?:/i.test(url);
 
-/** Mirror a native addition (bookmark, or reading-list entry with tags). */
+/** POST the mirror and remember the url→id mapping. Throws on failure — the two
+ * callers (the live listener and the retry drain) handle that differently. */
+async function sendMirrorAdd(
+  url: string,
+  title: string | undefined,
+  tags?: string[],
+): Promise<void> {
+  const bookmark = await createBookmark({
+    url,
+    title: title || undefined,
+    tags,
+    ...detectSource(),
+  });
+  await rememberUrlId(url, bookmark.id);
+  diag("nativeSync", "added", { domain: bookmark.domain, tagged: !!tags });
+}
+
+/** Mirror a native addition (bookmark, or reading-list entry with tags). A
+ * failure is QUEUED rather than dropped: `authFetch` has already spent its
+ * one-shot 401 retry by the time we get here, so anything still failing needs a
+ * later attempt (boot / the 6h alarm) — the browser will never re-fire the
+ * onCreated event that produced this call. */
 async function mirrorAdd(url: string | undefined, title: string | undefined, tags?: string[]) {
   if (importing || !isHttp(url)) return;
   const enabled = await nativeSyncEnabledItem.getValue().catch(() => true);
@@ -98,17 +120,30 @@ async function mirrorAdd(url: string | undefined, title: string | undefined, tag
     return;
   }
   try {
-    const bookmark = await createBookmark({
-      url,
-      title: title || undefined,
-      tags,
-      ...detectSource(),
-    });
-    await rememberUrlId(url, bookmark.id);
-    diag("nativeSync", "added", { domain: bookmark.domain, tagged: !!tags });
+    await sendMirrorAdd(url, title, tags);
   } catch (e) {
-    diag("nativeSync", "add failed", { error: errMsg(e) });
+    diag("nativeSync", "add failed (queued)", { error: errMsg(e) });
+    await enqueueMirrorAdd({ url, title, tags });
   }
+}
+
+/** Retry every mirror add that failed earlier. Called at background boot and on
+ * the 6h auth alarm, i.e. after the auth ladder has had its chance to replace a
+ * bad credential. While the master toggle is OFF the queue is left untouched
+ * rather than flushed — turning sync back on should not silently discard the
+ * pending adds, and mirroring them while it's off would be wrong. */
+export async function drainNativeSyncQueue(): Promise<void> {
+  if (BROWSER === "safari") return; // the module no-ops there anyway
+  const enabled = await nativeSyncEnabledItem.getValue().catch(() => true);
+  if (!enabled) return;
+  await drainMirrorQueue(async (entry) => {
+    try {
+      await sendMirrorAdd(entry.url, entry.title, entry.tags);
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 /** Mirror a native removal — only under full-sync. Folder removals report only
