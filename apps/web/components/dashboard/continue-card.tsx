@@ -152,7 +152,7 @@ function ResumeRow({
     // last 10 min), not the ranking's coarser label.
     const { filled } = deviceFreshness(device.lastSeenAgeSeconds);
     const windows = device.windows.length;
-    const tabs = device.windows.flatMap((w) => w.tabs);
+    const tabs = previewOrder(device.windows);
 
     return (
       <RowShell
@@ -220,7 +220,9 @@ function ResumeRow({
             <span>saved window</span>
           </>
         }
-        preview={<TabPreview tabs={target.tabs.tabs} total={tabCount} />}
+        // Reversed: session tabs are stored in window order (oldest leftmost),
+        // and the preview leads with what was touched last — see previewOrder.
+        preview={<TabPreview tabs={[...target.tabs.tabs].reverse()} total={tabCount} />}
         actions={
           <>
             <Button
@@ -355,6 +357,23 @@ function RowShell({
  * Inert text, not links: opening ONE of someone's live tabs from a preview line
  * is a different intent than the row's two explicit verbs.
  */
+/**
+ * Preview ordering: what the user touched LAST, first — they recognize their
+ * most recent tabs far better than a window's oldest, leftmost ones (owner
+ * feedback). The live payload carries no timestamps, so the proxies are: the
+ * focused window's ACTIVE tab is what was on screen at the last checkpoint,
+ * and within a window newer tabs live to the RIGHT — so active tabs lead and
+ * each window's list is walked right-to-left.
+ */
+function previewOrder(
+  windows: { focused?: boolean; tabs: { url: string; title?: string; active?: boolean }[] }[],
+): { url: string; title?: string }[] {
+  const ordered = [...windows].sort((a, b) => Number(b.focused ?? false) - Number(a.focused ?? false));
+  const active = ordered.flatMap((w) => w.tabs.filter((t) => t.active));
+  const rest = ordered.flatMap((w) => [...w.tabs].reverse().filter((t) => !t.active));
+  return [...active, ...rest];
+}
+
 function TabPreview({
   tabs,
   total,
