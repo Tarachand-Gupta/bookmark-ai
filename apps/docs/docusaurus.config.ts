@@ -44,7 +44,12 @@ const config: Config = {
         },
         blog: false,
         theme: {
-          customCss: './src/css/custom.css',
+          // demos.css is GENERATED from src/css/demos.src.css by
+          // scripts/build-demo-css.mjs, which the `start` and `build` scripts run
+          // first. It carries the Tailwind utilities the shared demo animations
+          // need (see src/components/Demo.tsx). It loads after custom.css so the
+          // unlayered utilities win their ties against Infima.
+          customCss: ['./src/css/custom.css', './src/css/demos.css'],
         },
       } satisfies Preset.Options,
     ],

@@ -1,0 +1,198 @@
+---
+slug: /guides/mcp
+title: Connect an AI agent (MCP)
+description: Expose your library to Claude, Cursor, or any MCP client as a set of tools.
+sidebar_custom_props:
+  icon: 🔌
+---
+
+# Connect an AI agent (MCP)
+
+Bookmark AI can act as an **MCP server** over your own library, so Claude Code,
+Claude Desktop, Cursor, or any other MCP client can search what you've saved and
+save new pages for you. The agent gets a small, fixed set of **tools** — never
+your account credentials, never your API keys, and never anything outside your
+own library. You decide which of those tools exist, and you can cut a client off
+at any time by revoking its token.
+
+This is a different thing from [Ask AI](/guides/ask-ai). Ask AI is the chat
+inside Bookmark AI; MCP is your library showing up inside somebody else's agent.
+
+## Setting it up
+
+### 1. Mint a token
+
+Open **Settings → MCP → Tokens**. You get there from the sidebar's **MCP** row,
+the sidebar's **Settings**, the dashboard's "Connect any AI agent" card, or the
+deep link `?settings=mcp` on either `/app` or `/app/library`.
+
+Type a name — the field's placeholder is `Token name, e.g. Claude Code on my
+laptop`, up to 60 characters — and press **Generate token**. Name it after the
+machine or client it's for; that's the whole point of one token per client.
+
+:::warning
+**The raw token is shown exactly once.** The pane says so: *"Copy "&lt;name&gt;"
+now — this is the only time it will be shown."* Nothing stores the value, not
+even the server, so if you lose it there is no way to recover it — mint a new
+one and revoke the old.
+:::
+
+### 2. Point a client at it
+
+The endpoint is `POST https://bookmark-ai.cloud/api/mcp`. There's a **Copy
+endpoint** button next to it, and a self-hosted instance shows its own origin
+instead.
+
+For Claude Code, one command:
+
+```bash
+claude mcp add --transport http bookmark-ai https://bookmark-ai.cloud/api/mcp --header "Authorization: Bearer <YOUR_TOKEN>"
+```
+
+For any client that takes a JSON config (Claude Desktop, Cursor, and most
+others):
+
+```json
+{
+  "mcpServers": {
+    "bookmark-ai": {
+      "type": "http",
+      "url": "https://bookmark-ai.cloud/api/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR_TOKEN>"
+      }
+    }
+  }
+}
+```
+
+The **Client setup** section in Settings shows both snippets already filled in
+with the token you just minted, so you can copy one straight across.
+
+:::note
+The endpoint is **stateless JSON-RPC 2.0 over POST**, always returning
+`application/json`. There is no SSE stream and no session id is ever issued, so
+configure your client for **streamable HTTP** rather than the older SSE
+transport. Protocol versions `2025-06-18` (preferred), `2025-03-26` and
+`2024-11-05` are all accepted.
+:::
+
+## The four tools
+
+| Tool | Parameters | Returns |
+| --- | --- | --- |
+| `search_bookmarks` | `query` (required); `mode` — `text`, `semantic` or `hybrid` (default `hybrid`); `limit` 1–40 (default 10) | `{mode, fallback, results}`, each result carrying the bookmark plus a `score` |
+| `save_bookmark` | `url` (required, http(s)); `title` (optional, ≤500 chars) | `{bookmark}` — the saved entry |
+| `list_bookmarks` | all optional: `category`, `tag`, `browser`, `device`, `day` (`YYYY-MM-DD`), `limit` 1–100 (default 20), `offset` | `{bookmarks, total}`, newest first |
+| `get_library_overview` | none | `{categories, browsers, devices, days, tags, total}` — counts for each, the last 30 days, and your top 24 tags |
+
+Every tool returns the same compact bookmark shape: `id`, `url`, `title`,
+`description`, `category`, `tags`, `savedAt` (plus `score` on a search). Never
+embeddings, never the raw Open Graph blob.
+
+A few things worth knowing:
+
+- **`save_bookmark` is the only tool that writes.** It behaves exactly like
+  saving from the extension: re-saving a URL updates the existing entry rather
+  than duplicating it, and categorization, tagging and embedding run right after.
+  See [Saving bookmarks](/guides/saving-bookmarks).
+- **`mode: "semantic"` is MCP's name for the API's `ai` mode.** Same thing, and
+  `hybrid` still blends the two. [Search](/guides/search) explains the
+  difference; `fallback: true` means a semantic search quietly fell back to full
+  text.
+- **`list_bookmarks` has no date-range parameters.** `from`/`to` exist only on
+  `GET /api/bookmarks` — over MCP you get `day` for one specific day.
+
+## Choosing what an agent may do
+
+**Settings → MCP → Tools** — "What connected assistants are allowed to do.
+Applies to every token." — has one switch per tool:
+
+| Switch | Blurb |
+| --- | --- |
+| **Search bookmarks** | "Find saved pages by keyword, meaning, or a blend of both." |
+| **Save a bookmark** | "Let the agent add new URLs to your library. The only tool that writes." |
+| **Browse bookmarks** | "Page through your library, filtered by category, tag, browser, device, or day." |
+| **Library overview** | "Your categories, tags, devices, days, and totals — with counts." |
+
+All four are **on by default**, and the setting is account-wide: it applies to
+every token you've minted, not per client. Turning one off makes that tool
+**disappear from the tool list** entirely — a well-behaved client stops offering
+it, and a call to it errors with
+`Unknown or disabled tool "<name>". Call tools/list to see what this server currently exposes.`
+
+:::note
+There's a deliberate design decision here: **the first time you touch any of
+these switches, your choice is stored as an explicit allowlist.** From then on,
+tools added in future releases stay **off** until you opt into them. If you've
+never touched the switches you're on the default (everything on) and new tools
+will appear as they ship.
+:::
+
+## Tokens
+
+- **One token per client.** The pane puts it plainly: "One token per client, so
+  you can revoke a single machine without touching the rest."
+- **Valid for a year** (365 days).
+- **No refresh.** When a token expires or you want it gone, mint a new one and
+  revoke the old.
+- **You can tell them apart without the value.** Alongside each token's name the
+  list shows a hint — `bkmcp_` plus the first five and last five characters,
+  e.g. `bkmcp_eyJhb…Qk3Fa`. Tokens minted before hints shipped show none; that
+  can't be backfilled.
+- The list also shows when a token was **created**, when it was **last used**,
+  and whether it's revoked. Never the token itself.
+- **Revoking** is two steps — **Revoke**, then **Confirm revoke** — and takes
+  effect on that token's very next request. Revoked tokens stay in the list as
+  history rather than vanishing, so you can see what was connected once. There's
+  no cap on how many tokens you can have.
+- **A token can never mint or revoke another token.** Token management requires a
+  signed-in browser session, so an agent holding a token cannot escalate its own
+  access.
+
+## Rate limits
+
+Two independent layers, and it's worth understanding both because they fail
+differently.
+
+**Per IP, on every request:** 120 requests per 60 seconds. Over that you get HTTP
+429 with `{"error":"Too many requests"}`.
+
+**Per account, on tool calls only:** a tiered budget shared across *all* of your
+tokens. The handshake, `ping` and `tools/list` are free — only `tools/call`
+counts.
+
+| Window | Max tool calls |
+| --- | --- |
+| 1 minute | 60 |
+| 5 minutes | 250 |
+| 1 hour | 1,500 |
+| 1 day (UTC) | 8,000 |
+| 1 week (UTC, Monday start) | 40,000 |
+
+Going over the tiered budget comes back as a **tool error, not an HTTP error** —
+the HTTP status stays 200, and the tool result reads
+`Rate limit exceeded (<window>): retry after <n> seconds`.
+That's deliberate: the agent sees a normal
+tool response telling it how long to wait, so it can back off and carry on
+rather than treating the whole server as down.
+
+## Troubleshooting
+
+| What you see | What it means |
+| --- | --- |
+| 401 `Missing MCP bearer token` | No `Authorization` header reached the server — check the header made it into your client config. |
+| 401 `Invalid or expired token` | Wrong value, or past its 365 days. Mint a new one. |
+| 401 `This token has been revoked` | You revoked it (or replaced the machine's token). Mint a fresh one for that client. |
+| 429 `Too many requests` | The per-IP limit, not the account budget. Wait a minute. |
+| 503 `MCP not configured` | A self-hosted instance with no token signing secret (`DEVICE_TOKEN_SECRET`) set — without it no token can be minted or verified. See [Self-hosting](/self-hosting/web-and-api). |
+| 405 `Method not allowed — this MCP endpoint is stateless JSON-RPC over POST` | The client tried `GET` or `DELETE`, usually because it's configured for the SSE transport. Switch it to streamable HTTP. |
+
+All the 401s carry a `WWW-Authenticate: Bearer realm="bookmark-ai-mcp"` header.
+
+One more compatibility note: **JSON-RPC batching is not supported** (it was
+removed from MCP in the `2025-06-18` revision), so a client that tries to send an
+array of requests won't work. Send one request per POST.
+
+If you'd rather talk to the library over plain HTTP than over MCP, everything the
+tools do is available directly — see the [API reference](/reference/api).

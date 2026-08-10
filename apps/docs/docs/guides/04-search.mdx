@@ -6,9 +6,16 @@ sidebar_custom_props:
   icon: 🔎
 ---
 
+import Demo from '@site/src/components/Demo';
+import {SearchDemo} from '@bookmark-ai/ui/demos/feature-mocks';
+
 # Search
 
 Search has three modes. All of them run server-side against your library.
+
+<Demo caption="An illustration of the two kinds of query, in turn: an exact one whose hits are marked TEXT, then a plain-language one whose hits are matched by MEANING.">
+  <SearchDemo className="mt-0" />
+</Demo>
 
 | Mode | What it does |
 | --- | --- |
@@ -16,8 +23,18 @@ Search has three modes. All of them run server-side against your library.
 | **ai** | Search by meaning. Your query is embedded and compared to your bookmarks' embeddings by similarity. |
 | **hybrid** | Blends the two lists with Reciprocal Rank Fusion (RRF), so exact keyword hits and meaning-based matches both surface. |
 
-The web grid and the mobile app both use **hybrid** by default — it's the best
-of both.
+The web grid and the mobile app both use **hybrid** — it's the best of both. (If
+you're calling the API directly, note that `mode` defaults to `text` there; see
+the [API reference](/reference/api).)
+
+## Where to search from
+
+- **The omnibox** on [your dashboard](/guides/dashboard) — or press `/` — searches
+  bookmarks and sessions together.
+- **The search box** in [your library](/guides/library) header filters as you go.
+- **The Search tab** in [the mobile app](/guides/mobile-app).
+- **[Ask AI](/guides/ask-ai)** if you'd rather ask a question than write a query;
+  it runs these same searches as tools and answers with citations.
 
 ## Search by meaning, honestly
 
@@ -36,11 +53,29 @@ In hybrid results, matches that the keyword side found are marked as exact, so
 clients can present them as direct "matches" versus meaning-based "related"
 results.
 
+:::note
+Search by meaning costs you nothing. The embeddings behind it are provided by
+the service and never spend your [free AI credits](/guides/ai-providers) — those
+are only for [Ask AI](/guides/ask-ai) chat.
+:::
+
+## Saved sessions are searched too
+
+A search also returns matching [saved sessions](/guides/saved-sessions), kept
+separate from the bookmark results — so "that Redis research" can find the whole
+window you snapshotted, not just individual pages from it.
+
 ## Graceful fallback
 
 If AI search can't run — for example when embeddings aren't available — search
 silently falls back to full-text and marks the response with `fallback: true`.
 You still get results; they're just keyword-based.
 
-See the [API reference](/reference/api#get-apisearch) for the exact request and
-response shape.
+## Selecting from results
+
+Bulk selection is deliberately **not** offered in search results — a result list
+is a ranked answer, not a stable set of rows, so ticking boxes across it is a
+good way to delete the wrong thing. Clear the query to select and act on rows in
+[the library](/guides/library) instead.
+
+See the [API reference](/reference/api) for the exact request and response shape.

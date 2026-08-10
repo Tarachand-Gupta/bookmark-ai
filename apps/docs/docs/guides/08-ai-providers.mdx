@@ -1,65 +1,131 @@
 ---
 slug: /guides/ai-providers
-title: AI providers
-description: Bring your own AI — Gemini, OpenAI, Anthropic, or any OpenAI-compatible endpoint.
+title: AI credits & providers
+description: Free AI credits are included — bringing your own key is an optional upgrade.
 sidebar_custom_props:
   icon: 🧠
 ---
 
 import Screenshot from '@site/src/components/Screenshot';
 
-# AI providers
+# AI credits & providers
 
-Bookmark AI is **bring-your-own-AI**. You connect a provider and your key, and
-that powers **Ask AI** chat and AI answers over your library. Configure it in
+AI works the moment you sign in. Chat and answers run on **included free
+credits** — no provider to choose, no API key to paste. If you'd rather run chat
+on your own key and your own model, that's an optional upgrade, and both live in
 **Settings → AI**.
 
-The first-run tour opens right on AI setup, with the OpenRouter preset ready to
-go:
+## Free AI credits
+
+**Settings → AI** opens on a block headed **"Free AI included"** — "Chat and
+answers run on our shared AI — no setup needed."
+
+- **The allowance is 1,000 credits a week**, where **1 credit = 1,000 tokens**.
+  Tokens are counted across the whole conversation — what you send plus what the
+  model writes, on every tool-call round. It is *not* 1,000 requests.
+- **It resets weekly, every Monday at 00:00 UTC.** The app spells it out:
+  *Free credits reset every Monday at 00:00 UTC — next in N days*.
+- **What spends credits:** only **Ask AI** chat, and only while chat is running
+  on the shared service key.
+- **What never spends credits:** the **embeddings** behind search-by-meaning, and
+  **AI categorization and tagging** of the pages you save. Those run on the
+  service regardless of whether you've configured anything.
+
+The meter is one component shown in three places — **Settings → AI**, the
+greeting when you first open the Ask AI chat (with a link **"or use your own key
+→"**), and the wall you hit if the week's credits run out. It reads:
+
+```
+312 of 1,000
+credits used this week            resets Monday
+```
+
+At zero, the next message returns before anything streams and the chat shows an
+amber card headed **"This week's free credits are used up"** — "Free credits
+reset every Monday. To keep chatting now, add your own API key — your key isn't
+metered." — with a **Configure API key** button.
+
+:::note
+1,000 credits a week is the **current default allowance** on the hosted service,
+adjustable by whoever operates the instance. Treat it as today's number, not a
+permanent guarantee. Nothing else degrades when credits run out: saving, search
+and categorization keep working.
+:::
+
+## Bringing your own key (optional)
+
+Bring your own provider key and chat becomes **unmetered** — it runs on your key,
+your model, and your provider's quota, and the free weekly credits sit untouched.
+
+The form is deliberately tucked away: in **Settings → AI**, expand the collapsed
+disclosure labelled **"Use your own AI provider"** (hinted *Optional*). Once a
+key is saved that same disclosure is relabelled **"Change provider or model"**,
+and the block above it turns green: **"Using your own AI provider"**, showing
+`<Provider> · key ••••1234 · <model>` and the reassurance that "Chat runs on your
+key and your quota — the free weekly credits below aren't being spent." The free
+meter collapses to a line reading *Free AI credits — Unused while your key is
+set*.
 
 <Screenshot
   alt="The onboarding tour dialog open on the 'AI setup' tab, with the OpenRouter preset selected and a field for the API key."
   dark="/img/screenshots/onboarding-dark.jpg"
   light="/img/screenshots/onboarding-light.jpg"
-  caption="Set up a provider from the onboarding tour — OpenRouter is the quickest start."
+  caption="An earlier build of the AI setup step, from the onboarding tour. The provider form is the same one described below; today it sits behind the 'Use your own AI provider' disclosure, under the free-credits meter."
 />
 
-## Supported providers
+### Recommended: OpenRouter
+
+OpenRouter is the one **one-click preset**. Its block reads ⚡ **"Recommended:
+OpenRouter"** — "OpenRouter has free models. Create a key, click below, then
+paste it in."
+
+1. Create an OpenRouter API key.
+2. Press **Use OpenRouter** (it reads **Selected** once active). That sets the
+   provider to **Custom (OpenAI-compatible)** with the base URL
+   `https://openrouter.ai/api/v1` — you don't type either.
+3. Paste your key and carry on with the form below.
+
+### Providers
+
+These are the exact options in the **Provider** dropdown:
 
 | Provider | Notes |
 | --- | --- |
-| **Google** (Gemini) | The default. |
-| **OpenAI** | Standard OpenAI API. |
+| **Gemini (Google)** | Google's Gemini models. |
+| **OpenAI** | The standard OpenAI API. |
 | **Anthropic** | Claude models. |
-| **Custom** | Any **OpenAI-compatible** endpoint — you supply a base URL. This is how you use services like [OpenRouter](https://openrouter.ai). |
+| **Custom (OpenAI-compatible)** | Any OpenAI-compatible endpoint. Reveals an **API base URL** field (placeholder `https://api.example.com/v1`). This is how you use services like [OpenRouter](https://openrouter.ai). |
 
-## Recommended: OpenRouter
+### Filling in the form
 
-OpenRouter is an OpenAI-compatible endpoint with **free models**, which makes it
-the quickest way to get started at no cost. In **Settings → AI**:
+1. **API key** — a password field reading `Paste your API key`, or
+   `Saved (••••1234)` when one is already stored.
+2. **Test & list models** — checks the key against the provider and reports what
+   it found, e.g. `12 models found`.
+3. **Default model** — a select that stays **disabled until a test succeeds**, so
+   you can only pick a model the provider actually offers you.
+4. **Save** — confirms with **Saved ✓**.
 
-1. Create an OpenRouter API key.
-2. Use the **OpenRouter** preset — it sets the provider to *custom* with the base
-   URL `https://openrouter.ai/api/v1`.
-3. Paste your key, pick a model, and save.
-
-For a custom provider you must supply a valid `http(s)` **base URL**. After
-saving a key you can list the provider's models and choose one.
+To change your key, enter a new one and save. To stop using your own key and go
+back to the free credits, save an empty value.
 
 ## Your key is stored safely
 
-When you read your settings back, the API **never returns your key** — only
-whether one is set and its last four characters, enough to show a
-`Saved (••••1234)` hint. To change the key, enter a new one; to clear it, save an
-empty value.
+- Keys are stored **encrypted at rest (AES-256-GCM)**.
+- The API **never returns your key**. Reading your settings back gives only
+  whether a key is set and its last four characters — enough for the
+  `Saved (••••1234)` hint.
+- A **custom base URL is validated** before it's accepted: private, loopback and
+  cloud-metadata addresses are rejected, so a saved URL can't be used to make the
+  server call something on its own internal network.
 
 ## About embeddings
 
 Search by meaning needs **embeddings**, and those are a separate thing from the
-chat model:
+chat model. The settings pane says so permanently, under the form:
 
 :::note
-Embeddings for search are **provided by the service for now — no key needed**.
-Your AI provider key is used for chat and answers, not for search-by-meaning
-embeddings.
+Search by meaning is included free — its embeddings are powered by the service,
+so you don't need an embedding key. Your own provider key, if you set one, is
+used for chat and answers only.
 :::

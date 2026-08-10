@@ -41,7 +41,15 @@ need it if you want that feature; everything else works without it.
 | **Database** | libSQL — local sqlite file or Turso cloud | Yes |
 | **AI provider** | Google Gemini / OpenAI / Anthropic / OpenAI-compatible | Optional (degrades to heuristics + text search) |
 | **Auth (Clerk)** | Sign-in; can run in keyless mode for API-only self-host | Optional for the API |
+| **MCP server** | Part of the web app (`POST /api/mcp`) — lets AI agents search and save | Optional; needs `DEVICE_TOKEN_SECRET` |
 | **Live server** | Fastify + Redis; real-time live sessions | Optional |
+
+The [MCP server](/guides/mcp) is not a separate service — it's a route inside the
+web app, so a self-hosted instance serves MCP at **its own origin**
+(`https://your-app.example.com/api/mcp`), and the Settings → MCP pane shows that
+origin in its client-setup snippets. It needs `DEVICE_TOKEN_SECRET` set, because
+that's the secret the `bkmcp_` tokens are signed with; without it the endpoint
+answers `503 {"error":"MCP not configured"}`.
 
 ## Where to go next
 

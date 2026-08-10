@@ -7,6 +7,8 @@ sidebar_custom_props:
 ---
 
 import Screenshot from '@site/src/components/Screenshot';
+import Demo from '@site/src/components/Demo';
+import {LiveTabsDemo} from '@bookmark-ai/ui/demos/live-tabs-demo';
 
 # Live sessions
 
@@ -15,6 +17,10 @@ updating in real time. Leave a page open on your laptop and jump to it from your
 phone — without saving anything.
 
 Live sessions are **off by default** and entirely opt-in.
+
+<Demo caption="An illustration of the three beats: flip the switch in the extension, open Live sessions in the app, and that browser's tabs arrive — mirrored onto your phone too.">
+  <LiveTabsDemo className="mt-0" />
+</Demo>
 
 <Screenshot
   alt="The Live sessions view: a device 'Chrome on Mac - tara' with a green LIVE dot and 'as of just now', three windows with tab counts and Save buttons, and a note that 3 tabs are not shown because they're private or local."
@@ -25,10 +31,10 @@ Live sessions are **off by default** and entirely opt-in.
 
 ## Turning it on
 
-1. In the extension popup, use **Share window as live session**.
+1. In the extension popup, flip **Share window as live session**.
 2. That browser starts publishing its open tabs to a dedicated live server.
-3. In the app's live view, your devices appear with their open windows, each
-   marked with a green **LIVE** pip while it's actively publishing.
+3. In the app's **Live sessions** view, your devices appear with their open
+   windows, each marked with a green **LIVE** pip while it's actively publishing.
 
 The opt-in is account-wide: turning it on enables live publishing; turning it
 off purges every device's live tabs immediately.
@@ -40,21 +46,56 @@ off purges every device's live tabs immediately.
   caption="The 'Share window as live session' card, expanded — the switch publishes this window, and the field names the device."
 />
 
+Expand the card (the chevron) and you also get **Share this window**, the
+device-name field, and an **Open live tabs ↗** link straight to the app. The
+explanation there is the honest summary of what leaves your browser: *"Sends the
+title, address, and icon of every open tab so you can pick one up on your phone.
+Private windows are never sent. Nothing is saved until you tap Save."*
+
+## Which windows get shared
+
+Sharing is per window, with a per-device default behind it.
+
+- The popup's **Share window as live session** switch turns the feature on for
+  that browser; **Share this window** controls the window you're looking at.
+- Right after you turn it on you'll see a one-line hint — **"All future windows
+  will have live sessions enabled by default. Change this behavior in
+  settings."** That default is the per-device policy.
+- You can change it in **Settings → Live sessions**, per device: **Enable live
+  session on any new window** (on by default). Turn it off and new windows stay
+  private until you opt each one in.
+- If live is on but the window you're in has opted out, the popup says so:
+  **"This window isn't shared"**.
+
 ## Device names
 
 Each publishing browser shows up as a device you can **rename** (so "laptop" and
-"work desktop" are easy to tell apart) or **forget**. Forgetting a device
-removes its live tabs; it'll reappear if that browser is still sharing.
+"work desktop" are easy to tell apart) or **forget**. Forgetting a device removes
+its live tabs; it'll reappear if that browser is still sharing. Device names are
+set in the extension popup — the field next to the switch.
 
-From **Settings → Devices** you can turn sharing off entirely with the **Show my
-open tabs** toggle, forget individual devices, and point at a custom **Live
-server URL** if you're self-hosting.
+From **Settings → Live sessions** you can turn sharing off entirely with the
+**Show my open tabs** toggle, forget devices individually or all at once, set the
+per-device new-window policy, and — behind an advanced disclosure — point at your
+own **live server** if you're self-hosting.
 
 <Screenshot
-  alt="Settings → Devices: the 'Show my open tabs' toggle switched on, a list of devices each with a Forget button, and a 'Live server URL' field."
+  alt="Settings → Live sessions: the 'Show my open tabs' toggle switched on, a list of devices each with a Forget button, and a 'Live server URL' field."
   dark="/img/screenshots/settings-devices-dark.jpg"
-  caption="Settings → Devices: opt out, forget a device, or set a custom live server."
+  caption="Settings → Live sessions: opt out, forget a device, or set a custom live server. (Captured while the tab was still called 'Devices'.)"
 />
+
+## Picking a tab back up
+
+A live tab is a pointer, not a saved page. From the live view you can:
+
+- **Save** an individual tab as a bookmark, or snapshot the whole window as a
+  [saved session](/guides/saved-sessions);
+- **Open tabs here** straight from **Continue where you left off** on
+  [your dashboard](/guides/dashboard) — with the extension installed, the whole
+  window is restored in one go;
+- ask about them in [Ask AI](/guides/ask-ai), which can see your live tabs as
+  well as your library.
 
 ## Privacy guarantees
 

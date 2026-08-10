@@ -9,6 +9,11 @@
 **/dist
 **/.vercel
 
+# Docusaurus output + cache. The docs project's Root Directory is apps/docs, so
+# the whole monorepo rides along on a docs deploy too — keep its own build out.
+apps/docs/build
+apps/docs/.docusaurus
+
 # Desktop (Zig) — irrelevant to the web build, and huge
 apps/desktop/.native
 **/.zig-cache

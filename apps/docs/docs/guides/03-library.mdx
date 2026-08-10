@@ -1,0 +1,214 @@
+---
+slug: /guides/library
+title: Your library
+description: Browsing, filtering, selecting and exporting everything you've saved.
+sidebar_custom_props:
+  icon: 🗃
+---
+
+# Your library
+
+The library at **`/app/library`** is where everything you've saved lives. It's
+the surface for browsing rather than resuming — the resuming happens on
+[your dashboard](/guides/dashboard). Sidebar links like **All bookmarks** land
+here, and so do the "All bookmarks" footers on the dashboard's cards.
+
+## Three layouts
+
+A segmented toggle in the header switches between **Grid view**, **List view**
+and **Compact view** — cards, roomy rows, and dense rows respectively. The
+choice is yours to make per taste; it doesn't change what's shown.
+
+By default the library groups saves into relative date sections: **Today**,
+**Yesterday**, **This week**, **This month**, **This year**, **Older**. Empty
+sections are dropped, and the buckets use *your* timezone, so a bookmark card
+that says "Today" is never sitting under a "Yesterday" heading.
+
+## Filtering
+
+The sidebar lists facets built from your own library — **categories**,
+**browsers**, **devices** and recent **days** — each with a count. Underneath
+the header there's a tag rail of the tags the AI has applied.
+
+Two rules worth knowing:
+
+- **Category, browser, device and day are mutually exclusive.** Picking one
+  replaces whichever of the four was active; clicking the active one clears it.
+- **Tag and date range are orthogonal.** They survive a facet change and stack
+  on top of it, so `#hooks` + "Last 7 days" + `Development` is a valid view.
+
+Every filter lives in the URL, which means a filtered library is a link. Send
+someone (or your future self) a URL and they get the same view back. Searching
+from the library works the same way — see [Search](/guides/search) — with one
+difference: while you're searching, the date sections collapse into a flat
+relevance-ordered list.
+
+## The date-range picker
+
+The header has a button that reads **Date** when nothing is applied. It opens a
+range **calendar** alongside a rail of presets. There are no from/to text boxes
+to fill in.
+
+The presets, with their exact labels:
+
+| Preset | Range |
+| --- | --- |
+| **Last hour** | The last 60 minutes, up to now |
+| **Last 12 hours** | Twelve hours back, up to now |
+| **Last 24 hours** | A day back, up to now |
+| **Last 7 days** | A week back, up to now |
+| **Last month** | One calendar month back, up to now |
+| **This year** | Since January 1st, local time |
+
+A preset sets a **start** and deliberately leaves the **end open** — "up to
+now". That matters: the range keeps including things you save while you're
+looking at it, instead of freezing at the moment you clicked. **Last month** is
+one calendar month back with day clamping, so on August 31st it starts July
+31st.
+
+:::note
+There is **no "Today" preset**. "Today" and "Yesterday" exist as *day* labels —
+in the sidebar's recent days, in the mobile **Recent days** section, and as date
+section headings — and a day filter is a different filter from a date range.
+:::
+
+### Picking a custom range
+
+Custom ranges take two clicks on the calendar. The first click stages a start
+and the helper text changes from **"Pick a start date"** to **"Pick an end
+date"** — nothing refetches yet. The second click applies the range and closes
+the popover.
+
+If you change your mind mid-pick, **Clear** cancels the half-picked range, and
+simply closing the popover abandons it. Once a range is applied, an **×** on the
+trigger clears it.
+
+The trigger relabels itself to whatever is applied:
+
+| Applied | Trigger reads |
+| --- | --- |
+| A two-sided range | `Aug 3 – Aug 10, 2026` |
+| A bound with a time | `Aug 10, 3:00 PM – …` |
+| Start only | `Since Aug 10, 3:00 PM` |
+| End only | `Until Aug 10` |
+| A preset that still matches | The preset's own label |
+
+One side effect to expect: **while a date range (or a day filter) is active, the
+library shows a flat list instead of date-grouped sections.** You've already
+scoped the dates, so grouping them again would just be noise.
+
+Under the hood the range is `?from=` and `?to=` in the URL, passed straight
+through to `GET /api/bookmarks`. Both bounds are inclusive, and each accepts a
+plain `YYYY-MM-DD` day or a full ISO-8601 datetime — which is what makes
+sub-day windows like "Last hour" possible. See the
+[API reference](/reference/api) for the exact parameter rules.
+
+## On a phone or a narrow window
+
+The sidebar facets, the tag rail and the date popover are all replaced by one
+row of touch-sized (44px) controls:
+
+- **Filters**, with a badge counting what's applied. Opens a bottom sheet whose
+  sections run in this order: **Date range**, **Categories**, **Browsers**,
+  **Devices**, **Recent days** (the seven most recent). Every entry is a pill
+  with an icon, a label and a count. Its blurb reads "Filter the library by
+  category, source, device or date.", and with nothing saved yet it says
+  "Nothing to filter by yet — save a few bookmarks and the categories, browsers
+  and devices they came from show up here."
+- **Tags**, also badged, opening a sheet described as "Filter the library by one
+  of the tags the AI applied."
+- **Select** / **Done**, covered below.
+- A layout dropdown with the same **Grid view / List view / Compact view**
+  options the desktop segmented toggle offers.
+
+Tap outside a sheet or hit **Close** to dismiss it. Beneath the control row,
+each applied filter becomes a dismissible chip — a category name, a capitalized
+browser or device, `Today` / `Yesterday` / `Wed, Aug 6`, the formatted date
+range, or `#tag` — and once there are two or more chips a **Clear all** appears.
+
+The same mutual-exclusion and orthogonality rules apply here as on the desktop.
+
+## Selecting several at once
+
+Selection is how you delete or export more than one thing at a time.
+
+- **With a pointer:** hover a row or card and a checkbox appears — it swaps in
+  for the favicon in list and compact views, and overlays the top-left corner of
+  a grid card. Tick one and every checkbox stays visible from then on.
+- **On touch or a narrow screen:** use the explicit **Select** button, which
+  becomes **Done**. Saved sessions has the same button.
+- **Shift-click** extends the selection from your last plain click through the
+  row you shift-clicked. It only ever adds, the way a file manager does.
+- **Escape** clears the selection — except while a dialog has focus, so
+  cancelling a delete doesn't also throw away what you'd picked.
+
+Once anything is ticked a floating bar appears at the bottom: `N selected`, then
+**Delete**, then **Export CSV** (just **CSV** on narrow screens), then an **×**
+labelled "Clear selection (Esc)".
+
+Two scoping rules that are deliberate rather than accidental:
+
+- **Selection is per view.** Changing a filter, moving to another section, or
+  starting a search clears it. The bar acts on the page you're looking at, so it
+  never carries over to a different set of rows.
+- **Selection isn't offered in search results, or on Live sessions.** A search
+  result set isn't a page you can safely act on in bulk, and
+  [live sessions](/guides/live-sessions) are a mirror of tabs, not stored items.
+
+## Deleting
+
+**Every** delete confirms — a single bookmark, a single session, or a bulk
+selection. The dialog can't be dismissed by clicking outside it, and can't be
+closed while the delete is running.
+
+| | Single | Bulk |
+| --- | --- | --- |
+| Title | `Delete <name>?` | `Delete 12 bookmarks?` / `Delete 3 sessions?` |
+| Body | "This can't be undone." | "12 items will be deleted from every device. This can't be undone." |
+
+The buttons are **Cancel** and **Delete**; while it runs the confirm button
+reads **Deleting…**, and a bulk delete shows a live **`Deleted 4 of 12…`**
+counter so you can see it working.
+
+Bulk deletes run six at a time, and one failure doesn't abort the batch — a
+partial result is reported instead of hidden. Afterwards you get one of:
+
+- `Deleted 12 bookmarks.`
+- `Deleted 9 of 12 bookmarks — 3 failed: <error>`
+- `Couldn't delete any of the 3 bookmarks: <error>`
+
+## Export CSV
+
+**Export CSV** lives in the floating selection bar, which is the whole story
+about its scope: **it exports exactly the rows you ticked, and nothing else.**
+
+It's built **in your browser** from the rows already on screen. There is no CSV
+endpoint and nothing is uploaded. The practical consequence: because the library
+is paginated, a CSV covers only what you have actually loaded *and* selected —
+it is not a whole-library export, even if you tick everything visible.
+
+Filenames are dated:
+
+- `bookmark-ai-bookmarks-YYYYMMDD.csv`
+- `bookmark-ai-sessions-YYYYMMDD.csv`
+
+Columns:
+
+| Export | Columns |
+| --- | --- |
+| Bookmarks | `url, title, description, category, tags, browser, device, savedAt` |
+| Sessions | `session_name, tab_title, tab_url, browser, device, savedAt` |
+
+`tags` is pipe-joined, e.g. `react|hooks`. The sessions CSV has **one row per
+tab**, with the session's own fields repeated on each row. Files use RFC 4180
+quoting, CRLF line endings, and a UTF-8 BOM so Excel on Windows doesn't mangle
+accented characters.
+
+:::note
+**Export CSV is not the same thing as Settings → Data → Export data.** That one
+downloads your **whole** library — every bookmark, session and saved chat — as a
+single JSON bundle, server-side and independent of what's on screen, and its
+**Import data** counterpart merges a bundle back. If what you want is a backup
+or a move to another instance, use that. See
+[Export & import](/guides/export-import).
+:::

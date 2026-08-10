@@ -1,35 +1,42 @@
 ---
 slug: /guides/saving-bookmarks
 title: Saving bookmarks
-description: How one click turns a page into an organized, searchable entry.
+description: Every way a page gets into your library, and what happens once it does.
 sidebar_custom_props:
   icon: 🔖
 ---
 
 import Screenshot from '@site/src/components/Screenshot';
+import Demo from '@site/src/components/Demo';
+import {SaveBookmarkMock, CategoryChipsMock} from '@bookmark-ai/ui/demos/feature-mocks';
 
 # Saving bookmarks
 
 Saving is one click in the extension. What you get back is a rich, organized
 entry — not just a URL in a folder.
 
-<Screenshot
-  alt="The signed-in extension popup showing the active tab with a 'Save bookmark' button, plus buttons to save the whole window as a session and share it live."
-  dark="/img/screenshots/popup-main.png"
-  maxWidth={360}
-  caption="One click in the popup saves the current tab — the same card also snapshots or shares the whole window."
-/>
+<Demo caption="An illustration of the save gesture: the popup opens on the active tab, one click on Save bookmark, done.">
+  <SaveBookmarkMock />
+</Demo>
 
-<Screenshot
-  alt="The library grid of saved bookmark cards, each with its title, description, image, category, and tags, alongside a filterable sidebar."
-  dark="/img/screenshots/library-dark.jpg"
-  light="/img/screenshots/library-light.jpg"
-  caption="Each saved page becomes a rich card — filed, tagged, and searchable."
-/>
+## Every way in
+
+The extension popup is the main route, but a page can reach your library from
+five different places:
+
+| Where from | How |
+| --- | --- |
+| **The extension popup** | Click the toolbar icon (or **Alt+Shift+S**) and hit **Save bookmark**. |
+| **Your browser's own bookmarks** | Bookmark a page the normal way in Chrome or Firefox — the star button, Ctrl/Cmd+D, the bookmarks menu — and it's mirrored here too. Chrome's **Reading List** is mirrored as well. See [below](#mirroring-your-browsers-own-bookmarks). |
+| **Your phone's share sheet** | Share a link from any app on iOS or Android. See [below](#saving-from-your-phone). |
+| **The web app** | Paste a URL into **Add a URL** — handy before the extension is installed. |
+| **An AI agent** | An assistant connected over [MCP](/guides/mcp) can save a URL with the `save_bookmark` tool. |
+
+All five land in the same place and get the same treatment.
 
 ## What happens when you save
 
-1. The extension sends the page URL (and the title it sees) to the API.
+1. The page URL (and the title the client already sees) goes to the API.
 2. The API scrapes the page's **Open Graph** metadata — title, description,
    image, site name, favicon.
 3. It **categorizes** the page into a fixed set of categories, so the sidebar
@@ -41,18 +48,85 @@ entry — not just a URL in a folder.
 Steps 3–5 run right after the save response is sent, so saving feels instant and
 the page becomes fully searchable moments later.
 
+<Demo caption="An illustration of steps 3 and 4: a fresh save arrives unfiled, then picks up its category and tags on its own.">
+  <CategoryChipsMock />
+</Demo>
+
+<Screenshot
+  alt="The library grid of saved bookmark cards, each with its title, description, image, category, and tags, alongside a filterable sidebar."
+  dark="/img/screenshots/library-dark.jpg"
+  light="/img/screenshots/library-light.jpg"
+  caption="Each saved page becomes a rich card — filed, tagged, and searchable."
+/>
+
+:::note
+Categories come from a fixed vocabulary so your library doesn't sprawl. Tags are
+open-ended but converge on the vocabulary you're already using. None of this
+costs you anything — categorization and tagging never spend your
+[free AI credits](/guides/ai-providers).
+:::
+
 ## Provenance
 
 Each save records where it came from — the **browser** (Chrome, Firefox, Safari,
 Edge, Arc, or "other"), the **device type** (desktop, laptop, mobile, tablet),
-an optional device name and OS, and when you saved it. The library sidebar lets
-you filter by browser, device, category, tag, and day.
+an optional device name and OS, and when you saved it. That's what lets you
+filter [your library](/guides/library) by browser, device, category, tag, day or
+date range — and what powers the dashboard's "Saved on another device" row.
 
 ## Re-saving is safe
 
 Bookmarks are keyed by URL. Save the same page again and it **updates** the
 existing entry (refreshing metadata and re-running categorization and
-embedding) rather than creating a duplicate.
+embedding) rather than creating a duplicate. That's true of every route in,
+including a re-share from your phone.
+
+## Mirroring your browser's own bookmarks
+
+The extension can mirror the bookmarks you make **natively**, so you don't have
+to change the habit you already have. Bookmark a page with the star button and
+it's saved here too, categorized and searchable.
+
+- **Chrome and Firefox only.** Safari isn't supported here, because Apple
+  doesn't expose bookmarks or the Reading List to extensions.
+- **Chrome's Reading List is mirrored too**, and those items are tagged
+  `reading` and `article` — which is exactly what fills the **Reading list**
+  card on [your dashboard](/guides/dashboard).
+- **It's one-way**: browser → Bookmark AI. Nothing is ever written back into
+  your browser's bookmarks.
+- **It's additive by default**: removing a native bookmark does *not* remove the
+  copy saved here, unless you turn on removals.
+
+Both switches live in **Settings → Sync**, under **Browser bookmarks & reading
+list**. **Sync native browser bookmarks** is **on** by default; **Full sync —
+apply removals too** is **off** by default. Because the setting is stored on
+your account, it applies to every browser you're signed in to.
+
+A few honest limits worth knowing:
+
+- **Importing** a bookmarks file into Chrome does *not* flood your library —
+  import events are deliberately ignored.
+- Deleting a whole **folder** doesn't remove its children's copies, even with
+  removals turned on: the browser reports the folder, not the pages inside it.
+- Removals can only propagate for items that same browser mirrored itself.
+
+If a mirrored save fails (you were offline, say), it's queued and retried when
+the browser next starts — a native bookmark event never fires twice, so nothing
+is silently lost.
+
+## Saving from your phone
+
+On mobile you can share a link straight into your library from any app.
+
+- On **Android** the share-sheet row reads **"Save to Bookmark AI"**.
+- On **iOS** it reads **"Bookmark AI"**. The share extension's own name really is
+  "Save to Bookmark AI", but iOS labels a share-sheet row with the containing
+  app's name, so that's what you'll see.
+
+The link is saved automatically — you get a **"Saved ✓"** banner that fills in
+the real page title a few seconds later, once the metadata has been scraped. If
+the save fails, nothing is lost: the **Add Bookmark** sheet opens with the URL
+already filled in. See [the mobile app](/guides/mobile-app) for the details.
 
 ## If something fails
 
@@ -60,10 +134,7 @@ Saving is designed to degrade gracefully:
 
 - If Open Graph scraping fails, the bookmark still saves with the title the
   browser provided.
-- If no AI provider is configured, categorization falls back to simple
-  domain/keyword heuristics and the page is still saved and findable by text.
-
-:::note
-Categories come from a fixed vocabulary so your library doesn't sprawl. Tags are
-open-ended but converge on the vocabulary you're already using.
-:::
+- If no AI is available, categorization falls back to simple domain/keyword
+  heuristics and the page is still saved and findable by text.
+- If an embedding attempt fails, a daily sweep picks it up later, so the page
+  becomes searchable by meaning without you doing anything.

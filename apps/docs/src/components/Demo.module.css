@@ -1,0 +1,41 @@
+/*
+ * Deliberately the same frame as Screenshot.module.css — a page that shows a
+ * still and a moving demo should look like it owns both. Kept as a separate file
+ * rather than shared because the demo frame needs its own padding and a themed
+ * fill (an animation is drawn ON the surface; a screenshot IS the surface).
+ */
+.figure {
+  margin: 1.75rem 0;
+}
+
+/* A capped figure (e.g. a popup-shaped demo) centers instead of stretching. */
+.figure[style] {
+  margin-inline: auto;
+}
+
+.frame {
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 12px;
+  background: var(--ifm-background-surface-color);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 6%),
+    0 8px 24px rgb(0 0 0 / 8%);
+  /* Room for the animation to breathe, and to contain any absolutely-positioned
+     beat (cursors, ripples) that reaches toward the edges. */
+  padding: 1.25rem 1.25rem 1.5rem;
+  overflow: hidden;
+}
+
+.caption {
+  margin-top: 0.6rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--ifm-color-emphasis-600);
+}
+
+[data-theme='dark'] .frame {
+  border-color: var(--ifm-color-emphasis-300);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 30%),
+    0 8px 24px rgb(0 0 0 / 40%);
+}

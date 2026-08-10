@@ -1,0 +1,50 @@
+/*
+ * The parts of Tailwind's preflight the demo animations actually need, scoped to
+ * `.bmk-demo` so the rest of the docs site keeps Infima's typography untouched.
+ *
+ * Every selector wraps its targets in `:where()`, which contributes ZERO
+ * specificity. So each rule below weighs exactly what `.bmk-demo` weighs —
+ * (0,1,0), one class — which is:
+ *
+ *   · MORE than Infima's element rules (`p { margin-bottom: 1rem }` is (0,0,1)),
+ *     so the demos aren't pulled apart by the docs' article typography;
+ *   · EQUAL to a Tailwind utility class, and utilities are emitted after this
+ *     file, so `mt-2` still beats the `margin: 0` here on the same element.
+ *
+ * Drop the `:where()` and the reset starts outranking the utilities instead.
+ */
+
+.bmk-demo {
+  box-sizing: border-box;
+  line-height: 1.5;
+  color: var(--foreground);
+  -webkit-text-size-adjust: 100%;
+}
+
+/*
+ * `border: 0 solid` is the important one: a v4 `border` utility only sets
+ * border-width, and inherits `border-style: none` from the UA sheet without this.
+ */
+.bmk-demo :where(*, *::before, *::after) {
+  box-sizing: border-box;
+  border: 0 solid;
+}
+
+.bmk-demo :where(p, h1, h2, h3, h4, h5, h6, ul, ol, figure, blockquote) {
+  margin: 0;
+  padding: 0;
+}
+
+.bmk-demo :where(ul, ol) {
+  list-style: none;
+}
+
+.bmk-demo :where(svg, img, video, canvas) {
+  display: block;
+  max-width: 100%;
+}
+
+/* Lucide icons size themselves off width/height utilities; keep flex from squashing them. */
+.bmk-demo :where(svg) {
+  flex-shrink: 0;
+}

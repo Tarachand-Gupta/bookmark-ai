@@ -7,23 +7,45 @@ sidebar_custom_props:
 ---
 
 import Screenshot from '@site/src/components/Screenshot';
+import Demo from '@site/src/components/Demo';
+import {SessionMock} from '@bookmark-ai/ui/demos/feature-mocks';
 
 # Saved sessions
 
 A **saved session** is a deliberate snapshot of every tab in a browser window,
 kept as one item. Use it to clear a pile of tabs without losing them.
 
+<Demo caption="An illustration of the trade: a window full of tabs becomes one session you can reopen later.">
+  <SessionMock />
+</Demo>
+
 ## Saving a session
 
-From the extension popup, choose **Save session** and optionally name it. Every
-open tab in the window is captured, including which window each tab belonged to,
-so the layout can be rebuilt on restore. A session snapshots every tab —
-including browser-internal pages — but only real `http(s)` links are ever made
-clickable.
+From the extension popup you get two buttons, and the difference between them is
+what happens to the window:
+
+- **Save session & keep open (N tabs)** — snapshot it and carry on working.
+- **Save session & close (N tabs)** — snapshot it and clear the window.
+
+Every open tab is captured, including which window each tab belonged to, so the
+layout can be rebuilt on restore. A session snapshots every tab — including
+browser-internal pages — but only real `http(s)` links are ever made clickable.
+
+:::note
+On the **& close** path, the window closes only **after** the server confirms
+the save. A failed save can never cost you your tabs. If a save is taking a
+while you'll see `Saving N tabs… your tabs stay open until the save is
+confirmed.` instead of a bare spinner.
+:::
+
+Session saves are also much faster than they used to be — the extension now
+reuses the credential it already holds instead of negotiating a new one on every
+click. On the developer's machine a warm save measured around 50 ms, down from
+roughly 420 ms; your numbers will differ, but the gesture should feel immediate.
 
 ## Restoring a session
 
-In the app's **Sessions** view, each saved session can be restored as:
+In the app's **Saved sessions** view, each saved session can be restored as:
 
 - **A window** — reopen all its tabs together, rebuilding the original grouping, or
 - **A tab group / individual tabs** — open tabs one at a time instead of the whole set.
@@ -34,6 +56,23 @@ In the app's **Sessions** view, each saved session can be restored as:
   light="/img/screenshots/saved-sessions-light.jpg"
   caption="Restore a whole window at once, or open tabs one at a time."
 />
+
+The newest session also gets an **Open all** button right on
+[your dashboard](/guides/dashboard), so the most recent pile of tabs is one click
+away without opening the sessions view at all.
+
+## Naming and tidying up
+
+- **Rename** a session inline at any time — a snapshot called "Window 3" ages
+  badly.
+- Or let the **AI name it** from what's actually in the tabs. If the AI isn't
+  available it falls back to a sensible heuristic name rather than failing.
+- Sessions are listed **newest first** by default, and there's a sort picker if
+  you'd rather see them another way.
+- Each session shows badges for the browser, device and OS it came from.
+- **Select** several at once (the same selection controls as
+  [the library](/guides/library)) to delete them in bulk or export them to CSV.
+  Every delete asks for confirmation first.
 
 ## Saved vs live
 

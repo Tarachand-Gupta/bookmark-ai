@@ -1,0 +1,234 @@
+---
+slug: /guides/dashboard
+title: Your dashboard
+description: The home screen that helps you pick up where you left off.
+sidebar_custom_props:
+  icon: 🏠
+---
+
+# Your dashboard
+
+Signing in lands you on **`/app`** — a dashboard, not a wall of bookmarks. It is
+built around one question: *what were you in the middle of?* The full bookmark
+grid now lives at **`/app/library`** (see [Your library](/guides/library)), and
+old `/app?category=…` style links redirect there with the filter intact.
+
+The top bar calls this page **Home**. The sidebar next to it has **Home**, **All
+bookmarks**, **Live sessions**, **Saved sessions**, your category/browser/device
+facets, and then **Tour**, **MCP** and **Settings**. There's also a "Get the
+extension" card in the sidebar, which disappears for good once the app detects
+that the extension is installed.
+
+The whole page is one request plus a cached snapshot, so a return visit paints
+from what you saw last time and then updates. Only the very first visit shows
+skeletons.
+
+:::note
+Every card is conditional. A card with nothing to show renders nothing at all —
+no empty states, no placeholder rows. A quiet dashboard means a quiet account,
+not a broken one.
+:::
+
+## The omnibox
+
+At the top of the page is a single input, placeholder **"Search your bookmarks
+and sessions…"**. Pressing `/` anywhere on the page focuses it.
+
+- **Search** takes your text to the library and runs it as a search there. See
+  [Search](/guides/search) for what the modes do.
+- **Ask AI** opens the docked chat.
+
+One honest caveat about that second button: **Ask AI opens the chat empty.** It
+does not pre-fill, and does not send, whatever you typed into the omnibox. If
+you've written a question you want answered, you'll need to type or paste it
+again in the chat. (Older docs claimed the chat opened seeded with your query —
+that is no longer true.)
+
+## Continue where you left off
+
+This is the hero card, and it's the reason the dashboard exists. It looks at
+your devices and your recent activity and offers up to **two** rows to resume.
+
+They're chosen in a strict priority order:
+
+1. **Live devices** seen in the last **24 hours** that currently have tabs open,
+   freshest first. If live sharing is on, this is almost always what you see.
+2. Otherwise, **the newest saved session**.
+3. Otherwise, **recent saves from a different device** than the one you're on —
+   that row is titled **"Saved on another device"**.
+
+When any device is live, the card's header carries a pulsing green **"N live"**
+pill. There is no separate "Live now" card on the web app: live rows sit inside
+this card and update in real time over the same stream the
+[Live sessions](/guides/live-sessions) view uses.
+
+Each row shows the device or session name, how fresh it is, then `browser · N
+tabs · N windows`, then a preview of the first **3** tab titles with a `+N more`
+tail.
+
+Freshness is labelled plainly rather than optimistically:
+
+| Label | Means |
+| --- | --- |
+| **Active now** | Last checked in under 10 minutes ago |
+| **Active N min ago** | Within the hour |
+| **Active N hours ago** | Earlier today |
+| **Earlier today** | Today, but longer ago |
+| **N days ago** | Older than today |
+
+### The buttons
+
+What a row offers depends on what it is:
+
+| Row | Buttons |
+| --- | --- |
+| A live device | **Open live view**, **Open tabs here** |
+| A saved session | **Open all in new window**, **All sessions** |
+| Saves from another device | **View saves** |
+
+The card's footer link renames itself to match wherever it's about to send you:
+**All live sessions**, **All sessions**, or **All bookmarks**.
+
+### What "Open tabs here" actually does
+
+**Open tabs here** asks the installed extension to reopen that device's tabs on
+*this* machine, as one new window. That's the good path, and it's the only path
+that gets you a single tidy window.
+
+Without the extension the app falls back to opening pop-up tabs from the page
+itself, which comes with real limits, and the app tells you about them rather
+than pretending:
+
+- Only `http` and `https` tabs are opened.
+- It's capped at **10** tabs, and above **5** it asks you to confirm first.
+- If the browser swallows some of them you get: "Your pop-up blocker let X of Y
+  tabs through. Allow pop-ups for this site, or install the Bookmark AI
+  extension to open them as one window."
+- If the cap bit: "Opened the first 10 tabs (N more not opened)."
+
+:::tip
+If you restore windows often, install the [extension](/getting-started/install-extension).
+The fallback exists so the button always does *something*; the extension is what
+makes it do the right thing.
+:::
+
+## Recent saves
+
+Card title **"Recent saves"**, six dense rows, footer link **"All bookmarks"**.
+
+Each row is a favicon, the title (which opens the page in a new tab), then
+`domain · relative time · device and browser glyphs`, plus a category chip you
+can click to jump into the library filtered by that category. Times read `just
+now`, `12m ago`, `3h ago`, `5d ago`, and then fall back to a date.
+
+## Reading list
+
+Card title **"Reading list"** with a total, five rows, and a footer link
+**"Everything tagged #reading"** (or `#article`).
+
+An item is in this list because the bookmark carries the tag `reading` or
+`article`. In practice that means one of two things:
+
+- The extension mirrored something you added to **Chrome's Reading List** — it
+  saves those tagged both `reading` and `article`.
+- The AI tagger decided a page was an `article` on its own.
+
+:::warning
+There is **no read/unread state anywhere in Bookmark AI**. Nothing marks an item
+as read; there is no "mark as read", no archive, and no auto-removal when you
+open something. An item leaves this list only when the bookmark is **deleted**,
+or when it loses the tag.
+
+Removing an item from Chrome's Reading List deletes the mirrored bookmark *only*
+if you've turned on **Settings → Sync → "Full sync — apply removals too"**,
+which is off by default.
+:::
+
+Think of it as "everything tagged #reading", because that is literally what it
+is — not a queue that drains as you work through it.
+
+## Saved sessions shelf
+
+Title **"Saved sessions"** plus your total, then four rows: the session name, `N
+tabs`, a relative time, and OS/browser/device badges.
+
+Only the **newest** row gets an **"Open all"** button, because only that
+session's tabs are included in the dashboard's payload. The other rows get a
+**"View"** button, which navigates to the session — deliberately not called
+"Open", so you're never surprised by a burst of tabs.
+
+More on these in [Saved sessions](/guides/saved-sessions).
+
+## Activity
+
+Title **"Activity"**. It shows `N saved in the last 14 days`, a 14-bar
+sparkline, **"Top categories"** (up to three clickable chips with counts, with
+`Uncategorized` left out), and **"Where you save from"** — a proportion bar plus
+a clickable legend like `Chrome 62%`.
+
+Two honest details. The sparkline is scaled against a floor, so a quiet
+fortnight genuinely looks quiet instead of being stretched to fill the card. And
+**the whole card stays hidden until your account has 20 or more bookmarks** —
+below that there isn't enough data for the shapes to mean anything. There are no
+streaks and no week-over-week deltas.
+
+## Getting set up, and getting connected
+
+Two dashed cards appear only while they're relevant, and both can be dismissed.
+
+**"Finish setting up"** carries a subtitle reading `N step(s) left — this card
+disappears once they're done.` Each step shows only while it's still
+outstanding:
+
+- "Install the browser extension" — "It's how pages — and whole windows of tabs
+  — get in here." The button follows your browser: **Add to Chrome**, **Add to
+  Firefox**, **Add to Safari**, and so on.
+- "Save your first bookmark" — "Use the extension, or paste a URL to try it
+  now." → **Add a URL**
+- "Turn on live sessions" — "See the tabs open on your other devices, and pick
+  them up here." → **Enable**
+
+**"Connect any AI agent"** is the MCP promo: "Your bookmarks, search, and
+library — available to Claude, Cursor, or any MCP client.", with a **"Set up
+MCP"** button. It only appears while you have no MCP token, and disappears once
+you've minted one. See [Connect an AI agent (MCP)](/guides/mcp).
+
+On a brand-new account — zero bookmarks and zero sessions — the setup card is
+replaced by a full-width first-run panel, and the MCP promo never shows at all.
+Getting your first item in is covered in
+[Save your first bookmark](/getting-started/first-bookmark).
+
+## On mobile
+
+The mobile app has its own **Home** tab, first in a tab bar of **Home,
+Library, Sessions, Search, Settings**. It's the same idea with a few deliberate
+differences.
+
+Top to bottom: a large **"Home"** title and a tappable field reading **"Titles,
+tags, questions…"** (it's a button, not a live input — it jumps you to the
+Search tab), then the Continue card, then **"Live now"**, **"Recent saves"**,
+**"Reading queue · N"**, and Activity. Pull to refresh reloads both the
+dashboard and the live stream.
+
+Where mobile differs from the web:
+
+| | Web | Mobile |
+| --- | --- | --- |
+| Continue rows | Up to 2 | The single winner only |
+| Staleness cut-off | Live devices older than 24h drop out | No cut-off — a stale device is just labelled honestly |
+| Live devices | Inside the Continue card | A separate **"Live now"** chip row |
+| Reading card name | **Reading list** | **Reading queue** |
+| Setup card | Yes | No |
+| MCP promo | Yes | No |
+
+The mobile Continue card uses its own kickers — `Active now`,
+`Earlier on <Browser>`, **"Pick up where you left off"**,
+`Earlier on <device>` — and one tap resolves by type:
+a live device opens the Sessions tab on **Ongoing**, a
+saved session opens Sessions on **Saved**, and a bookmark opens the page.
+Activity collapses to a single row (`N saves this week · Top: <Category>` and a
+small sparkline), and is likewise absent until 20+ bookmarks. An empty account
+sees exactly one card: **"Save your first bookmark"** with an **Add a bookmark**
+button.
+
+Full details in [The mobile app](/guides/mobile-app).

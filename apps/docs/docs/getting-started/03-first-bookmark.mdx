@@ -7,12 +7,14 @@ sidebar_custom_props:
 ---
 
 import Screenshot from '@site/src/components/Screenshot';
+import Demo from '@site/src/components/Demo';
+import {SaveBookmarkMock} from '@bookmark-ai/ui/demos/feature-mocks';
 
 # Save your first bookmark
 
 1. Open a page you want to keep.
 2. Click the Bookmark AI extension (or press **Alt+Shift+S**).
-3. Click **Save**.
+3. Click **Save bookmark**.
 
 <Screenshot
   alt="The signed-in extension popup showing the current tab (Bookmark - Wikipedia) with a large 'Save bookmark' button, session buttons below, and the live-session card."
@@ -20,6 +22,10 @@ import Screenshot from '@site/src/components/Screenshot';
   maxWidth={360}
   caption="The popup detects the active tab — one click on Save bookmark files it."
 />
+
+<Demo caption="An illustration of the whole gesture: open the popup, click Save bookmark, and the page is filed. This is the same animation the product's own landing page and onboarding tour use.">
+  <SaveBookmarkMock />
+</Demo>
 
 That's it. Behind the scenes the app:
 
@@ -35,9 +41,11 @@ Bookmarks are keyed by URL. Saving the same page again updates it rather than
 creating a duplicate, and re-runs categorization and embedding.
 :::
 
-Open [bookmark-ai.cloud](https://bookmark-ai.cloud) and your new bookmark is in
-the library, filed under its category with its tags. From here you can
-[search](/guides/search) or [ask AI](/guides/ask-ai) about it.
+Open [bookmark-ai.cloud](https://bookmark-ai.cloud) and you land on
+[**Home**](/guides/dashboard), your dashboard. Your new bookmark shows up under
+**Recent saves** there, and in full under **All bookmarks** — filed under its
+category, with its tags. From there you can [search](/guides/search) or
+[ask AI](/guides/ask-ai) about it.
 
 <Screenshot
   alt="The library grid after saving, showing the new bookmark as a card filed under its category with tags."
@@ -45,6 +53,13 @@ the library, filed under its category with its tags. From here you can
   light="/img/screenshots/library-light.jpg"
   caption="Every save lands in the library, filed and tagged automatically."
 />
+
+## Other ways to save
+
+The extension's popup is the quickest way, but it isn't the only one — pages can
+also arrive from your phone's share sheet, from bookmarks you make natively in
+Chrome or Firefox, and from an AI agent connected over MCP. See
+[Saving bookmarks](/guides/saving-bookmarks) for every route in.
 
 ## Next
 

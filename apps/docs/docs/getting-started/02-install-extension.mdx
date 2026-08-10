@@ -32,9 +32,43 @@ Signing out from the extension popup ends the shared session, so it signs you
 out of the website too — they are the same session.
 :::
 
+## It stays signed in
+
+That first sign-in is the only one. On **Chrome and Firefox** you never need to
+re-open the web app afterwards: the extension keeps its own long-lived
+credential, renews it in the background well before it expires, and repairs
+itself if a request is ever rejected — it refreshes and retries rather than
+showing you an error. It also re-checks periodically, so a credential that was
+invalidated early gets replaced instead of quietly failing at your next save.
+
+**Safari is the exception.** Safari partitions the extension from the website's
+session, so the very first sign-in (and a re-mint after a hard invalidation)
+needs an app tab open once. After that it behaves the same.
+
+## It mirrors your normal bookmarking too
+
+On **Chrome and Firefox**, bookmarking a page the ordinary way — the star
+button, Ctrl/Cmd+D, the bookmarks menu — also saves it here, categorized and
+searchable. On Chrome, items you add to the **Reading List** are mirrored as
+well, tagged `reading` and `article`, which is what fills the dashboard's
+Reading list card.
+
+This is one-way: **browser → Bookmark AI**. Nothing is ever written back into
+your native bookmarks, and removing a native bookmark leaves the saved copy
+alone unless you opt in to full sync. It's on by default and lives in
+**Settings → Sync**. Safari isn't included — Apple doesn't expose bookmarks or
+the Reading List to extensions. See
+[Saving bookmarks](/guides/saving-bookmarks) for the details and the honest
+limits.
+
 ## Keyboard shortcut
 
 Press **Alt+Shift+S** to open the popup without reaching for the toolbar.
+
+:::note
+Once the app detects the extension it stops advertising it — the sidebar's "Get
+the extension" card and the install step in the setup card both disappear.
+:::
 
 ## Next
 

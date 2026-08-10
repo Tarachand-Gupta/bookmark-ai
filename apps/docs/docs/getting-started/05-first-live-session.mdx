@@ -7,6 +7,8 @@ sidebar_custom_props:
 ---
 
 import Screenshot from '@site/src/components/Screenshot';
+import Demo from '@site/src/components/Demo';
+import {LiveTabsDemo} from '@bookmark-ai/ui/demos/live-tabs-demo';
 
 # Share your first live session
 
@@ -17,6 +19,10 @@ the view updates live and expires on its own.
 
 Live sessions are **off by default**. Nothing about your open tabs leaves your
 browser until you turn sharing on.
+
+<Demo caption="An illustration of what you're about to do: flip the switch in the popup, open Live sessions, and that browser's tabs appear — on your phone too.">
+  <LiveTabsDemo className="mt-0" />
+</Demo>
 
 ## Turn it on
 
@@ -34,6 +40,11 @@ That browser now publishes its open tabs to the live server.
   caption="Expand the 'Share window as live session' card to flip the switch and name this device."
 />
 
+Right after you flip it, a one-line hint tells you what happens next time:
+**"All future windows will have live sessions enabled by default. Change this
+behavior in settings."** If you'd rather opt each window in by hand, that default
+is per device and lives in **Settings → Live sessions**.
+
 ## See it appear live
 
 Open the app on another device — or just another window of the same browser —
@@ -48,6 +59,10 @@ in the list within moments.
   light="/img/screenshots/live-sessions-light.jpg"
   caption="A live device with its open windows — updating as tabs change."
 />
+
+A live device also surfaces on **Home** under **Continue where you left off**,
+with a pulsing **N live** pill and an **Open tabs here** button — usually the
+fastest way back in. See [your dashboard](/guides/dashboard).
 
 ## Good to know
 

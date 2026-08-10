@@ -1,0 +1,51 @@
+/*
+ * Tailwind input for the shared demo animations.
+ * ============================================================================
+ *
+ * The animations on this site are the SAME components the marketing landing page
+ * and the in-app onboarding tour render — `@bookmark-ai/ui/demos/*`. They're
+ * written in Tailwind utility classes, and Docusaurus has no Tailwind, so this
+ * file compiles exactly the utilities those components use into one stylesheet.
+ *
+ * `pnpm --filter @bookmark-ai/docs build` runs `scripts/build-demo-css.mjs`
+ * first, which turns this file into `demos.css` (generated, gitignored).
+ *
+ * Three things here are load-bearing, and all three exist because we're layering
+ * Tailwind on top of an existing framework (Infima) rather than owning the page:
+ *
+ * 1. NO PREFLIGHT, and utilities are imported UNLAYERED. Preflight is a global
+ *    reset that would flatten Infima's typography across the whole docs site.
+ *    But unlayered CSS beats layered CSS in the cascade regardless of
+ *    specificity, so if the utilities went into `@layer utilities` every one of
+ *    Infima's plain element rules (`p { margin-bottom: … }`) would outrank them.
+ *    Unlayered utilities are plain classes (0,1,0) and win against Infima's
+ *    element selectors (0,0,1) the ordinary way.
+ *
+ * 2. A SCOPED, ZERO-SPECIFICITY RESET (./demos-reset.css) stands in for the bits
+ *    of preflight the utilities actually depend on — chiefly `border-style:
+ *    solid`, without which every `border` utility resolves to a 1px border of
+ *    style `none` and simply doesn't draw. It is imported BETWEEN the theme and
+ *    the utilities on purpose: same specificity as a utility class, earlier in
+ *    the file, so a utility always wins the tie. See that file for why every
+ *    selector is wrapped in `:where()`.
+ *
+ * 3. THE `dark:` VARIANT IS RE-POINTED. The web app marks dark mode with a
+ *    `.dark` class (next-themes); Docusaurus stamps `[data-theme="dark"]`. The
+ *    token values themselves are handled at the source, in the shared
+ *    theme.css, which lists both selectors.
+ */
+
+/* Brand tokens — the same file the web app and the extension use. */
+@import "@bookmark-ai/ui/theme.css";
+
+/* Keyframes for the demo animations (they are not injected by the components). */
+@import "@bookmark-ai/ui/demos/demos.css";
+
+@import "tailwindcss/theme.css";
+@import "./demos-reset.css";
+@import "tailwindcss/utilities.css";
+
+/* Only the demo components are scanned; nothing else on this site uses Tailwind. */
+@source "../../../../packages/ui/src/demos";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
