@@ -45,6 +45,7 @@ const store = globalThis as unknown as {
   __bookmarkMasterContext?: MasterContext | null;
   __bookmarkPlatform?: TenantPlatform | null;
   __bookmarkTenantDbs?: Map<string, TenantDb>;
+  __bookmarkTenantRecords?: Map<string, { tenant: Tenant; expiresAt: number }>;
 };
 
 /**
@@ -161,6 +162,43 @@ function tenantCache(): Map<string, TenantDb> {
 }
 
 /**
+ * Resolved tenant ROWS, cached beside the open clients: the Db client was already
+ * cached, but every single request still paid a master-DB round-trip to find out
+ * which one to use, on top of the query it actually came to make. Only ACTIVE
+ * tenants land here, and only for TENANT_TTL_MS — a miss or a not-yet-active
+ * tenant is never cached, so provisioning still resolves on the next request, and
+ * the short TTL bounds how long an out-of-band change (suspension, a re-pointed
+ * dbUrl) can be served stale without a redeploy.
+ */
+const TENANT_TTL_MS = 5 * 60_000;
+function tenantRecordCache(): Map<string, { tenant: Tenant; expiresAt: number }> {
+  if (!store.__bookmarkTenantRecords) store.__bookmarkTenantRecords = new Map();
+  return store.__bookmarkTenantRecords;
+}
+
+function cachedTenant(userId: string): Tenant | null {
+  const cache = tenantRecordCache();
+  const hit = cache.get(userId);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    cache.delete(userId);
+    return null;
+  }
+  return hit.tenant;
+}
+
+function cacheTenant(tenant: Tenant): void {
+  const cache = tenantRecordCache();
+  cache.set(tenant.clerkUserId, { tenant, expiresAt: Date.now() + TENANT_TTL_MS });
+  // Bounded the same insertion-order way as the client cache above.
+  while (cache.size > TENANT_CACHE_MAX) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
+
+/**
  * Open (and cache) a client for a tenant record, running ensureSchema once per
  * cached client — cheap, it's the versioned migration runner and a no-op once a
  * tenant is at the latest version. Exposed so the cron fan-out can reuse the
@@ -254,8 +292,9 @@ async function provisionOnce(
 /**
  * Resolve the DB a signed-in user's request should read/write.
  *  - flag OFF → the shared single-DB context (identical to today).
- *  - flag ON  → look the tenant up in the master directory and open its DB,
- *    provisioning it on the spot if this user has no tenant yet.
+ *  - flag ON  → look the tenant up in the master directory (memoized per user,
+ *    see TENANT_TTL_MS) and open its DB, provisioning it on the spot if this user
+ *    has no tenant yet.
  * Throws TenantNotProvisionedError (tenant exists but is not active, or we
  * cannot provision) or MultiTenantConfigError (flag on, master env missing).
  */
@@ -264,6 +303,11 @@ export async function getTenantDb(userId: string): Promise<TenantDb> {
     const { db, ready } = getApiContext();
     return { db, ready };
   }
+  // A warm instance already knows this user's tenant — skip the master DB
+  // entirely (its `ready` await included); tenantDbFromRecord is a cache hit too.
+  const warm = cachedTenant(userId);
+  if (warm) return tenantDbFromRecord(warm);
+
   const master = getMasterContext();
   if (!master) {
     throw new MultiTenantConfigError("MULTI_TENANT=1 but MASTER_DATABASE_URL is not set");
@@ -279,5 +323,6 @@ export async function getTenantDb(userId: string): Promise<TenantDb> {
     tenant = await provisionOnce(master.db, platform, userId);
   }
   if (tenant.status !== "active") throw new TenantNotProvisionedError();
+  cacheTenant(tenant);
   return tenantDbFromRecord(tenant);
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type ToolUIPart, type UIMessage } from "ai";
 import ReactMarkdown from "react-markdown";
@@ -129,19 +130,21 @@ interface LiveTabsToolOutput {
 }
 
 export interface AiChatProps {
-  /** Seeds the conversation with the header search query, sent once on mount. */
-  initialQuery?: string;
   onClose: () => void;
   /** Jump back to the library with a facet applied (the page closes the chat). */
   onFilter?: (filters: LibraryFilters) => void;
 }
+
+/** Dismissal of the "bring your own key" banner, per browser. It's an upsell, so
+ * once waved off it stays gone — the same offer lives in Settings → AI. */
+const KEY_BANNER_DISMISSED = "bmk:ai-key-banner-dismissed";
 
 /**
  * Conversational search over the library. The agent (see app/api/chat/route.ts)
  * decides between the full-text and semantic search tools; every tool call
  * renders as a status header + always-visible bookmark result cards.
  */
-export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
+export function AiChat({ onClose, onFilter }: AiChatProps) {
   // The adopted conversation id — a ref so the transport reads the CURRENT value
   // when building each request body without re-instantiating the transport.
   const conversationIdRef = useRef<string | null>(null);
@@ -225,38 +228,57 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
     },
   });
 
-  const seeded = useRef(false);
-
   // Offer "bring your own AI provider" when the user hasn't set a key: the server
   // may still answer via its own key, so this is an opt-in, dismissible upsell —
   // not a blocker. "Not configured" = no user API key saved (apiKeySet false).
-  const [showSetup, setShowSetup] = useState(false);
-  const [setupDismissed, setSetupDismissed] = useState(false);
+  //
+  // It is a ONE-LINE banner, not the full setup card: pinned outside the message
+  // scroller the card was 565px of chrome above a ~150px conversation, which
+  // buried every answer the user came for. The full form lives in Settings → AI
+  // (and in onboarding); the only place it still appears inline is the
+  // free-limit wall below, where it scrolls WITH the thread.
+  const [noUserKey, setNoUserKey] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  useEffect(() => {
+    setBannerDismissed(localStorage.getItem(KEY_BANNER_DISMISSED) === "1");
+  }, []);
+  const dismissBanner = useCallback(() => {
+    setBannerDismissed(true);
+    localStorage.setItem(KEY_BANNER_DISMISSED, "1");
+  }, []);
+  /** The full setup card, opened only from the free-limit wall's CTA. */
+  const [keyFormOpen, setKeyFormOpen] = useState(false);
   useEffect(() => {
     let cancelled = false;
     getSettings()
       .then(({ settings }) => {
-        if (!cancelled) setShowSetup(!settings.apiKeySet);
+        if (!cancelled) setNoUserKey(!settings.apiKeySet);
       })
       .catch(() => {
-        // Leave the card hidden if settings can't load — don't block the chat.
+        // Leave the banner hidden if settings can't load — don't block the chat.
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // Deep-link into Settings → AI, which the library page owns and opens off the
+  // `settings` param (see library-page.tsx). Same shallow History push the rest
+  // of the app uses, so the URL changes without an RSC round-trip and the rest of
+  // the params (?ai=1, active facets) ride along. Collapse first when expanded:
+  // the fullscreen chat sits above the dialog's layer.
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const openAiSettings = useCallback(() => {
+    setExpanded(false);
+    const params = new URLSearchParams(searchParams);
+    params.set("settings", "ai");
+    window.history.pushState(null, "", `${pathname}?${params}`);
+  }, [pathname, searchParams]);
+
   useEffect(() => {
     void refreshConversations();
   }, [refreshConversations]);
-
-  useEffect(() => {
-    const q = initialQuery?.trim();
-    if (q && !seeded.current) {
-      seeded.current = true;
-      void sendMessage({ text: q });
-    }
-  }, [initialQuery, sendMessage]);
 
   const handleSubmit = (message: PromptInputMessage) => {
     const text = message.text?.trim();
@@ -346,7 +368,8 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
   // After the user saves their own key from the limit card, retry the send —
   // their key is unmetered, so the same last message now succeeds.
   const handleKeySaved = useCallback(() => {
-    setShowSetup(false);
+    setNoUserKey(false);
+    setKeyFormOpen(false);
     if (limitInfo) {
       setLimitInfo(null);
       clearError();
@@ -434,15 +457,39 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
     </div>
   );
 
-  const setupBlock = showSetup && !setupDismissed && (
-    <div className="shrink-0 border-b p-3">
-      <AiSetupCard onSaved={handleKeySaved} onDismiss={() => setSetupDismissed(true)} />
+  // One line, ~30px tall, directly above the composer: present enough to be found
+  // when wanted, small enough that the conversation keeps the panel.
+  const setupBanner = noUserKey && !bannerDismissed && (
+    <div className="flex shrink-0 items-center gap-1.5 border-t bg-muted/40 px-2 py-1.5 text-xs">
+      <Sparkles className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      <span className="min-w-0 flex-1 truncate text-muted-foreground">Using the shared AI</span>
+      <button
+        type="button"
+        onClick={openAiSettings}
+        className="shrink-0 rounded px-1 py-0.5 font-medium transition-colors hover:bg-muted"
+      >
+        Add your own key →
+      </button>
+      <button
+        type="button"
+        onClick={dismissBanner}
+        aria-label="Dismiss"
+        className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted"
+      >
+        <X className="size-3.5" aria-hidden />
+      </button>
     </div>
   );
 
+  const isEmptyThread = messages.length === 0 && !loadingConversation;
+
   const thread = (
     <Conversation className="flex-1">
-      <ConversationContent>
+      {/* min-h-full only while empty: StickToBottom's content div is auto-height
+          inside a height:100% scroller, so the empty state's own `size-full`
+          resolved against an auto parent and collapsed to the icon. Giving the
+          content a definite minimum lets the state below grow and center. */}
+      <ConversationContent className={isEmptyThread ? "min-h-full" : undefined}>
         {/* Load failure: inline, dismissible, and the previous thread is already
             restored underneath — never a dead empty panel. */}
         {loadError && (
@@ -465,6 +512,11 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
           <>
         {messages.length === 0 && (
           <ConversationEmptyState
+            // flex-1 fills the min-h-full column above; the min-h floor keeps
+            // the icon + copy intact (scrolling instead of clipping) in a short
+            // panel. p-4 rather than the default p-8 — at the dock's 340px floor
+            // the extra padding was squeezing the description to four words a line.
+            className="min-h-[13rem] flex-1 p-4"
             icon={<Sparkles className="size-8" aria-hidden />}
             title="Ask anything about your bookmarks"
             description="The agent searches your library, runs SQL for counts and trends, and can search the web — then answers with citations."
@@ -517,13 +569,15 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
           </Message>
         ))}
         {/* Free-budget wall: the inline card replaces the opaque stream error. */}
-        {limitInfo && (
-          <ChatLimitCard
-            info={limitInfo}
-            onConfigure={() => {
-              setSetupDismissed(false);
-              setShowSetup(true);
-            }}
+        {limitInfo && <ChatLimitCard info={limitInfo} onConfigure={() => setKeyFormOpen(true)} />}
+        {/* The one place the full form still appears in the chat — INSIDE the
+            scroller, so it can't shrink the conversation, and only once the user
+            asked for it from a wall that has already stopped the conversation. */}
+        {keyFormOpen && (
+          <AiSetupCard
+            className="not-prose mt-2 w-full"
+            onSaved={handleKeySaved}
+            onDismiss={() => setKeyFormOpen(false)}
           />
         )}
         {/* Non-limit failures get a small retry affordance (limit has its own card). */}
@@ -558,7 +612,15 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
     <div className="shrink-0 border-t p-2">
       <PromptInput onSubmit={handleSubmit}>
         <PromptInputBody>
-          <PromptInputTextarea placeholder="Ask a follow-up…" />
+          {/* "Ask a follow-up" is a lie on an empty thread — there's nothing to
+              follow up on, and it was the only prompt the empty state offered. */}
+          <PromptInputTextarea
+            placeholder={
+              messages.length === 0
+                ? "Ask anything about your bookmarks…"
+                : "Ask a follow-up…"
+            }
+          />
         </PromptInputBody>
         <PromptInputFooter>
           <PromptInputSubmit status={status} className="ml-auto" />
@@ -570,8 +632,8 @@ export function AiChat({ initialQuery, onClose, onFilter }: AiChatProps) {
   const chatColumn = (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card">
       {header}
-      {setupBlock}
       {thread}
+      {setupBanner}
       {composer}
     </div>
   );

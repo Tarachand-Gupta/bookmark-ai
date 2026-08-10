@@ -46,7 +46,9 @@ export function LibraryHeader({
   onAskAi,
 }: LibraryHeaderProps) {
   return (
-    <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b bg-background/95 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    // px-3 at mobile widths: the search row wraps onto its own line there, and
+    // 16px of padding either side was squeezing it against the Ask AI button.
+    <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b bg-background/95 px-3 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-4">
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="mr-1 hidden !h-4 sm:block" />
       {/* Breadcrumb: root view, then the active facet with its icon — so a
@@ -74,8 +76,8 @@ export function LibraryHeader({
         )}
       </nav>
 
-      <div className="order-last flex w-full items-center gap-2 sm:order-none sm:w-auto">
-        <div className="relative flex-1 sm:w-80 sm:flex-none">
+      <div className="order-last flex w-full min-w-0 items-center gap-2 sm:order-none sm:w-auto">
+        <div className="relative min-w-0 flex-1 sm:w-80 sm:flex-none">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
             aria-hidden

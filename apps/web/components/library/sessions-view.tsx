@@ -14,12 +14,24 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { aiNameSession, renameSession } from "@/lib/api";
 import { restoreSessionViaExtension, type RestoreMode } from "@/lib/extension-bridge";
 import { safeHref } from "@/lib/safe-href";
+import type { SelectionState } from "@/hooks/use-selection";
 import { SessionsEmpty } from "./sessions-empty";
 import { SessionIdentity } from "./device-badges";
+
+/** Per-row selection affordance — same contract as the bookmark cards': the row
+ * decides where the control sits, the caller decides what it is. */
+export interface SessionRowSelection {
+  control: React.ReactNode;
+  selected: boolean;
+  /** Visible without hover (something is selected already, or touch mode is on). */
+  pinned: boolean;
+}
 
 export interface SessionsViewProps {
   sessions: Session[] | null;
@@ -28,10 +40,19 @@ export interface SessionsViewProps {
   onDelete: (id: string) => void;
   /** Refetch trigger after a rename lands, so sort/search stay in sync. */
   onRenamed?: () => void;
+  /** Bulk selection for these rows, or omitted to render without checkboxes. */
+  selection?: SelectionState | null;
 }
 
 /** Saved browser sessions: each expands to its tabs, with open-all / per-tab open / delete. */
-export function SessionsView({ sessions, loading, error, onDelete, onRenamed }: SessionsViewProps) {
+export function SessionsView({
+  sessions,
+  loading,
+  error,
+  onDelete,
+  onRenamed,
+  selection,
+}: SessionsViewProps) {
   if (error) {
     return (
       <div className="flex flex-col items-center gap-2 py-20 text-center">
@@ -55,10 +76,37 @@ export function SessionsView({ sessions, loading, error, onDelete, onRenamed }: 
   // that button looks like — not just naming it.
   if (!sessions || sessions.length === 0) return <SessionsEmpty />;
 
+  const order = sessions.map((s) => s.id);
+
   return (
     <div className="space-y-4">
       {sessions.map((s) => (
-        <SessionCard key={s.id} session={s} onDelete={onDelete} onRenamed={onRenamed} />
+        <SessionCard
+          key={s.id}
+          session={s}
+          onDelete={onDelete}
+          onRenamed={onRenamed}
+          selection={
+            selection
+              ? {
+                  selected: selection.has(s.id),
+                  pinned: selection.active,
+                  control: (
+                    <Checkbox
+                      checked={selection.has(s.id)}
+                      aria-label={`Select ${s.name}`}
+                      // See bookmark-grid.tsx: onClick carries shiftKey, which
+                      // onCheckedChange doesn't.
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        selection.toggle(s.id, { shiftKey: e.shiftKey, order });
+                      }}
+                    />
+                  ),
+                }
+              : undefined
+          }
+        />
       ))}
     </div>
   );
@@ -69,6 +117,7 @@ export function SessionCard({
   onDelete,
   onRenamed,
   highlight,
+  selection,
 }: {
   session: Session;
   onDelete: (id: string) => void;
@@ -76,6 +125,8 @@ export function SessionCard({
   onRenamed?: () => void;
   /** Search query — tabs whose title/url contain it get a subtle tint. */
   highlight?: string;
+  /** Bulk-selection control for this row; omitted in search results. */
+  selection?: SessionRowSelection;
 }) {
   const q = highlight?.trim().toLowerCase() ?? "";
   const isMatch = (t: Session["tabs"][number]) =>
@@ -166,12 +217,44 @@ export function SessionCard({
   };
 
   return (
-    <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
-      <div className="flex items-center gap-3 p-4">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-          <Layers className="size-4 text-muted-foreground" aria-hidden />
+    <div
+      className={cn(
+        "group rounded-xl border bg-card text-card-foreground shadow-sm",
+        selection?.selected && "bg-accent/40 ring-2 ring-primary",
+      )}
+    >
+      {/* flex-wrap + a basis on the name block: at 390px the two "open all"
+          buttons and the delete button can't share a line with the title, and
+          shrinking them truncated every label. */}
+      <div className="flex flex-wrap items-center gap-3 p-4">
+        {/* Same square as the Layers badge it replaces, so ticking a row can't
+            shift the title (see FaviconOrSelect in packages/ui). */}
+        <div className="relative flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+          {selection ? (
+            <>
+              <Layers
+                aria-hidden
+                className={cn(
+                  "size-4 text-muted-foreground transition-opacity",
+                  selection.pinned ? "opacity-0" : "opacity-100 group-hover:opacity-0",
+                )}
+              />
+              <span
+                className={cn(
+                  "absolute inset-0 flex items-center justify-center transition-opacity",
+                  selection.pinned
+                    ? "opacity-100"
+                    : "opacity-0 focus-within:opacity-100 group-hover:opacity-100",
+                )}
+              >
+                {selection.control}
+              </span>
+            </>
+          ) : (
+            <Layers className="size-4 text-muted-foreground" aria-hidden />
+          )}
         </div>
-        <div className="group/name min-w-0 flex-1">
+        <div className="group/name min-w-0 flex-1 basis-40">
           {editing ? (
             <input
               autoFocus
@@ -237,7 +320,7 @@ export function SessionCard({
             </div>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <span className="hidden text-xs text-muted-foreground md:inline">Open all in:</span>
           <Button
             size="sm"
@@ -259,15 +342,15 @@ export function SessionCard({
             <span className="hidden sm:inline">New tab group</span>
             <span className="sm:hidden">Group</span>
           </Button>
+          <button
+            type="button"
+            onClick={() => onDelete(session.id)}
+            aria-label={`Delete ${name}`}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="size-4" aria-hidden />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => onDelete(session.id)}
-          aria-label={`Delete ${name}`}
-          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-        >
-          <Trash2 className="size-4" aria-hidden />
-        </button>
       </div>
 
       {openAllNote && (

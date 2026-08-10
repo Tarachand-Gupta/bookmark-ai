@@ -28,9 +28,6 @@ export function AppChatDock() {
   const searchParams = useSearchParams();
 
   const open = searchParams.get(AI_PARAM) === "1";
-  // Seed a freshly-opened chat with the active search query (mirrored to ?q by
-  // the library page). Only consumed on mount, so it never re-seeds mid-thread.
-  const initialQuery = searchParams.get("q") ?? undefined;
 
   // Shallow History API push: updates the URL (and Next's useSearchParams
   // everywhere, including the still-mounted library page) WITHOUT an RSC
@@ -61,7 +58,7 @@ export function AppChatDock() {
 
   return (
     <ChatPanel open={open}>
-      <AiChat initialQuery={initialQuery} onClose={close} onFilter={applyFilter} />
+      <AiChat onClose={close} onFilter={applyFilter} />
     </ChatPanel>
   );
 }

@@ -19,7 +19,7 @@ const LABELS: Record<BucketKey, string> = {
 };
 
 /** Local calendar day as YYYY-MM-DD. */
-function localYmd(d: Date): string {
+export function localYmd(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -27,15 +27,32 @@ function localYmd(d: Date): string {
 }
 
 /**
+ * The bookmark's save day in the VIEWER's timezone. Falls back to the string's
+ * date portion only when `savedAt` won't parse — the buckets are string
+ * comparisons, so an empty value there would sort into "Older" silently.
+ */
+export function bookmarkLocalDay(b: Bookmark): string {
+  const parsed = new Date(b.source.savedAt);
+  if (Number.isNaN(parsed.getTime())) return String(b.source.savedAt).slice(0, 10);
+  return localYmd(parsed);
+}
+
+/**
  * Bucket bookmarks (assumed sorted newest-first) into relative date groups:
  * Today, Yesterday, This week, This month, This year, Older.
  *
- * Buckets by each bookmark's stored day string — `savedAt`'s date portion, i.e.
- * the server's `saved_day` — compared against local calendar boundaries. That's
- * the exact notion of "day" the sidebar's Recent-days facet uses, so the group
- * headers and the sidebar never disagree (a bookmark saved near midnight can't
- * land in "Today" here while the facet calls it "Yesterday"). Empty buckets are
- * dropped; order runs newest → oldest. Weeks start on Monday.
+ * Both sides of every comparison are LOCAL calendar days: the boundaries below
+ * and each bookmark's own day, derived from `new Date(savedAt)` in the viewer's
+ * timezone. Slicing the ISO string instead took its UTC date, which east of
+ * Greenwich disagrees with the local one for anything saved before the UTC
+ * rollover — on IST a 04:00 save grouped under "Yesterday" while the card in it
+ * said "Today" (BookmarkCard.formatDay is local). Empty buckets are dropped;
+ * order runs newest → oldest. Weeks start on Monday.
+ *
+ * Known, deliberate divergence: the sidebar's Recent-days facet filters on the
+ * server's UTC `saved_day` column, so a near-midnight bookmark can sit in a
+ * different bucket here than under that facet. Fixing that means changing what
+ * `saved_day` means server-side — out of scope for this presentational grouping.
  */
 export function groupBookmarksByDate(
   bookmarks: Bookmark[],
@@ -59,7 +76,7 @@ export function groupBookmarksByDate(
   };
 
   for (const b of bookmarks) {
-    const day = String(b.source.savedAt).slice(0, 10); // == server saved_day
+    const day = bookmarkLocalDay(b);
     let key: BucketKey;
     if (day === today) key = "today";
     else if (day === yesterday) key = "yesterday";

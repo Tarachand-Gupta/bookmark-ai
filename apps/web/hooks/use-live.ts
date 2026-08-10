@@ -9,7 +9,18 @@ import {
   getLiveBaseUrl,
   LIVE_NOT_CONFIGURED,
   ProvisioningError,
+  resetLiveBaseCache,
 } from "@/lib/api";
+
+/**
+ * Reconnect backoff, in ms, walked one step per consecutive failure and reset the
+ * moment a stream opens. fetch-event-source's own retry is a flat 1s, which turns
+ * a live server that's simply down (or not deployed) into a request every second
+ * for as long as the tab is open — a console full of failed GETs and a pointless
+ * load on the server. Capped rather than unbounded so a server that comes back
+ * after a long outage is still picked up within half a minute.
+ */
+const RECONNECT_BACKOFF_MS = [1_000, 2_000, 5_000, 15_000, 30_000] as const;
 
 export interface LiveState {
   data: ListLiveResponse | null;
@@ -18,6 +29,14 @@ export interface LiveState {
   provisioning: boolean;
   /** True while a (re)connect is in flight — lets the UI hint activity. */
   refreshing: boolean;
+  /**
+   * Tear the current subscription down and prime + resubscribe from scratch.
+   * fetch-event-source retries a DROPPED connection on its own, but a failure
+   * during the initial GET (server down, DNS, a misconfigured `liveServerUrl`)
+   * settles into a terminal error state with nothing retrying it — that's what
+   * the view's Retry button drives.
+   */
+  reload: () => void;
 }
 
 /**
@@ -45,7 +64,7 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
   // empty and primeAndSubscribe settles on LIVE_NOT_CONFIGURED after making ZERO
   // live network calls, so the Ongoing view shows its error affordance instead of
   // reconnecting against a doomed same-origin 404 forever.
-  const [state, setState] = useState<LiveState>(() => ({
+  const [state, setState] = useState<Omit<LiveState, "reload">>(() => ({
     data: null,
     loading: true,
     error: null,
@@ -53,6 +72,17 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
     refreshing: false,
   }));
   const hasData = useRef(false);
+  /** Bumped by `reload()` — a dep of the subscribe effect, so incrementing it
+   * aborts the live connection and starts a fresh prime + subscribe. */
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = useCallback(() => {
+    // Drop the module-cached base too: one reason a retry is being pressed is a
+    // just-corrected `liveServerUrl`, and the cached promise would keep the
+    // reconnect pointed at the old (broken) server for the rest of the page.
+    resetLiveBaseCache();
+    setState((s) => ({ ...s, loading: true, error: null }));
+    setReloadKey((k) => k + 1);
+  }, []);
 
   const applySnapshot = useCallback((data: ListLiveResponse) => {
     hasData.current = true;
@@ -100,6 +130,9 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
       if (signal.aborted) return;
 
       setState((s) => ({ ...s, refreshing: true }));
+      // Consecutive-failure counter for the backoff below. Local to this
+      // subscription: a reload() or a return-to-tab starts a fresh one at 1s.
+      let attempt = 0;
       try {
         await fetchEventSource(`${base}/live/stream`, {
           headers: await authHeaders(),
@@ -108,6 +141,8 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
           async onopen(res) {
             if (signal.aborted) return;
             if (!res.ok) throw new Error(`Live stream failed (${res.status})`);
+            // Connected — the next failure starts the backoff over from 1s.
+            attempt = 0;
             setState((s) => ({ ...s, refreshing: false, error: null }));
           },
           onmessage(ev) {
@@ -125,12 +160,17 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
               // source's internal retry loop instead of scheduling one.
               throw err;
             }
-            // Keep last-known data (caller dims it); returning undefined
-            // lets fetch-event-source apply its own reconnect backoff.
+            // Keep last-known data (caller dims it).
             setState((s) => ({
               ...s,
               error: (err as Error)?.message ?? "Live connection lost",
             }));
+            // A returned number overrides fetch-event-source's flat 1s retry
+            // interval with our capped exponential one.
+            const delay =
+              RECONNECT_BACKOFF_MS[Math.min(attempt, RECONNECT_BACKOFF_MS.length - 1)];
+            attempt++;
+            return delay;
           },
         });
       } catch (err) {
@@ -172,7 +212,7 @@ export function useLiveDevices({ fast }: { fast: boolean }): LiveState {
       stop();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [primeAndSubscribe]);
+  }, [primeAndSubscribe, reloadKey]);
 
-  return state;
+  return { ...state, reload };
 }

@@ -116,8 +116,8 @@ export function AppSidebar({
   const devices = meta?.devices ?? [];
   const days = (meta?.days ?? []).slice(0, 7);
   // Facets are unknown, not absent, until meta lands. A failed request is
-  // treated as empty — the sections collapse and say what belongs in them,
-  // which beats four open voids.
+  // treated as empty, which drops those sections entirely (see CollapsibleGroup)
+  // rather than leaving four headers over nothing.
   const facetsLoading = meta === null && !!metaLoading;
   // Keep the active category visible even when the list is folded.
   const visibleCategories =
@@ -156,7 +156,10 @@ export function AppSidebar({
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      {/* pb-2 reserves the gap the pinned footer's own padding doesn't cover, so
+          the last facet row can be scrolled clear of Tour/Settings instead of
+          ending up half-hidden behind them. */}
+      <SidebarContent className="pb-2">
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -214,7 +217,6 @@ export function AppSidebar({
           label="Categories"
           loading={facetsLoading}
           count={categories.length}
-          emptyNote="Categories appear once your first bookmark is saved and categorized."
         >
           <SidebarMenu>
             {visibleCategories.map((c) => (
@@ -252,7 +254,6 @@ export function AppSidebar({
           label="Browsers"
           loading={facetsLoading}
           count={browsers.length}
-          emptyNote="Every bookmark records the browser it came from. Save one to filter by it."
         >
           <SidebarMenu>
             {browsers.map((b) => {
@@ -277,7 +278,6 @@ export function AppSidebar({
           label="Devices"
           loading={facetsLoading}
           count={devices.length}
-          emptyNote="Save from your laptop, phone or tablet and each device shows up here."
         >
           <SidebarMenu>
             {devices.map((d) => {
@@ -302,7 +302,6 @@ export function AppSidebar({
           label="Recent days"
           loading={facetsLoading}
           count={days.length}
-          emptyNote="The days you saved on are listed here, newest first."
         >
           <SidebarMenu>
             {days.map((d) => (
@@ -321,7 +320,9 @@ export function AppSidebar({
         </CollapsibleGroup>
       </SidebarContent>
 
-      <SidebarFooter>
+      {/* shrink-0: the footer is a flex sibling of the scroll area, and without
+          it a tall facet list compresses the footer and clips its last row. */}
+      <SidebarFooter className="shrink-0 border-t">
         <ExtensionCard />
         <SidebarMenu>
           {onOpenTour && (
@@ -348,35 +349,36 @@ interface CollapsibleGroupProps {
   label: string;
   /** Facets not in yet → skeleton rows, section open. */
   loading: boolean;
-  /** How many facet rows `children` will render. 0 once loaded ⇒ empty. */
+  /** How many facet rows `children` will render. 0 once loaded ⇒ the whole
+   * section is dropped (see below). */
   count: number;
-  /** One line naming what will appear here, shown when the section is empty. */
-  emptyNote: string;
   children: React.ReactNode;
 }
 
 /**
- * A facet section that folds shut from its label (chevron flips with state),
- * and starts folded when it has nothing in it.
+ * A facet section that folds shut from its label (chevron flips with state).
+ *
+ * An empty section renders NOTHING: a dimmed, clickable header that opens onto a
+ * sentence explaining what isn't there yet is four rows of furniture for a
+ * brand-new account, and the first-run panel in the content area already teaches
+ * where bookmarks come from.
  *
  * Controlled rather than `defaultOpen`: meta arrives AFTER mount, and Radix
  * reads `defaultOpen` once, so `defaultOpen={count > 0}` would latch to the
- * empty first render and never open. Deriving `open` from the data keeps it
- * honest through that transition; the first manual toggle pins `userOpen` and
- * the derived value stops applying, so we never yank a section shut under
- * someone who just opened it.
+ * empty first render and never open. `userOpen` pins the user's own toggle so a
+ * later data change can't yank a section shut under someone who just opened it.
  */
-function CollapsibleGroup({ label, loading, count, emptyNote, children }: CollapsibleGroupProps) {
+function CollapsibleGroup({ label, loading, count, children }: CollapsibleGroupProps) {
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
-  const isEmpty = !loading && count === 0;
-  const open = userOpen ?? !isEmpty;
+  if (!loading && count === 0) return null;
+  const open = userOpen ?? true;
 
   return (
     <Collapsible open={open} onOpenChange={setUserOpen} className="group/collapsible">
       <SidebarGroup>
         <SidebarGroupLabel asChild>
           <CollapsibleTrigger>
-            <span className={isEmpty ? "text-sidebar-foreground/50" : undefined}>{label}</span>
+            <span>{label}</span>
             <ChevronDown
               aria-hidden
               className="ml-auto size-4 transition-transform group-data-[state=open]/collapsible:rotate-180"
@@ -384,9 +386,7 @@ function CollapsibleGroup({ label, loading, count, emptyNote, children }: Collap
           </CollapsibleTrigger>
         </SidebarGroupLabel>
         <CollapsibleContent>
-          <SidebarGroupContent>
-            {loading ? <FacetSkeleton /> : isEmpty ? <EmptyNote>{emptyNote}</EmptyNote> : children}
-          </SidebarGroupContent>
+          <SidebarGroupContent>{loading ? <FacetSkeleton /> : children}</SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>
     </Collapsible>
@@ -417,10 +417,6 @@ function FacetSkeleton() {
       ))}
     </SidebarMenu>
   );
-}
-
-function EmptyNote({ children }: { children: React.ReactNode }) {
-  return <p className="px-2 py-1 text-xs leading-relaxed text-muted-foreground">{children}</p>;
 }
 
 /** A fixed row's count: the number, a skeleton while it loads, nothing if it failed. */

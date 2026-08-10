@@ -36,10 +36,29 @@ const DEVICE_META: Record<DeviceType, { label: string; Icon: React.ElementType }
   other: { label: "Device", Icon: Monitor },
 };
 
+/**
+ * Bulk-selection affordance, supplied by the host app (the web library) — these
+ * components only decide WHERE it sits and when it shows, never what it is, so
+ * this package needs no checkbox primitive of its own. Omit it entirely and every
+ * card renders exactly as before; the extension does that.
+ */
+export interface BookmarkSelection {
+  /** The checkbox element. Rendered outside every <a>, so ticking never navigates. */
+  control: React.ReactNode;
+  /** This card/row is ticked → ring + tinted surface. */
+  selected: boolean;
+  /**
+   * Show the control without hover. Set once ANYTHING is selected (so the user
+   * can see what else is tickable) and on touch, where there is no hover at all.
+   */
+  pinned: boolean;
+}
+
 export interface BookmarkCardProps {
   bookmark: Bookmark;
   onDelete?: (id: string) => void;
   className?: string;
+  selection?: BookmarkSelection;
 }
 
 /**
@@ -47,17 +66,36 @@ export interface BookmarkCardProps {
  * description, AI category + tags, and capture provenance (browser, device,
  * day). Pure presentational — works in Next.js, Vite, and the extension.
  */
-export function BookmarkCard({ bookmark: b, onDelete, className }: BookmarkCardProps) {
+export function BookmarkCard({ bookmark: b, onDelete, className, selection }: BookmarkCardProps) {
   const browser = BROWSER_META[b.source.browser] ?? BROWSER_META.other;
   const device = DEVICE_META[b.source.device] ?? DEVICE_META.other;
 
   return (
     <Card
       className={cn(
-        "group flex flex-col overflow-hidden pt-0 transition-shadow hover:shadow-md",
+        "group relative flex flex-col overflow-hidden pt-0 transition-shadow hover:shadow-md",
+        selection?.selected && "ring-2 ring-primary",
         className,
       )}
     >
+      {selection && (
+        // Overlaid, not in flow: the hero image runs to the card's edge, so a
+        // checkbox in the layout would either push the image down or land on an
+        // unknowable photo. The scrim is what keeps it legible over one — which
+        // means it has to hold up against BOTH extremes of OG art: an /80 tint
+        // with no outline vanished into dark hero images, so it's a near-opaque
+        // theme surface with its own contrasting border and a lifted shadow.
+        <span
+          className={cn(
+            "absolute left-2 top-2 z-10 flex items-center justify-center rounded-md border border-foreground/25 bg-background/90 p-1 shadow-md backdrop-blur-sm transition-opacity",
+            selection.pinned
+              ? "opacity-100"
+              : "opacity-0 focus-within:opacity-100 group-hover:opacity-100",
+          )}
+        >
+          {selection.control}
+        </span>
+      )}
       <a
         href={b.url}
         target="_blank"
@@ -68,7 +106,15 @@ export function BookmarkCard({ bookmark: b, onDelete, className }: BookmarkCardP
         <CardImage bookmark={b} />
       </a>
 
-      <div className="flex flex-1 flex-col gap-2 p-4">
+      <div
+        className={cn(
+          "flex flex-1 flex-col gap-2 p-4",
+          // primary-tinted, not accent: `accent` is a neutral one shade off
+          // `muted`, so a selected card was all but indistinguishable from a
+          // hovered one. The brand tint reads as a state in both themes.
+          selection?.selected && "bg-primary/10",
+        )}
+      >
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Favicon bookmark={b} />
           <span className="truncate">{b.og.siteName ?? b.domain}</span>
@@ -128,7 +174,12 @@ export function BookmarkCard({ bookmark: b, onDelete, className }: BookmarkCardP
  * List-view variant: horizontal row with a side thumbnail, the same content
  * hierarchy as the card, and provenance pinned to the bottom edge.
  */
-export function BookmarkListItem({ bookmark: b, onDelete, className }: BookmarkCardProps) {
+export function BookmarkListItem({
+  bookmark: b,
+  onDelete,
+  className,
+  selection,
+}: BookmarkCardProps) {
   const browser = BROWSER_META[b.source.browser] ?? BROWSER_META.other;
   const device = DEVICE_META[b.source.device] ?? DEVICE_META.other;
 
@@ -136,6 +187,8 @@ export function BookmarkListItem({ bookmark: b, onDelete, className }: BookmarkC
     <Card
       className={cn(
         "group flex flex-row items-stretch overflow-hidden transition-shadow hover:shadow-md",
+        // See BookmarkCard: brand tint + ring, so selected ≠ merely hovered.
+        selection?.selected && "bg-primary/10 ring-2 ring-primary",
         className,
       )}
     >
@@ -159,7 +212,7 @@ export function BookmarkListItem({ bookmark: b, onDelete, className }: BookmarkC
 
       <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Favicon bookmark={b} />
+          <FaviconOrSelect bookmark={b} selection={selection} />
           <span className="line-clamp-1 min-w-0 [overflow-wrap:anywhere]">
             {b.og.siteName ?? b.domain}
           </span>
@@ -215,17 +268,28 @@ export function BookmarkListItem({ bookmark: b, onDelete, className }: BookmarkC
  * Compact-view variant: one dense line — favicon, title, domain, category,
  * date. Meant to be stacked inside a bordered, divided container.
  */
-export function BookmarkCompactRow({ bookmark: b, onDelete, className }: BookmarkCardProps) {
+export function BookmarkCompactRow({
+  bookmark: b,
+  onDelete,
+  className,
+  selection,
+}: BookmarkCardProps) {
   const browser = BROWSER_META[b.source.browser] ?? BROWSER_META.other;
 
   return (
     <div
       className={cn(
         "group flex items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/50",
+        // The tint carries most of the state here (an accent one was a near
+        // match for the neutral hover these rows sit next to), deepening on
+        // hover; the ring is INSET so it traces the row inside the container's
+        // dividers instead of overlapping the neighbouring rows.
+        selection?.selected &&
+          "bg-primary/10 ring-1 ring-inset ring-primary/30 hover:bg-primary/15",
         className,
       )}
     >
-      <Favicon bookmark={b} />
+      <FaviconOrSelect bookmark={b} selection={selection} />
       {/* line-clamp-1, not truncate: nowrap titles would push the row's
           intrinsic min-content past the viewport and scroll the page. */}
       <a
@@ -363,6 +427,46 @@ function CardImage({
       onError={() => setFailed(true)}
       className={cn("aspect-[1.91/1] w-full bg-muted object-cover", className)}
     />
+  );
+}
+
+/**
+ * The row's leading square: the favicon normally, the selection checkbox on
+ * hover (or always, once `pinned`). Both occupy the SAME 1rem box and swap by
+ * opacity — a conditional render here shifted every column right of it by a
+ * pixel or two the moment the pointer entered the row.
+ *
+ * No selection ⇒ the bare favicon, byte-identical to what it rendered before.
+ */
+function FaviconOrSelect({
+  bookmark: b,
+  selection,
+}: {
+  bookmark: Bookmark;
+  selection?: BookmarkSelection;
+}) {
+  if (!selection) return <Favicon bookmark={b} />;
+  return (
+    <span className="relative flex size-4 shrink-0 items-center justify-center">
+      <span
+        className={cn(
+          "flex items-center justify-center transition-opacity",
+          selection.pinned ? "opacity-0" : "opacity-100 group-hover:opacity-0",
+        )}
+      >
+        <Favicon bookmark={b} />
+      </span>
+      <span
+        className={cn(
+          "absolute inset-0 flex items-center justify-center transition-opacity",
+          selection.pinned
+            ? "opacity-100"
+            : "opacity-0 focus-within:opacity-100 group-hover:opacity-100",
+        )}
+      >
+        {selection.control}
+      </span>
+    </span>
   );
 }
 

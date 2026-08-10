@@ -4,18 +4,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LiveDevice, LiveTab, LiveWindow } from "@bookmark-ai/types";
 import {
   ChevronDown,
+  CloudOff,
   Globe,
   Loader2,
   Lock,
   MonitorSmartphone,
   Pencil,
+  RotateCw,
   Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { renameLiveWindow, saveSession } from "@/lib/api";
+import { LIVE_NOT_CONFIGURED, renameLiveWindow, saveSession } from "@/lib/api";
 import { useLiveDevices } from "@/hooks/use-live";
 import {
   deviceFreshness,
@@ -47,7 +49,7 @@ export interface OngoingViewProps {
 export function OngoingView({ onSaved, onOpenSettings }: OngoingViewProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showOlder, setShowOlder] = useState(false);
-  const { data, loading, error, provisioning, refreshing } = useLiveDevices({
+  const { data, loading, error, provisioning, refreshing, reload } = useLiveDevices({
     fast: expanded.size > 0,
   });
 
@@ -68,6 +70,13 @@ export function OngoingView({ onSaved, onOpenSettings }: OngoingViewProps) {
       return changed ? next : prev;
     });
   }, [data]);
+
+  // The verbatim failure reason is diagnostics, not copy — logged once per
+  // distinct error so it's there in the console when something is wrong, and
+  // never rendered (see the error state below).
+  useEffect(() => {
+    if (error) console.warn("[live] live sessions unavailable:", error);
+  }, [error]);
 
   const toggleWindow = useCallback((key: string) => {
     setExpanded((prev) => {
@@ -101,12 +110,35 @@ export function OngoingView({ onSaved, onOpenSettings }: OngoingViewProps) {
     );
   }
 
+  // The raw reason ("Failed to fetch", "Live server is not configured") is a
+  // developer detail, not UI: it says nothing a user can act on and undercut the
+  // prose above it. It goes to the console instead (see the effect above), and
+  // this state is prose + the two buttons that can actually resolve it.
   if (error && !data) {
     return (
-      <div className="flex flex-col items-center gap-2 py-20 text-center">
-        <p className="font-medium">Could not load open tabs</p>
-        <p className="max-w-sm text-sm text-muted-foreground">{error}</p>
-      </div>
+      <OngoingEmpty
+        icon={CloudOff}
+        title="Couldn’t reach the live sessions server"
+        body={
+          error === LIVE_NOT_CONFIGURED
+            ? "No live server is configured for this account, so there’s nothing to connect to. Set one in Settings → Live sessions, or leave it empty to use the built-in server."
+            : "Your open tabs stream through a separate live server, and it didn’t answer. It may be starting up or briefly offline — nothing has been lost."
+        }
+        action={
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button size="sm" onClick={reload}>
+              <RotateCw aria-hidden />
+              Retry
+            </Button>
+            {onOpenSettings && (
+              <Button size="sm" variant="outline" onClick={() => onOpenSettings("devices")}>
+                <MonitorSmartphone aria-hidden />
+                Live sessions settings
+              </Button>
+            )}
+          </div>
+        }
+      />
     );
   }
 
@@ -518,17 +550,28 @@ function TabIcon({ favIconUrl }: { favIconUrl?: string | null }) {
   );
 }
 
+/** Shared shell for every "nothing to show" state in this view — including the
+ * failure one, so an unreachable live server looks like a considered state
+ * rather than a stray error string. Deliberately has no slot for a raw exception
+ * message: those go to the console. */
 function OngoingEmpty({
+  icon: Icon,
   title,
   body,
   action,
 }: {
+  icon?: React.ElementType;
   title: string;
   body: string;
   action?: React.ReactNode;
 }) {
   return (
     <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center">
+      {Icon && (
+        <div className="flex size-12 items-center justify-center rounded-full bg-muted">
+          <Icon className="size-6 text-muted-foreground" aria-hidden />
+        </div>
+      )}
       <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
       <p className="text-sm leading-relaxed text-muted-foreground">{body}</p>
       {action && <div className="mt-1">{action}</div>}

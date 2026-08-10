@@ -38,8 +38,13 @@ export interface AiSetupCardProps {
  * Slim, self-contained "bring your own AI provider" card. Same PUT semantics as
  * the Settings → AI pane (a deliberate slim variant, not a refactor of the
  * dialog): pick a provider, paste a key, optionally test to list models, Save.
- * OpenRouter is the recommended preset (custom endpoint + free models). Shown in
- * onboarding and above the chat when the user hasn't configured their own key.
+ * OpenRouter is the recommended preset (custom endpoint + free models).
+ *
+ * It is ~565px tall, so it only belongs where it IS the content: the onboarding
+ * dialog, and inside the chat's message scroller once the free-limit wall's CTA
+ * asks for it. The chat's passive upsell is a one-line banner instead (see
+ * ai-chat.tsx) — pinned above the thread this card left ~150px for the
+ * conversation and buried every answer.
  */
 export function AiSetupCard({ onSaved, onDismiss, className }: AiSetupCardProps) {
   const [provider, setProvider] = useState<AiProvider>("google");

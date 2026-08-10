@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   CalendarDays,
@@ -13,6 +14,7 @@ import {
   Monitor,
   Smartphone,
   Tablet,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -31,11 +33,17 @@ import {
   useSearch,
   useSessions,
 } from "@/hooks/use-library";
+import { useSelection } from "@/hooks/use-selection";
+import { runBulk } from "@/lib/bulk";
+import { downloadBookmarksCsv, downloadSessionsCsv } from "@/lib/csv";
 import { NoAccessNotice } from "@/components/no-access-notice";
 import { AccountSetup } from "./account-setup";
 import { AppSidebar } from "./app-sidebar";
 import { BookmarkGrid } from "./bookmark-grid";
+import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
 import { LibraryHeader, type HeaderCrumb } from "./library-header";
+import { MobileFilterBar } from "./mobile-filter-bar";
+import { SelectionBar } from "./selection-bar";
 import { TagChips } from "./tag-chips";
 import { ViewToggle, type LibraryView } from "./view-toggle";
 import { DateRangeFilter } from "./date-range-filter";
@@ -45,6 +53,10 @@ import { OngoingView } from "./ongoing-view";
 import { SECTION_IDS, SettingsDialog, type SectionId } from "./settings-dialog";
 import { AddBookmarkDialog } from "./add-bookmark-dialog";
 import { OnboardingDialog } from "./onboarding-dialog";
+
+/** Parallel DELETEs per bulk action. Enough to feel instant on a big selection,
+ * low enough to stay clear of the API's 120-req/60s window with room to spare. */
+const DELETE_CONCURRENCY = 6;
 
 const VIEW_STORAGE_KEY = "bookmark-ai:view";
 /** First-run tour fast-path: set once this account has dismissed the tour (on
@@ -289,17 +301,36 @@ export function LibraryPage() {
   const sessionMatches = search.data?.sessionResults ?? [];
   const showingSessionsTab = resultsTab === "sessions" && sessionMatches.length > 0;
 
-  // Facet switches keep the previous list on screen while the new one loads
-  // (useBookmarks preserves stale data across a filter change). With shallow
-  // routing the heading/sidebar swap instantly, so dim that stale grid to show
-  // the load is happening rather than leaving it looking frozen. Search has its
-  // own keep-previous behaviour and is debounced per keystroke, so it's excluded
-  // to avoid the grid pulsing on every character.
-  const gridDimmed = !searching && list.loading && (list.bookmarks?.length ?? 0) > 0;
+  // A facet switch replaces the list wholesale, so it gets the skeleton: the
+  // heading/sidebar swap instantly under shallow routing, and a dimmed list from
+  // the filter the user just left read as a frozen screen. A same-filter refetch
+  // (post-save/delete revalidate) keeps its still-current list, dimmed with a
+  // spinner. Search is excluded from both — it keeps its previous results and is
+  // debounced per keystroke, so it would pulse on every character.
+  const gridFresh = !searching && list.freshFilter;
+  const gridDimmed =
+    !searching && !list.freshFilter && list.loading && (list.bookmarks?.length ?? 0) > 0;
 
   // Group the content by relative date unless searching or a specific date
   // filter (range or single day) is active — then show a flat, filtered list.
   const grouped = !searching && !filters.from && !filters.to && !filters.day;
+
+  // How many bookmarks the facet the user just clicked is known to hold, from
+  // /api/meta — so the skeleton draws roughly the right number of shapes instead
+  // of always eight. Undefined when the count isn't knowable (no facet, a tag +
+  // date-range combination, a facet meta hasn't seen yet), and the grid falls
+  // back to its per-layout default.
+  const expectedCount = useMemo(() => {
+    const m = meta.data;
+    if (!m || searching) return undefined;
+    if (filters.from || filters.to) return undefined; // no per-range counts
+    if (filters.category) return m.categories.find((c) => c.name === filters.category)?.count;
+    if (filters.browser) return m.browsers.find((b) => b.name === filters.browser)?.count;
+    if (filters.device) return m.devices.find((d) => d.name === filters.device)?.count;
+    if (filters.day) return m.days.find((d) => d.day === filters.day)?.count;
+    if (filters.tag) return m.tags.find((t) => t.name === filters.tag)?.count;
+    return m.total;
+  }, [meta.data, searching, filters]);
 
   // A genuinely empty library — no bookmarks at all, nothing filtering them out
   // — is a new user's first screen, so the grid onboards there. meta.total is
@@ -308,20 +339,129 @@ export function LibraryPage() {
   const anyFilter = FILTER_KEYS.some((key) => filters[key]);
   const firstRun = !searching && !anyFilter && meta.data?.total === 0;
 
-  const [actionError, setActionError] = useState<string | null>(null);
-  const handleDelete = useCallback(
-    async (id: string) => {
-      setActionError(null);
-      try {
-        await deleteBookmark(id);
-      } catch (err) {
-        setActionError((err as Error).message);
-      } finally {
-        refresh();
-      }
-    },
-    [refresh],
+  // ── Selection, deletion ───────────────────────────────────────────────────
+  // One selection per PAGE: the scope key names what's on screen, so any facet
+  // change, section switch, or search activation drops it (see useSelection).
+  // Search results are excluded entirely — the bar's Delete would otherwise act
+  // on rows that a re-ranked query has already replaced.
+  const scopeKey = useMemo(
+    () =>
+      [
+        sessionsActive ? "sessions" : liveActive ? "live" : "library",
+        searching ? "search" : "browse",
+        FILTER_KEYS.map((k) => `${k}=${filters[k] ?? ""}`).join("&"),
+      ].join("|"),
+    [sessionsActive, liveActive, searching, filters],
   );
+  const selection = useSelection(scopeKey);
+  // Live sessions aren't deletable rows (they're a mirror of open tabs), and
+  // search results are deliberately out of scope.
+  const selectable = !searching && !liveActive;
+  const gridSelection = selectable && !sessionsActive ? selection : null;
+  const sessionSelection = selectable && sessionsActive ? selection : null;
+
+  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  /** What the confirmation dialog is about to delete. */
+  const [pending, setPending] = useState<{
+    kind: "bookmark" | "session";
+    ids: string[];
+    label: string;
+  } | null>(null);
+  /** Progress of the delete now running, or null when nothing is in flight. */
+  const [deleting, setDeleting] = useState<{ done: number; total: number } | null>(null);
+
+  const savedSessions = sessions.data?.sessions ?? null;
+
+  // The dialog names what it's deleting, so the title is looked up across every
+  // list a delete button can appear in — the visible set first (search results
+  // or the filtered list), then the "related" section, then the loaded pages.
+  const askDeleteBookmark = useCallback(
+    (id: string) => {
+      setNotice(null);
+      const title =
+        (bookmarks ?? []).find((b) => b.id === id)?.title ??
+        (relatedMatches ?? []).find((b) => b.id === id)?.title ??
+        (list.bookmarks ?? []).find((b) => b.id === id)?.title;
+      setPending({ kind: "bookmark", ids: [id], label: title || "this bookmark" });
+    },
+    [bookmarks, relatedMatches, list.bookmarks],
+  );
+
+  const askDeleteSession = useCallback(
+    (id: string) => {
+      setNotice(null);
+      const name =
+        savedSessions?.find((s) => s.id === id)?.name ??
+        sessionMatches.find(({ session }) => session.id === id)?.session.name;
+      setPending({ kind: "session", ids: [id], label: name || "this session" });
+    },
+    [savedSessions, sessionMatches],
+  );
+
+  const askDeleteSelected = useCallback(() => {
+    if (selection.count === 0) return;
+    setNotice(null);
+    // The noun IS the kind here ("3 sessions" / "3 bookmarks").
+    const kind = sessionsActive ? "session" : "bookmark";
+    setPending({
+      kind,
+      ids: [...selection.ids],
+      label: `${selection.count} ${kind}${selection.count === 1 ? "" : "s"}`,
+    });
+  }, [selection.count, selection.ids, sessionsActive]);
+
+  /**
+   * Run the pending delete. Requests go out `DELETE_CONCURRENCY` at a time and
+   * every failure is counted rather than aborting the batch (see lib/bulk.ts), so
+   * the summary can be honest about a partial success.
+   */
+  const runDelete = useCallback(async () => {
+    if (!pending) return;
+    const { kind, ids } = pending;
+    const remove = kind === "session" ? deleteSession : deleteBookmark;
+    setDeleting({ done: 0, total: ids.length });
+    const { failed, firstError } = await runBulk(ids, remove, {
+      concurrency: DELETE_CONCURRENCY,
+      onSettled: (done) => {
+        // flushSync, not a bare setState: these updates arrive from concurrent
+        // request callbacks, and React is free to coalesce them with the
+        // teardown (`setDeleting(null)`) that follows the batch — which is
+        // exactly what left the dialog reading "Deleted 0 of N" from the first
+        // frame to the last. Committing each tick synchronously is what makes
+        // the progress line actually move.
+        flushSync(() => setDeleting((d) => (d ? { ...d, done } : d)));
+      },
+    });
+    const deleted = ids.length - failed;
+    setDeleting(null);
+    setPending(null);
+    selection.clear();
+    if (failed === 0) {
+      setNotice({
+        tone: "ok",
+        text: `Deleted ${deleted} ${kind}${deleted === 1 ? "" : "s"}.`,
+      });
+    } else {
+      setNotice({
+        tone: "error",
+        text:
+          deleted === 0
+            ? `Couldn’t delete ${failed === 1 ? `that ${kind}` : `any of the ${failed} ${kind}s`}: ${firstError}`
+            : `Deleted ${deleted} of ${ids.length} ${kind}s — ${failed} failed: ${firstError}`,
+      });
+    }
+    refresh();
+  }, [pending, refresh, selection]);
+
+  /** CSV of the current selection, built from the rows already on screen. */
+  const exportSelected = useCallback(() => {
+    if (selection.count === 0) return;
+    if (sessionsActive) {
+      downloadSessionsCsv((savedSessions ?? []).filter((s) => selection.has(s.id)));
+    } else {
+      downloadBookmarksCsv((list.bookmarks ?? []).filter((b) => selection.has(b.id)));
+    }
+  }, [selection, sessionsActive, savedSessions, list.bookmarks]);
 
   // Section is view-state only (data via useSessions) → shallow, instant swap.
   // The Ask AI dock rides along (?ai preserved) so switching sections never
@@ -339,20 +479,6 @@ export function LibraryPage() {
   const showSessions = useCallback(() => showSection("sessions"), [showSection]);
   const showLive = useCallback(() => showSection("live"), [showSection]);
 
-  const handleSessionDelete = useCallback(
-    async (id: string) => {
-      setActionError(null);
-      try {
-        await deleteSession(id);
-      } catch (err) {
-        setActionError((err as Error).message);
-      } finally {
-        refresh();
-      }
-    },
-    [refresh],
-  );
-
   // Breadcrumb: root view + the active facet; search presents in the content area.
   const crumb = sessionsActive || liveActive ? null : headerCrumb(filters);
   const title = sessionsActive ? "Saved sessions" : liveActive ? "Live sessions" : "All bookmarks";
@@ -366,15 +492,13 @@ export function LibraryPage() {
     if (params.get(AI_PARAM) === "1") {
       params.delete(AI_PARAM);
     } else {
+      // Opening only toggles the panel — the chat starts EMPTY. It deliberately
+      // does not inherit the search box: an auto-sent question the user never
+      // asked burned a turn and buried the prompt they actually wanted.
       params.set(AI_PARAM, "1");
-      // Flush the live search box into ?q so the dock (which reads the URL, not
-      // this component's state) seeds the fresh chat with what's typed right now,
-      // even if the debounced mirror hasn't fired yet.
-      const q = query.trim();
-      if (q) params.set("q", q);
     }
     shallowPush(params.size ? `${pathname}?${params}` : pathname);
-  }, [searchParams, pathname, shallowPush, query]);
+  }, [searchParams, pathname, shallowPush]);
 
   return (
     <SidebarProvider>
@@ -411,10 +535,15 @@ export function LibraryPage() {
           className="flex min-w-0 flex-1 items-stretch"
           style={{ paddingRight: "var(--chat-dock-w, 0px)" }}
         >
-        <main className="min-w-0 flex-1 p-4">
+        {/* p-3 at mobile widths — 16px gutters either side of a 390px screen left
+            the cards noticeably narrower than they need to be. */}
+        <main className="min-w-0 flex-1 p-3 sm:p-4">
           {/* Width-capped and centered so content isn't stretched thin on
               widescreen/desktop; full-bleed below the cap on smaller screens. */}
           <div className="mx-auto w-full max-w-7xl">
+            {/* Above the section switch, not inside the library branch: a bulk
+                delete of SESSIONS has to be able to report itself too. */}
+            {notice && <ActionNotice notice={notice} onDismiss={() => setNotice(null)} />}
             {settingUp ? (
               <AccountSetup />
             ) : noAccess ? (
@@ -428,52 +557,73 @@ export function LibraryPage() {
               </div>
             ) : sessionsActive ? (
               <SessionsPanel
-                savedSessions={sessions.data?.sessions ?? null}
+                savedSessions={savedSessions}
                 savedLoading={sessions.loading}
                 savedError={sessions.error}
-                onDeleteSaved={handleSessionDelete}
+                onDeleteSaved={askDeleteSession}
                 onRenamedSaved={refresh}
+                selection={sessionSelection}
+                onSelectMode={selection.setMode}
               />
             ) : (
               <>
-                <div className="mb-4 flex items-start gap-3">
+                {/* Two filter surfaces, one per breakpoint. ≥md keeps the tag
+                    rail + date-range popover beside the view toggle; <md hides
+                    the rail (a sideways-scrolling strip of 11px chips) and shows
+                    the drawer-backed control row instead. */}
+                <div className="mb-4 flex flex-wrap items-start gap-3">
                   {searching ? (
-                    <h2 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">
-                      Results for “{query.trim()}”
-                    </h2>
+                    <>
+                      <h2 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">
+                        Results for “{query.trim()}”
+                      </h2>
+                      <ViewToggle view={view} onChange={changeView} className="ml-auto" />
+                    </>
                   ) : (
-                    <TagChips
-                      className="flex-1"
-                      tags={meta.data?.tags}
-                      active={filters.tag}
-                      onPick={(tag) => setFilters(tag ? { tag } : {})}
-                    />
-                  )}
-                  <div className="ml-auto flex shrink-0 items-center gap-2">
-                    {!searching && (
-                      <DateRangeFilter
-                        from={filters.from}
-                        to={filters.to}
-                        onChange={({ from, to }) => setFilters({ ...filters, from, to })}
+                    <>
+                      {/* Wrapper, not a class on TagChips: its own base class sets
+                          `flex`, and an unprefixed `hidden` alongside it is a
+                          coin-flip on stylesheet order. */}
+                      <div className="hidden min-w-0 flex-1 md:block">
+                        <TagChips
+                          tags={meta.data?.tags}
+                          active={filters.tag}
+                          onPick={(tag) => setFilters(tag ? { tag } : {})}
+                        />
+                      </div>
+                      <div className="ml-auto hidden shrink-0 items-center gap-2 md:flex">
+                        <DateRangeFilter
+                          from={filters.from}
+                          to={filters.to}
+                          onChange={({ from, to }) => setFilters({ ...filters, from, to })}
+                        />
+                        <ViewToggle view={view} onChange={changeView} />
+                      </div>
+                      <MobileFilterBar
+                        className="w-full md:hidden"
+                        meta={meta.data}
+                        filters={filters}
+                        onFilterChange={setFilters}
+                        view={view}
+                        onViewChange={changeView}
+                        onSelectMode={gridSelection ? selection.setMode : undefined}
+                        selectionActive={selection.active}
                       />
-                    )}
-                    <ViewToggle view={view} onChange={changeView} />
-                  </div>
+                    </>
+                  )}
                 </div>
                 {!searching && filters.tag && (
                   <div className="mb-4 flex items-baseline gap-2">
                     <h2 className="text-lg font-semibold tracking-tight">#{filters.tag}</h2>
-                    {list.total != null && (
+                    {/* Hidden mid-facet-switch: the count still belongs to the
+                        PREVIOUS filter, and a wrong number under the new heading
+                        is worse than no number for the second it takes. */}
+                    {!gridFresh && (
                       <span className="text-sm text-muted-foreground">
                         {list.total} bookmark{list.total === 1 ? "" : "s"}
                       </span>
                     )}
                   </div>
-                )}
-                {actionError && (
-                  <p className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    Delete failed: {actionError}
-                  </p>
                 )}
                 {/* Both result kinds matched → a tab per kind, Bookmarks first. */}
                 {searching && sessionMatches.length > 0 && (
@@ -506,7 +656,7 @@ export function LibraryPage() {
                       <SessionCard
                         key={session.id}
                         session={session}
-                        onDelete={handleSessionDelete}
+                        onDelete={askDeleteSession}
                         onRenamed={refresh}
                         highlight={query}
                       />
@@ -527,13 +677,16 @@ export function LibraryPage() {
                   error={searching ? search.error : list.error}
                   firstRun={firstRun}
                   dimmed={gridDimmed}
+                  freshLoad={gridFresh}
                   onAdd={() => setAddOpen(true)}
                   emptyHint={
                     searching
                       ? "No matches. Try different words, or Ask AI for an answer."
                       : "Save a page with the browser extension, or add a URL with the button above."
                   }
-                  onDelete={handleDelete}
+                  onDelete={askDeleteBookmark}
+                  skeletonCount={expectedCount}
+                  selection={gridSelection}
                 />
                 {searching && !noExact && (relatedMatches?.length ?? 0) > 0 && (
                   <section className="mt-8">
@@ -562,7 +715,7 @@ export function LibraryPage() {
                           loading={false}
                           error={null}
                           emptyHint=""
-                          onDelete={handleDelete}
+                          onDelete={askDeleteBookmark}
                         />
                       </>
                     ) : (
@@ -577,7 +730,9 @@ export function LibraryPage() {
                 )}
                   </>
                 )}
-                {!searching && list.hasMore && (
+                {/* Same reason as the tag count: hasMore/total describe the list
+                    being replaced, so the pager sits out the switch. */}
+                {!searching && !gridFresh && list.hasMore && (
                   <div className="mt-6 flex flex-col items-center gap-2">
                     <p className="text-xs text-muted-foreground">
                       Showing {list.bookmarks?.length ?? 0} of {list.total}
@@ -598,6 +753,35 @@ export function LibraryPage() {
         </main>
         </div>
       </SidebarInset>
+      {/* Selection bar and confirmation live outside SidebarInset: both are
+          fixed/portalled overlays that belong to the page as a whole. */}
+      <SelectionBar
+        count={selectable ? selection.count : 0}
+        noun={sessionsActive ? "session" : "bookmark"}
+        onDelete={askDeleteSelected}
+        onExport={exportSelected}
+        onClear={selection.clear}
+        busy={!!deleting}
+      />
+      <ConfirmDeleteDialog
+        open={pending !== null}
+        onOpenChange={(open) => {
+          if (!open) setPending(null);
+        }}
+        label={pending?.label ?? ""}
+        detail={
+          pending && pending.ids.length > 1
+            ? `${pending.ids.length} items will be deleted from every device.`
+            : undefined
+        }
+        busy={!!deleting}
+        progress={
+          deleting && deleting.total > 1
+            ? `Deleted ${deleting.done} of ${deleting.total}…`
+            : null
+        }
+        onConfirm={() => void runDelete()}
+      />
       <AddBookmarkDialog open={addOpen} onOpenChange={setAddOpen} onSaved={refresh} />
       <SettingsDialog
         open={settings.open}
@@ -609,6 +793,40 @@ export function LibraryPage() {
       />
       <OnboardingDialog open={onboardingOpen} onOpenChange={closeOnboarding} />
     </SidebarProvider>
+  );
+}
+
+/**
+ * Result of the last delete, dismissible. Bulk deletes report honestly: a
+ * partial failure says how many of how many landed and why, rather than a bare
+ * "Delete failed" that leaves the user guessing what state their library is in.
+ */
+function ActionNotice({
+  notice,
+  onDismiss,
+}: {
+  notice: { tone: "ok" | "error"; text: string };
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      role="status"
+      className={
+        notice.tone === "error"
+          ? "mb-4 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          : "mb-4 flex items-start gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
+      }
+    >
+      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{notice.text}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="shrink-0 rounded p-0.5 transition-colors hover:bg-foreground/10"
+      >
+        <X className="size-3.5" aria-hidden />
+      </button>
+    </div>
   );
 }
 

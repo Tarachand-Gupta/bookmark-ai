@@ -144,16 +144,37 @@ export interface BookmarkListState {
   provisioning: boolean;
   /** See AsyncState.forbidden — the account isn't on the API allowlist. */
   forbidden: boolean;
+  /**
+   * The list on screen was fetched with a DIFFERENT filter set than the one now
+   * requested (a facet click), so it's about to be replaced wholesale rather than
+   * refreshed — the caller shows a skeleton instead of dimming stale rows. True
+   * on the very render the filters change, before the fetch effect has even run,
+   * which is what makes the skeleton land on the same frame as the click.
+   */
+  freshFilter: boolean;
   hasMore: boolean;
   loadMore: () => void;
 }
 
+/** Stable identity of a filter set — key order independent, so it only changes
+ * when a facet value actually changes. */
+function filterKey(filters: LibraryFilters): string {
+  return Object.keys(filters)
+    .sort()
+    .map((k) => `${k}=${filters[k as keyof LibraryFilters]}`)
+    .join("&");
+}
+
 export function useBookmarks(filters: LibraryFilters, refreshKey: number): BookmarkListState {
+  const key = filterKey(filters);
   const [state, setState] = useState<
     Pick<
       BookmarkListState,
       "bookmarks" | "total" | "loading" | "loadingMore" | "error" | "provisioning" | "forbidden"
-    >
+    > & {
+      /** Filter key the settled `bookmarks` belong to; null until the first load. */
+      loadedKey: string | null;
+    }
   >({
     bookmarks: null,
     total: 0,
@@ -162,6 +183,7 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
     error: null,
     provisioning: false,
     forbidden: false,
+    loadedKey: null,
   });
   const abortRef = useRef<AbortController | null>(null);
 
@@ -190,6 +212,7 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
               error: null,
               provisioning: false,
               forbidden: false,
+              loadedKey: key,
             }));
             return;
           } catch (err) {
@@ -216,6 +239,9 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
                     error: e.message,
                     provisioning: false,
                     forbidden: e instanceof ForbiddenError,
+                    // Settle the key even on failure, so the error surface isn't
+                    // stuck behind a "new filter loading" skeleton.
+                    loadedKey: key,
                   }
                 : // Keep the loaded pages; the button stays visible as the retry affordance.
                   { ...s, loadingMore: false },
@@ -225,7 +251,7 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
         }
       })();
     },
-    [filters],
+    [filters, key],
   );
 
   useEffect(() => {
@@ -235,9 +261,11 @@ export function useBookmarks(filters: LibraryFilters, refreshKey: number): Bookm
 
   const loaded = state.bookmarks?.length ?? 0;
   const hasMore = state.bookmarks !== null && loaded < state.total;
+  const { loadedKey, ...rest } = state;
 
   return {
-    ...state,
+    ...rest,
+    freshFilter: loadedKey !== null && loadedKey !== key,
     hasMore,
     loadMore: () => {
       if (!state.loading && !state.loadingMore && hasMore) fetchPage(loaded);

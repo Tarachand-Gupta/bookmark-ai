@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Session } from "@bookmark-ai/types";
+import { CheckSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -9,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { SelectionState } from "@/hooks/use-selection";
 import { SessionsView } from "./sessions-view";
 
 export interface SessionsPanelProps {
@@ -18,6 +21,10 @@ export interface SessionsPanelProps {
   onDeleteSaved: (id: string) => void;
   /** Refetch after a rename so re-sort (Name A–Z) reflects the new name. */
   onRenamedSaved?: () => void;
+  /** Bulk selection, owned by the page (see hooks/use-selection.ts). */
+  selection?: SelectionState | null;
+  /** Touch entry point into selection mode — mirrors the library's control row. */
+  onSelectMode?: (on: boolean) => void;
 }
 
 type SortKey = "newest" | "oldest" | "tabs" | "name";
@@ -66,6 +73,8 @@ export function SessionsPanel({
   savedError,
   onDeleteSaved,
   onRenamedSaved,
+  selection,
+  onSelectMode,
 }: SessionsPanelProps) {
   // Display preference, not shareable state → localStorage (matches the library
   // view idiom). Read in an effect so SSR markup hydrates with the default.
@@ -90,24 +99,40 @@ export function SessionsPanel({
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold tracking-tight">Saved sessions</h2>
-        {hasSessions && (
-          <Select value={sort} onValueChange={(v) => changeSort(v as SortKey)}>
-            <SelectTrigger
+        <div className="ml-auto flex items-center gap-2">
+          {hasSessions && onSelectMode && (
+            // Touch has no hover, so the row checkboxes need an explicit way in
+            // — and out. Hidden on ≥md, where hovering a row reveals them.
+            <Button
+              variant={selection?.active ? "secondary" : "outline"}
               size="sm"
-              aria-label="Sort saved sessions"
-              className="w-auto min-w-[9.5rem]"
+              onClick={() => onSelectMode(!selection?.active)}
+              aria-pressed={!!selection?.active}
+              className="md:hidden"
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              {SORT_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+              <CheckSquare aria-hidden />
+              {selection?.active ? "Done" : "Select"}
+            </Button>
+          )}
+          {hasSessions && (
+            <Select value={sort} onValueChange={(v) => changeSort(v as SortKey)}>
+              <SelectTrigger
+                size="sm"
+                aria-label="Sort saved sessions"
+                className="w-auto min-w-[9.5rem]"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {SORT_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
       </div>
       <SessionsView
         sessions={sorted}
@@ -115,6 +140,7 @@ export function SessionsPanel({
         error={savedError}
         onDelete={onDeleteSaved}
         onRenamed={onRenamedSaved}
+        selection={selection}
       />
     </div>
   );
