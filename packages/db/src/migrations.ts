@@ -298,4 +298,35 @@ export const TENANT_MIGRATIONS: Migration[] = [
       },
     ],
   },
+  // MCP server surface: `mcp_tokens` is the revocation/last-used registry for the
+  // long-lived `bkmcp_` bearer tokens (the token VALUE is never stored — it's a
+  // self-contained HS256 JWT and the row is keyed by its `jti`), `mcp_usage` is the
+  // per-user tiered rate-limit counter keyed by "<window kind>:<window start>".
+  // Neither is exported: credentials + regenerable metering state, like ai_usage —
+  // so SCHEMA_VERSION stays 3. mcp_tools_json is the per-user enabled-tool
+  // allowlist (NULL = all tools enabled); tolerant so a retry after a partial
+  // apply (duplicate column) records the version instead of wedging the runner.
+  {
+    version: 9,
+    name: "mcp",
+    statements: [
+      `
+        CREATE TABLE IF NOT EXISTS mcp_tokens (
+          id           TEXT PRIMARY KEY,
+          name         TEXT NOT NULL,
+          created_at   TEXT NOT NULL,
+          last_used_at TEXT,
+          revoked_at   TEXT
+        )
+      `,
+      `
+        CREATE TABLE IF NOT EXISTS mcp_usage (
+          bucket     TEXT PRIMARY KEY,
+          count      INTEGER NOT NULL DEFAULT 0,
+          expires_at TEXT NOT NULL
+        )
+      `,
+      { sql: "ALTER TABLE user_settings ADD COLUMN mcp_tools_json TEXT", tolerant: true },
+    ],
+  },
 ];

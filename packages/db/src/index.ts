@@ -73,6 +73,15 @@ export {
   type InsertChatMessage,
 } from "./queries/chat";
 export {
+  insertMcpToken,
+  getMcpToken,
+  listMcpTokens,
+  revokeMcpToken,
+  touchMcpToken,
+  bumpMcpUsage,
+  type McpTokenRow,
+} from "./queries/mcp";
+export {
   upsertDeviceSnapshot,
   listDevices,
   getDevice,

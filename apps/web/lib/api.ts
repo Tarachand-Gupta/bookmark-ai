@@ -2,11 +2,13 @@ import type {
   AiProvider,
   Bookmark,
   CreateBookmarkInput,
+  CreateMcpTokenResponse,
   CreateSessionInput,
   ExportBundle,
   HealthResponse,
   ListBookmarksResponse,
   ListLiveResponse,
+  ListMcpTokensResponse,
   ListModelsResponse,
   ListSessionsResponse,
   MetaResponse,
@@ -365,6 +367,30 @@ export function updateSettings(input: UpdateUserSettingsInput): Promise<UserSett
     method: "PUT",
     body: JSON.stringify(input),
   });
+}
+
+// ── MCP tokens ──────────────────────────────────────────────────────────────
+
+export function listMcpTokens(signal?: AbortSignal): Promise<ListMcpTokensResponse> {
+  return request<ListMcpTokensResponse>("/api/mcp/tokens", { signal });
+}
+
+/** Mint a token. The returned `token` value is shown to the user ONCE and is not
+ * recoverable — never persist or log it. */
+export function createMcpToken(name: string): Promise<CreateMcpTokenResponse> {
+  return request<CreateMcpTokenResponse>("/api/mcp/tokens", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+/** Revoke a token. 404 is tolerated: it's already gone either way. */
+export async function revokeMcpToken(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/mcp/tokens/${id}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`Revoke failed (${res.status})`);
 }
 
 /** Validate a provider key by listing its models (doubles as "test connection").

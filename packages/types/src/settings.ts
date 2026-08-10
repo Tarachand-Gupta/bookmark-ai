@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { mcpToolNameSchema } from "./mcp";
 
 /**
  * AI providers the Settings UI can configure. `custom` is any OpenAI-compatible
@@ -30,6 +31,10 @@ export const userSettingsSchema = z.object({
    * unless the user opts into full sync. */
   nativeSyncEnabled: z.boolean(),
   nativeSyncFull: z.boolean(),
+  /** MCP tools this account exposes to `POST /api/mcp`. null = the user has
+   * never configured it, which means ALL tools are enabled (default-on); an
+   * explicit (possibly empty) array is an allowlist. */
+  mcpTools: z.array(mcpToolNameSchema).nullable(),
 });
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 
@@ -66,6 +71,10 @@ export const updateUserSettingsSchema = z
     // the Sync section PATCHes exactly one of these at a time.
     nativeSyncEnabled: z.boolean().optional(),
     nativeSyncFull: z.boolean().optional(),
+    // MCP tool allowlist. Same absent = keep semantics; null resets to the
+    // default (all tools), an array (including []) sets the allowlist exactly.
+    // Unknown tool names are rejected by the enum rather than persisted.
+    mcpTools: z.array(mcpToolNameSchema).nullable().optional(),
   })
   .refine((v) => v.provider !== "custom" || (!!v.baseUrl && /^https?:\/\//i.test(v.baseUrl)), {
     message: "A http(s) Base URL is required for a custom provider",

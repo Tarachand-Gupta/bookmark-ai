@@ -18,6 +18,9 @@ export interface UserSettingsRow {
   /** Native browser-sync toggles (migration v8) — stored as INTEGER 0/1. */
   nativeSyncEnabled: boolean;
   nativeSyncFull: boolean;
+  /** JSON array of the MCP tool names this user has enabled (migration v9).
+   * null = the column was never written → ALL tools enabled (default-on). */
+  mcpToolsJson: string | null;
   updatedAt: string;
 }
 
@@ -34,6 +37,7 @@ export interface UserSettingsPatch {
   onboardedAt?: string | null;
   nativeSyncEnabled?: boolean;
   nativeSyncFull?: boolean;
+  mcpToolsJson?: string | null;
 }
 
 /** Column name for each patch field, in a stable order. */
@@ -46,6 +50,7 @@ const PATCH_COLUMNS: [keyof UserSettingsPatch, string][] = [
   ["onboardedAt", "onboarded_at"],
   ["nativeSyncEnabled", "native_sync_enabled"],
   ["nativeSyncFull", "native_sync_full"],
+  ["mcpToolsJson", "mcp_tools_json"],
 ];
 
 export async function getUserSettings(db: Db, userId: string): Promise<UserSettingsRow | null> {
@@ -112,6 +117,7 @@ function rowToSettings(row: Record<string, unknown>): UserSettingsRow {
     nativeSyncEnabled:
       row.native_sync_enabled == null ? true : Boolean(Number(row.native_sync_enabled)),
     nativeSyncFull: row.native_sync_full == null ? false : Boolean(Number(row.native_sync_full)),
+    mcpToolsJson: str(row.mcp_tools_json),
     updatedAt: String(row.updated_at),
   };
 }

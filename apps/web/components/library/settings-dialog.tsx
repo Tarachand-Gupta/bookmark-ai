@@ -7,6 +7,7 @@ import {
   Database,
   Download,
   Loader2,
+  Plug,
   Sparkles,
   Trash2,
   Upload,
@@ -40,6 +41,7 @@ import {
 import { cn } from "@/lib/utils";
 import { DevicesSection } from "./devices-settings";
 import { FEATURE_ICONS } from "./feature-icons";
+import { McpSection } from "./mcp-settings";
 import { SyncSection } from "./sync-settings";
 
 export interface SettingsDialogProps {
@@ -55,6 +57,7 @@ const SECTIONS = [
   { id: "data", label: "Data", icon: Database },
   { id: "sync", label: "Sync", icon: FEATURE_ICONS.bookmarks },
   { id: "devices", label: "Live sessions", icon: FEATURE_ICONS.live },
+  { id: "mcp", label: "MCP", icon: Plug },
   { id: "account", label: "Account", icon: UserRound },
 ] as const;
 export type SectionId = (typeof SECTIONS)[number]["id"];
@@ -204,11 +207,21 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      {/* max-h + a scrollable pane (below) instead of a taller-than-viewport
+          dialog: at 390px the MCP and Live-sessions sections are far longer than
+          the screen. */}
+      <DialogContent className="max-h-[92svh] gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogDescription className="sr-only">
           Configure Bookmark AI, including the AI provider and default model.
         </DialogDescription>
-        <div className="flex min-h-[27rem] flex-col sm:flex-row">
+        {/* min-w-0 is load-bearing: DialogContent is a GRID container, and a grid
+            item's automatic minimum size is its min-content width — so without
+            it the widest thing in any section (a 259-char token, a
+            claude-mcp-add command) sets the dialog's width and pushes its own
+            buttons outside the clipped 672px box. Every child of this row needs
+            the same reset, or the min-content width just propagates one level
+            down. */}
+        <div className="flex min-h-0 min-w-0 flex-col sm:min-h-[27rem] sm:flex-row">
           <nav
             aria-label="Settings sections"
             className="shrink-0 border-b bg-muted/30 p-3 sm:w-48 sm:border-r sm:border-b-0"
@@ -216,16 +229,21 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             <DialogHeader className="px-2 pb-3 text-left">
               <DialogTitle className="text-base">Settings</DialogTitle>
             </DialogHeader>
-            <ul className="flex gap-1 sm:flex-col">
+            {/* Mobile: one scrollable strip of section chips (six full-width
+                buttons stacked would eat the whole screen, and letting them
+                shrink truncated every label). contain:inline-size keeps the
+                strip's summed width from becoming the dialog's min-content
+                width — see the min-w-0 note above. */}
+            <ul className="-mb-2 flex gap-1 overflow-x-auto pb-2 [contain:inline-size] sm:mb-0 sm:flex-col sm:overflow-x-visible sm:pb-0 sm:[contain:none]">
               {SECTIONS.map((s) => {
                 const Icon = s.icon;
                 return (
-                  <li key={s.id}>
+                  <li key={s.id} className="shrink-0">
                     <button
                       type="button"
                       onClick={() => setSection(s.id)}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                        "flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-1.5 text-sm transition-colors",
                         section === s.id
                           ? "bg-accent font-medium text-accent-foreground"
                           : "text-muted-foreground hover:bg-accent/50",
@@ -240,7 +258,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             </ul>
           </nav>
 
-          <div className="min-w-0 flex-1 p-6">
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
             {section === "ai" && (
               <div className="space-y-5">
                 <div>
@@ -388,6 +406,8 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             {section === "sync" && <SyncSection />}
 
             {section === "devices" && <DevicesSection />}
+
+            {section === "mcp" && <McpSection />}
 
             {section === "account" && <AccountSection />}
           </div>

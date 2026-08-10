@@ -1,5 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { updateUserSettingsSchema, type UserSettings } from "@bookmark-ai/types";
+import {
+  parseMcpToolAllowlist,
+  updateUserSettingsSchema,
+  type UserSettings,
+} from "@bookmark-ai/types";
 import { getUserSettings, upsertUserSettings, type UserSettingsRow } from "@bookmark-ai/db";
 import { assertSafeUrl } from "@bookmark-ai/engine";
 import { getRequestApiContext } from "@/lib/server/api-context";
@@ -31,6 +35,7 @@ function toApiSettings(row: UserSettingsRow | null): UserSettings {
     // rows; absent row = fresh account, so restate them here.
     nativeSyncEnabled: row?.nativeSyncEnabled ?? true,
     nativeSyncFull: row?.nativeSyncFull ?? false,
+    mcpTools: parseMcpToolAllowlist(row?.mcpToolsJson ?? null),
   };
 }
 
@@ -56,7 +61,7 @@ export async function PUT(req: NextRequest) {
       { status: 400 },
     );
   }
-  const { provider, apiKey, baseUrl, model, liveServerUrl, onboarded, nativeSyncEnabled, nativeSyncFull } = parsed.data;
+  const { provider, apiKey, baseUrl, model, liveServerUrl, onboarded, nativeSyncEnabled, nativeSyncFull, mcpTools } = parsed.data;
 
   // SECURITY (SSRF): a custom provider's base URL is user-supplied and later used
   // by resolveChatModel to build an outbound AI request. Validate it HERE at write
@@ -97,6 +102,10 @@ export async function PUT(req: NextRequest) {
   // Native-sync toggles: absent → keep; the Sync section PATCHes exactly one.
   if (nativeSyncEnabled !== undefined) patch.nativeSyncEnabled = nativeSyncEnabled;
   if (nativeSyncFull !== undefined) patch.nativeSyncFull = nativeSyncFull;
+  // mcpTools: absent → keep; null → reset to the default (all tools enabled);
+  // an array (including []) → store that exact allowlist. The enum already
+  // rejected unknown names, so the stored JSON is always a valid subset.
+  if (mcpTools !== undefined) patch.mcpToolsJson = mcpTools === null ? null : JSON.stringify(mcpTools);
 
   const row = await upsertUserSettings(db, settingsKey(userId), patch);
   return NextResponse.json({ settings: toApiSettings(row) });
