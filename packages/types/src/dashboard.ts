@@ -20,6 +20,9 @@ export const sessionSummarySchema = z.object({
   id: z.string(),
   name: z.string(),
   tabCount: z.number().int(),
+  /** AI's read of the session (see `sessionSchema.description`) — the shelf
+   * renders it as one quiet truncated line. Null until enrichment lands. */
+  description: z.string().nullable(),
   browser: browserSchema,
   device: deviceTypeSchema,
   os: z.string().nullable(),

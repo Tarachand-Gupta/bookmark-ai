@@ -4,6 +4,9 @@
 /* Brand tokens shared across all Bookmark AI web surfaces. */
 @import "@bookmark-ai/ui/theme.css";
 
+/* Keyframes for the shared demo animations (landing page + onboarding tour). */
+@import "@bookmark-ai/ui/demos/demos.css";
+
 /* Clerk components (UserButton, sign-in modal) themed to match shadcn. */
 @import "@clerk/ui/themes/shadcn.css";
 

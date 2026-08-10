@@ -1,12 +1,18 @@
+import { BookmarkMark, mono } from "@bookmark-ai/ui/demos/primitives";
 import { cn } from "@/lib/utils";
 
 export const REPO = "https://github.com/Tarachand-Gupta/bookmark-ai";
 export const REPO_README = `${REPO}#readme`;
 export const DOCS_URL = "https://docs.bookmark-ai.cloud";
 
-/** Utility class helpers scoped to the marketing page. */
-export const mono =
-  "font-[family-name:var(--font-mono-marketing)]";
+/**
+ * `mono` and `BookmarkMark` live in @bookmark-ai/ui/demos/primitives, because the
+ * demo animations that use them are shared with the documentation site. They're
+ * re-exported here so this module stays the landing page's one import surface.
+ */
+export { BookmarkMark, mono };
+
+/** Utility class helper scoped to the marketing page. */
 export const display =
   "font-[family-name:var(--font-display)]";
 
@@ -27,15 +33,6 @@ export const btnPrimary =
 
 export const btnOutline =
   "inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-border/70 bg-background/30 px-6 text-sm font-medium backdrop-blur-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
-
-/** The brand ribbon mark (same silhouette as app/icon.svg), inheriting color. */
-export function BookmarkMark({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={className}>
-      <path d="M19 21 L12 17 L5 21 V5 A2 2 0 0 1 7 3 H17 A2 2 0 0 1 19 5 Z" />
-    </svg>
-  );
-}
 
 /**
  * The wordmark. The name is **bookmark-ai** — never "bookmark.ai", which is a

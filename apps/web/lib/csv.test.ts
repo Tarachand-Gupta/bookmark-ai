@@ -167,6 +167,7 @@ function session(overrides: Partial<Session> = {}): Session {
       { url: "https://b.test/", title: "B, with comma" },
     ],
     tabCount: 2,
+    description: "Two test pages opened back to back.",
     browser: "firefox",
     device: "desktop",
     os: "macOS",

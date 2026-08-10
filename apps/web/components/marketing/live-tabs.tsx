@@ -5,7 +5,7 @@ import { mono } from "./primitives";
 // The big feature-card animation lives in its own island now — the extension
 // toggle → app → live tabs journey, mirroring the hero. Re-exported here so the
 // features grid's import path (`./live-tabs`) stays put.
-export { LiveTabsDemo } from "./live-tabs-demo";
+export { LiveTabsDemo } from "@bookmark-ai/ui/demos/live-tabs-demo";
 
 /**
  * Scoped keyframes for the hero's live-sync strip. Can't touch globals.css from

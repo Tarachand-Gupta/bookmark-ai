@@ -8,6 +8,9 @@ export interface InsertSession {
   browser: string;
   device: string;
   os: string | null;
+  /** AI summary, when one already exists (an import carries it); a fresh save
+   * inserts null and the post-response enrichment fills it in. */
+  description?: string | null;
   savedAt: string;
   createdAt: string;
 }
@@ -15,8 +18,8 @@ export interface InsertSession {
 /** Save a snapshot of open tabs as a named session. */
 export async function createSession(db: Db, s: InsertSession): Promise<Session> {
   await db.execute({
-    sql: `INSERT INTO sessions (id, name, tabs_json, tab_count, browser, device, os, saved_at, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO sessions (id, name, tabs_json, tab_count, browser, device, os, description, saved_at, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       s.id,
       s.name,
@@ -25,6 +28,7 @@ export async function createSession(db: Db, s: InsertSession): Promise<Session> 
       s.browser,
       s.device,
       s.os,
+      s.description ?? null,
       s.savedAt,
       s.createdAt,
     ],
@@ -58,6 +62,30 @@ export async function renameSession(db: Db, id: string, name: string): Promise<S
   const rs = await db.execute({
     sql: "UPDATE sessions SET name = ? WHERE id = ?",
     args: [name, id],
+  });
+  if (rs.rowsAffected === 0) return null;
+  return getSession(db, id);
+}
+
+/**
+ * Persist an AI summary onto a saved session: the `description` always, and the
+ * `name` only when one is passed (the post-save path leaves a user-typed name
+ * alone — see `isAutoSessionName` in packages/engine). Returns the updated
+ * session, or null if the row is gone (concurrent delete).
+ */
+export async function applySessionSummary(
+  db: Db,
+  id: string,
+  summary: { name?: string; description: string | null },
+): Promise<Session | null> {
+  const setName = typeof summary.name === "string";
+  const rs = await db.execute({
+    sql: setName
+      ? "UPDATE sessions SET name = ?, description = ? WHERE id = ?"
+      : "UPDATE sessions SET description = ? WHERE id = ?",
+    args: setName
+      ? [summary.name as string, summary.description, id]
+      : [summary.description, id],
   });
   if (rs.rowsAffected === 0) return null;
   return getSession(db, id);
@@ -102,6 +130,7 @@ function rowToSession(row: Record<string, unknown>): Session {
     name: String(row.name),
     tabs,
     tabCount: Number(row.tab_count ?? tabs.length),
+    description: (row.description as string | null) ?? null,
     browser: String(row.browser) as Session["browser"],
     device: String(row.device) as Session["device"],
     os: (row.os as string | null) ?? null,

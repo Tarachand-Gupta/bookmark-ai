@@ -14,8 +14,11 @@ import { storedChatMessageSchema } from "./chat";
  *    a tenant schema change to user data bumps this + adds an upgrader.
  *  - v3: adds the saved-session `os` column (identifier badge). Additive tenant
  *    migration on user data, so this bumps + adds a v2→v3 upgrader.
+ *  - v4: adds the saved-session `description` column (the AI's read of the
+ *    window of tabs — tenant migration v12). User data on an exported table, so
+ *    this bumps + adds a v3→v4 upgrader.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * A single bookmark, flattened to mirror its real DB columns (see
@@ -55,6 +58,10 @@ export const exportedSessionSchema = z.object({
   // Added in schemaVersion 3. Defaulted so v1/v2 bundles (no `os` key) parse
   // cleanly without the upgrader having to touch every session row.
   os: z.string().nullable().default(null),
+  // Added in schemaVersion 4 (the AI session summary). Defaulted for the same
+  // reason as `os`: a v1-v3 bundle simply has no key and imports as null, which
+  // the post-import enrichment/Summarize button can fill in later.
+  description: z.string().nullable().default(null),
   savedAt: z.string(),
   createdAt: z.string(),
 });
@@ -156,6 +163,16 @@ export function migrateExportBundle(raw: unknown): ExportBundle {
           schemaVersion: 3,
         };
         version = 3;
+        break;
+      case 3:
+        // v3 → v4: saved sessions gained an AI `description`. Older bundles have
+        // none; the schema defaults each session's `description` to null (an
+        // un-summarized session), so only the version stamp changes here.
+        data = {
+          ...(data as Record<string, unknown>),
+          schemaVersion: 4,
+        };
+        version = 4;
         break;
       default:
         throw new Error(`No upgrade path from export schemaVersion ${version}`);

@@ -58,6 +58,7 @@ export {
   listSessions,
   getSession,
   renameSession,
+  applySessionSummary,
   deleteSession,
   searchSessions,
   type InsertSession,

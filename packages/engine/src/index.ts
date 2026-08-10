@@ -36,7 +36,19 @@ export {
   type DashboardParts,
   type GetDashboardOptions,
 } from "./dashboard";
-export { saveSession, renameSession, suggestSessionName } from "./sessions";
+export {
+  saveSession,
+  renameSession,
+  summarizeSession,
+  summarizeSessionById,
+  enrichSessionSummary,
+  isAutoSessionName,
+  buildSessionSummaryPrompt,
+  parseSessionSummary,
+  SESSION_NAME_MAX,
+  SESSION_DESCRIPTION_MAX,
+  type SessionSummary,
+} from "./sessions";
 export {
   applyDeviceSnapshot,
   listLiveDevices,

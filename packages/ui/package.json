@@ -9,6 +9,11 @@
       "types": "./src/components/*.tsx",
       "default": "./src/components/*.tsx"
     },
+    "./demos/demos.css": "./src/demos/demos.css",
+    "./demos/*": {
+      "types": "./src/demos/*.tsx",
+      "default": "./src/demos/*.tsx"
+    },
     "./lib/*": {
       "types": "./src/lib/*.ts",
       "default": "./src/lib/*.ts"

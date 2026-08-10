@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { DashboardLastSession, SessionSummary } from "@bookmark-ai/types";
-import { AppWindow } from "lucide-react";
+import { AppWindow, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { relativeTime } from "@/lib/dashboard";
 import { FEATURE_ICONS } from "@/components/library/feature-icons";
@@ -81,6 +81,18 @@ export function SessionsShelf({
                 >
                   {session.name}
                 </Link>
+                {/* The AI's read of the session, one quiet truncated line — the
+                    shelf is a scan surface, so it never wraps to a second line.
+                    Same sparkle vocabulary as the sessions view's summary strip. */}
+                {session.description && (
+                  <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground/90">
+                    <Sparkles className="size-3 shrink-0 text-muted-foreground/70" aria-hidden />
+                    <span className="line-clamp-1">
+                      <span className="sr-only">AI summary: </span>
+                      {session.description}
+                    </span>
+                  </p>
+                )}
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                   <span className="tabular-nums">
                     {session.tabCount} tab{session.tabCount === 1 ? "" : "s"}

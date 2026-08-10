@@ -228,6 +228,7 @@ const session: SessionSummary = {
   id: "s1",
   name: "Research",
   tabCount: 6,
+  description: null,
   browser: "safari",
   device: "laptop",
   os: "macOS",

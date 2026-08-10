@@ -1,0 +1,74 @@
+/*
+ * Keyframes for the demo animations in this folder.
+ *
+ * These used to be injected as an inline `<style>` inside each demo component,
+ * which meant every island re-emitted an identical block. They live in a real
+ * stylesheet now for two reasons:
+ *
+ *  1. Global keyframes are global — defining them once is simply correct, and it
+ *     drops three duplicate <style> blocks from any page rendering several demos.
+ *  2. A build that minifies inline CSS in server-rendered HTML (Docusaurus does)
+ *     rewrites the block's text, so the server markup no longer matches what
+ *     React renders on the client and hydration fails with a text mismatch. A
+ *     stylesheet isn't part of the hydrated tree, so the problem can't arise.
+ *
+ * Import it once per surface, next to the brand tokens:
+ *   web app  → apps/web/app/globals.css
+ *   docs     → apps/docs/src/css/demos.src.css
+ *
+ * Every rule that MOVES is gated behind `prefers-reduced-motion: no-preference`.
+ * The demos are authored to settle on their final frame, so a reduced-motion
+ * visitor gets a finished picture with no animation at all — keep it that way.
+ */
+
+/* --- feature-mocks.tsx ---------------------------------------------------- */
+
+/* A blinking text caret in the search demo's query box. */
+@keyframes fm-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The click ripple under the demo cursor. */
+@keyframes fm-ripple {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0.55;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.7);
+    opacity: 0;
+  }
+}
+
+/* --- live-tabs-demo.tsx --------------------------------------------------- */
+
+/* Same idea, tuned for the live-tabs card. */
+@keyframes ltd-ripple {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.8);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fm-caret {
+    animation: fm-caret 1.05s steps(1, end) infinite;
+  }
+  .fm-ripple {
+    animation: fm-ripple 0.5s ease-out forwards;
+  }
+  .ltd-ripple {
+    animation: ltd-ripple 0.5s ease-out forwards;
+  }
+}

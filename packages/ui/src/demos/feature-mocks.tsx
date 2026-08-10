@@ -13,7 +13,7 @@ import {
   ScanSearch,
   Sparkles,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "../lib/cn";
 import { BookmarkMark, mono } from "./primitives";
 
 /**
@@ -58,23 +58,13 @@ function usePhaseLoop(durations: number[], offsetMs = 0): number {
   return phase;
 }
 
-/**
- * Scoped keyframes shared by the mocks: a blinking text caret and a click
- * ripple. Duplicated <style> blocks across islands are identical and harmless
- * (same pattern as live-tabs). Both are gated behind no-preference so a
- * reduced-motion visitor gets a still frame.
+/*
+ * The `fm-caret` / `fm-ripple` keyframes these mocks use live in ./demos.css,
+ * which each host imports once alongside the brand tokens. They are NOT injected
+ * from here: an inline <style> re-emits the same block per island, and a build
+ * that minifies inline CSS in server-rendered HTML breaks hydration on the text
+ * mismatch. See the comment at the top of demos.css.
  */
-const KEYFRAMES = `
-@keyframes fm-caret { 0%, 45% { opacity: 1; } 55%, 100% { opacity: 0; } }
-@keyframes fm-ripple {
-  0%   { transform: translate(-50%, -50%) scale(0.5); opacity: 0.55; }
-  100% { transform: translate(-50%, -50%) scale(1.7); opacity: 0; }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .fm-caret { animation: fm-caret 1.05s steps(1, end) infinite; }
-  .fm-ripple { animation: fm-ripple 0.5s ease-out forwards; }
-}
-`;
 
 /** The cursor — a real pointer arrow that glides between targets. */
 function Cursor({
@@ -135,7 +125,6 @@ function SaveBookmarkMock({ className }: { className?: string }) {
         className,
       )}
     >
-      <style>{KEYFRAMES}</style>
 
       {/* Chrome-style top bar: traffic lights · omnibox · pinned extension. */}
       <div className="flex items-center gap-2 border-b border-border/60 bg-foreground/[0.03] px-2.5 py-1.5">
@@ -384,7 +373,6 @@ function SessionMock({ className }: { className?: string }) {
       aria-hidden
       className={cn("pointer-events-none relative select-none", className)}
     >
-      <style>{KEYFRAMES}</style>
       <div className="relative min-h-[11.5rem]">
         {/* BEAT 1 — the capture popup. */}
         <div
@@ -561,13 +549,25 @@ type SearchState = { q: number; typed: number; stage: SearchStage };
 const LAST_QUERY = SEARCH_QUERIES.length - 1;
 
 /**
+ * Indexing into `SEARCH_QUERIES`. Every caller derives its index from
+ * `SEARCH_QUERIES.length` (a modulo, or LAST_QUERY), so an out-of-range read
+ * can't happen — but this package compiles with `noUncheckedIndexedAccess`, so
+ * the invariant gets stated once here instead of an `!` at each of four sites.
+ */
+function queryAt(i: number): (typeof SEARCH_QUERIES)[number] {
+  const query = SEARCH_QUERIES[i];
+  if (!query) throw new Error(`SEARCH_QUERIES has no entry ${i}`);
+  return query;
+}
+
+/**
  * The typing state machine. Settles (SSR / reduced-motion) on the last query,
  * fully typed with its results shown — the finished, honest frame.
  */
 function useSearchCycle(): SearchState {
   const [state, setState] = useState<SearchState>({
     q: LAST_QUERY,
-    typed: SEARCH_QUERIES[LAST_QUERY].text.length,
+    typed: queryAt(LAST_QUERY).text.length,
     stage: "results",
   });
 
@@ -584,7 +584,7 @@ function useSearchCycle(): SearchState {
     };
 
     const runQuery = (q: number) => {
-      const text = SEARCH_QUERIES[q].text;
+      const text = queryAt(q).text;
 
       const typeChar = (i: number) => {
         if (i > text.length) {
@@ -642,14 +642,13 @@ function SearchDemo({ className }: { className?: string }) {
   // in-app onboarding tour can re-space this same animation (override the
   // baked-in `mt-6`) inside its own stage.
   const { q, typed, stage } = useSearchCycle();
-  const query = SEARCH_QUERIES[q];
+  const query = queryAt(q);
   const shown = query.text.slice(0, typed);
   const searching = stage === "searching";
   const revealed = stage === "results";
 
   return (
     <div aria-hidden className={cn("pointer-events-none mt-6 select-none", className)}>
-      <style>{KEYFRAMES}</style>
 
       {/* The query box — icon, live-typed text, blinking caret. */}
       <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/50 px-3 py-2.5">

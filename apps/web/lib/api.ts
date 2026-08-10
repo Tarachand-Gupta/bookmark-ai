@@ -16,6 +16,7 @@ import type {
   SearchMode,
   SearchResponse,
   Session,
+  SummarizeSessionResponse,
   UpdateUserSettingsInput,
   UserSettingsResponse,
 } from "@bookmark-ai/types";
@@ -218,9 +219,13 @@ export function renameSession(id: string, name: string): Promise<{ session: Sess
   });
 }
 
-/** Ask the server to name a session from its tabs (Gemini or heuristic) and apply it. */
-export function aiNameSession(id: string): Promise<{ session: Session; fallback?: boolean }> {
-  return request<{ session: Session; fallback?: boolean }>(`/api/sessions/${id}/ai-name`, {
+/**
+ * Summarize a session from its tabs (Gemini, or a heuristic name when AI is
+ * unavailable) and apply it: title AND description, in one call. The endpoint
+ * keeps its historical `/ai-name` path from when it only renamed.
+ */
+export function summarizeSession(id: string): Promise<SummarizeSessionResponse> {
+  return request<SummarizeSessionResponse>(`/api/sessions/${id}/ai-name`, {
     method: "POST",
   });
 }

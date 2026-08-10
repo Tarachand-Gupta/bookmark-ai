@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Chrome, Monitor, MousePointer2 } from "lucide-react";
-import { FEATURE_ICONS } from "@/components/library/feature-icons";
-import { cn } from "@/lib/utils";
+// `Radio` is the product's Live-sessions glyph. It must stay in step with
+// `live` in apps/web/components/library/feature-icons.ts, which is the single
+// source of truth for feature glyphs across the sidebar, tour and marketing.
+import { Chrome, Monitor, MousePointer2, Radio } from "lucide-react";
+import { cn } from "../lib/cn";
 import { mono } from "./primitives";
 
 /**
@@ -39,15 +41,10 @@ const TABS: Tab[] = [
 // 0 ext, cursor→switch · 1 switch ON, hold · 2 click "Live sessions" · 3 live (settled)
 const PHASES = [1000, 1250, 950, 2700];
 
-const KEYFRAMES = `
-@keyframes ltd-ripple {
-  0%   { transform: translate(-50%, -50%) scale(0.5); opacity: 0.5; }
-  100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .ltd-ripple { animation: ltd-ripple 0.5s ease-out forwards; }
-}
-`;
+/*
+ * The `ltd-ripple` keyframes live in ./demos.css, imported once per host — see
+ * the comment there for why this isn't an inline <style>.
+ */
 
 /**
  * Cycles through `PHASES`, looping forever. Starts on the *last* phase — the
@@ -92,7 +89,6 @@ export function LiveTabsDemo({ className }: { className?: string }) {
 
   return (
     <div aria-hidden className={cn("pointer-events-none mt-6 select-none", className)}>
-      <style>{KEYFRAMES}</style>
       {/* Fixed height, panes cross-fade inside it — no layout jump on the loop.
           Sized to the taller (live app) pane so nothing clips or overlaps. */}
       <div className="relative min-h-[15rem]">
@@ -210,7 +206,7 @@ function LiveAppPane({
       <div className="relative flex items-center gap-2">
         <div className="relative flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1">
           <span className="relative flex shrink-0 items-center justify-center">
-            <FEATURE_ICONS.live className="size-3.5 text-foreground" aria-hidden />
+            <Radio className="size-3.5 text-foreground" aria-hidden />
             <span
               aria-hidden
               className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-emerald-500 motion-safe:animate-pulse"

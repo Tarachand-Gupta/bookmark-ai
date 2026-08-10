@@ -362,4 +362,26 @@ export const TENANT_MIGRATIONS: Migration[] = [
     name: "mcp-token-hint",
     statements: [{ sql: "ALTER TABLE mcp_tokens ADD COLUMN hint TEXT", tolerant: true }],
   },
+  // AI summary for a saved session: `description` holds 1-2 sentences on what
+  // that window of tabs was about, generated post-save (Next `after()` in
+  // POST /api/sessions) and refreshed by the Summarize affordance. Additive,
+  // nullable ADD COLUMN — sessions saved before this read back NULL and the UI
+  // simply renders no summary block until one is generated. Tolerant so a retry
+  // after a partial apply ("duplicate column name: description") records the
+  // version instead of wedging the runner and every later migration behind a
+  // permanently-pending version.
+  //
+  // `sessions` IS part of the export bundle (unlike mcp_tokens/ai_usage), so per
+  // the migrations rule this ALSO bumps SCHEMA_VERSION 3→4 in
+  // packages/types/src/export.ts with a v3→v4 `migrateExportBundle` upgrader.
+  //
+  // v12 because the highest version EVER recorded in prod is 11: numbers are
+  // burned forever and a migration numbered at or below one prod already has in
+  // `schema_migrations` is SILENTLY SKIPPED there (how the first `mcp` migration
+  // shipped as v9 and produced "no such table: mcp_tokens" in production).
+  {
+    version: 12,
+    name: "session-description",
+    statements: [{ sql: "ALTER TABLE sessions ADD COLUMN description TEXT", tolerant: true }],
+  },
 ];

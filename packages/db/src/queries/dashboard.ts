@@ -80,7 +80,7 @@ export async function listRecentSessionSummaries(
   // Same ordering as listSessions: created_at (server-stamped) first, because
   // saved_at is client-clock and can bury a just-saved session.
   const rs = await db.execute({
-    sql: `SELECT id, name, tab_count, browser, device, os, saved_at
+    sql: `SELECT id, name, tab_count, browser, device, os, description, saved_at
           FROM sessions ORDER BY created_at DESC, saved_at DESC LIMIT ?`,
     args: [limit],
   });
@@ -88,6 +88,7 @@ export async function listRecentSessionSummaries(
     id: String(r.id),
     name: String(r.name),
     tabCount: Number(r.tab_count ?? 0),
+    description: (r.description as string | null) ?? null,
     browser: String(r.browser) as SessionSummary["browser"],
     device: String(r.device) as SessionSummary["device"],
     os: (r.os as string | null) ?? null,

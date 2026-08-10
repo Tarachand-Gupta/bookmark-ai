@@ -105,6 +105,10 @@ export const sessionSchema = z.object({
   name: z.string(),
   tabs: z.array(sessionTabSchema),
   tabCount: z.number(),
+  /** AI's read of the window: 1-2 sentences on what this group of tabs was
+   * about. Written post-save (Next `after()`) and refreshed by the Summarize
+   * affordance; null until then, or when no AI key is configured. */
+  description: z.string().nullable(),
   browser: browserSchema,
   device: deviceTypeSchema,
   os: z.string().nullable(),
@@ -112,6 +116,21 @@ export const sessionSchema = z.object({
   createdAt: z.string(),
 });
 export type Session = z.infer<typeof sessionSchema>;
+
+/**
+ * POST /api/sessions/:id/ai-name — the AI summary of a saved session, APPLIED.
+ * `name`/`description` are echoed at the top level (the pre-description shape
+ * kept `name` there, so old clients keep working) alongside the full updated
+ * session. `fallback: true` = heuristic name, no AI (no key or the call failed),
+ * in which case `description` is null.
+ */
+export const summarizeSessionResponseSchema = z.object({
+  session: sessionSchema,
+  name: z.string(),
+  description: z.string().nullable(),
+  fallback: z.boolean().optional(),
+});
+export type SummarizeSessionResponse = z.infer<typeof summarizeSessionResponseSchema>;
 
 export const listSessionsResponseSchema = z.object({
   sessions: z.array(sessionSchema),

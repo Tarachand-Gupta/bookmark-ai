@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { aiNameSession, renameSession } from "@/lib/api";
+import { renameSession, summarizeSession } from "@/lib/api";
 import { restoreSessionViaExtension, type RestoreMode } from "@/lib/extension-bridge";
 import { safeHref } from "@/lib/safe-href";
 import type { SelectionState } from "@/hooks/use-selection";
@@ -136,20 +136,22 @@ export function SessionCard({
   const [open, setOpen] = useState(matchCount > 0);
   const [openAllNote, setOpenAllNote] = useState<string | null>(null);
 
-  // ── Rename (inline + AI) ──────────────────────────────────────────────────
-  // Local display name is the optimistic source of truth; it re-syncs whenever
-  // the server-supplied prop changes (i.e. after onRenamed → refetch lands), so
-  // an optimistic value and its committed value never fight.
+  // ── Rename (inline) + Summarize (AI title + description) ──────────────────
+  // Local display name/description are the optimistic source of truth; they
+  // re-sync whenever the server-supplied prop changes (i.e. after onRenamed →
+  // refetch lands), so an optimistic value and its committed value never fight.
   const [name, setName] = useState(session.name);
   useEffect(() => setName(session.name), [session.name]);
+  const [description, setDescription] = useState(session.description);
+  useEffect(() => setDescription(session.description), [session.description]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.name);
   const [aiBusy, setAiBusy] = useState(false);
-  const [renameError, setRenameError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const startEdit = () => {
     setDraft(name);
-    setRenameError(null);
+    setActionError(null);
     setEditing(true);
   };
 
@@ -160,31 +162,31 @@ export function SessionCard({
     if (!next || next === name) return;
     const prev = name;
     setName(next); // optimistic
-    setRenameError(null);
+    setActionError(null);
     try {
       const { session: updated } = await renameSession(session.id, next);
       setName(updated.name);
       onRenamed?.();
-    } catch (err) {
+    } catch {
       setName(prev); // revert
-      setRenameError((err as Error).message);
+      setActionError("Rename failed. Try again.");
     }
   };
 
   const cancelEdit = () => setEditing(false);
 
-  const aiRename = async () => {
+  /** One AI call: retitles the session AND (re)writes its description. */
+  const summarize = async () => {
     if (aiBusy) return;
     setAiBusy(true);
-    setRenameError(null);
-    const prev = name;
+    setActionError(null);
     try {
-      const { session: updated } = await aiNameSession(session.id);
+      const { session: updated } = await summarizeSession(session.id);
       setName(updated.name);
+      setDescription(updated.description);
       onRenamed?.();
-    } catch (err) {
-      setName(prev);
-      setRenameError((err as Error).message);
+    } catch {
+      setActionError("Summarize failed. Try again.");
     } finally {
       setAiBusy(false);
     }
@@ -277,7 +279,14 @@ export function SessionCard({
           ) : (
             <div className="flex items-center gap-1">
               <p className="line-clamp-1 font-medium">{name}</p>
-              <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/name:opacity-100">
+              {/* Hidden until the name is hovered/focused — except while a
+                  summarize is in flight, where the spinner IS the feedback. */}
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-0.5 transition-opacity focus-within:opacity-100 group-hover/name:opacity-100",
+                  aiBusy ? "opacity-100" : "opacity-0",
+                )}
+              >
                 <button
                   type="button"
                   onClick={startEdit}
@@ -289,10 +298,10 @@ export function SessionCard({
                 </button>
                 <button
                   type="button"
-                  onClick={() => void aiRename()}
+                  onClick={() => void summarize()}
                   disabled={aiBusy}
-                  aria-label={`Rename ${name} with AI`}
-                  title="Rename with AI"
+                  aria-label={`Summarize ${name} with AI`}
+                  title="Summarize with AI — retitles this session and refreshes its description"
                   className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
                 >
                   {aiBusy ? (
@@ -304,8 +313,8 @@ export function SessionCard({
               </div>
             </div>
           )}
-          {renameError ? (
-            <p className="text-xs text-destructive">Rename failed. Try again.</p>
+          {actionError ? (
+            <p className="text-xs text-destructive">{actionError}</p>
           ) : (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
               <span>
@@ -352,6 +361,20 @@ export function SessionCard({
           </button>
         </div>
       </div>
+
+      {/* The AI's read of this window of tabs: a quiet full-width sub-strip, so
+          it reads as commentary ON the session rather than part of its title
+          block. Sparkle-led + muted = "this text was written by the AI".
+          Absent until the post-save enrichment (or Summarize) has produced one. */}
+      {description && (
+        <div className="flex items-start gap-1.5 border-t bg-muted/30 px-4 py-2">
+          <Sparkles className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/70" aria-hidden />
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            <span className="sr-only">AI summary: </span>
+            {description}
+          </p>
+        </div>
+      )}
 
       {openAllNote && (
         <p className="border-t bg-amber-500/10 px-4 py-2 text-xs text-amber-700 dark:text-amber-400">

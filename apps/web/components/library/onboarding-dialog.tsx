@@ -18,8 +18,8 @@ import { TourStage, TourSteps } from "./onboarding-visuals";
 // hand-rolled demo — one source of truth for "how it works". Each mock gates
 // its own motion behind prefers-reduced-motion and settles on its *finished*
 // frame, so nothing extra is needed here for that.
-import { SaveBookmarkMock, SearchDemo, SessionMock } from "@/components/marketing/feature-mocks";
-import { LiveTabsDemo } from "@/components/marketing/live-tabs-demo";
+import { SaveBookmarkMock, SearchDemo, SessionMock } from "@bookmark-ai/ui/demos/feature-mocks";
+import { LiveTabsDemo } from "@bookmark-ai/ui/demos/live-tabs-demo";
 
 interface Feature {
   id: string;

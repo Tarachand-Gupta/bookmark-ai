@@ -2,7 +2,7 @@
 // the marketing grid must never drift from what the product itself shows.
 import { FEATURE_ICONS } from "@/components/library/feature-icons";
 import { cn } from "@/lib/utils";
-import { CategoryChipsMock, SaveBookmarkMock, SearchDemo, SessionMock } from "./feature-mocks";
+import { CategoryChipsMock, SaveBookmarkMock, SearchDemo, SessionMock } from "@bookmark-ai/ui/demos/feature-mocks";
 import { LiveTabsDemo } from "./live-tabs";
 import { Reveal } from "./reveal";
 import { display, glass, mono, SectionHead } from "./primitives";

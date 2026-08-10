@@ -114,6 +114,18 @@ export function SessionCard({
         </View>
       </Pressable>
 
+      {/* The AI's read of this window of tabs (generated on save by the server —
+          read-only here; regeneration lives in the web app). Quiet sparkle-led
+          strip, same vocabulary as the web session card's summary block. */}
+      {session.description ? (
+        <View style={[styles.summaryRow, { borderTopColor: colors.border, backgroundColor: colors.muted }]}>
+          <Symbol name="sparkles" size={13} color={colors.mutedForeground} fallback="✦" />
+          <Text style={[styles.summaryText, { color: colors.mutedForeground }]}>
+            {session.description}
+          </Text>
+        </View>
+      ) : null}
+
       {expanded &&
         rows.map((row) => {
           if (row.kind === "tab") {
@@ -213,6 +225,15 @@ const styles = StyleSheet.create({
   cardTitles: { flex: 1, gap: 2 },
   cardTitle: { fontSize: 17, fontWeight: "600" },
   cardMeta: { fontSize: 13 },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  summaryText: { flex: 1, fontSize: 13, lineHeight: 18 },
   tabRow: {
     flexDirection: "row",
     alignItems: "center",

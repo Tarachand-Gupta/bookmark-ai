@@ -366,8 +366,11 @@ function RowShell({
  * each window's list is walked right-to-left.
  */
 function previewOrder(
-  windows: { focused?: boolean; tabs: { url: string; title?: string; active?: boolean }[] }[],
-): { url: string; title?: string }[] {
+  windows: {
+    focused?: boolean;
+    tabs: { url: string; title?: string; favIconUrl?: string | null; active?: boolean }[];
+  }[],
+): { url: string; title?: string; favIconUrl?: string | null }[] {
   const ordered = [...windows].sort((a, b) => Number(b.focused ?? false) - Number(a.focused ?? false));
   const active = ordered.flatMap((w) => w.tabs.filter((t) => t.active));
   const rest = ordered.flatMap((w) => [...w.tabs].reverse().filter((t) => !t.active));
@@ -378,7 +381,7 @@ function TabPreview({
   tabs,
   total,
 }: {
-  tabs: { url: string; title?: string | null }[];
+  tabs: { url: string; title?: string | null; favIconUrl?: string | null }[];
   total: number;
 }) {
   const shown = tabs.slice(0, PREVIEW_TABS);
@@ -393,7 +396,8 @@ function TabPreview({
         const title = tab.title?.trim();
         const host = hostOf(tab.url);
         return (
-          <li key={`${i}:${tab.url}`} className="flex min-w-0 items-baseline gap-1.5 text-xs">
+          <li key={`${i}:${tab.url}`} className="flex min-w-0 items-center gap-1.5 text-xs">
+            <TabFavicon src={tab.favIconUrl} />
             <span className="min-w-0 flex-1 truncate">{title || host || tab.url}</span>
             {title && host && (
               <span className="hidden max-w-[45%] shrink-0 truncate text-muted-foreground @min-[22rem]:inline">
@@ -404,9 +408,33 @@ function TabPreview({
         );
       })}
       {more > 0 && (
-        <li className="text-xs text-muted-foreground tabular-nums">+{more} more</li>
+        // Indented past the favicon column so the "+N more" line reads as part
+        // of the list, not a new unrelated row.
+        <li className="pl-[calc(0.875rem+0.375rem)] text-xs text-muted-foreground tabular-nums">
+          +{more} more
+        </li>
       )}
     </ul>
+  );
+}
+
+/** 14px favicon with a neutral globe fallback — snapshots carry favIconUrl only
+ * when the browser had one (and live redaction may strip it), so absence and
+ * load failure both land on the same quiet glyph, keyed by src so a later
+ * enrichment isn't blocked by an earlier failure. */
+function TabFavicon({ src }: { src?: string | null }) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const usable = src && /^https?:/.test(src) && src !== failedSrc;
+  if (!usable) return <Globe className="size-3.5 shrink-0 text-muted-foreground/70" aria-hidden />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- tiny external favicon, not an optimizable asset
+    <img
+      src={src}
+      alt=""
+      aria-hidden
+      className="size-3.5 shrink-0 rounded-[3px]"
+      onError={() => setFailedSrc(src)}
+    />
   );
 }
 

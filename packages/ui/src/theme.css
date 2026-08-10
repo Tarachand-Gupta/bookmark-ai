@@ -35,7 +35,14 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
-.dark {
+/*
+ * `.dark` is what next-themes puts on <html> in the web app and the extension.
+ * `[data-theme="dark"]` is what Docusaurus puts there on the documentation site,
+ * which renders the shared demo animations — one selector list keeps all three
+ * surfaces on the same tokens instead of a second, drifting copy of the palette.
+ */
+.dark,
+[data-theme="dark"] {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
