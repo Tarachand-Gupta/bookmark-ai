@@ -338,4 +338,28 @@ export const TENANT_MIGRATIONS: Migration[] = [
       { sql: "ALTER TABLE user_settings ADD COLUMN mcp_tools_json TEXT", tolerant: true },
     ],
   },
+  // Non-reversible identity hint for an MCP token row: `bkmcp_xxxxx…xxxxx` (first
+  // and last 5 chars of the token body), computed at MINT time because the token
+  // VALUE is never stored — without it a Settings list of three tokens gives the
+  // user no way to tell which row matches the credential in a given client's
+  // config. Additive-only ADD COLUMN, nullable: tokens minted before this
+  // migration read back NULL and the UI renders nothing for them (no backfill is
+  // possible — the value is gone). Tolerant so a retry after a partial apply
+  // ("duplicate column name: hint") records the version instead of wedging the
+  // runner and every later migration behind a permanently-pending version.
+  // mcp_tokens is NOT part of the export bundle (credential metadata, like
+  // ai_usage — see the v10 comment), so SCHEMA_VERSION in
+  // packages/types/src/export.ts stays at 3; nothing to migrate in exported bundles.
+  //
+  // v11 for the same reason v10 wasn't v9: version numbers are burned FOREVER,
+  // never reclaimed. The highest number ever recorded in prod is 10, so this is
+  // 11 — a migration numbered at or below a version prod already has in
+  // `schema_migrations` is silently skipped there (that is exactly how the first
+  // `mcp` migration shipped as v9 and produced "no such table: mcp_tokens" in
+  // production while working locally).
+  {
+    version: 11,
+    name: "mcp-token-hint",
+    statements: [{ sql: "ALTER TABLE mcp_tokens ADD COLUMN hint TEXT", tolerant: true }],
+  },
 ];

@@ -37,13 +37,19 @@ export function parseMcpToolAllowlist(json: string | null): McpToolName[] | null
 }
 
 /** One registered token as the management API reports it. The token VALUE is
- * returned exactly once, by the mint call — never here. */
+ * returned exactly once, by the mint call — never here. `hint` is the only
+ * fragment that persists: `bkmcp_xxxxx…xxxxx` (first/last 5 chars of the token
+ * body, see apps/web/lib/server/mcp-token.ts `mcpTokenHint`), which identifies
+ * WHICH token a row is without being usable as one. It is null for tokens minted
+ * before tenant migration v11 added the column — the UI renders nothing then,
+ * and no backfill is possible because the value was never stored. */
 export const mcpTokenSchema = z.object({
   id: z.string(),
   name: z.string(),
   createdAt: z.string(),
   lastUsedAt: z.string().nullable(),
   revokedAt: z.string().nullable(),
+  hint: z.string().nullable(),
 });
 export type McpToken = z.infer<typeof mcpTokenSchema>;
 

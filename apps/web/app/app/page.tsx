@@ -8,9 +8,12 @@ import { AppShellSkeleton } from "@/components/library/app-shell-skeleton";
  * library grid it used to render now lives at `/app/library` (see ./library/page.tsx).
  *
  * Back-compat: every legacy deep link into the library through bare `/app`
- * (`?q=`, `?category=`, `?section=live`, `?settings=devices`, …) is redirected to
- * `/app/library` WITH its query intact by middleware.ts — see
- * LEGACY_LIBRARY_PARAMS there. Nothing that used to resolve stopped resolving.
+ * (`?q=`, `?category=`, `?section=live`, …) is redirected to `/app/library` WITH
+ * its query intact by middleware.ts — see LEGACY_LIBRARY_PARAMS there. Nothing
+ * that used to resolve stopped resolving. The one exception is `?settings=<id>`,
+ * which THIS page handles itself (DashboardPage opens the Settings modal at that
+ * section) so a settings deep link — the header avatar's "Manage account", the
+ * extension's gear — no longer throws you onto the grid to get there.
  *
  * Both routes share this segment's layout, so the Ask AI dock mounted there stays
  * alive across Home ↔ Library navigation.

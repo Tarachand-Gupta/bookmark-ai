@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { NoAccessNotice } from "@/components/no-access-notice";
@@ -10,7 +10,11 @@ import { AddBookmarkDialog } from "@/components/library/add-bookmark-dialog";
 import { AppSidebar } from "@/components/library/app-sidebar";
 import { FirstRunPanel } from "@/components/library/first-run-panel";
 import { LibraryHeader } from "@/components/library/library-header";
-import { SettingsDialog, type SectionId } from "@/components/library/settings-dialog";
+import {
+  SECTION_IDS,
+  SettingsDialog,
+  type SectionId,
+} from "@/components/library/settings-dialog";
 import { useMeta, useRefresh } from "@/hooks/use-library";
 import { useLiveDevices } from "@/hooks/use-live";
 import { useDashboard } from "@/hooks/use-dashboard";
@@ -46,6 +50,8 @@ import { LIBRARY_PATH } from "./links";
  */
 export function DashboardPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { user, isLoaded } = useUser();
   const [refreshKey, refresh] = useRefresh();
   const meta = useMeta(refreshKey);
@@ -70,6 +76,36 @@ export function DashboardPage() {
   const openSettings = useCallback((section: SectionId = "ai") => {
     setSettings({ open: true, section });
   }, []);
+
+  // Deep link: /app?settings=<sectionId> opens Settings at that section. The
+  // library has always honoured it (the extension's gear, the MCP promo); the
+  // header avatar's "Manage account" now navigates to it too, and the dashboard
+  // is where that lands from Home — so it needs the exact same handling. Unknown
+  // values fall back to the dialog's default section, and the ref keeps an
+  // unrelated param change from yanking the user off a section they navigated to
+  // inside the dialog.
+  const handledSettingsParam = useRef<string | null>(null);
+  useEffect(() => {
+    const param = searchParams.get("settings");
+    if (!param) {
+      handledSettingsParam.current = null;
+      return;
+    }
+    if (param === handledSettingsParam.current) return;
+    handledSettingsParam.current = param;
+    openSettings(SECTION_IDS.includes(param as SectionId) ? (param as SectionId) : undefined);
+  }, [searchParams, openSettings]);
+
+  // Strip the ?settings param (preserving the rest) when the dialog closes, so
+  // the deep-linked URL doesn't linger and re-open on the next param change.
+  // Pure URL cleanup — no server data changes, so replace it shallowly via the
+  // History API (an RSC round-trip here would re-fetch the whole dashboard).
+  const clearSettingsParam = useCallback(() => {
+    if (!searchParams.get("settings")) return;
+    const params = new URLSearchParams(searchParams);
+    params.delete("settings");
+    window.history.replaceState(null, "", params.size ? `${pathname}?${params}` : pathname);
+  }, [pathname, searchParams]);
 
   // The library is one click away from every card — warm it once so the jump is
   // instant instead of paying for the route's first RSC fetch on click.
@@ -161,7 +197,9 @@ export function DashboardPage() {
         >
           <main className="min-w-0 flex-1 p-3 sm:p-4">
             <div className="mx-auto w-full max-w-7xl">
-              {dashboard.provisioning ? (
+              {/* every hook hits the same API — any of them reporting it means
+                  the account isn't ready (mirrors LibraryPage's `settingUp`) */}
+              {dashboard.provisioning || meta.provisioning ? (
                 <AccountSetup />
               ) : dashboard.forbidden ? (
                 <NoAccessNotice />
@@ -279,7 +317,10 @@ export function DashboardPage() {
       <SettingsDialog
         open={settings.open}
         initialSection={settings.section}
-        onOpenChange={(open) => setSettings((s) => ({ ...s, open }))}
+        onOpenChange={(open) => {
+          setSettings((s) => ({ ...s, open }));
+          if (!open) clearSettingsParam();
+        }}
       />
     </SidebarProvider>
   );

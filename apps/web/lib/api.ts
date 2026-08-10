@@ -36,7 +36,10 @@ export interface LibraryFilters {
   device?: string;
   day?: string;
   tag?: string;
-  /** Inclusive YYYY-MM-DD range bounds (date-range filter). */
+  /** Inclusive saved-at range bounds (the Date filter). Either a YYYY-MM-DD —
+   * meaning that WHOLE day — or a full ISO datetime, which the sub-day quick
+   * ranges ("last hour") need. Forwarded verbatim as query params; the server
+   * widens both shapes into a half-open saved_at interval. */
   from?: string;
   to?: string;
 }

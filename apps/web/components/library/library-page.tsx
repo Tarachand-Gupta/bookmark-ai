@@ -35,6 +35,7 @@ import {
 } from "@/hooks/use-library";
 import { useSelection } from "@/hooks/use-selection";
 import { runBulk } from "@/lib/bulk";
+import { cn } from "@/lib/utils";
 import { downloadBookmarksCsv, downloadSessionsCsv } from "@/lib/csv";
 import { NoAccessNotice } from "@/components/no-access-notice";
 import { DASHBOARD_PATH } from "@/components/dashboard/links";
@@ -142,6 +143,9 @@ export function LibraryPage() {
 
   const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
   const [addOpen, setAddOpen] = useState(false);
+  // Owned here, not inside TagChips: the expanded chip cloud needs a full-width
+  // row of the toolbar's flex container to itself (see the wrapper below).
+  const [tagsExpanded, setTagsExpanded] = useState(false);
   // Settings modal is owned here (not in the sidebar) so the Ongoing empty state
   // can deep-link into Settings → Devices.
   const [settings, setSettings] = useState<{ open: boolean; section: SectionId }>({
@@ -592,12 +596,30 @@ export function LibraryPage() {
                     <>
                       {/* Wrapper, not a class on TagChips: its own base class sets
                           `flex`, and an unprefixed `hidden` alongside it is a
-                          coin-flip on stylesheet order. */}
-                      <div className="hidden min-w-0 flex-1 md:block">
+                          coin-flip on stylesheet order.
+
+                          Expanded, the wrapper claims a full line of its own:
+                          `w-full` + `flex-none` on a flex-wrap parent forces a
+                          line break, and `order-last` puts that line BELOW the
+                          Date + view controls, which keep row one (right-aligned,
+                          as before, via their ml-auto). Without this the wrapped
+                          chip cloud grew inside the shared row and ran straight
+                          into those controls. The two states are written as
+                          mutually exclusive classes, not one overriding the other:
+                          `flex-1` and `flex-none` set the same `flex` shorthand,
+                          so which won would come down to stylesheet order. */}
+                      <div
+                        className={cn(
+                          "hidden min-w-0 md:block",
+                          tagsExpanded ? "md:order-last md:w-full md:flex-none" : "md:flex-1",
+                        )}
+                      >
                         <TagChips
                           tags={meta.data?.tags}
                           active={filters.tag}
                           onPick={(tag) => setFilters(tag ? { tag } : {})}
+                          expanded={tagsExpanded}
+                          onExpandedChange={setTagsExpanded}
                         />
                       </div>
                       <div className="ml-auto hidden shrink-0 items-center gap-2 md:flex">

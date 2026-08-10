@@ -28,6 +28,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { LibraryFilters } from "@/lib/api";
+import { formatRangeLabel } from "@/lib/date-range";
 import { cn } from "@/lib/utils";
 import { DateRangeFilter } from "./date-range-filter";
 import { ViewMenu, type LibraryView } from "./view-toggle";
@@ -406,7 +407,9 @@ function activeChips(filters: LibraryFilters): ActiveChip[] {
   }
   if (filters.from || filters.to) {
     chips.push({
-      label: [filters.from, filters.to].filter(Boolean).join(" – "),
+      // Formatted, not the raw bounds: a preset writes a full ISO datetime, and
+      // "2026-08-11T09:14:03.221Z – " is not a filter chip.
+      label: formatRangeLabel(filters.from, filters.to),
       Icon: CalendarDays,
       keys: ["from", "to"],
     });

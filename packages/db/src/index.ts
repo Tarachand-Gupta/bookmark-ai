@@ -1,6 +1,7 @@
 export { createDb, type Db } from "./client";
 export { ensureSchema, EMBEDDING_DIM } from "./schema";
 export { runMigrations, TENANT_MIGRATIONS, type Migration } from "./migrations";
+export { savedAtLowerBound, savedAtUpperBoundExclusive } from "./date-bounds";
 export {
   ensureMasterSchema,
   MASTER_MIGRATIONS,

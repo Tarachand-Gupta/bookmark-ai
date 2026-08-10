@@ -23,6 +23,7 @@ import {
   updateSettings,
 } from "@/lib/api";
 import { deviceFreshness, formatDeviceAge } from "@/lib/live-format";
+import { SettingsGroup, SettingsRow, SettingsSection } from "./settings-section";
 
 /** Canonical live-sessions glyph, shared with sidebar/tour via FEATURE_ICONS. */
 const LiveIcon = FEATURE_ICONS.live;
@@ -147,17 +148,11 @@ export function DevicesSection() {
   };
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h3 className="flex items-center gap-2 text-sm font-semibold">
-          <LiveIcon className="size-4 text-muted-foreground" aria-hidden />
-          Live sessions
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          See the tabs your other devices have open in real time, and manage those devices.
-        </p>
-      </div>
-
+    <SettingsSection
+      title="Live sessions"
+      icon={LiveIcon}
+      description="See the tabs your other devices have open in real time, and manage those devices."
+    >
       {loading ? (
         <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -167,34 +162,23 @@ export function DevicesSection() {
         <p className="text-sm text-destructive">Couldn’t load devices: {loadError}</p>
       ) : (
         <>
-          <div className="space-y-2">
-            <div className="flex items-start justify-between gap-4">
-              <label htmlFor="live-enabled" className="text-sm font-medium">
-                Show my open tabs
-              </label>
-              <Switch
-                id="live-enabled"
-                checked={enabled}
-                disabled={toggling}
-                onChange={toggle}
-              />
-            </div>
-            <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
-              Your browsers send the list of tabs they have open — title, address, and icon — so
-              you can pick one up from your phone. Nothing is saved until you press Save. Private
-              windows are never sent. Off by default.
-            </p>
-          </div>
+          <SettingsRow
+            label="Show my open tabs"
+            htmlFor="live-enabled"
+            control={
+              <Switch id="live-enabled" checked={enabled} disabled={toggling} onChange={toggle} />
+            }
+            description="Your browsers send the list of tabs they have open — title, address, and icon — so you can pick one up from your phone. Nothing is saved until you press Save. Private windows are never sent. Off by default."
+          />
 
           {actionError && <p className="text-sm text-destructive">{actionError}</p>}
 
           {enabled && (
-            <div className="space-y-3 border-t pt-5">
-              <div className="flex items-center justify-between gap-2">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Devices
-                </h4>
-                {devices.length > 1 && (
+            <SettingsGroup
+              divided
+              title="Devices"
+              action={
+                devices.length > 1 && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -205,9 +189,9 @@ export function DevicesSection() {
                   >
                     {forgettingAll ? "Forgetting…" : "Forget all"}
                   </Button>
-                )}
-              </div>
-
+                )
+              }
+            >
               {devices.length === 0 ? (
                 <p className="text-xs leading-relaxed text-muted-foreground">
                   No devices are reporting yet. Install the Bookmark AI extension and turn on{" "}
@@ -233,13 +217,13 @@ export function DevicesSection() {
                 that browser checks in, unless you turn the extension’s own switch off there. Device
                 names are set in the extension’s popup.
               </p>
-            </div>
+            </SettingsGroup>
           )}
 
           <LiveServerUrlField />
         </>
       )}
-    </div>
+    </SettingsSection>
   );
 }
 
@@ -324,83 +308,82 @@ function LiveServerUrlField() {
   const locked = !acknowledged;
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="border-t pt-5">
-      <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 rounded-md text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-        Use my own live server
-        <ChevronDown
-          className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
-          aria-hidden
-        />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-3 pt-3">
-        <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500" aria-hidden />
-          <div className="space-y-1.5">
-            <label htmlFor="live-server-ack" className="flex cursor-pointer items-start gap-2 text-sm font-medium">
-              <input
-                id="live-server-ack"
-                type="checkbox"
-                checked={acknowledged}
+    // A SettingsGroup for the hairline + spacing; the disclosure trigger plays
+    // the part of the group title (same text-sm semibold-ish weight), so this
+    // block lines up with "Devices" above it.
+    <SettingsGroup divided>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 rounded-md text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+          Use my own live server
+          <ChevronDown
+            className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+            aria-hidden
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-3 pt-3">
+          <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500" aria-hidden />
+            <div className="space-y-1.5">
+              <label htmlFor="live-server-ack" className="flex cursor-pointer items-start gap-2 text-sm font-medium">
+                <input
+                  id="live-server-ack"
+                  type="checkbox"
+                  checked={acknowledged}
+                  onChange={(e) => {
+                    setAcknowledged(e.target.checked);
+                    setSavedMsg(null);
+                  }}
+                  className="mt-0.5 size-4 shrink-0 accent-amber-600 dark:accent-amber-500"
+                />
+                I know what I&apos;m doing, allow me.
+              </label>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                This changes the live server your tabs stream through. If the self-hosted server is
+                misconfigured or unavailable, live sessions may stop working — we&apos;re not
+                responsible for the feature misbehaving on a custom server. Leave empty to use the
+                built-in one.
+              </p>
+            </div>
+          </div>
+
+          <SettingsRow label="Live server URL" htmlFor="live-server-url" muted={locked}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                id="live-server-url"
+                type="url"
+                inputMode="url"
+                value={value}
+                disabled={locked}
                 onChange={(e) => {
-                  setAcknowledged(e.target.checked);
+                  setValue(e.target.value);
                   setSavedMsg(null);
                 }}
-                className="mt-0.5 size-4 shrink-0 accent-amber-600 dark:accent-amber-500"
+                placeholder="Default server"
+                className="w-full min-w-0 flex-1"
               />
-              I know what I&apos;m doing, allow me.
-            </label>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              This changes the live server your tabs stream through. If the self-hosted server is
-              misconfigured or unavailable, live sessions may stop working — we&apos;re not
-              responsible for the feature misbehaving on a custom server. Leave empty to use the
-              built-in one.
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <label
-            htmlFor="live-server-url"
-            className={cn("text-sm font-medium", locked && "text-muted-foreground")}
-          >
-            Live server URL
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              id="live-server-url"
-              type="url"
-              inputMode="url"
-              value={value}
-              disabled={locked}
-              onChange={(e) => {
-                setValue(e.target.value);
-                setSavedMsg(null);
-              }}
-              placeholder="Default server"
-              className="w-full min-w-0 flex-1"
-            />
-            <Button
-              type="button"
-              size="sm"
-              onClick={save}
-              disabled={locked || saving || aiConfig === null}
-              className="shrink-0"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="animate-spin" aria-hidden />
-                  Saving…
-                </>
-              ) : (
-                "Save"
-              )}
-            </Button>
-          </div>
-          {savedMsg && <p className="text-sm text-emerald-600 dark:text-emerald-500">{savedMsg}</p>}
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+              <Button
+                type="button"
+                size="sm"
+                onClick={save}
+                disabled={locked || saving || aiConfig === null}
+                className="shrink-0"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="animate-spin" aria-hidden />
+                    Saving…
+                  </>
+                ) : (
+                  "Save"
+                )}
+              </Button>
+            </div>
+            {savedMsg && <p className="text-sm text-emerald-600 dark:text-emerald-500">{savedMsg}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </SettingsRow>
+        </CollapsibleContent>
+      </Collapsible>
+    </SettingsGroup>
   );
 }
 

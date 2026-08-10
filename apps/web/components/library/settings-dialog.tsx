@@ -13,7 +13,6 @@ import {
   Upload,
   UserRound,
 } from "lucide-react";
-import type { AiModel, AiProvider, AiUsage } from "@bookmark-ai/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,27 +21,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  deleteAccount,
-  exportData,
-  fetchAiModels,
-  getSettings,
-  importData,
-  updateSettings,
-} from "@/lib/api";
+import { deleteAccount, exportData, importData } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { AiCreditsCallout } from "./ai-credits-meter";
+import { AiSetupCard } from "./ai-setup-card";
 import { DevicesSection } from "./devices-settings";
 import { FEATURE_ICONS } from "./feature-icons";
 import { McpSection } from "./mcp-settings";
+import { SettingsGroup, SettingsSection } from "./settings-section";
 import { SyncSection } from "./sync-settings";
 
 export interface SettingsDialogProps {
@@ -66,17 +51,12 @@ export type SectionId = (typeof SECTIONS)[number]["id"];
 /** All valid section ids — used to validate the `?settings=<id>` deep link. */
 export const SECTION_IDS = SECTIONS.map((s) => s.id) as SectionId[];
 
-const PROVIDERS: { value: AiProvider; label: string }[] = [
-  { value: "google", label: "Gemini (Google)" },
-  { value: "openai", label: "OpenAI" },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "custom", label: "Custom (OpenAI-compatible)" },
-];
-
 /**
- * Settings modal. A left rail selects a section (only "AI" today); the AI pane
- * configures the chat agent's provider, API key, and default model. "Test
- * connection & get models" validates the key by listing models; Save persists.
+ * Settings modal. A left rail selects a section; each pane is its own component
+ * that loads and saves its own slice of `user_settings` — this file owns only the
+ * shell (rail, scroll pane, section state). The AI pane is the SHARED
+ * `<AiSetupCard />`, the same surface the onboarding tour and the chat's
+ * free-limit wall render, so there is exactly one AI form in the app.
  */
 export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsDialogProps) {
   const [section, setSection] = useState<SectionId>("ai");
@@ -86,63 +66,11 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
   initialSectionRef.current = initialSection;
   const railRef = useRef<HTMLUListElement>(null);
 
-  // Loaded/edited AI settings.
-  const [provider, setProvider] = useState<AiProvider>("google");
-  const [loadedProvider, setLoadedProvider] = useState<AiProvider>("google");
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [apiKeySet, setApiKeySet] = useState(false);
-  const [apiKeyLast4, setApiKeyLast4] = useState<string | null>(null);
-  const [baseUrl, setBaseUrl] = useState("");
-  const [model, setModel] = useState("");
-  const [models, setModels] = useState<AiModel[]>([]);
-  // The free-tier weekly meter, rendered above the provider form (see the AI
-  // pane): free credits are the default path, so they lead here too.
-  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
-
-  // Async status.
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
-  const [testMsg, setTestMsg] = useState<string | null>(null);
-  const [testError, setTestError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  // (Re)load current settings whenever the modal opens.
+  // Open-time reset: land on the requested section (each pane fetches its own
+  // data when it mounts, so there's nothing else to (re)load here).
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
     setSection(initialSectionRef.current ?? "ai");
-    setLoading(true);
-    setLoadError(null);
-    setTestMsg(null);
-    setTestError(null);
-    setSaveMsg(null);
-    setSaveError(null);
-    setApiKeyInput("");
-    getSettings()
-      .then(({ settings }) => {
-        if (cancelled) return;
-        setProvider(settings.provider);
-        setLoadedProvider(settings.provider);
-        setBaseUrl(settings.baseUrl ?? "");
-        setModel(settings.model ?? "");
-        // Seed the select with the saved model so it shows before any test.
-        setModels(settings.model ? [{ id: settings.model, label: settings.model }] : []);
-        setApiKeySet(settings.apiKeySet);
-        setApiKeyLast4(settings.apiKeyLast4);
-        setAiUsage(settings.aiUsage);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setLoadError((e as Error).message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
   }, [open]);
 
   // MOBILE: keep the ACTIVE section chip on screen. The rail is one horizontally
@@ -162,73 +90,6 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
       ?.scrollIntoView({ block: "nearest", inline: "center" });
   }, [open, section]);
 
-  // A stored key belongs to the saved provider; if the user switches provider,
-  // the "Saved (••••…)" hint no longer applies.
-  const showSavedHint = apiKeySet && provider === loadedProvider;
-  const hasKeySource = apiKeyInput.trim().length > 0 || showSavedHint;
-  const customNeedsUrl = provider === "custom" && !baseUrl.trim();
-
-  const changeProvider = (value: string) => {
-    setProvider(value as AiProvider);
-    // Models (and any selection) are provider-specific — reset on switch.
-    setModels([]);
-    setModel("");
-    setTestMsg(null);
-    setTestError(null);
-    setSaveMsg(null);
-  };
-
-  const test = async () => {
-    setTesting(true);
-    setTestMsg(null);
-    setTestError(null);
-    try {
-      const typed = apiKeyInput.trim();
-      const { models: found } = await fetchAiModels({
-        provider,
-        apiKey: typed || undefined,
-        baseUrl: provider === "custom" ? baseUrl.trim() : undefined,
-      });
-      // Keep a previously-selected model visible even if it's not in the list.
-      const merged =
-        model && !found.some((m) => m.id === model)
-          ? [{ id: model, label: model }, ...found]
-          : found;
-      setModels(merged);
-      setTestMsg(`${found.length} model${found.length === 1 ? "" : "s"} found`);
-    } catch (e: unknown) {
-      setTestError((e as Error).message);
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  const save = async () => {
-    setSaving(true);
-    setSaveMsg(null);
-    setSaveError(null);
-    try {
-      const typed = apiKeyInput.trim();
-      const { settings } = await updateSettings({
-        provider,
-        // Send the key only when the user typed one (keep the stored key otherwise).
-        apiKey: typed || undefined,
-        baseUrl: provider === "custom" ? baseUrl.trim() : undefined,
-        model: model || undefined,
-      });
-      setLoadedProvider(settings.provider);
-      setApiKeySet(settings.apiKeySet);
-      setApiKeyLast4(settings.apiKeyLast4);
-      setAiUsage(settings.aiUsage);
-      setApiKeyInput("");
-      setSaveMsg("Saved");
-    } catch (e: unknown) {
-      setSaveError((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* max-h + a scrollable pane (below) instead of a taller-than-viewport
@@ -242,7 +103,11 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
           Client-setup blocks were simply unreachable. As a flex column the
           single row IS the constrained box (`flex-1 min-h-0`), so the pane's
           own overflow-y takes over. */}
-      <DialogContent className="flex max-h-[92svh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      {/* sm:max-w-3xl (was 2xl): 672px minus the 12rem rail and the pane padding
+          left only ~430px of content, which is where the AI card's rows, the MCP
+          setup commands and the device list were all wrapping. 768px gives the
+          pane ~574px — measured — and stays well inside a 1024px laptop. */}
+      <DialogContent className="flex max-h-[92svh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
         <DialogDescription className="sr-only">
           Configure Bookmark AI, including the AI provider and default model.
         </DialogDescription>
@@ -302,153 +167,20 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
           </nav>
 
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
+            {/* The AI pane IS the shared card (free-credits callout, optional
+                bring-your-own-provider form, test-&-list-models) — this pane used
+                to duplicate the whole form inline, so a fix in one place silently
+                left the other stale. */}
             {section === "ai" && (
-              <div className="space-y-5">
-                {/* Free credits FIRST, everywhere: the shared AI is what powers
-                    chat out of the box, and this pane used to open on a provider
-                    form that implied setup was required. Dimmed once the user has
-                    their own key, since own-key requests aren't metered. */}
-                <AiCreditsCallout usage={aiUsage} loading={loading} dim={apiKeySet} />
-
-                <div>
-                  <h3 className="text-sm font-semibold">Use your own AI provider</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Optional. Bring a key and chat runs unmetered on the provider and model you
-                    pick.
-                  </p>
-                </div>
-
-                {loading ? (
-                  <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" aria-hidden />
-                    Loading settings…
-                  </div>
-                ) : loadError ? (
-                  <p className="text-sm text-destructive">Couldn’t load settings: {loadError}</p>
-                ) : (
-                  <>
-                    <div className="space-y-1.5">
-                      <label htmlFor="ai-provider" className="text-sm font-medium">
-                        Provider
-                      </label>
-                      <Select value={provider} onValueChange={changeProvider}>
-                        <SelectTrigger id="ai-provider" className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {PROVIDERS.map((p) => (
-                            <SelectItem key={p.value} value={p.value}>
-                              {p.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label htmlFor="ai-key" className="text-sm font-medium">
-                        API key
-                      </label>
-                      <Input
-                        id="ai-key"
-                        type="password"
-                        autoComplete="off"
-                        value={apiKeyInput}
-                        onChange={(e) => {
-                          setApiKeyInput(e.target.value);
-                          setSaveMsg(null);
-                        }}
-                        placeholder={showSavedHint ? `Saved (••••${apiKeyLast4})` : "Enter API key"}
-                      />
-                    </div>
-
-                    {provider === "custom" && (
-                      <div className="space-y-1.5">
-                        <label htmlFor="ai-base-url" className="text-sm font-medium">
-                          API Base URL
-                        </label>
-                        <Input
-                          id="ai-base-url"
-                          type="url"
-                          inputMode="url"
-                          value={baseUrl}
-                          onChange={(e) => {
-                            setBaseUrl(e.target.value);
-                            setSaveMsg(null);
-                          }}
-                          placeholder="https://api.example.com/v1"
-                        />
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={test}
-                        disabled={testing || !hasKeySource || customNeedsUrl}
-                      >
-                        {testing ? (
-                          <>
-                            <Loader2 className="animate-spin" aria-hidden />
-                            Testing…
-                          </>
-                        ) : (
-                          "Test connection & get models"
-                        )}
-                      </Button>
-                      {testMsg && (
-                        <p className="text-sm text-emerald-600 dark:text-emerald-500">{testMsg}</p>
-                      )}
-                      {testError && <p className="text-sm text-destructive">{testError}</p>}
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label htmlFor="ai-model" className="text-sm font-medium">
-                        Default model
-                      </label>
-                      <Select value={model} onValueChange={setModel} disabled={models.length === 0}>
-                        <SelectTrigger id="ai-model" className="w-full">
-                          <SelectValue
-                            placeholder={
-                              models.length
-                                ? "Select a model"
-                                : "Test connection to list models"
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {models.map((m) => (
-                            <SelectItem key={m.id} value={m.id}>
-                              {m.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="flex items-center justify-end gap-3 border-t pt-4">
-                      {saveMsg && <span className="text-sm text-muted-foreground">{saveMsg}</span>}
-                      {saveError && <span className="text-sm text-destructive">{saveError}</span>}
-                      <Button
-                        type="button"
-                        onClick={save}
-                        disabled={saving || customNeedsUrl}
-                      >
-                        {saving ? (
-                          <>
-                            <Loader2 className="animate-spin" aria-hidden />
-                            Saving…
-                          </>
-                        ) : (
-                          "Save"
-                        )}
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </div>
+              <SettingsSection
+                title="AI"
+                icon={Sparkles}
+                description="Chat and search-by-meaning run on included free credits. Bring your own provider key to run chat unmetered on the model you pick."
+              >
+                {/* The card draws its own border/padding — it's the pane's single
+                    block, so it doesn't need a SettingsGroup around it. */}
+                <AiSetupCard />
+              </SettingsSection>
             )}
 
             {section === "data" && <DataSection />}
@@ -459,7 +191,9 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
 
             {section === "mcp" && <McpSection />}
 
-            {section === "account" && <AccountSection />}
+            {section === "account" && (
+              <AccountSection onRequestClose={() => onOpenChange(false)} />
+            )}
           </div>
         </div>
       </DialogContent>
@@ -540,21 +274,15 @@ function DataSection() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-sm font-semibold">Your data</h3>
-        <p className="text-xs text-muted-foreground">
-          Export a complete, portable copy of your library, or restore one back.
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <div>
-          <h4 className="text-sm font-medium">Export</h4>
-          <p className="text-xs text-muted-foreground">
-            Downloads every bookmark and session as a single JSON file.
-          </p>
-        </div>
+    <SettingsSection
+      title="Data"
+      icon={Database}
+      description="Export a complete, portable copy of your library, or restore one back."
+    >
+      <SettingsGroup
+        title="Export"
+        description="Downloads every bookmark and session as a single JSON file."
+      >
         <Button type="button" variant="outline" size="sm" onClick={runExport} disabled={exporting}>
           {exporting ? (
             <>
@@ -572,16 +300,13 @@ function DataSection() {
           <p className="text-sm text-emerald-600 dark:text-emerald-500">{exportMsg}</p>
         )}
         {exportError && <p className="text-sm text-destructive">{exportError}</p>}
-      </div>
+      </SettingsGroup>
 
-      <div className="space-y-2 border-t pt-5">
-        <div>
-          <h4 className="text-sm font-medium">Import</h4>
-          <p className="text-xs text-muted-foreground">
-            Merges an exported file by URL and keeps original timestamps —
-            re-importing the same file is safe and won’t create duplicates.
-          </p>
-        </div>
+      <SettingsGroup
+        divided
+        title="Import"
+        description="Merges an exported file by URL and keeps original timestamps — re-importing the same file is safe and won’t create duplicates."
+      >
         <input
           ref={fileRef}
           type="file"
@@ -612,18 +337,26 @@ function DataSection() {
           <p className="text-sm text-emerald-600 dark:text-emerald-500">{importMsg}</p>
         )}
         {importError && <p className="text-sm text-destructive">{importError}</p>}
-      </div>
-    </div>
+      </SettingsGroup>
+    </SettingsSection>
   );
 }
 
 /**
- * Account section: the permanent, irreversible account-deletion entry point
- * (required by the app stores and Clerk). A two-step confirm guards it; on
- * success it signs the user out and sends them to the marketing home.
+ * Account section: ONE account surface. Everything account-shaped is reachable
+ * from here — Clerk's account manager (profile, email addresses, connected
+ * accounts, password, 2FA, active devices) behind one button, then our own
+ * permanent account-deletion flow, which is required by the app stores and is the
+ * one thing Clerk's UI can't do because it also has to wipe this account's
+ * bookmarks/sessions DB. A two-step confirm guards it; on success it signs the
+ * user out and sends them to the marketing home.
+ *
+ * The header avatar's "Manage account" lands HERE (see LibraryHeader's
+ * `userProfileMode="navigation"`) instead of opening Clerk's modal on its own, so
+ * the avatar menu and the Settings dialog agree on where "account" lives.
  */
-function AccountSection() {
-  const { signOut } = useClerk();
+function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
+  const { signOut, openUserProfile } = useClerk();
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -642,74 +375,104 @@ function AccountSection() {
   };
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h3 className="text-sm font-semibold">Account</h3>
-        <p className="text-xs text-muted-foreground">Manage your Bookmark AI account.</p>
-      </div>
+    <SettingsSection
+      title="Account"
+      icon={UserRound}
+      description="Manage your Bookmark AI account."
+    >
+      {/* Clerk's account manager, opened as ITS OWN modal rather than embedded in
+          this pane. MEASURED (2026-08-11, dev Chrome, 1440x940):
+          <UserProfile routing="hash"> inline renders a FIXED 880px card (228px
+          internal nav rail + 661px content, 704px tall) that ignores
+          `elements.cardBox: "w-full"` — Clerk's generated styles win — so in the
+          ~574px pane it was clipped mid-word ("Add email a…") under a second nav
+          rail and a second "Account" heading inside ours; fitting it needs a
+          ~1120px dialog that still clips on any narrower window. Rendering the
+          modal INSIDE the pane (Clerk's `getContainer`) is interactive but hits
+          the same 880px-vs-574px clip, because DialogContent is
+          `overflow-hidden`. So this hands the screen over instead: close Settings,
+          then let Clerk's modal own the viewport — where it is neither clipped nor
+          made inert by Radix's focus trap. */}
+      <SettingsGroup
+        title="Profile & security"
+        description="Your name and avatar, email addresses, connected accounts, password, two-factor authentication and active devices — all managed by Clerk, themed to match the app."
+      >
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            onRequestClose();
+            openUserProfile();
+          }}
+        >
+          <UserRound aria-hidden />
+          Manage profile &amp; security
+        </Button>
+      </SettingsGroup>
 
-      <div className="space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
-        <div className="flex items-start gap-2">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
-          <div className="space-y-1">
-            <h4 className="text-sm font-medium">Delete account</h4>
-            <p className="text-xs text-muted-foreground">
-              This permanently deletes your account and all of your bookmarks and
-              sessions. This cannot be undone.
-            </p>
-          </div>
-        </div>
-
-        {!confirming ? (
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              setError(null);
-              setConfirming(true);
-            }}
-          >
-            <Trash2 aria-hidden />
-            Delete account
-          </Button>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-xs font-medium">
-              Are you sure? This is permanent and cannot be undone.
-            </p>
-            <div className="flex items-center gap-2">
+      <SettingsGroup
+        divided
+        title="Delete account"
+        description="This permanently deletes your account and all of your bookmarks and sessions. This cannot be undone."
+      >
+        {/* The group's title + description above ARE the old in-box heading and
+            warning copy, so the box itself now carries only the glyph and the
+            action — same words, one heading level less. */}
+        <div className="flex items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+          <AlertTriangle className="mt-1 size-4 shrink-0 text-destructive" aria-hidden />
+          <div className="min-w-0 flex-1 space-y-2">
+            {!confirming ? (
               <Button
                 type="button"
                 variant="destructive"
                 size="sm"
-                onClick={runDelete}
-                disabled={deleting}
+                onClick={() => {
+                  setError(null);
+                  setConfirming(true);
+                }}
               >
-                {deleting ? (
-                  <>
-                    <Loader2 className="animate-spin" aria-hidden />
-                    Deleting…
-                  </>
-                ) : (
-                  "Yes, delete my account"
-                )}
+                <Trash2 aria-hidden />
+                Delete account
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setConfirming(false)}
-                disabled={deleting}
-              >
-                Cancel
-              </Button>
-            </div>
+            ) : (
+              <>
+                <p className="text-xs font-medium">
+                  Are you sure? This is permanent and cannot be undone.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={runDelete}
+                    disabled={deleting}
+                  >
+                    {deleting ? (
+                      <>
+                        <Loader2 className="animate-spin" aria-hidden />
+                        Deleting…
+                      </>
+                    ) : (
+                      "Yes, delete my account"
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirming(false)}
+                    disabled={deleting}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </>
+            )}
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
-        )}
-
-        {error && <p className="text-sm text-destructive">{error}</p>}
-      </div>
-    </div>
+        </div>
+      </SettingsGroup>
+    </SettingsSection>
   );
 }

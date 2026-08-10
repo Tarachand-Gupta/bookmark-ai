@@ -45,8 +45,8 @@ export interface AiSetupCardProps {
 
 /**
  * The one AI-setup surface, used in three places: the onboarding tour's AI step,
- * Settings → AI's own pane is separate (it has its own form), and the chat's
- * free-limit wall.
+ * Settings → AI (which used to duplicate this form inline — one source of truth
+ * now), and the chat's free-limit wall.
  *
  * FREE CREDITS LEAD. The card used to open on a provider/key form, which told
  * every new user that AI needs setup — it doesn't. So the hero is now the free
@@ -73,6 +73,11 @@ export function AiSetupCard({
   const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
 
   const [loading, setLoading] = useState(true);
+  // Non-fatal: the form still works (type a key, save) — but a settings GET that
+  // 500s used to be swallowed entirely, so a user staring at defaults had no way
+  // to know the pane wasn't showing their saved provider. Settings → AI surfaced
+  // this line before the two forms were unified; it now lives here.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
@@ -100,8 +105,10 @@ export function AiSetupCard({
         setApiKeyLast4(settings.apiKeyLast4);
         setAiUsage(settings.aiUsage);
       })
-      .catch(() => {
-        // A failed load leaves the defaults; the user can still fill and save.
+      .catch((e: unknown) => {
+        // A failed load leaves the defaults; the user can still fill and save —
+        // but say so rather than pretending these ARE their settings.
+        if (!cancelled) setLoadError((e as Error).message);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -300,25 +307,29 @@ export function AiSetupCard({
         {testError && <span className="text-xs text-destructive">{testError}</span>}
       </div>
 
-      {models.length > 0 && (
-        <div className="space-y-1.5">
-          <label htmlFor="ai-setup-model" className="text-xs font-medium">
-            Default model
-          </label>
-          <Select value={model} onValueChange={setModel}>
-            <SelectTrigger id="ai-setup-model" className="w-full">
-              <SelectValue placeholder="Select a model" />
-            </SelectTrigger>
-            <SelectContent>
-              {models.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  {m.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
+      {/* Always rendered, disabled until a test returns a list: hiding the field
+          entirely made "Test & list models" look like it did nothing, because the
+          thing it fills in wasn't on screen to change. The placeholder is the
+          instruction. */}
+      <div className="space-y-1.5">
+        <label htmlFor="ai-setup-model" className="text-xs font-medium">
+          Default model
+        </label>
+        <Select value={model} onValueChange={setModel} disabled={models.length === 0}>
+          <SelectTrigger id="ai-setup-model" className="w-full">
+            <SelectValue
+              placeholder={models.length ? "Select a model" : "Test connection to list models"}
+            />
+          </SelectTrigger>
+          <SelectContent>
+            {models.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
+                {m.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       <div className="flex items-center gap-3 pt-1">
         <Button type="button" size="sm" onClick={save} disabled={saving || customNeedsUrl}>
@@ -396,6 +407,14 @@ export function AiSetupCard({
       ) : (
         // ── No own key: the free tier IS the product. Lead with it. ──
         <AiCreditsCallout usage={aiUsage} loading={loading} className={onDismiss ? "pr-8" : undefined} />
+      )}
+
+      {/* Outside the collapsible on purpose: a swallowed load error is invisible,
+          and it must be readable even while the provider section is closed. */}
+      {loadError && (
+        <p className="mt-3 text-xs leading-relaxed text-destructive">
+          Couldn’t load settings: {loadError}
+        </p>
       )}
 
       <Collapsible open={providerOpen} onOpenChange={setProviderOpen} className="mt-3">

@@ -6,6 +6,7 @@ import type {
   Source,
 } from "@bookmark-ai/types";
 import type { Db } from "../client";
+import { savedAtLowerBound, savedAtUpperBoundExclusive } from "../date-bounds";
 import { BOOKMARK_COLUMNS, rowToBookmark } from "../rows";
 
 export interface InsertBookmark {
@@ -140,14 +141,21 @@ export async function listBookmarks(
     where.push("saved_day = ?");
     args.push(q.day);
   }
-  // saved_day is YYYY-MM-DD text, so lexicographic compare is chronological.
+  // Range bounds compare `saved_at`, not `saved_day`: a bound may now be a full
+  // ISO datetime ("the last hour"), which a YYYY-MM-DD column can't express.
+  // saved_at is ISO-8601 text so the compare stays lexicographic-is-chronological,
+  // and the interval is HALF-OPEN — see date-bounds.ts for why an inclusive upper
+  // bound drops second-precision timestamps ('Z' > '.'). A date-only bound still
+  // means the WHOLE day, and since every client writes savedAt as toISOString()
+  // (UTC Z) — the same value saved_day is sliced from — a date-only range matches
+  // exactly the rows the old saved_day compare did.
   if (q.from) {
-    where.push("saved_day >= ?");
-    args.push(q.from);
+    where.push("saved_at >= ?");
+    args.push(savedAtLowerBound(q.from));
   }
   if (q.to) {
-    where.push("saved_day <= ?");
-    args.push(q.to);
+    where.push("saved_at < ?");
+    args.push(savedAtUpperBoundExclusive(q.to));
   }
   if (q.tag) {
     // tags_json is a JSON array of lowercased strings.

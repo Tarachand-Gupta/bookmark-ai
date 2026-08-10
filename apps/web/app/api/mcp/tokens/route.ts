@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { insertMcpToken, listMcpTokens } from "@bookmark-ai/db";
 import { createMcpTokenSchema, type McpToken } from "@bookmark-ai/types";
 import { getRequestApiContext } from "@/lib/server/api-context";
-import { isMcpConfigured, mintMcpToken } from "@/lib/server/mcp-token";
+import { isMcpConfigured, mcpTokenHint, mintMcpToken } from "@/lib/server/mcp-token";
 import { mcpSubject } from "@/lib/server/mcp/subject";
 
 /**
@@ -33,6 +33,9 @@ export async function GET() {
     createdAt: row.createdAt,
     lastUsedAt: row.lastUsedAt,
     revokedAt: row.revokedAt,
+    // Not a secret: 10 of ~260 characters, stored at mint time purely so the
+    // Settings list can say which row is which token. Null for pre-v11 rows.
+    hint: row.hint,
   }));
   return NextResponse.json({ tokens });
 }
@@ -67,8 +70,13 @@ export async function POST(req: NextRequest) {
     id: minted.id,
     name: parsed.data.name,
     createdAt: new Date(minted.issuedAtMs).toISOString(),
+    // The ONLY moment the hint can be computed — the value is not stored and
+    // never crosses this boundary again.
+    hint: mcpTokenHint(minted.token),
   });
 
+  // The response shape is unchanged: it already carries the full token, so
+  // echoing its own hint back would be noise. The list route serves the hint.
   return NextResponse.json(
     { token: minted.token, id: row.id, name: row.name, createdAt: row.createdAt },
     { status: 201 },

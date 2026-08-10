@@ -63,9 +63,16 @@ function corsHeaders(origin: string | null): Record<string, string> {
 // the library never mounts (and never flashes) behind a client-side hop.
 //
 // Keep this list in lockstep with what the library reads from the URL:
-// FILTER_KEYS + q + ai + settings + section in components/library/library-page.tsx.
+// FILTER_KEYS + q + ai + section in components/library/library-page.tsx.
 // `view` is included defensively — it's localStorage state today, but old links
 // carrying it must still land on the grid.
+//
+// `settings` is deliberately NOT here: the Settings modal is not a library view,
+// and the DASHBOARD handles `?settings=<section>` itself now (see
+// components/dashboard/dashboard-page.tsx). Redirecting it bounced every settings
+// deep link off Home onto the grid — including the header avatar's "Manage
+// account", which builds its URL from wherever you already are, and the
+// extension's gear (`/app?settings=devices`). Both now open the modal in place.
 const LEGACY_LIBRARY_PARAMS = [
   "q",
   "category",
@@ -76,7 +83,6 @@ const LEGACY_LIBRARY_PARAMS = [
   "to",
   "tag",
   "ai",
-  "settings",
   "section",
   "view",
 ] as const;

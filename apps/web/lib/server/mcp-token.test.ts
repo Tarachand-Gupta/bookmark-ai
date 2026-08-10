@@ -4,6 +4,7 @@ import {
   MCP_TOKEN_PREFIX,
   MCP_TOKEN_TTL_SECONDS,
   isMcpConfigured,
+  mcpTokenHint,
   mintMcpToken,
   verifyMcpToken,
 } from "@/lib/server/mcp-token";
@@ -102,5 +103,46 @@ describe("mintMcpToken / verifyMcpToken", () => {
     expect(isMcpConfigured()).toBe(false);
     expect(verifyMcpToken(token)).toBeNull();
     expect(() => mintMcpToken("user_abc")).toThrow();
+  });
+});
+
+describe("mcpTokenHint", () => {
+  it("shows the first and last 5 characters of the token body, behind the prefix", () => {
+    const { token } = mintMcpToken("user_abc");
+    const body = token.slice(MCP_TOKEN_PREFIX.length);
+    expect(mcpTokenHint(token)).toBe(
+      `${MCP_TOKEN_PREFIX}${body.slice(0, 5)}…${body.slice(-5)}`,
+    );
+    // Same shape every time: prefix + 5 + ellipsis + 5.
+    expect(mcpTokenHint(token)).toHaveLength(MCP_TOKEN_PREFIX.length + 11);
+  });
+
+  it("derives the same hint whether or not the value carries the prefix", () => {
+    const { token } = mintMcpToken("user_abc");
+    expect(mcpTokenHint(token.slice(MCP_TOKEN_PREFIX.length))).toBe(mcpTokenHint(token));
+  });
+
+  it("identifies a token without being usable as one", () => {
+    const a = mintMcpToken("user_abc").token;
+    const b = mintMcpToken("user_abc").token;
+    // Distinct tokens get distinct hints (the body starts with the same header
+    // segment, so it's the trailing signature chars that separate them)…
+    expect(mcpTokenHint(a)).not.toBe(mcpTokenHint(b));
+    // …and a hint is never a working credential.
+    expect(verifyMcpToken(mcpTokenHint(a))).toBeNull();
+    expect(a).not.toContain(mcpTokenHint(a));
+  });
+
+  it("degrades on a short or degenerate value without leaking it or throwing", () => {
+    for (const short of ["", "abc", "0123456789", "01234567890", `${MCP_TOKEN_PREFIX}abc`]) {
+      const hint = mcpTokenHint(short);
+      expect(hint).toBe(`${MCP_TOKEN_PREFIX}…`);
+      const body = short.startsWith(MCP_TOKEN_PREFIX)
+        ? short.slice(MCP_TOKEN_PREFIX.length)
+        : short;
+      if (body) expect(hint).not.toContain(body);
+    }
+    // The first length that is safe to abbreviate.
+    expect(mcpTokenHint("012345678901")).toBe(`${MCP_TOKEN_PREFIX}01234…78901`);
   });
 });

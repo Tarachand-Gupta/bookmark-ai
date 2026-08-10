@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname, useSearchParams } from "next/navigation";
 import { SignInButton, SignUpButton, UserButton, useUser } from "@clerk/nextjs";
 import { ChevronRight, Search, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -134,16 +135,38 @@ export function LibraryHeader({
  * (signed in). Uses the client-safe `useUser` hook — this file is a client
  * component, so the server-only `Show` component can't be used here — and
  * renders a placeholder until Clerk loads to avoid a layout shift.
+ *
+ * "Manage account" is repointed at OUR Settings → Account (Clerk's account
+ * manager plus the app-store-required delete-account flow), so both entry points
+ * agree on where "account" lives instead of the avatar opening a Clerk modal the
+ * Settings dialog knows nothing about. The supported lever is
+ * `userProfileMode="navigation"` +
+ * `userProfileUrl`: a custom <UserButton.Action> cannot override a BUILT-IN
+ * action's behaviour (`onClick?: never` for default labels), it can only add new
+ * items. Navigation mode goes through the Next router, so the app shell and the
+ * chat dock stay mounted.
  */
 function AuthControls() {
   const { isLoaded, isSignedIn } = useUser();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Built from the CURRENT location, not a fixed "/app?settings=account": the
+  // library keeps its facets, search and the Ask AI dock in the query string, and
+  // navigating to a bare path would silently reset the view behind the dialog.
+  // Works from Home too — `settings` was dropped from middleware.ts's
+  // LEGACY_LIBRARY_PARAMS so `/app?settings=account` no longer bounces to the
+  // grid; the dashboard opens the modal where you already are.
+  const params = new URLSearchParams(searchParams);
+  params.set("settings", "account");
+  const userProfileUrl = `${pathname}?${params}`;
 
   return (
     <div className="flex shrink-0 items-center">
       {!isLoaded ? (
         <div className="size-8 animate-pulse rounded-full bg-muted" aria-hidden />
       ) : isSignedIn ? (
-        <UserButton />
+        <UserButton userProfileMode="navigation" userProfileUrl={userProfileUrl} />
       ) : (
         <div className="flex items-center gap-1.5">
           <SignInButton mode="modal">

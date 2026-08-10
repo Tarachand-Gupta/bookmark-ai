@@ -22,6 +22,34 @@
 }
 
 /* -------------------------------------------------------------------------
+ * Provisioning screen — the indeterminate bar on the "Setting up your account"
+ * takeover (components/library/account-setup.tsx). A sliver travels across its
+ * track because provisioning reports no percentage; a reduced-motion viewer gets
+ * a still, full-width track instead of a jitter-free-but-frozen sliver.
+ * ---------------------------------------------------------------------- */
+.provisioning-shimmer {
+  width: 100%;
+  opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .provisioning-shimmer {
+    width: 33%;
+    opacity: 1;
+    animation: provisioning-slide 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes provisioning-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+/* -------------------------------------------------------------------------
  * Marketing landing — ambient background motion only.
  * Slow, monochrome drift for the light blooms + a faint pan on the graph
  * grid. All of it is gated behind prefers-reduced-motion, so a reduced-motion

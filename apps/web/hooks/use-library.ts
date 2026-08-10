@@ -39,12 +39,18 @@ interface AsyncState<T> {
 
 /**
  * A fresh signup lands here milliseconds after the Clerk redirect, so the first
- * requests can beat tenant provisioning (~1-2s) and 503. That is a normal part
- * of signup, not an error, so we poll it out: retry every RETRY_MS for up to
- * MAX_MS, then give up and fall back to the ordinary error path so a permanently
- * broken account can't spin forever.
+ * requests can beat tenant provisioning (~10-15s for a new Turso DB) and 503.
+ * That is a normal part of signup, not an error, so we poll it out: re-fire the
+ * SAME failed request every RETRY_MS for up to MAX_MS, then give up and fall back
+ * to the ordinary error path so a permanently broken account can't spin forever.
+ * While it polls, every consumer of these hooks reports `provisioning` and the
+ * page shows one branded screen (components/library/account-setup.tsx).
+ *
+ * 2s is the interval the provisioning screen is written around — fast enough that
+ * the app appears the moment the DB lands, slow enough that a 15s wait is ~7
+ * requests, not 10.
  */
-const PROVISION_RETRY_MS = 1_500;
+const PROVISION_RETRY_MS = 2_000;
 const PROVISION_MAX_MS = 60_000;
 
 /** Abort-aware sleep. Resolves false when the signal fired → caller must stop

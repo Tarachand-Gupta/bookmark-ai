@@ -20,7 +20,9 @@ import { detectSource } from "@/lib/detect";
  * other users for the same reason.
  */
 
-const PROVISION_RETRY_MS = 1_500;
+/** Keep in step with use-library.ts: the same 2s re-fire cadence behind the same
+ * branded provisioning screen, so Home and the library never poll at two speeds. */
+const PROVISION_RETRY_MS = 2_000;
 const PROVISION_MAX_MS = 60_000;
 
 export interface DashboardState {

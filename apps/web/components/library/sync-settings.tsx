@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { getSettings, updateSettings } from "@/lib/api";
 import { FEATURE_ICONS } from "./feature-icons";
 import { Switch } from "./devices-settings";
+import { SettingsGroup, SettingsRow, SettingsSection } from "./settings-section";
 
 /** Canonical bookmarks glyph, shared with the sidebar via FEATURE_ICONS. */
 const SyncIcon = FEATURE_ICONS.bookmarks;
@@ -87,19 +88,11 @@ export function SyncSection() {
   };
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h3 className="flex items-center gap-2 text-sm font-semibold">
-          <SyncIcon className="size-4 text-muted-foreground" aria-hidden />
-          Browser bookmarks &amp; reading list
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          Mirror bookmarks you add in Chrome or Firefox — and items you add to Chrome&apos;s
-          Reading List — into your library here. Applies to every browser where you&apos;re signed
-          in to the extension.
-        </p>
-      </div>
-
+    <SettingsSection
+      title="Browser bookmarks & reading list"
+      icon={SyncIcon}
+      description="Mirror bookmarks you add in Chrome or Firefox — and items you add to Chrome’s Reading List — into your library here. Applies to every browser where you’re signed in to the extension."
+    >
       {loading ? (
         <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -107,54 +100,51 @@ export function SyncSection() {
         </div>
       ) : (
         <>
-          <div className="space-y-2">
-            <div className="flex items-start justify-between gap-4">
-              <label htmlFor="native-sync-enabled" className="text-sm font-medium">
-                Sync native browser bookmarks
-              </label>
+          <SettingsRow
+            label="Sync native browser bookmarks"
+            htmlFor="native-sync-enabled"
+            control={
               <Switch
                 id="native-sync-enabled"
                 checked={syncEnabled}
                 disabled={busy}
                 onChange={toggleSync}
               />
-            </div>
-            <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
-              Bookmarking a page the usual way (the star button, Ctrl/Cmd+D, or the bookmarks
-              menu) also saves it here, categorized and searchable. Reading List additions are
-              saved with the <strong className="font-medium text-foreground">reading</strong> and{" "}
-              <strong className="font-medium text-foreground">article</strong> tags. On by default.
-              Not available in Safari — Apple doesn&apos;t expose bookmarks or the Reading List to
-              extensions.
-            </p>
-          </div>
+            }
+            description={
+              <>
+                Bookmarking a page the usual way (the star button, Ctrl/Cmd+D, or the bookmarks
+                menu) also saves it here, categorized and searchable. Reading List additions are
+                saved with the <strong className="font-medium text-foreground">reading</strong>{" "}
+                and <strong className="font-medium text-foreground">article</strong> tags. On by
+                default. Not available in Safari — Apple doesn&apos;t expose bookmarks or the
+                Reading List to extensions.
+              </>
+            }
+          />
 
-          <div className="space-y-2 border-t pt-5">
-            <div className="flex items-start justify-between gap-4">
-              <label
-                htmlFor="native-sync-full"
-                className={syncEnabled ? "text-sm font-medium" : "text-sm font-medium text-muted-foreground"}
-              >
-                Full sync — apply removals too
-              </label>
-              <Switch
-                id="native-sync-full"
-                checked={fullSync}
-                disabled={busy || !syncEnabled}
-                onChange={toggleFull}
-              />
-            </div>
-            <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
-              Removing a native bookmark or Reading List item also deletes it from Bookmark AI.
-              Off by default — removals normally keep the saved copy, so this library only grows
-              unless you opt in. Clearing a whole folder deletes only the bookmarks the browser
-              reports (a folder removal reports the folder, not its contents).
-            </p>
-          </div>
+          <SettingsGroup divided>
+            {/* Gated on the master switch, so the label dims with it — the row
+                primitive owns that state instead of two spelled-out classNames. */}
+            <SettingsRow
+              label="Full sync — apply removals too"
+              htmlFor="native-sync-full"
+              muted={!syncEnabled}
+              control={
+                <Switch
+                  id="native-sync-full"
+                  checked={fullSync}
+                  disabled={busy || !syncEnabled}
+                  onChange={toggleFull}
+                />
+              }
+              description="Removing a native bookmark or Reading List item also deletes it from Bookmark AI. Off by default — removals normally keep the saved copy, so this library only grows unless you opt in. Clearing a whole folder deletes only the bookmarks the browser reports (a folder removal reports the folder, not its contents)."
+            />
+          </SettingsGroup>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
         </>
       )}
-    </div>
+    </SettingsSection>
   );
 }

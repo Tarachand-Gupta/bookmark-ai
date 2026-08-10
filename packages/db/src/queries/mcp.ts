@@ -2,7 +2,7 @@ import type { Db } from "../client";
 
 /**
  * MCP server persistence: the token registry and the tiered rate-limit counters
- * (tenant migration v9).
+ * (both tables shipped as tenant migration v10; `mcp_tokens.hint` as v11).
  *
  * `mcp_tokens` deliberately stores NO token material. A `bkmcp_` token is a
  * self-contained HS256 JWT (see apps/web/lib/server/mcp-token.ts) whose `jti` is
@@ -10,6 +10,12 @@ import type { Db } from "../client";
  * last-used timestamp, and REVOKED (a signature-valid token whose row is missing
  * or has `revoked_at` set is rejected). A revoked row is kept, never deleted, so
  * the Settings UI can still show its history.
+ *
+ * The one exception to "no token material" is `hint`: `bkmcp_xxxxx…xxxxx`, the
+ * first and last 5 characters of the token body, computed at mint time (see
+ * `mcpTokenHint`) purely so the user can tell WHICH token a row is. It is not a
+ * credential and cannot be extended into one; it is NULL for rows created before
+ * v11, which can never be backfilled because the value is gone.
  */
 export interface McpTokenRow {
   id: string;
@@ -17,6 +23,8 @@ export interface McpTokenRow {
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
+  /** `bkmcp_xxxxx…xxxxx` display hint, or null for pre-v11 rows. */
+  hint: string | null;
 }
 
 function rowToToken(row: Record<string, unknown>): McpTokenRow {
@@ -27,17 +35,23 @@ function rowToToken(row: Record<string, unknown>): McpTokenRow {
     createdAt: String(row.created_at),
     lastUsedAt: str(row.last_used_at),
     revokedAt: str(row.revoked_at),
+    // Every read below is `SELECT *`, so the v11 column arrives here with no
+    // query change — and reads back undefined→null on a DB where the ALTER has
+    // not run yet (a tolerant statement that was skipped), never throwing.
+    hint: str(row.hint),
   };
 }
 
-/** Register a freshly minted token's `jti`. `name` is user-supplied — bound. */
+/** Register a freshly minted token's `jti` plus its display `hint`. `name` is
+ * user-supplied — bound. `hint` is optional so a caller that has no hint (or a
+ * DB predating v11) still inserts cleanly, leaving the column NULL. */
 export async function insertMcpToken(
   db: Db,
-  token: { id: string; name: string; createdAt: string },
+  token: { id: string; name: string; createdAt: string; hint?: string | null },
 ): Promise<McpTokenRow> {
   await db.execute({
-    sql: "INSERT INTO mcp_tokens (id, name, created_at) VALUES (?, ?, ?)",
-    args: [token.id, token.name, token.createdAt],
+    sql: "INSERT INTO mcp_tokens (id, name, created_at, hint) VALUES (?, ?, ?, ?)",
+    args: [token.id, token.name, token.createdAt, token.hint ?? null],
   });
   const saved = await getMcpToken(db, token.id);
   if (!saved) throw new Error("insertMcpToken: row not found after insert");

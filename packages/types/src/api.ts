@@ -19,6 +19,25 @@ export const createBookmarkSchema = z.object({
 });
 export type CreateBookmarkInput = z.infer<typeof createBookmarkSchema>;
 
+/** A YYYY-MM-DD calendar day. */
+const dayOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
+
+const isoDatetimeSchema = z.string().datetime({ offset: true });
+
+/**
+ * One end of a saved-at range: either a calendar day (whole-day bound) or a full
+ * ISO datetime, so sub-day windows ("the last hour") are expressible. A union
+ * would report two errors for one bad value; refine keeps the message single and
+ * readable, and reuses the same `.datetime({ offset: true })` validation the
+ * write paths use rather than a hand-rolled regex.
+ */
+const savedAtBoundSchema = z
+  .string()
+  .refine(
+    (v) => dayOnlySchema.safeParse(v).success || isoDatetimeSchema.safeParse(v).success,
+    "Expected YYYY-MM-DD or an ISO 8601 datetime (e.g. 2026-08-11T15:00:00Z)",
+  );
+
 /** GET /api/bookmarks query params. */
 export const listBookmarksQuerySchema = z.object({
   category: z.string().optional(),
@@ -30,19 +49,14 @@ export const listBookmarksQuerySchema = z.object({
    * the URL the browser just removed. */
   url: httpUrlSchema.optional(),
   /** YYYY-MM-DD — bookmarks saved on this day. */
-  day: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-  /** YYYY-MM-DD inclusive bounds — a saved-day range filter (either end optional). */
-  from: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-  to: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
+  day: dayOnlySchema.optional(),
+  /** INCLUSIVE saved-at range bounds, either end optional. A date-only
+   * YYYY-MM-DD is a WHOLE-day bound (`from` = that day's first instant, `to` =
+   * its last), so the pre-datetime behaviour is unchanged; a full ISO datetime
+   * expresses a sub-day window ("saved in the last hour"). The DB widens both
+   * into a half-open `saved_at` interval — see packages/db/src/date-bounds.ts. */
+  from: savedAtBoundSchema.optional(),
+  to: savedAtBoundSchema.optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),
   offset: z.coerce.number().int().min(0).default(0),
 });

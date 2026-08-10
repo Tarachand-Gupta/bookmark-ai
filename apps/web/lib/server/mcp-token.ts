@@ -113,6 +113,37 @@ export function mintMcpToken(userId: string): MintedMcpToken {
 }
 
 /**
+ * Derive the stored display hint for a token: `bkmcp_` + the first 5 characters
+ * of the token body + `…` + its last 5. Pure, and accepts the value with OR
+ * without the `bkmcp_` prefix (the prefix is stripped first, so both forms yield
+ * the identical hint) — the mint path passes the full token, tests pass either.
+ *
+ * WHY it exists: the token value is never stored, so a Settings list of three
+ * tokens otherwise offers nothing to match against the credential sitting in a
+ * given client's config file. The hint is deliberately NON-REVERSIBLE: 10
+ * characters out of a ~260-character token, enough to say "this row is that
+ * token", useless for authenticating (the signature is what a verifier checks,
+ * and none of it survives here in a reconstructable form). Safe to store in the
+ * tenant DB and to render in the UI.
+ *
+ * DEGRADE PATH for a body shorter than 10 characters (truncated value, a bare
+ * prefix, an empty string — none of which a minted token ever is): the two
+ * slices would overlap and echo the whole body back, so anything under 12 chars
+ * collapses to the prefix plus a bare `…`. Never reveals the full value, never
+ * throws.
+ */
+export function mcpTokenHint(token: string): string {
+  const raw = typeof token === "string" ? token : "";
+  // Only a LEADING prefix is stripped (String.replace would happily eat an
+  // occurrence from the middle of the base64url body).
+  const body = raw.startsWith(MCP_TOKEN_PREFIX) ? raw.slice(MCP_TOKEN_PREFIX.length) : raw;
+  // 12, not 10: at exactly 10 the two 5-char windows tile the entire body, and at
+  // 11 a single hidden character is a fig leaf. Below that, show no body at all.
+  if (body.length < 12) return `${MCP_TOKEN_PREFIX}…`;
+  return `${MCP_TOKEN_PREFIX}${body.slice(0, 5)}…${body.slice(-5)}`;
+}
+
+/**
  * Verify an MCP token's signature and claims. Returns null on ANY failure
  * (missing secret, wrong prefix, malformed structure, wrong alg, bad signature,
  * expiry past the skew tolerance, or a scope other than "mcp"). Signature
