@@ -40,3 +40,10 @@ next-env.d.ts
 apps/extension/safari-xcode/
 .vercel
 .env*
+
+# OpenMemory - IDE/Assistant specific rules
+.cursor/rules/openmemory.mdc
+openmemory.md
+
+# stray local package store (pnpm store-dir misconfig once created it in-repo)
+.pnpm-store/
