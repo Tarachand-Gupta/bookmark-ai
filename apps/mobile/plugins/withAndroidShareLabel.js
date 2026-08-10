@@ -15,7 +15,14 @@
  * is what makes it run LAST, once the filters exist. The throw below is the
  * guard against that ordering silently flipping.
  */
-const { AndroidConfig, withAndroidManifest } = require("@expo/config-plugins");
+// `expo/config-plugins`, NOT `@expo/config-plugins`: the latter is a transitive
+// dep that pnpm's strict isolation does not link into apps/mobile, so it only
+// resolves inside Expo's own require graph. `expo prebuild` gets away with the
+// bare specifier, but the RELEASE Gradle build loads this file from plain node
+// processes (`:expo-constants:createExpoConfig`, `:app:createBundleReleaseJsAndAssets`)
+// and dies with "Cannot find module '@expo/config-plugins'". The `expo/*`
+// re-export resolves through the direct `expo` dependency, so it works everywhere.
+const { AndroidConfig, withAndroidManifest } = require("expo/config-plugins");
 
 const SHARE_LABEL = "Save to Bookmark AI";
 const SEND_ACTIONS = new Set([

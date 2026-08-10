@@ -32,6 +32,11 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
+
+# store-release credentials (eas.json submit.production points here):
+# Google Play service-account JSON, App Store Connect API .p8, upload keystore
+credentials/
 
 # typescript
 *.tsbuildinfo

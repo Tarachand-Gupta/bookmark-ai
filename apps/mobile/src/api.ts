@@ -180,6 +180,27 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
+/**
+ * Permanently delete the signed-in account — the App Store's required
+ * "delete your account in-app" primitive (Guideline 5.1.1(v)). Same contract as
+ * the web app's `deleteAccount` (apps/web/lib/api.ts): `DELETE /api/account`
+ * removes the Clerk user, whose `user.deleted` webhook then tears down the
+ * tenant DB. Raw fetch rather than `request()` so the 202/400 status codes can
+ * be told apart — 400 is the local/open-mode case (no Clerk user to delete).
+ */
+export async function deleteAccount(): Promise<void> {
+  const res = await fetch(`${getApiUrl()}/api/account`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
+  if (res.status === 202) return;
+  if (res.status === 400) {
+    throw new Error("Account deletion isn't available in local mode.");
+  }
+  const body = (await res.json().catch(() => null)) as { error?: string } | null;
+  throw new Error(body?.error ?? `Delete failed (${res.status})`);
+}
+
 export interface LibraryFilters {
   category?: string;
   tag?: string;
@@ -220,7 +241,10 @@ export function searchBookmarks(
  * save to pick up the title the server scrapes a moment later, so the
  * confirmation banner can show the real page title instead of the raw link.
  */
-export function getBookmarkByUrl(url: string, signal?: AbortSignal): Promise<ListBookmarksResponse> {
+export function getBookmarkByUrl(
+  url: string,
+  signal?: AbortSignal,
+): Promise<ListBookmarksResponse> {
   const params = new URLSearchParams({ url, limit: "1" });
   return request<ListBookmarksResponse>(`/api/bookmarks?${params}`, { signal });
 }

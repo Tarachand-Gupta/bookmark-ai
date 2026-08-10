@@ -20,6 +20,7 @@ const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   display: "desktop-outline",
   "doc.on.clipboard": "clipboard-outline",
   "exclamationmark.triangle": "warning-outline",
+  "exclamationmark.triangle.fill": "warning",
   "eye.slash": "eye-off-outline",
   gearshape: "settings-outline",
   "gearshape.fill": "settings",
@@ -42,6 +43,7 @@ const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   "square.grid.2x2": "grid-outline",
   "square.stack": "albums-outline",
   "square.stack.fill": "albums",
+  trash: "trash-outline",
   "xmark.circle.fill": "close-circle",
 };
 
@@ -68,6 +70,12 @@ export function Symbol({
     return <Text style={{ fontSize: size * 0.9, color }}>{fallback}</Text>;
   }
   return (
-    <SymbolView name={name} size={size} tintColor={color} weight={weight} resizeMode="scaleAspectFit" />
+    <SymbolView
+      name={name}
+      size={size}
+      tintColor={color}
+      weight={weight}
+      resizeMode="scaleAspectFit"
+    />
   );
 }

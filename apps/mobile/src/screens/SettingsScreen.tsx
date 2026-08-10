@@ -12,6 +12,7 @@ import {
 import { useClerk, useUser } from "@clerk/clerk-expo";
 import type { SymbolViewProps } from "expo-symbols";
 import { getApiUrl, SERVER_TARGET } from "../api";
+import { DeleteAccountSheet } from "../components/DeleteAccountSheet";
 import { Symbol } from "../components/Symbol";
 import {
   useAppTheme,
@@ -43,6 +44,7 @@ export function SettingsScreen() {
   const tabBarClearance = useTabBarClearance();
   const onScroll = useTabBarScroll();
   const [avatarFailed, setAvatarFailed] = useState(false);
+  const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
 
   // user is null only in the dev auth-bypass session (EXPO_PUBLIC_SKIP_AUTH);
   // a real session always has a user by the time the Shell renders.
@@ -59,98 +61,148 @@ export function SettingsScreen() {
     ]);
   };
 
+  /**
+   * Step 1 of account deletion (App Store guideline 5.1.1(v)): an Alert that
+   * states the consequence before the typed-confirmation sheet even opens, so a
+   * mis-tap on the row can never reach the armed button.
+   */
+  const startDelete = () => {
+    Alert.alert(
+      "Delete account?",
+      "This permanently deletes your account and every bookmark and session in it. It cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Continue", style: "destructive", onPress: () => setDeleteSheetOpen(true) },
+      ],
+    );
+  };
+
+  /**
+   * The account is gone server-side; drop the local session so the app lands
+   * back on the sign-in screen. `signOut()` talks to Clerk, whose user no longer
+   * exists, so a throw here is EXPECTED — swallow it (the token cache is cleared
+   * either way) and tell the user it worked, because it did.
+   */
+  const finishDelete = () => {
+    setDeleteSheetOpen(false);
+    void signOut().catch(() => undefined);
+    Alert.alert("Account deleted", "Your account and all of its data have been removed.");
+  };
+
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
-      onScroll={onScroll}
-      scrollEventThrottle={16}
-    >
-      <Text style={[styles.largeTitle, { color: colors.foreground }]}>Settings</Text>
+    <>
+      <ScrollView
+        style={{ backgroundColor: colors.background }}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+      >
+        <Text style={[styles.largeTitle, { color: colors.foreground }]}>Settings</Text>
 
-      <View style={styles.profile}>
-        {user?.imageUrl && !avatarFailed ? (
-          <Image
-            source={{ uri: user.imageUrl }}
-            onError={() => setAvatarFailed(true)}
-            style={styles.avatarImage}
-          />
-        ) : (
-          <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-            <Symbol
-              name="person.fill"
-              size={26}
-              color={colors.primaryForeground}
-              fallback={name.slice(0, 1).toUpperCase()}
+        <View style={styles.profile}>
+          {user?.imageUrl && !avatarFailed ? (
+            <Image
+              source={{ uri: user.imageUrl }}
+              onError={() => setAvatarFailed(true)}
+              style={styles.avatarImage}
             />
-          </View>
-        )}
-        <Text style={[styles.profileName, { color: colors.foreground }]}>{name}</Text>
-        {email.length > 0 && (
-          <Text style={[styles.profileMeta, { color: colors.mutedForeground }]}>{email}</Text>
-        )}
-      </View>
+          ) : (
+            <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
+              <Symbol
+                name="person.fill"
+                size={26}
+                color={colors.primaryForeground}
+                fallback={name.slice(0, 1).toUpperCase()}
+              />
+            </View>
+          )}
+          <Text style={[styles.profileName, { color: colors.foreground }]}>{name}</Text>
+          {email.length > 0 && (
+            <Text style={[styles.profileMeta, { color: colors.mutedForeground }]}>{email}</Text>
+          )}
+        </View>
 
-      <GroupLabel>Appearance</GroupLabel>
-      <Group>
-        {THEME_OPTIONS.map((option, i) => (
-          <GroupRow
-            key={option.value}
-            first={i === 0}
-            label={option.label}
-            onPress={() => setThemePreference(option.value)}
-            trailing={
-              themePreference === option.value ? (
-                <Symbol name="checkmark" size={16} color={colors.foreground} fallback="✓" weight="semibold" />
-              ) : null
-            }
-          />
-        ))}
-      </Group>
+        <GroupLabel>Appearance</GroupLabel>
+        <Group>
+          {THEME_OPTIONS.map((option, i) => (
+            <GroupRow
+              key={option.value}
+              first={i === 0}
+              label={option.label}
+              onPress={() => setThemePreference(option.value)}
+              trailing={
+                themePreference === option.value ? (
+                  <Symbol name="checkmark" size={16} color={colors.foreground} fallback="✓" weight="semibold" />
+                ) : null
+              }
+            />
+          ))}
+        </Group>
 
-      <GroupLabel>About</GroupLabel>
-      <Group>
-        {/* Which backend a build talks to is a build-time decision (api.ts
-            resolveServerTarget), not a user choice — surface it only in dev
-            builds where QA actually needs to confirm the target. */}
-        {__DEV__ ? (
+        <GroupLabel>About</GroupLabel>
+        <Group>
+          {/* Which backend a build talks to is a build-time decision (api.ts
+              resolveServerTarget), not a user choice — surface it only in dev
+              builds where QA actually needs to confirm the target. */}
+          {__DEV__ ? (
+            <GroupRow
+              first
+              symbol={SERVER_TARGET === "local" ? "laptopcomputer" : "cloud"}
+              label="Server"
+              detail={SERVER_HOST}
+            />
+          ) : null}
           <GroupRow
-            first
-            symbol={SERVER_TARGET === "local" ? "laptopcomputer" : "cloud"}
-            label="Server"
-            detail={SERVER_HOST}
+            first={!__DEV__}
+            symbol="safari"
+            label="Open web app"
+            chevron
+            onPress={() => void Linking.openURL(WEB_URL)}
           />
-        ) : null}
-        <GroupRow
-          first={!__DEV__}
-          symbol="safari"
-          label="Open web app"
-          chevron
-          onPress={() => void Linking.openURL(WEB_URL)}
-        />
-      </Group>
+        </Group>
 
-      <GroupLabel>Account</GroupLabel>
-      <Group>
-        {signedIn ? (
-          <GroupRow
-            first
-            symbol="rectangle.portrait.and.arrow.right"
-            label="Sign Out"
-            destructive
-            onPress={confirmSignOut}
-          />
-        ) : (
-          <GroupRow first symbol="person.fill" label="Developer session" detail="no account" />
+        <GroupLabel>Account</GroupLabel>
+        <Group>
+          {signedIn ? (
+            <>
+              <GroupRow
+                first
+                symbol="rectangle.portrait.and.arrow.right"
+                label="Sign Out"
+                destructive
+                onPress={confirmSignOut}
+              />
+              {/* App Store guideline 5.1.1(v): an app that creates accounts must
+                  offer in-app account DELETION, not just a support link. Below
+                  Sign Out so the safe action stays the easy one. */}
+              <GroupRow symbol="trash" label="Delete Account" destructive onPress={startDelete} />
+            </>
+          ) : (
+            <GroupRow first symbol="person.fill" label="Developer session" detail="no account" />
+          )}
+        </Group>
+        {signedIn && (
+          <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
+            Deleting your account permanently removes your bookmarks, sessions, and sign-in. This
+            cannot be undone.
+          </Text>
         )}
-      </Group>
-      {!signedIn && (
-        <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-          This build was started with the sign-in gate bypassed (EXPO_PUBLIC_SKIP_AUTH — dev
-          only). Restart the dev server without the flag to use the real sign-in flow.
-        </Text>
-      )}
-    </ScrollView>
+        {!signedIn && (
+          <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
+            This build was started with the sign-in gate bypassed (EXPO_PUBLIC_SKIP_AUTH — dev
+            only). Restart the dev server without the flag to use the real sign-in flow.
+          </Text>
+        )}
+      </ScrollView>
+      {/* Step 2 of deletion: the typed-confirmation sheet. A sibling of the
+          list, not a scrollable child. */}
+      <DeleteAccountSheet
+        visible={deleteSheetOpen}
+        email={email}
+        onClose={() => setDeleteSheetOpen(false)}
+        onDeleted={finishDelete}
+      />
+    </>
   );
 }
 
