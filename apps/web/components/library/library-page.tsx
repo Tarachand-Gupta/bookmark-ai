@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   CalendarDays,
   Chrome,
@@ -37,6 +37,7 @@ import { useSelection } from "@/hooks/use-selection";
 import { runBulk } from "@/lib/bulk";
 import { downloadBookmarksCsv, downloadSessionsCsv } from "@/lib/csv";
 import { NoAccessNotice } from "@/components/no-access-notice";
+import { DASHBOARD_PATH } from "@/components/dashboard/links";
 import { AccountSetup } from "./account-setup";
 import { AppSidebar } from "./app-sidebar";
 import { BookmarkGrid } from "./bookmark-grid";
@@ -78,6 +79,13 @@ const AI_PARAM = "ai";
 export function LibraryPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  // Only for leaving this route (Home). Everything WITHIN the library is shallow
+  // history state — see shallowPush below.
+  const router = useRouter();
+  // Home is one click away in the sidebar; warm it so the hop is instant.
+  useEffect(() => {
+    router.prefetch(DASHBOARD_PATH);
+  }, [router]);
 
   // Every view switch here (section, facet, search mirror, settings-param
   // clearing) is pure URL state — nothing server-side changes, all data comes
@@ -508,6 +516,7 @@ export function LibraryPage() {
         aiEnabled={health.data ? health.data.ai : health.error ? false : null}
         filters={filters}
         onFilterChange={setFilters}
+        onShowHome={() => router.push(DASHBOARD_PATH)}
         sessionsActive={sessionsActive}
         sessionCount={sessions.data?.sessions.length ?? null}
         sessionsLoading={sessions.loading}

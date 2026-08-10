@@ -22,11 +22,17 @@ export interface LibraryHeaderProps {
   crumb?: HeaderCrumb | null;
   /** Clicking the root while a facet is active clears it. */
   onRootClick?: () => void;
-  query: string;
+  query?: string;
   /** True while the AI chat panel is open. */
-  aiActive: boolean;
-  onQueryChange: (q: string) => void;
-  onAskAi: () => void;
+  aiActive?: boolean;
+  /**
+   * Omit to render the bar WITHOUT the search box and Ask AI button — that's how
+   * the dashboard reuses this header, since search there lives in the page's own
+   * omnibox and duplicating it in the chrome would be two search fields on one
+   * screen. The library always passes it.
+   */
+  onQueryChange?: (q: string) => void;
+  onAskAi?: () => void;
 }
 
 /**
@@ -76,42 +82,46 @@ export function LibraryHeader({
         )}
       </nav>
 
-      <div className="order-last flex w-full min-w-0 items-center gap-2 sm:order-none sm:w-auto">
-        <div className="relative min-w-0 flex-1 sm:w-80 sm:flex-none">
-          <Search
-            className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
-          />
-          <Input
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Search bookmarks & sessions…"
-            className={cn("h-9 pl-8", query ? "pr-8" : "pr-3")}
-            aria-label="Search bookmarks and sessions"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => onQueryChange("")}
-              aria-label="Clear search"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <X className="size-4" aria-hidden />
-            </button>
-          )}
-        </div>
+      {/* Search + Ask AI: rendered only when the host page wired them up (the
+          dashboard doesn't — it has its own omnibox). */}
+      {onQueryChange && (
+        <div className="order-last flex w-full min-w-0 items-center gap-2 sm:order-none sm:w-auto">
+          <div className="relative min-w-0 flex-1 sm:w-80 sm:flex-none">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              value={query ?? ""}
+              onChange={(e) => onQueryChange(e.target.value)}
+              placeholder="Search bookmarks & sessions…"
+              className={cn("h-9 pl-8", query ? "pr-8" : "pr-3")}
+              aria-label="Search bookmarks and sessions"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => onQueryChange("")}
+                aria-label="Clear search"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+            )}
+          </div>
 
-        <Button
-          size="sm"
-          variant={aiActive ? "default" : "outline"}
-          className="h-9"
-          onClick={onAskAi}
-          aria-pressed={aiActive}
-        >
-          <Sparkles aria-hidden />
-          <span className="hidden sm:inline">Ask AI</span>
-        </Button>
-      </div>
+          <Button
+            size="sm"
+            variant={aiActive ? "default" : "outline"}
+            className="h-9"
+            onClick={onAskAi}
+            aria-pressed={aiActive}
+          >
+            <Sparkles aria-hidden />
+            <span className="hidden sm:inline">Ask AI</span>
+          </Button>
+        </div>
+      )}
 
       <ThemeToggle />
       <AuthControls />

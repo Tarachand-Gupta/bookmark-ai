@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, Linking, LogBox, StyleSheet, View } from "react-native";
 import { BlurTargetView } from "expo-blur";
@@ -10,8 +10,11 @@ import {
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { setAuthTokenProvider } from "./src/api";
 import { PreferencesProvider, useAppTheme, usePreferences } from "./src/context/PreferencesContext";
+import type { SessionsSegment } from "./src/hooks/useLiveDevices";
 import { CLERK_PUBLISHABLE_KEY, tokenCache } from "./src/lib/clerk";
+import type { NavTarget } from "./src/navigation/intents";
 import { TabBar, type TabKey } from "./src/navigation/TabBar";
+import { HomeScreen } from "./src/screens/HomeScreen";
 import { LibraryScreen } from "./src/screens/LibraryScreen";
 import { SearchScreen } from "./src/screens/SearchScreen";
 import { SessionsScreen } from "./src/screens/SessionsScreen";
@@ -93,23 +96,58 @@ function Gate() {
   );
 }
 
-// Dev/screenshot affordance: EXPO_PUBLIC_INITIAL_TAB=sessions|search|settings|filters
-// (inlined at bundle time; unset in normal use).
+// Dev/screenshot affordance: EXPO_PUBLIC_INITIAL_TAB=home|library|sessions|search|settings|filters
+// (inlined at bundle time; unset in normal use → Home, the landing tab).
 const INITIAL = process.env.EXPO_PUBLIC_INITIAL_TAB;
 
+function initialTab(): TabKey {
+  if (
+    INITIAL === "home" ||
+    INITIAL === "library" ||
+    INITIAL === "sessions" ||
+    INITIAL === "search" ||
+    INITIAL === "settings"
+  ) {
+    return INITIAL;
+  }
+  // EXPO_PUBLIC_INITIAL_TAB=filters opens the Library with its sheet up.
+  return INITIAL === "filters" ? "library" : "home";
+}
+
 function Shell() {
-  const [tab, setTab] = useState<TabKey>(
-    INITIAL === "sessions" || INITIAL === "search" || INITIAL === "settings"
-      ? INITIAL
-      : "library",
-  );
+  const [tab, setTab] = useState<TabKey>(initialTab);
   const [filterSheetOpen, setFilterSheetOpen] = useState(INITIAL === "filters");
 
-  // Deep links: bookmarkai://tab/<library|sessions|search|settings>, bookmarkai://filters
+  // One-shot cross-tab requests (see src/navigation/intents.ts). Screens stay
+  // mounted, so a "navigation" is a tab switch plus a request the target screen
+  // consumes and clears — no nav library, no route table.
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [libraryTag, setLibraryTag] = useState<string | null>(null);
+  const [sessionsSegment, setSessionsSegment] = useState<SessionsSegment | null>(null);
+  // A counter, not a boolean: tapping Home's search field twice must re-focus
+  // the Search field both times.
+  const [searchFocus, setSearchFocus] = useState(0);
+
+  const navigate = useCallback((target: NavTarget) => {
+    setTab(target.tab);
+    if (target.tab === "library") {
+      if (target.tag !== undefined) setLibraryTag(target.tag);
+      if (target.add === true) setAddSheetOpen(true);
+    } else if (target.tab === "sessions") {
+      if (target.segment !== undefined) setSessionsSegment(target.segment);
+    } else if (target.tab === "search") {
+      if (target.focus === true) setSearchFocus((n) => n + 1);
+    }
+  }, []);
+
+  const clearLibraryTag = useCallback(() => setLibraryTag(null), []);
+  const clearSessionsSegment = useCallback(() => setSessionsSegment(null), []);
+
+  // Deep links: bookmarkai://tab/<home|library|sessions|search|settings>, bookmarkai://filters
   useEffect(() => {
     const handle = (url: string | null) => {
       if (!url) return;
-      const match = /(?:tab\/)?(library|sessions|search|settings|filters)\/?$/.exec(url);
+      const match = /(?:tab\/)?(home|library|sessions|search|settings|filters)\/?$/.exec(url);
       if (!match) return;
       if (match[1] === "filters") {
         setTab("library");
@@ -132,14 +170,30 @@ function Shell() {
     <>
       <BlurTargetView ref={blurTargetRef} style={styles.body}>
         <SafeAreaView edges={["top", "left", "right"]} style={styles.body}>
+          <View style={[styles.screen, tab !== "home" && styles.hidden]}>
+            <HomeScreen active={tab === "home"} onNavigate={navigate} />
+          </View>
           <View style={[styles.screen, tab !== "library" && styles.hidden]}>
-            <LibraryScreen filterSheetOpen={filterSheetOpen} onFilterSheetChange={setFilterSheetOpen} />
+            <LibraryScreen
+              active={tab === "library"}
+              filterSheetOpen={filterSheetOpen}
+              onFilterSheetChange={setFilterSheetOpen}
+              addSheetOpen={addSheetOpen}
+              onAddSheetChange={setAddSheetOpen}
+              requestedTag={libraryTag}
+              onRequestedTagHandled={clearLibraryTag}
+            />
           </View>
           <View style={[styles.screen, tab !== "sessions" && styles.hidden]}>
-            <SessionsScreen active={tab === "sessions"} onOpenSettings={() => setTab("settings")} />
+            <SessionsScreen
+              active={tab === "sessions"}
+              onOpenSettings={() => setTab("settings")}
+              requestedSegment={sessionsSegment}
+              onRequestedSegmentHandled={clearSessionsSegment}
+            />
           </View>
           <View style={[styles.screen, tab !== "search" && styles.hidden]}>
-            <SearchScreen />
+            <SearchScreen focusRequest={searchFocus} />
           </View>
           <View style={[styles.screen, tab !== "settings" && styles.hidden]}>
             <SettingsScreen />

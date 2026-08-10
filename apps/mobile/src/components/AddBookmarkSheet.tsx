@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { createBookmark } from "../api";
+import { createBookmark, CURRENT_DEVICE } from "../api";
 import { useAppTheme } from "../context/PreferencesContext";
 import { Symbol } from "./Symbol";
 
@@ -74,7 +74,9 @@ export function AddBookmarkSheet({
         url: normalized,
         title: title.trim() || undefined,
         browser: "other", // saved from the app, not a browser
-        device: Platform.OS === "ios" && Platform.isPad ? "tablet" : "mobile",
+        // one source of truth for this build's device class — the dashboard
+        // sends the same value as ?device= so it can exclude our own saves
+        device: CURRENT_DEVICE,
         deviceName: Platform.OS === "ios" ? (Platform.isPad ? "iPad" : "iPhone") : "Android",
         os: Platform.OS,
         savedAt: new Date().toISOString(),

@@ -14,15 +14,29 @@ export interface LibraryState {
   error: string | null;
   filters: LibraryFilters;
   activeFilterCount: number;
+  /** Chip/sheet behavior: tapping the value that's already active clears it. */
   setFilter: (key: keyof LibraryFilters, value: string | undefined) => void;
+  /**
+   * Set a filter to exactly this value, with no toggle. For programmatic
+   * arrivals (Home's "Reading queue → See all"), where `setFilter` would clear
+   * the filter whenever the same tag happened to be active already.
+   */
+  setFilterExact: (key: keyof LibraryFilters, value: string | undefined) => void;
   clearFilters: () => void;
   refresh: () => void;
   loadMore: () => void;
 }
 
+/** Refetch on tab focus once the data is older than this — same constant Home
+ * uses, so "See all" from Home can never land on staler data than Home shows. */
+const STALE_AFTER_MS = 60_000;
+
 /** The Library tab's data story: meta facets + filtered, paginated list.
- * (Search lives in its own tab — see useSearch.) */
-export function useLibrary(): LibraryState {
+ * (Search lives in its own tab — see useSearch.)
+ * @param active whether Library is the foreground tab (gates the staleness
+ * refetch; screens stay mounted behind the tab switcher, so mount-only
+ * fetching went stale the moment another tab saved a bookmark). */
+export function useLibrary(active: boolean): LibraryState {
   const { serverTarget } = usePreferences(); // switching servers refetches
   const [meta, setMeta] = useState<MetaResponse | null>(null);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -36,6 +50,10 @@ export function useLibrary(): LibraryState {
   const loadId = useRef(0);
   const offsetRef = useRef(0);
   const loadingMoreRef = useRef(false);
+  const fetchedAt = useRef(0);
+  // A focus-triggered reload keeps the current list on screen (no skeleton
+  // flash) — the flag is consumed by the load effect below.
+  const silentReload = useRef(false);
 
   useEffect(() => {
     getMeta()
@@ -43,13 +61,24 @@ export function useLibrary(): LibraryState {
       .catch(() => {});
   }, [reloadKey, serverTarget]);
 
+  // Focus staleness: arriving on the tab with old data refetches quietly.
+  useEffect(() => {
+    if (!active) return;
+    if (Date.now() - fetchedAt.current < STALE_AFTER_MS) return;
+    silentReload.current = true;
+    setReloadKey((k) => k + 1);
+  }, [active]);
+
   useEffect(() => {
     const id = ++loadId.current;
     offsetRef.current = 0;
-    setLoading(true);
+    const silent = silentReload.current;
+    silentReload.current = false;
+    if (!silent) setLoading(true);
     listBookmarks(filters, { limit: PAGE_SIZE, offset: 0 })
       .then((data) => {
         if (loadId.current !== id) return;
+        fetchedAt.current = Date.now();
         setBookmarks(data.bookmarks);
         setTotal(data.total);
         setError(null);
@@ -96,6 +125,10 @@ export function useLibrary(): LibraryState {
     setFilters((prev) => ({ ...prev, [key]: prev[key] === value ? undefined : value }));
   }, []);
 
+  const setFilterExact = useCallback((key: keyof LibraryFilters, value: string | undefined) => {
+    setFilters((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
+  }, []);
+
   const clearFilters = useCallback(() => setFilters({}), []);
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
@@ -110,6 +143,7 @@ export function useLibrary(): LibraryState {
     filters,
     activeFilterCount,
     setFilter,
+    setFilterExact,
     clearFilters,
     refresh,
     loadMore,

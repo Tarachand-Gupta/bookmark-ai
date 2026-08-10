@@ -5,6 +5,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -17,8 +18,10 @@ import type { SymbolViewProps } from "expo-symbols";
 import { useAppTheme } from "../context/PreferencesContext";
 import { Symbol } from "../components/Symbol";
 
-export type TabKey = "library" | "sessions" | "search" | "settings";
+export type TabKey = "home" | "library" | "sessions" | "search" | "settings";
 
+// Order is priority (docs/features/dashboard.md §4): Home lands first, the
+// storage/browse views follow.
 const TABS: {
   key: TabKey;
   label: string;
@@ -26,6 +29,13 @@ const TABS: {
   activeSymbol: SymbolViewProps["name"];
   fallback: string;
 }[] = [
+  {
+    key: "home",
+    label: "Home",
+    symbol: "house",
+    activeSymbol: "house.fill",
+    fallback: "⌂",
+  },
   {
     key: "library",
     label: "Library",
@@ -59,6 +69,22 @@ const TABS: {
 const BAR_HEIGHT = 64;
 const BAR_GAP = 16; // gap between bar bottom and safe-area/home indicator
 const COLLAPSED_SCALE = 0.84;
+
+// Item sizing. Fixed-width items keep the pill highlight the same distance from
+// the capsule's rounded ends on every tab, but a fifth tab (Home) no longer fits
+// at a hard 82pt on a 375pt iPhone SE — so the width is derived from the screen
+// and only shrinks where it has to (phones stay ≥ 56pt, iPads keep the full 82).
+const TAB_WIDTH_MAX = 82;
+const TAB_WIDTH_MIN = 56;
+const BAR_PADDING = 8; // capsule's own horizontal padding
+const TAB_GAP = 4;
+const SCREEN_MARGIN = 12; // breathing room the capsule keeps from each screen edge
+
+function tabWidth(windowWidth: number, count: number): number {
+  const available =
+    windowWidth - SCREEN_MARGIN * 2 - BAR_PADDING * 2 - TAB_GAP * Math.max(0, count - 1);
+  return Math.max(TAB_WIDTH_MIN, Math.min(TAB_WIDTH_MAX, Math.floor(available / count)));
+}
 
 function bottomOffset(insetBottom: number): number {
   return Math.max(insetBottom, BAR_GAP);
@@ -127,6 +153,8 @@ export function TabBar({
 }) {
   const { colors, dark } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const itemWidth = tabWidth(windowWidth, TABS.length);
 
   const items = TABS.map(({ key, label, symbol, activeSymbol, fallback }) => {
     const active = key === tab;
@@ -145,6 +173,7 @@ export function TabBar({
         accessibilityState={{ selected: active }}
         style={[
           styles.tab,
+          { width: itemWidth },
           active && {
             backgroundColor: dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.07)",
           },
@@ -225,17 +254,14 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    gap: 4,
+    paddingHorizontal: BAR_PADDING,
+    gap: TAB_GAP,
   },
   frosted: {
     borderWidth: StyleSheet.hairlineWidth,
   },
-  // Fixed-size items with uniform insets — the pill highlight keeps the same
-  // distance from the capsule's rounded ends on every tab. 82pt × 4 tabs
-  // still fits the narrowest iPhone (375pt).
+  // Uniform insets; the width comes from tabWidth() at render time (see above).
   tab: {
-    width: 82,
     height: 48,
     alignItems: "center",
     justifyContent: "center",

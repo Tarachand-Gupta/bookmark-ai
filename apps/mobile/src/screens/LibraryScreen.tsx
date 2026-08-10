@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { AddBookmarkSheet } from "../components/AddBookmarkSheet";
 import {
   ActivityIndicator,
@@ -28,19 +28,42 @@ const QUICK_CHIP_LIMIT = 5;
 /** Library tab: large title, quick category chips + Filters pill (full facet
  * lists live in a bottom sheet), day-grouped list or 2-column card grid. */
 export function LibraryScreen({
+  active,
   filterSheetOpen,
   onFilterSheetChange,
+  addSheetOpen,
+  onAddSheetChange,
+  requestedTag = null,
+  onRequestedTagHandled,
 }: {
+  /** Foreground-tab flag: gates useLibrary's stale-on-focus refetch. */
+  active: boolean;
   filterSheetOpen: boolean;
   onFilterSheetChange: (open: boolean) => void;
+  /** The add sheet is Shell state so other tabs can open it (Home's first-run
+   * "Add a bookmark" pointer), exactly like the filter sheet. */
+  addSheetOpen: boolean;
+  onAddSheetChange: (open: boolean) => void;
+  /** One-shot tag filter from the Shell (Home's "Reading queue → See all").
+   * Applied on arrival and cleared, so the user's own filter taps afterwards
+   * are never fought over. */
+  requestedTag?: string | null;
+  onRequestedTagHandled?: () => void;
 }) {
   const { colors } = useAppTheme();
   const { viewMode, setViewMode } = usePreferences();
   const tabBarClearance = useTabBarClearance();
   const onScroll = useTabBarScroll();
-  const lib = useLibrary();
-  const [addOpen, setAddOpen] = useState(false);
+  const lib = useLibrary(active);
   const sections = useMemo(() => groupByDay(lib.bookmarks), [lib.bookmarks]);
+
+  useEffect(() => {
+    if (requestedTag === null) return;
+    // setFilterExact, not setFilter: arriving with the tag that happens to be
+    // active already must keep it, not toggle it off.
+    lib.setFilterExact("tag", requestedTag);
+    onRequestedTagHandled?.();
+  }, [requestedTag, onRequestedTagHandled, lib.setFilterExact]);
 
   const header = (
     <View style={styles.header}>
@@ -50,7 +73,7 @@ export function LibraryScreen({
           <Pressable
             onPress={() => {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setAddOpen(true);
+              onAddSheetChange(true);
             }}
             accessibilityRole="button"
             accessibilityLabel="Add bookmark"
@@ -152,8 +175,8 @@ export function LibraryScreen({
         onClear={lib.clearFilters}
       />
       <AddBookmarkSheet
-        visible={addOpen}
-        onClose={() => setAddOpen(false)}
+        visible={addSheetOpen}
+        onClose={() => onAddSheetChange(false)}
         onSaved={() => {
           lib.refresh();
           // the server scrapes the page's title/preview just after the save

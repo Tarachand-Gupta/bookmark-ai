@@ -23,6 +23,8 @@ const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   gearshape: "settings-outline",
   "gearshape.fill": "settings",
   globe: "globe-outline",
+  house: "home-outline",
+  "house.fill": "home",
   iphone: "phone-portrait-outline",
   ipad: "tablet-portrait-outline",
   laptopcomputer: "laptop-outline",

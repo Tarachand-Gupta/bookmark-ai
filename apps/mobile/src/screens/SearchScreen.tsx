@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -23,12 +23,33 @@ import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 /** Search tab: one iOS search field — hybrid results arrive sectioned:
  * exact keyword matches up top, semantic "related" results behind a toggle
  * so a single search never reads as a wall of results. */
-export function SearchScreen() {
+export function SearchScreen({
+  /**
+   * Incrementing counter from the Shell: Home's search field switches to this
+   * tab and asks for the keyboard, so the tap feels like it landed in a field
+   * rather than in a new screen. A counter (not a boolean) so repeat taps
+   * re-focus every time.
+   */
+  focusRequest = 0,
+}: {
+  focusRequest?: number;
+}) {
   const { colors, radius } = useAppTheme();
   const tabBarClearance = useTabBarClearance();
   const onScroll = useTabBarScroll();
   const search = useSearch();
   const hasQuery = search.query.trim().length > 0;
+  const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (focusRequest === 0) return; // no request yet (plain mount)
+    // The tab switch and this request land in the same batch, so the screen is
+    // already visible; the zero-delay timer just lets that layout pass finish
+    // before the keyboard is asked for (Android ignores focus on a view that was
+    // display:none a moment ago).
+    const timer = setTimeout(() => inputRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, [focusRequest]);
 
   const [showRelated, setShowRelated] = useState(false);
   // Both result kinds → a tab per kind, Bookmarks default.
@@ -58,6 +79,7 @@ export function SearchScreen() {
         <View style={[styles.field, { backgroundColor: colors.muted, borderRadius: radius.lg }]}>
           <Symbol name="magnifyingglass" size={17} color={colors.mutedForeground} fallback="⌕" />
           <TextInput
+            ref={inputRef}
             value={search.query}
             onChangeText={search.setQuery}
             placeholder="Titles, tags, questions…"

@@ -3,6 +3,8 @@ import type {
   Bookmark,
   CreateBookmarkInput,
   CreateSessionInput,
+  DashboardResponse,
+  DeviceType,
   ListBookmarksResponse,
   ListLiveResponse,
   ListSessionsResponse,
@@ -12,6 +14,15 @@ import type {
   Session,
   UserSettingsResponse,
 } from "@bookmark-ai/types";
+
+/**
+ * The device class this build reports — sent with every save (see
+ * AddBookmarkSheet) AND to /api/dashboard, so "saved on another device" can
+ * exclude this phone's own saves. iPadOS reports Platform.OS === "ios", so
+ * Platform.isPad is what separates tablet from mobile.
+ */
+export const CURRENT_DEVICE: DeviceType =
+  Platform.OS === "ios" && Platform.isPad ? "tablet" : "mobile";
 
 /**
  * API client — same contract as apps/web/lib/api.ts. Two selectable servers:
@@ -189,6 +200,16 @@ export function searchBookmarks(
 /** Save a URL — the server scrapes OG data, categorizes, and embeds it. */
 export function createBookmark(input: CreateBookmarkInput): Promise<{ bookmark: Bookmark }> {
   return request<{ bookmark: Bookmark }>("/api/bookmarks", { method: "POST", body: input });
+}
+
+/**
+ * One aggregated round-trip for the whole Home tab (docs/features/dashboard.md §5).
+ * `?device=` is this build's own device class, and only feeds the response's
+ * `otherDeviceBookmarks` — the "resume what you were reading on the laptop" row.
+ */
+export function getDashboard(signal?: AbortSignal): Promise<DashboardResponse> {
+  const params = new URLSearchParams({ device: CURRENT_DEVICE });
+  return request<DashboardResponse>(`/api/dashboard?${params}`, { signal });
 }
 
 export function listSessions(signal?: AbortSignal): Promise<ListSessionsResponse> {

@@ -54,6 +54,44 @@ function corsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
+// ── Legacy /app deep links → /app/library ──────────────────────────────────
+// `/app` is the dashboard now and the grid moved to `/app/library`
+// (docs/features/dashboard.md §3). Every URL anyone ever shared, bookmarked, or
+// hardcoded into a client points at `/app?<filter>` — so bare `/app` carrying ANY
+// library param is redirected to `/app/library` with the query preserved, and the
+// dashboard owns only the paramless landing. Done here rather than in the page so
+// the library never mounts (and never flashes) behind a client-side hop.
+//
+// Keep this list in lockstep with what the library reads from the URL:
+// FILTER_KEYS + q + ai + settings + section in components/library/library-page.tsx.
+// `view` is included defensively — it's localStorage state today, but old links
+// carrying it must still land on the grid.
+const LEGACY_LIBRARY_PARAMS = [
+  "q",
+  "category",
+  "browser",
+  "device",
+  "day",
+  "from",
+  "to",
+  "tag",
+  "ai",
+  "settings",
+  "section",
+  "view",
+] as const;
+
+function legacyLibraryRedirect(request: NextRequest): NextResponse | null {
+  // Trailing slash tolerated: Next normalizes it, but middleware can see either.
+  const pathname = request.nextUrl.pathname.replace(/\/+$/, "") || "/";
+  if (pathname !== "/app") return null;
+  const params = request.nextUrl.searchParams;
+  if (!LEGACY_LIBRARY_PARAMS.some((key) => params.has(key))) return null;
+  const url = request.nextUrl.clone();
+  url.pathname = "/app/library";
+  return NextResponse.redirect(url);
+}
+
 // The API CORS handling, shared by both middleware variants. Returns the
 // response for an API route, or null when the request isn't one.
 function handleApiCors(request: NextRequest): NextResponse | null {
@@ -84,6 +122,9 @@ const clerkGate = clerkMiddleware(
     if (!isPublicRoute(request)) {
       await auth.protect();
     }
+    // After protect(), so an unauthenticated legacy link still goes to sign-in
+    // first (and lands on the library once signed in).
+    return legacyLibraryRedirect(request) ?? undefined;
   },
   // NOTE: no `authorizedParties` option here — @clerk/nextjs rejects tokens
   // with a MISSING azp claim (native mobile tokens have none). The azp check
@@ -92,7 +133,7 @@ const clerkGate = clerkMiddleware(
 );
 
 function keylessMiddleware(request: NextRequest): NextResponse {
-  return handleApiCors(request) ?? NextResponse.next();
+  return handleApiCors(request) ?? legacyLibraryRedirect(request) ?? NextResponse.next();
 }
 
 export default process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? clerkGate : keylessMiddleware;

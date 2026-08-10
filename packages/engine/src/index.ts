@@ -16,6 +16,26 @@ export {
 } from "./embeddings";
 export { saveBookmarkFast, enrichBookmark } from "./ingest";
 export { performSearch, type SearchParams } from "./search";
+export {
+  getDashboard,
+  assembleDashboard,
+  zeroFillDays,
+  topCategories,
+  utcDay,
+  shiftDay,
+  ACTIVITY_DAYS,
+  ACTIVITY_MIN_BOOKMARKS,
+  ACTIVITY_TOP_CATEGORIES,
+  LAST_SESSION_TAB_LIMIT,
+  OTHER_DEVICE_LIMIT,
+  READING_QUEUE_LIMIT,
+  READING_TAGS,
+  RECENT_BOOKMARK_LIMIT,
+  RECENT_SESSION_LIMIT,
+  UNCATEGORIZED,
+  type DashboardParts,
+  type GetDashboardOptions,
+} from "./dashboard";
 export { saveSession, renameSession, suggestSessionName } from "./sessions";
 export {
   applyDeviceSnapshot,

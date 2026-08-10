@@ -4,6 +4,7 @@ import type {
   CreateBookmarkInput,
   CreateMcpTokenResponse,
   CreateSessionInput,
+  DashboardResponse,
   ExportBundle,
   HealthResponse,
   ListBookmarksResponse,
@@ -138,6 +139,20 @@ export function getMeta(signal?: AbortSignal): Promise<MetaResponse> {
 
 export function getHealth(signal?: AbortSignal): Promise<HealthResponse> {
   return request<HealthResponse>("/api/health", { signal });
+}
+
+/** The dashboard's one aggregated read. `device` is this client's own device
+ * class — it only decides `otherDeviceBookmarks` (saves from somewhere else). */
+export function getDashboard(
+  device?: string | null,
+  signal?: AbortSignal,
+): Promise<DashboardResponse> {
+  const params = new URLSearchParams();
+  if (device) params.set("device", device);
+  return request<DashboardResponse>(
+    params.size ? `/api/dashboard?${params}` : "/api/dashboard",
+    { signal },
+  );
 }
 
 export function listBookmarks(

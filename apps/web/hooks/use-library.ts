@@ -64,9 +64,32 @@ function delay(ms: number, signal: AbortSignal): Promise<boolean> {
   });
 }
 
-function useAsync<T>(fetcher: (signal: AbortSignal) => Promise<T>, deps: unknown[]): AsyncState<T> {
+/**
+ * An in-memory (per page load) last-good value for a hook, so a component that
+ * REMOUNTS can paint immediately and revalidate behind it. Only used for /api/meta
+ * today: the sidebar shell is shared by the dashboard (/app) and the library
+ * (/app/library), and each route mounts its own copy — without this the facet
+ * counts flashed back to skeletons on every Home ↔ Library hop.
+ *
+ * Deliberately module scope, not localStorage: it's a same-session paint
+ * optimization, never persisted state, so it can't go stale across visits or leak
+ * between accounts.
+ */
+interface MemoryCache<T> {
+  get(): T | null;
+  set(value: T): void;
+}
+
+function useAsync<T>(
+  fetcher: (signal: AbortSignal) => Promise<T>,
+  deps: unknown[],
+  cache?: MemoryCache<T>,
+): AsyncState<T> {
   const [state, setState] = useState<AsyncState<T>>({
-    data: null,
+    // Empty on the first ever mount (and therefore identical on server and
+    // client, so this can't hydration-mismatch); populated only on a remount
+    // after a successful fetch earlier in the same page load.
+    data: cache?.get() ?? null,
     loading: true,
     error: null,
     provisioning: false,
@@ -83,6 +106,7 @@ function useAsync<T>(fetcher: (signal: AbortSignal) => Promise<T>, deps: unknown
         try {
           const data = await fetcher(controller.signal);
           if (controller.signal.aborted) return;
+          cache?.set(data);
           setState({ data, loading: false, error: null, provisioning: false, forbidden: false });
           return;
         } catch (err) {
@@ -119,8 +143,16 @@ export function useRefresh(): [number, () => void] {
   return [key, refresh];
 }
 
+/** Last-good facets for this page load — see MemoryCache. */
+let metaCache: MetaResponse | null = null;
+
 export function useMeta(refreshKey: number): AsyncState<MetaResponse> {
-  return useAsync((signal) => getMeta(signal), [refreshKey]);
+  return useAsync((signal) => getMeta(signal), [refreshKey], {
+    get: () => metaCache,
+    set: (value) => {
+      metaCache = value;
+    },
+  });
 }
 
 /** Real AI availability from /api/health — /api/meta succeeding says nothing about it. */

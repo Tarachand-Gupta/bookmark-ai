@@ -11,6 +11,7 @@ import {
   Flame,
   Folder,
   Globe,
+  Home,
   Laptop,
   Monitor,
   Plus,
@@ -66,6 +67,10 @@ export interface AppSidebarProps {
   aiEnabled: boolean | null;
   filters: LibraryFilters;
   onFilterChange: (filters: LibraryFilters) => void;
+  /** Whether the Home dashboard (/app) is the current route, not the library. */
+  homeActive?: boolean;
+  /** Navigate to the Home dashboard. Omitted ⇒ the Home row isn't rendered. */
+  onShowHome?: () => void;
   /** Whether the Saved sessions view (not the library) is showing. */
   sessionsActive?: boolean;
   sessionCount?: number | null;
@@ -92,6 +97,8 @@ export function AppSidebar({
   metaLoading,
   filters,
   onFilterChange,
+  homeActive,
+  onShowHome,
   sessionsActive,
   sessionCount,
   sessionsLoading,
@@ -163,9 +170,26 @@ export function AppSidebar({
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
+              {/* Home = the dashboard at /app (docs/features/dashboard.md §3).
+                  Rendered only when the host page can navigate there, so the
+                  sidebar keeps working anywhere it's reused. */}
+              {onShowHome && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={!!homeActive}
+                    onClick={() => {
+                      onShowHome();
+                      setOpenMobile(false);
+                    }}
+                  >
+                    <Home aria-hidden />
+                    <span>Home</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  isActive={noFilter && !sessionsActive && !liveActive}
+                  isActive={!homeActive && noFilter && !sessionsActive && !liveActive}
                   onClick={() => select({})}
                 >
                   <FEATURE_ICONS.bookmarks aria-hidden />

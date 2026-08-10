@@ -35,6 +35,16 @@ export {
   type BookmarkContent,
 } from "./queries/bookmarks";
 export {
+  countBookmarks,
+  countSessions,
+  listBookmarksByAnyTag,
+  listBookmarksNotFromDevice,
+  listRecentSessionSummaries,
+  getLatestSessionTabs,
+  getActivityCounts,
+  type ActivityCounts,
+} from "./queries/dashboard";
+export {
   mergeHybrid,
   searchFullText,
   searchVector,

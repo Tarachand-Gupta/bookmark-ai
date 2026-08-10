@@ -28,16 +28,29 @@ import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 export function SessionsScreen({
   active,
   onOpenSettings,
+  requestedSegment = null,
+  onRequestedSegmentHandled,
 }: {
   /** Sessions is the foreground tab — one of the three polling gates (§4.7). */
   active: boolean;
   onOpenSettings: () => void;
+  /** One-shot segment request from the Shell (Home's Continue card / live chips
+   * land on Ongoing). Cleared via the callback once applied, so the user's own
+   * segment taps afterwards are never overridden. */
+  requestedSegment?: SessionsSegment | null;
+  onRequestedSegmentHandled?: () => void;
 }) {
   const { colors } = useAppTheme();
   const tabBarClearance = useTabBarClearance();
   const onScroll = useTabBarScroll();
 
   const [segment, setSegment] = useState<SessionsSegment>("saved");
+
+  useEffect(() => {
+    if (requestedSegment === null) return;
+    setSegment(requestedSegment);
+    onRequestedSegmentHandled?.();
+  }, [requestedSegment, onRequestedSegmentHandled]);
   const [expandedWindows, setExpandedWindows] = useState<Set<string>>(new Set());
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
