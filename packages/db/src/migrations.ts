@@ -306,8 +306,17 @@ export const TENANT_MIGRATIONS: Migration[] = [
   // so SCHEMA_VERSION stays 3. mcp_tools_json is the per-user enabled-tool
   // allowlist (NULL = all tools enabled); tolerant so a retry after a partial
   // apply (duplicate column) records the version instead of wedging the runner.
+  //
+  // v10, NOT v9: prod's schema_migrations already records `9:newtab-canvas` from
+  // the REVERTED newtab feature (the revert removed the code; recorded versions
+  // and dormant tables stay, per the additive-only rule) — shipping this as v9
+  // made the runner silently skip it in production ("no such table: mcp_tokens",
+  // 2026-08-10). A revert NEVER frees a version number: always take the next
+  // number after the highest EVER recorded in prod, not the highest in this file.
+  // Statements are idempotent, so dev DBs that applied the short-lived "9:mcp"
+  // re-apply v10 as a no-op.
   {
-    version: 9,
+    version: 10,
     name: "mcp",
     statements: [
       `
