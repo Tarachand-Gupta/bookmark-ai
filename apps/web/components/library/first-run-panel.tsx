@@ -1,8 +1,8 @@
 "use client";
 
-import { Link2, MousePointerClick, Puzzle, Sparkles } from "lucide-react";
+import { Check, Link2, MousePointerClick, Puzzle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ExtensionStoreButton } from "./extension-cta";
+import { ExtensionStoreButton, useExtensionInstalled } from "./extension-cta";
 
 const STEPS = [
   {
@@ -29,6 +29,12 @@ const STEPS = [
  * one-liner (see BookmarkGrid).
  */
 export function FirstRunPanel({ onAdd }: { onAdd?: () => void }) {
+  // Step 1 is already done when the extension answers a detection ping, so the
+  // install button becomes a checked-off note and "add one by URL" is promoted
+  // from the quiet secondary action to the primary one. `null` (still checking)
+  // keeps the install button — the common case is a genuinely new user.
+  const installed = useExtensionInstalled();
+
   return (
     <section className="mx-auto max-w-3xl py-12">
       <div className="text-center">
@@ -57,12 +63,29 @@ export function FirstRunPanel({ onAdd }: { onAdd?: () => void }) {
       </ol>
 
       <div className="mt-8 flex flex-col items-center gap-3">
-        <ExtensionStoreButton />
-        {onAdd && (
-          <Button variant="ghost" size="sm" onClick={onAdd} className="text-muted-foreground">
-            <Link2 aria-hidden />
-            Or add one by URL
-          </Button>
+        {installed === true ? (
+          <>
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Check className="size-4 text-emerald-600 dark:text-emerald-500" aria-hidden />
+              Extension installed — save a page from its toolbar button.
+            </p>
+            {onAdd && (
+              <Button onClick={onAdd}>
+                <Link2 aria-hidden />
+                Or add one by URL
+              </Button>
+            )}
+          </>
+        ) : (
+          <>
+            <ExtensionStoreButton />
+            {onAdd && (
+              <Button variant="ghost" size="sm" onClick={onAdd} className="text-muted-foreground">
+                <Link2 aria-hidden />
+                Or add one by URL
+              </Button>
+            )}
+          </>
         )}
       </div>
     </section>

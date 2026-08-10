@@ -63,10 +63,19 @@ Layout (keep multi-file — the user explicitly banned monolith files):
   `bookmark-ai-dev.vercel.app` (DEV target) + `live.bookmark-ai.cloud` (Live server) +
   Clerk frontend APIs (prod `clerk.bookmark-ai.cloud` + dev instance) — a static superset so one
   manifest serves all three build targets; the per-mode pinned CRX `key` (`CRX_KEYS`/`TARGETS`);
-  and `externally_connectable.matches` (localhost, vercel aliases incl. `bookmark-ai-dev`,
-  bookmark-ai.cloud apex/www — origins that may message the extension; a missing origin
-  silently breaks "Open all in tab group" on that domain, Chrome won't even inject
-  `chrome.runtime.sendMessage` there)
+  and `externally_connectable.matches` = `lib/app-origins.ts` `APP_PAGE_MATCHES` (localhost,
+  vercel aliases incl. `bookmark-ai-dev`, bookmark-ai.cloud apex/www — origins that may message
+  the extension; a missing origin silently breaks "Open all in tab group" on that domain, Chrome
+  won't even inject `chrome.runtime.sendMessage` there). CHROME-ONLY on purpose: Firefox
+  implements NO page→extension messaging (bug 1319168), so those targets get the marker content
+  script below instead.
+- **Install detection** (the web app's "Get the extension" card hides itself) — two channels,
+  one per capability: Chrome answers `BOOKMARK_AI_PING` on `onMessageExternal` (the web side
+  retries across ~8s because a cold MV3 worker loses the first attempt, and memoizes the last
+  positive in `localStorage`); Firefox + Safari get `entrypoints/marker.content.ts`, which stamps
+  `data-bookmark-ai-extension="1"` on `<html>` (`lib/extension-marker.ts`, matches =
+  `APP_PAGE_MATCHES` so localhost works too). The attribute name is MIRRORED in
+  `apps/web/lib/extension-detect.ts` — rename one and detection goes dark.
 - `entrypoints/background.ts` — receives `SAVE_BOOKMARK`/`SAVE_SESSION`/`LIVE_SET_ENABLED`/
   `GET_USER`, POSTs to the API / reads the Clerk session, replies result/error. `GET_USER`
   resolves `{signedIn, name, email}` from the mirrored web session (createClerkClient + syncHost)
@@ -120,6 +129,36 @@ Auth (Clerk, syncHost pattern):
   → **device** (fallback). Server-side the token is SCOPED to the extension's save/live surface
   only (see `DEVICE_TOKEN_ROUTES` in apps/web/lib/server/require-user.ts). Sign-out and a
   definitive bridge signed-out clear it. NEVER log token values — presence/length/status only.
+- **Self-healing 401s — a user must NEVER have to open the web app to un-stick one.** Four
+  mechanisms, all cross-browser (they used to be Safari-only or popup-only):
+  1. **`authFetch` retries once on 401** (`lib/api.ts`) — every background API/live call
+     (`createBookmark`, `saveSession`, `deleteBookmark`, native-sync mirrors, `lib/live-api.ts`,
+     settings reads) goes through it. On 401 it calls `refreshCredential()` (`lib/auth-refresh.ts`)
+     and replays the request EXACTLY once. Only string/absent bodies are replayed.
+  2. **`refreshCredential()`** = forced device-token renewal → else a fresh Clerk-authed mint via
+     the background-registered `setDeviceTokenReminter` (`remintDeviceToken`: session mint, then
+     the bridge on Safari). SINGLE-FLIGHT (one shared in-flight promise) + a 60s cooldown after a
+     failed refresh, so a burst of 401s costs one refresh, not one per call.
+  3. **The 6h auth alarm runs `authTick`** (`entrypoints/background.ts`): renew → **probe
+     `GET /api/me`** (`probeDeviceToken` — the only check that catches an invalid-but-unexpired
+     token; it used to exist only inline in `handleGetUser`, i.e. only a popup open could clear a
+     bad token) → force a re-mint if rejected → refresh sync settings → drain the mirror queue.
+     A rejected token also un-pins `winningPath` in `handleGetUser` and re-runs the ladder once.
+  4. **`getUsableDeviceToken()`** (`lib/device-token.ts`) replaces `getStoredDeviceToken()` on
+     request paths: a token inside its last 60s renews INLINE (the server takes the old token as
+     the renewal bearer until real expiry) instead of returning null and dropping to a Clerk
+     session that is probably gone. `renewDeviceTokenIfNeeded({force})` returns a `RenewOutcome`
+     (`renewed`/`reauth`/`invalid`/…); forced renewals have their own 60s clock so the 24h
+     scheduled throttle can never block recovery.
+  Mint guards are `lib/mint-gate.ts` (`MintGate`): latch on SUCCESS, 10-min backoff on failure.
+  The old `mintAttempted = true` was set BEFORE the request, so one transient failure blocked
+  every re-mint for the context's lifetime — fatal on Firefox MV2's PERSISTENT background page.
+  Missing preconditions (no Clerk session, no bridge tab) do NOT burn the backoff.
+  Failed native-sync mirror adds queue in `lib/native-sync-queue.ts` (`local:nativeSyncQueue`,
+  200 newest, 5 attempts each) and drain at boot + on the 6h alarm — a native bookmark event
+  never re-fires, so a dropped mirror was previously lost forever.
+  Every refresh/retry/clear decision writes a `diag` breadcrumb (scopes `authRetry`, `authTick`,
+  `deviceToken`, `nativeSync`) with event names, expiry deltas, and status codes — never a token.
 - **Signed-out gate**: `App.tsx` shows ONLY `SignInGate` (a sign-in prompt whose button opens
   `<appOrigin>/sign-in`) when no session — no save/session UI at all. The gate's auth source is
   the background `GET_USER` message (createClerkClient reads the mirrored session), NOT the popup

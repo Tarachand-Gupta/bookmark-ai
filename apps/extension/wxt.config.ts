@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "wxt";
+import { APP_PAGE_MATCHES } from "./lib/app-origins";
 
 /**
  * THREE side-by-side build targets, each with its OWN pinned CRX key so the
@@ -126,16 +127,18 @@ export default defineConfig({
       // Lets the web app hand off "restore session" — a page on these origins
       // may message the extension (background onMessageExternal), which opens
       // one window containing every tab. window.open can't do this (popup
-      // blockers allow a single tab per click).
-      externally_connectable: {
-        matches: [
-          "http://localhost/*",
-          "https://bookmark-ai-theta.vercel.app/*",
-          "https://bookmark-ai-dev.vercel.app/*",
-          "https://bookmark-ai.cloud/*",
-          "https://www.bookmark-ai.cloud/*",
-        ],
-      },
+      // blockers allow a single tab per click). The same channel answers the
+      // web app's installed-check ping (BOOKMARK_AI_PING).
+      // CHROME ONLY, and it has to stay that way:
+      //   - Firefox implements NO web-page→extension messaging (the key is
+      //     ignored, `runtime.sendMessage`/`connect` are never exposed to pages
+      //     — Firefox bug 1319168), so declaring it there would ship a channel
+      //     that cannot work.
+      //   - Safari would accept the key, but the extension already runs a
+      //     content script on these origins.
+      // Both of those targets get `entrypoints/marker.content.ts` instead, which
+      // stamps a `<html>` attribute the page reads synchronously.
+      externally_connectable: { matches: [...APP_PAGE_MATCHES] },
     }),
     ...(browser === "firefox" && {
       browser_specific_settings: {

@@ -1,13 +1,19 @@
 "use client";
 
-import { ExtensionStoreButton } from "./extension-cta";
+import { ExtensionStoreButton, useExtensionInstalled } from "./extension-cta";
 import { ExtensionPopupMock } from "./extension-popup-mock";
 
 /**
  * The Sessions view with nothing in it. A session is an extension-only concept,
  * so this both defines the word and shows the button that makes one.
+ *
+ * With the extension already installed, "Add to Chrome" is noise — the user
+ * needs to know WHERE the button is, not to install it again. Detection is
+ * asynchronous (`null` while it runs), and only a definite `true` swaps the copy.
  */
 export function SessionsEmpty() {
+  const installed = useExtensionInstalled();
+
   return (
     <section className="mx-auto flex max-w-3xl flex-col items-center gap-8 py-10 md:flex-row md:items-center md:gap-12">
       <div className="max-w-sm text-center md:text-left">
@@ -16,14 +22,26 @@ export function SessionsEmpty() {
           A saved session is a snapshot of a browser window&apos;s tabs — they stay here after the
           window closes, ready to restore all at once or one at a time.
         </p>
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          Save one from the Bookmark AI extension, or open{" "}
-          <strong className="font-medium text-foreground">Live sessions</strong> to save a window
-          that&apos;s open on another device.
-        </p>
-        <div className="mt-5 flex justify-center md:justify-start">
-          <ExtensionStoreButton size="sm" />
-        </div>
+        {installed === true ? (
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            Open the Bookmark AI extension and press{" "}
+            <strong className="font-medium text-foreground">Save session &amp; close</strong> — the
+            ringed button below. Or open{" "}
+            <strong className="font-medium text-foreground">Live sessions</strong> to save a window
+            that&apos;s open on another device.
+          </p>
+        ) : (
+          <>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              Save one from the Bookmark AI extension, or open{" "}
+              <strong className="font-medium text-foreground">Live sessions</strong> to save a
+              window that&apos;s open on another device.
+            </p>
+            <div className="mt-5 flex justify-center md:justify-start">
+              <ExtensionStoreButton size="sm" />
+            </div>
+          </>
+        )}
       </div>
 
       <ExtensionPopupMock className="shrink-0" />

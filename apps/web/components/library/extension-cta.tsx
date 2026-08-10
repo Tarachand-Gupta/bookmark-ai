@@ -9,6 +9,17 @@ import {
   GENERIC_EXTENSION_TARGET,
   type ExtensionTarget,
 } from "@/lib/extension-links";
+import {
+  canPingExtension,
+  DETECT_BUDGET_MS,
+  detectLog,
+  hasExtensionMarker,
+  observeExtensionMarker,
+  pingExtensionWithRetries,
+  readInstalledMemo,
+  sleep,
+  writeInstalledMemo,
+} from "@/lib/extension-detect";
 
 /**
  * The store target for the current browser.
@@ -24,76 +35,82 @@ export function useExtensionTarget(): ExtensionTarget {
   return target;
 }
 
-/** Published extension ids per build target — each browser exposes exactly one,
- * so we ping all three and take the first that answers. */
-const EXTENSION_IDS = [
-  "ffhbgpgebpmofjkehpjcemepbgcmoelp", // prod
-  "ljlfmaknohecakpdolffabmjdfikfjed", // dev
-  "joillpelifndeefomeimoomlgoimbkei", // local
-];
-
-/** Overall budget for the ping round-trip before we conclude "not installed". A
- * cold extension service worker has to WAKE before it can answer the external
- * ping, which can take well over 400ms — the card hiding a beat later is better
- * than hiding never (a false "not installed"). */
-const PING_TIMEOUT_MS = 1500;
-
-interface ChromeRuntimeLike {
-  sendMessage?: (
-    extensionId: string,
-    message: unknown,
-    callback: (response: unknown) => void,
-  ) => void;
-  /** Read (any access clears it) inside the callback to swallow the "Receiving
-   * end does not exist" error Chrome sets when no extension answers. */
-  lastError?: unknown;
-}
-
 /**
- * Whether an installed Bookmark AI extension is reachable from this origin.
- * `null` while checking; `false` once we've concluded none is present (or the
- * browser isn't Chrome). `window.chrome.runtime.sendMessage` exists only in
- * Chrome, and only reaches an extension whose `externally_connectable` matches
- * this origin — so a non-Chrome browser (no API) resolves `false` and keeps the
- * install card visible. Resolves `true` on the first `{ ok: true }` ping reply.
+ * Whether an installed Bookmark AI extension can be detected from this origin.
+ * `null` while checking; `false` once every channel has been exhausted.
+ *
+ * Two channels race (see lib/extension-detect.ts for why there are two): the
+ * `<html>` marker attribute the Firefox/Safari builds stamp, and the Chrome
+ * `externally_connectable` ping — the latter RETRIED across ~8s, because a cold
+ * MV3 service worker regularly misses a single 1.5s attempt and the old
+ * single-shot version then reported "not installed" for the whole mount.
+ *
+ * A remembered "installed" from a previous visit is applied optimistically so
+ * the card doesn't flash while we re-verify; only a run that exhausts every
+ * channel forgets it and shows the card again.
  */
 export function useExtensionInstalled(): boolean | null {
   const [installed, setInstalled] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const runtime = (window as Window & { chrome?: { runtime?: ChromeRuntimeLike } }).chrome
-      ?.runtime;
-    if (!runtime?.sendMessage) {
-      setInstalled(false); // not Chrome, or no externally_connectable match
-      return;
+    let cancelled = false;
+    let found = false;
+    const deadline = Date.now() + DETECT_BUDGET_MS;
+
+    // Read the memo here rather than in a lazy `useState` initializer: the
+    // server has no localStorage, so deciding this during render would make the
+    // server and client disagree about whether the card exists.
+    if (readInstalledMemo()) {
+      detectLog("remembered installed — hiding card while re-verifying");
+      setInstalled(true);
     }
 
-    let done = false;
-    const finish = (value: boolean) => {
-      if (done) return;
-      done = true;
-      setInstalled(value);
+    // Assigned right below; `markInstalled` may run before that only via the observer
+    // callback, which cannot fire until the observer exists.
+    let stopObserving = () => {};
+
+    const markInstalled = (via: string) => {
+      if (cancelled || found) return;
+      found = true;
+      detectLog(`installed via ${via}`);
+      writeInstalledMemo(true);
+      setInstalled(true);
+      stopObserving();
     };
-    const timer = setTimeout(() => finish(false), PING_TIMEOUT_MS);
 
-    for (const id of EXTENSION_IDS) {
-      try {
-        runtime.sendMessage(id, { type: "BOOKMARK_AI_PING" }, (response) => {
-          void runtime.lastError; // swallow "Receiving end does not exist"
-          if (response && (response as { ok?: boolean }).ok) {
-            clearTimeout(timer);
-            finish(true);
-          }
-        });
-      } catch {
-        // sendMessage can throw synchronously (e.g. a malformed id) — ignore and
-        // let the other ids / the timeout decide.
+    // Start observing FIRST: a content script may stamp the marker at any point
+    // in the budget (it runs at document_idle, which can be after we mount).
+    stopObserving = observeExtensionMarker(() => markInstalled("marker (observed)"));
+
+    void (async () => {
+      if (hasExtensionMarker()) return markInstalled("marker");
+
+      if (canPingExtension()) {
+        if (await pingExtensionWithRetries(() => cancelled || found)) {
+          return markInstalled("chrome ping");
+        }
+      } else {
+        // Not Chromium, or no extension matched this origin in
+        // externally_connectable — inconclusive, so let the marker window run.
+        detectLog("no chrome ping channel on this browser");
       }
-    }
+
+      // Both channels have had their say; give the observer the rest of the
+      // budget (non-Chromium browsers get here almost immediately).
+      const remaining = deadline - Date.now();
+      if (remaining > 0) await sleep(remaining);
+      if (cancelled || found) return;
+      if (hasExtensionMarker()) return markInstalled("marker (late)");
+
+      detectLog("not detected — showing install card");
+      writeInstalledMemo(false); // a definitive miss forgets the memo
+      setInstalled(false);
+      stopObserving();
+    })();
 
     return () => {
-      done = true;
-      clearTimeout(timer);
+      cancelled = true;
+      stopObserving();
     };
   }, []);
 
