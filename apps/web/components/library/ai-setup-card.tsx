@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Loader2, Sparkles, X, Zap } from "lucide-react";
-import type { AiModel, AiProvider } from "@bookmark-ai/types";
+import { Check, ChevronDown, KeyRound, Loader2, X, Zap } from "lucide-react";
+import type { AiModel, AiProvider, AiUsage } from "@bookmark-ai/types";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { fetchAiModels, getSettings, updateSettings } from "@/lib/api";
+import { AiCreditsCallout, AiCreditsMeter } from "./ai-credits-meter";
 
 /** OpenRouter is an OpenAI-compatible endpoint, so it maps to the `custom`
  * provider with this base URL — the recommended one-click preset. */
@@ -31,22 +33,35 @@ export interface AiSetupCardProps {
   onSaved?: () => void;
   /** When set, renders a dismiss (×) button; used on the chat surface. */
   onDismiss?: () => void;
+  /**
+   * Start with the "Use your own AI provider" section EXPANDED. The chat's
+   * free-limit wall passes this: at that point the free credits are gone, so the
+   * secondary option is the only one left and hiding it behind a chevron would be
+   * a dead end.
+   */
+  defaultProviderOpen?: boolean;
   className?: string;
 }
 
 /**
- * Slim, self-contained "bring your own AI provider" card. Same PUT semantics as
- * the Settings → AI pane (a deliberate slim variant, not a refactor of the
- * dialog): pick a provider, paste a key, optionally test to list models, Save.
- * OpenRouter is the recommended preset (custom endpoint + free models).
+ * The one AI-setup surface, used in three places: the onboarding tour's AI step,
+ * Settings → AI's own pane is separate (it has its own form), and the chat's
+ * free-limit wall.
  *
- * It is ~565px tall, so it only belongs where it IS the content: the onboarding
- * dialog, and inside the chat's message scroller once the free-limit wall's CTA
- * asks for it. The chat's passive upsell is a one-line banner instead (see
- * ai-chat.tsx) — pinned above the thread this card left ~150px for the
- * conversation and buried every answer.
+ * FREE CREDITS LEAD. The card used to open on a provider/key form, which told
+ * every new user that AI needs setup — it doesn't. So the hero is now the free
+ * weekly credit meter ("Free AI included"), and bring-your-own-provider is a
+ * COLLAPSED secondary section beneath it. When the user already HAS a key saved
+ * the emphasis inverts: their provider summary leads (it's what actually powers
+ * their chat) and the free meter collapses to a footnote, since own-key requests
+ * aren't metered at all.
  */
-export function AiSetupCard({ onSaved, onDismiss, className }: AiSetupCardProps) {
+export function AiSetupCard({
+  onSaved,
+  onDismiss,
+  defaultProviderOpen,
+  className,
+}: AiSetupCardProps) {
   const [provider, setProvider] = useState<AiProvider>("google");
   const [loadedProvider, setLoadedProvider] = useState<AiProvider>("google");
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -55,6 +70,7 @@ export function AiSetupCard({ onSaved, onDismiss, className }: AiSetupCardProps)
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [models, setModels] = useState<AiModel[]>([]);
+  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
@@ -63,6 +79,12 @@ export function AiSetupCard({ onSaved, onDismiss, className }: AiSetupCardProps)
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Which of the two paths is expanded. The provider section starts closed
+  // (free-first) unless the caller says otherwise; the credits section only
+  // exists in the has-key layout and starts closed there.
+  const [providerOpen, setProviderOpen] = useState(!!defaultProviderOpen);
+  const [creditsOpen, setCreditsOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,6 +98,7 @@ export function AiSetupCard({ onSaved, onDismiss, className }: AiSetupCardProps)
         setModels(settings.model ? [{ id: settings.model, label: settings.model }] : []);
         setApiKeySet(settings.apiKeySet);
         setApiKeyLast4(settings.apiKeyLast4);
+        setAiUsage(settings.aiUsage);
       })
       .catch(() => {
         // A failed load leaves the defaults; the user can still fill and save.
@@ -94,6 +117,8 @@ export function AiSetupCard({ onSaved, onDismiss, className }: AiSetupCardProps)
   const customNeedsUrl = provider === "custom" && !baseUrl.trim();
   // OpenRouter is "in use" when the saved custom endpoint points at it.
   const openRouterActive = provider === "custom" && baseUrl.trim() === OPENROUTER_BASE_URL;
+  const savedProviderLabel =
+    PROVIDERS.find((p) => p.value === loadedProvider)?.label ?? loadedProvider;
 
   const changeProvider = (value: string) => {
     setProvider(value as AiProvider);
@@ -153,6 +178,7 @@ export function AiSetupCard({ onSaved, onDismiss, className }: AiSetupCardProps)
       setLoadedProvider(settings.provider);
       setApiKeySet(settings.apiKeySet);
       setApiKeyLast4(settings.apiKeyLast4);
+      setAiUsage(settings.aiUsage);
       setApiKeyInput("");
       setSaved(true);
       onSaved?.();
@@ -163,32 +189,17 @@ export function AiSetupCard({ onSaved, onDismiss, className }: AiSetupCardProps)
     }
   };
 
-  return (
-    <div className={cn("rounded-xl border bg-card p-4 text-card-foreground", className)}>
-      <div className="flex items-start gap-2">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-          <Sparkles className="size-4 text-muted-foreground" aria-hidden />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold">Use your own AI provider</h3>
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            Connect a key to power chat and answers with the model you choose.
-          </p>
-        </div>
-        {onDismiss && (
-          <button
-            type="button"
-            onClick={onDismiss}
-            aria-label="Dismiss"
-            className="-mr-1 -mt-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted"
-          >
-            <X className="size-4" aria-hidden />
-          </button>
-        )}
-      </div>
-
+  // The provider/key/model form, unchanged in behavior — it just lives inside a
+  // collapsible now instead of being the card's front page.
+  const providerForm = loading ? (
+    <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+      <Loader2 className="size-4 animate-spin" aria-hidden />
+      Loading…
+    </div>
+  ) : (
+    <div className="space-y-3">
       {/* Recommended preset — OpenRouter (an OpenAI-compatible custom endpoint). */}
-      <div className="mt-3 rounded-lg border border-primary/30 bg-primary/[0.04] p-3">
+      <div className="rounded-lg border border-primary/30 bg-primary/[0.04] p-3">
         <div className="flex items-center gap-2">
           <Zap className="size-4 shrink-0 text-primary" aria-hidden />
           <p className="text-sm font-medium">Recommended: OpenRouter</p>
@@ -212,131 +223,195 @@ export function AiSetupCard({ onSaved, onDismiss, className }: AiSetupCardProps)
         </Button>
       </div>
 
-      {loading ? (
-        <div className="mt-4 flex items-center gap-2 py-4 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" aria-hidden />
-          Loading…
-        </div>
-      ) : (
-        <div className="mt-4 space-y-3">
-          <div className="space-y-1.5">
-            <label htmlFor="ai-setup-provider" className="text-xs font-medium">
-              Provider
-            </label>
-            <Select value={provider} onValueChange={changeProvider}>
-              <SelectTrigger id="ai-setup-provider" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PROVIDERS.map((p) => (
-                  <SelectItem key={p.value} value={p.value}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      <div className="space-y-1.5">
+        <label htmlFor="ai-setup-provider" className="text-xs font-medium">
+          Provider
+        </label>
+        <Select value={provider} onValueChange={changeProvider}>
+          <SelectTrigger id="ai-setup-provider" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PROVIDERS.map((p) => (
+              <SelectItem key={p.value} value={p.value}>
+                {p.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-          {provider === "custom" && (
-            <div className="space-y-1.5">
-              <label htmlFor="ai-setup-url" className="text-xs font-medium">
-                API base URL
-              </label>
-              <Input
-                id="ai-setup-url"
-                type="url"
-                inputMode="url"
-                value={baseUrl}
-                onChange={(e) => {
-                  setBaseUrl(e.target.value);
-                  setSaved(false);
-                }}
-                placeholder="https://api.example.com/v1"
-              />
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            <label htmlFor="ai-setup-key" className="text-xs font-medium">
-              API key
-            </label>
-            <Input
-              id="ai-setup-key"
-              type="password"
-              autoComplete="off"
-              value={apiKeyInput}
-              onChange={(e) => {
-                setApiKeyInput(e.target.value);
-                setSaved(false);
-              }}
-              placeholder={showSavedHint ? `Saved (••••${apiKeyLast4})` : "Paste your API key"}
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={test}
-              disabled={testing || !hasKeySource || customNeedsUrl}
-            >
-              {testing ? (
-                <>
-                  <Loader2 className="animate-spin" aria-hidden />
-                  Testing…
-                </>
-              ) : (
-                "Test & list models"
-              )}
-            </Button>
-            {testMsg && (
-              <span className="text-xs text-emerald-600 dark:text-emerald-500">{testMsg}</span>
-            )}
-            {testError && <span className="text-xs text-destructive">{testError}</span>}
-          </div>
-
-          {models.length > 0 && (
-            <div className="space-y-1.5">
-              <label htmlFor="ai-setup-model" className="text-xs font-medium">
-                Default model
-              </label>
-              <Select value={model} onValueChange={setModel}>
-                <SelectTrigger id="ai-setup-model" className="w-full">
-                  <SelectValue placeholder="Select a model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {models.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          <div className="flex items-center gap-3 pt-1">
-            <Button type="button" size="sm" onClick={save} disabled={saving || customNeedsUrl}>
-              {saving ? (
-                <>
-                  <Loader2 className="animate-spin" aria-hidden />
-                  Saving…
-                </>
-              ) : (
-                "Save"
-              )}
-            </Button>
-            {saved && (
-              <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-500">
-                <Check className="size-3.5" aria-hidden />
-                Saved
-              </span>
-            )}
-            {saveError && <span className="text-xs text-destructive">{saveError}</span>}
-          </div>
+      {provider === "custom" && (
+        <div className="space-y-1.5">
+          <label htmlFor="ai-setup-url" className="text-xs font-medium">
+            API base URL
+          </label>
+          <Input
+            id="ai-setup-url"
+            type="url"
+            inputMode="url"
+            value={baseUrl}
+            onChange={(e) => {
+              setBaseUrl(e.target.value);
+              setSaved(false);
+            }}
+            placeholder="https://api.example.com/v1"
+          />
         </div>
       )}
+
+      <div className="space-y-1.5">
+        <label htmlFor="ai-setup-key" className="text-xs font-medium">
+          API key
+        </label>
+        <Input
+          id="ai-setup-key"
+          type="password"
+          autoComplete="off"
+          value={apiKeyInput}
+          onChange={(e) => {
+            setApiKeyInput(e.target.value);
+            setSaved(false);
+          }}
+          placeholder={showSavedHint ? `Saved (••••${apiKeyLast4})` : "Paste your API key"}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={test}
+          disabled={testing || !hasKeySource || customNeedsUrl}
+        >
+          {testing ? (
+            <>
+              <Loader2 className="animate-spin" aria-hidden />
+              Testing…
+            </>
+          ) : (
+            "Test & list models"
+          )}
+        </Button>
+        {testMsg && (
+          <span className="text-xs text-emerald-600 dark:text-emerald-500">{testMsg}</span>
+        )}
+        {testError && <span className="text-xs text-destructive">{testError}</span>}
+      </div>
+
+      {models.length > 0 && (
+        <div className="space-y-1.5">
+          <label htmlFor="ai-setup-model" className="text-xs font-medium">
+            Default model
+          </label>
+          <Select value={model} onValueChange={setModel}>
+            <SelectTrigger id="ai-setup-model" className="w-full">
+              <SelectValue placeholder="Select a model" />
+            </SelectTrigger>
+            <SelectContent>
+              {models.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3 pt-1">
+        <Button type="button" size="sm" onClick={save} disabled={saving || customNeedsUrl}>
+          {saving ? (
+            <>
+              <Loader2 className="animate-spin" aria-hidden />
+              Saving…
+            </>
+          ) : (
+            "Save"
+          )}
+        </Button>
+        {saved && (
+          <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-500">
+            <Check className="size-3.5" aria-hidden />
+            Saved
+          </span>
+        )}
+        {saveError && <span className="text-xs text-destructive">{saveError}</span>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={cn("relative rounded-xl border bg-card p-4 text-card-foreground", className)}>
+      {onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted"
+        >
+          <X className="size-4" aria-hidden />
+        </button>
+      )}
+
+      {apiKeySet ? (
+        // ── Has own key: their provider leads, free credits become a footnote ──
+        <>
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.06] p-3">
+            <div className="flex items-start gap-2">
+              <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-emerald-500/15">
+                <Check className="size-4 text-emerald-600 dark:text-emerald-500" aria-hidden />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium leading-tight">
+                  Using your own AI provider
+                </p>
+                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
+                  {savedProviderLabel} · key ••••{apiKeyLast4}
+                  {model ? ` · ${model}` : ""}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Chat runs on your key and your quota — the free weekly credits below aren&apos;t
+                  being spent.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <Collapsible open={creditsOpen} onOpenChange={setCreditsOpen} className="mt-3">
+            <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/60">
+              <span className="text-sm font-medium">Free AI credits</span>
+              <span className="text-xs text-muted-foreground">Unused while your key is set</span>
+              <ChevronDown
+                className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+                aria-hidden
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="px-3 pb-1 pt-3">
+              <AiCreditsMeter usage={aiUsage} loading={loading} dim />
+            </CollapsibleContent>
+          </Collapsible>
+        </>
+      ) : (
+        // ── No own key: the free tier IS the product. Lead with it. ──
+        <AiCreditsCallout usage={aiUsage} loading={loading} className={onDismiss ? "pr-8" : undefined} />
+      )}
+
+      <Collapsible open={providerOpen} onOpenChange={setProviderOpen} className="mt-3">
+        <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/60">
+          <KeyRound className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <span className="text-sm font-medium">
+            {apiKeySet ? "Change provider or model" : "Use your own AI provider"}
+          </span>
+          {!apiKeySet && <span className="text-xs text-muted-foreground">Optional</span>}
+          <ChevronDown
+            className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+            aria-hidden
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-3">{providerForm}</CollapsibleContent>
+      </Collapsible>
 
       {/* Embeddings for search-by-meaning are served for free for now — no key needed. */}
       <p className="mt-3 border-t pt-3 text-xs leading-relaxed text-muted-foreground">

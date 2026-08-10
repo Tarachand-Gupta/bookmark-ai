@@ -9,6 +9,26 @@ export const aiProviderSchema = z.enum(["google", "openai", "anthropic", "custom
 export type AiProvider = z.infer<typeof aiProviderSchema>;
 
 /**
+ * The caller's free-tier AI meter, as the UI needs it. Raw TOKENS on the wire
+ * (that's what the server meters and what the 402 wall reports); the client
+ * normalizes them to "credits" for display — see apps/web/lib/ai-credits.ts.
+ *
+ * Metering is WEEKLY: usage lives under a Monday-00:00-UTC week key, so
+ * `resetsAt` is always the next Monday 00:00 UTC as an ISO timestamp. Any copy
+ * built from this MUST say weekly / "resets Monday" — never "monthly".
+ */
+export const aiUsageSchema = z.object({
+  /** Tokens consumed on the SERVER's shared key this week (own-key requests are
+   * never metered, so this stays flat once a user brings their own key). */
+  usedTokens: z.number(),
+  /** The current global free-tier weekly budget (admin-adjustable). */
+  limitTokens: z.number(),
+  /** ISO timestamp of the next Monday 00:00 UTC, when the counter resets. */
+  resetsAt: z.string(),
+});
+export type AiUsage = z.infer<typeof aiUsageSchema>;
+
+/**
  * GET/PUT /api/settings response — the client-facing view of a user's settings.
  * The API NEVER returns the stored API key: only whether one is set and its
  * last 4 chars, enough to render a "Saved (••••1234)" hint.
@@ -35,6 +55,11 @@ export const userSettingsSchema = z.object({
    * never configured it, which means ALL tools are enabled (default-on); an
    * explicit (possibly empty) array is an allowlist. */
   mcpTools: z.array(mcpToolNameSchema).nullable(),
+  /** The free-tier weekly AI meter for this account, or null when it can't be
+   * read (a meter blip must never fail the settings call). Still returned when
+   * the user has their OWN key configured — the UI just de-emphasizes it, since
+   * own-key requests don't consume it. */
+  aiUsage: aiUsageSchema.nullable(),
 });
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 

@@ -7,6 +7,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type ToolUIPart, type UIMessage } from "ai";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { AiUsage } from "@bookmark-ai/types";
 import {
   Check,
   ChevronDown,
@@ -30,7 +31,6 @@ import {
 import {
   Conversation,
   ConversationContent,
-  ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Loader } from "@/components/ai-elements/loader";
@@ -57,7 +57,9 @@ import {
   type ChatConversationSummary,
   type LibraryFilters,
 } from "@/lib/api";
+import { AiCreditsCallout } from "./ai-credits-meter";
 import { AiSetupCard } from "./ai-setup-card";
+import { ChatSamplePrompts } from "./chat-sample-prompts";
 import { ConversationHistory } from "./chat-conversation-history";
 import { ChatLimitCard, type ChatLimitInfo } from "./chat-limit-card";
 import { ChatThreadSkeleton } from "./chat-thread-skeleton";
@@ -135,9 +137,11 @@ export interface AiChatProps {
   onFilter?: (filters: LibraryFilters) => void;
 }
 
-/** Dismissal of the "bring your own key" banner, per browser. It's an upsell, so
- * once waved off it stays gone — the same offer lives in Settings → AI. */
-const KEY_BANNER_DISMISSED = "bmk:ai-key-banner-dismissed";
+/** Dismissal of the empty-state free-credits greeting, per browser. It's an
+ * upsell, so once waved off it stays gone — the same offer lives in Settings → AI.
+ * The KEY is inherited verbatim from the one-line "Using the shared AI" banner
+ * this greeting replaced, so anyone who already dismissed that stays dismissed. */
+const GREETING_DISMISSED = "bmk:ai-key-banner-dismissed";
 
 /**
  * Conversational search over the library. The agent (see app/api/chat/route.ts)
@@ -222,45 +226,60 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
   const { messages, sendMessage, setMessages, regenerate, clearError, status, error } = useChat({
     transport,
     // A finished turn may have created the conversation (or renamed it) — pull
-    // the fresh list so the header title + history reflect it.
+    // the fresh list so the header title + history reflect it. It also SPENT
+    // credits: refresh the usage too, so a "New conversation" greeting shows
+    // this session's spend instead of the mount-time snapshot (QA finding).
     onFinish: () => {
       void refreshConversations();
+      void refreshAiSettings();
     },
   });
 
-  // Offer "bring your own AI provider" when the user hasn't set a key: the server
-  // may still answer via its own key, so this is an opt-in, dismissible upsell —
-  // not a blocker. "Not configured" = no user API key saved (apiKeySet false).
+  // FREE CREDITS, FIRST OPEN. A user who has never set a key is running on the
+  // shared AI, which is free and metered weekly — so the first thing an empty
+  // conversation shows is what they've got (credit meter) and, secondarily, that
+  // their own key is an option. This REPLACED a one-line "Using the shared AI"
+  // banner pinned above the composer: the line was too quiet to answer "is this
+  // going to cost me anything?", and the full setup card in that slot was 565px
+  // of chrome above a ~150px conversation. Living in the EMPTY STATE costs the
+  // conversation nothing — it's gone the moment a message exists.
   //
-  // It is a ONE-LINE banner, not the full setup card: pinned outside the message
-  // scroller the card was 565px of chrome above a ~150px conversation, which
-  // buried every answer the user came for. The full form lives in Settings → AI
-  // (and in onboarding); the only place it still appears inline is the
-  // free-limit wall below, where it scrolls WITH the thread.
+  // "No user key" = apiKeySet false; the meter itself comes from settings.aiUsage.
   const [noUserKey, setNoUserKey] = useState(false);
-  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [greetingDismissed, setGreetingDismissed] = useState(false);
   useEffect(() => {
-    setBannerDismissed(localStorage.getItem(KEY_BANNER_DISMISSED) === "1");
+    setGreetingDismissed(localStorage.getItem(GREETING_DISMISSED) === "1");
   }, []);
-  const dismissBanner = useCallback(() => {
-    setBannerDismissed(true);
-    localStorage.setItem(KEY_BANNER_DISMISSED, "1");
+  const dismissGreeting = useCallback(() => {
+    setGreetingDismissed(true);
+    localStorage.setItem(GREETING_DISMISSED, "1");
   }, []);
   /** The full setup card, opened only from the free-limit wall's CTA. */
   const [keyFormOpen, setKeyFormOpen] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    getSettings()
-      .then(({ settings }) => {
-        if (!cancelled) setNoUserKey(!settings.apiKeySet);
-      })
-      .catch(() => {
-        // Leave the banner hidden if settings can't load — don't block the chat.
-      });
-    return () => {
-      cancelled = true;
-    };
+  // Shared by mount and stream-finish: the meter must track this session's
+  // spend, not the mount-time snapshot.
+  const settingsFetchAlive = useRef(true);
+  const refreshAiSettings = useCallback(async () => {
+    try {
+      const { settings } = await getSettings();
+      if (!settingsFetchAlive.current) return;
+      setNoUserKey(!settings.apiKeySet);
+      setAiUsage(settings.aiUsage);
+    } catch {
+      // Leave the greeting as-is if settings can't load — don't block the chat.
+    } finally {
+      if (settingsFetchAlive.current) setSettingsLoading(false);
+    }
   }, []);
+  useEffect(() => {
+    settingsFetchAlive.current = true;
+    void refreshAiSettings();
+    return () => {
+      settingsFetchAlive.current = false;
+    };
+  }, [refreshAiSettings]);
 
   // Deep-link into Settings → AI, which the library page owns and opens off the
   // `settings` param (see library-page.tsx). Same shallow History push the rest
@@ -280,12 +299,20 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
     void refreshConversations();
   }, [refreshConversations]);
 
+  /** The single send path (composer submit and sample-prompt click both use it).
+   * A new send clears any stale limit card; a fresh 402 re-raises it. */
+  const send = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      setLimitInfo(null);
+      void sendMessage({ text: trimmed });
+    },
+    [sendMessage],
+  );
+
   const handleSubmit = (message: PromptInputMessage) => {
-    const text = message.text?.trim();
-    if (!text) return;
-    // A new send clears any stale limit card; a fresh 402 re-raises it.
-    setLimitInfo(null);
-    void sendMessage({ text });
+    send(message.text ?? "");
   };
 
   // ── Thread lifecycle: new / load / delete ─────────────────────────────────────
@@ -457,31 +484,14 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
     </div>
   );
 
-  // One line, ~30px tall, directly above the composer: present enough to be found
-  // when wanted, small enough that the conversation keeps the panel.
-  const setupBanner = noUserKey && !bannerDismissed && (
-    <div className="flex shrink-0 items-center gap-1.5 border-t bg-muted/40 px-2 py-1.5 text-xs">
-      <Sparkles className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-      <span className="min-w-0 flex-1 truncate text-muted-foreground">Using the shared AI</span>
-      <button
-        type="button"
-        onClick={openAiSettings}
-        className="shrink-0 rounded px-1 py-0.5 font-medium transition-colors hover:bg-muted"
-      >
-        Add your own key →
-      </button>
-      <button
-        type="button"
-        onClick={dismissBanner}
-        aria-label="Dismiss"
-        className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted"
-      >
-        <X className="size-3.5" aria-hidden />
-      </button>
-    </div>
-  );
-
   const isEmptyThread = messages.length === 0 && !loadingConversation;
+  // The free-credits greeting only makes sense for someone actually ON the free
+  // tier — an own-key user's chat doesn't touch the meter.
+  // Render (as the loading skeleton) while settings are still in flight —
+  // waiting for the fetch popped the card in ~3s late and shifted the layout
+  // (QA finding). Own-key users get a brief skeleton→unmount instead, which is
+  // the rarer and gentler wrong.
+  const showGreeting = (settingsLoading || noUserKey) && !greetingDismissed;
 
   const thread = (
     <Conversation className="flex-1">
@@ -511,16 +521,48 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
         ) : (
           <>
         {messages.length === 0 && (
-          <ConversationEmptyState
-            // flex-1 fills the min-h-full column above; the min-h floor keeps
-            // the icon + copy intact (scrolling instead of clipping) in a short
-            // panel. p-4 rather than the default p-8 — at the dock's 340px floor
-            // the extra padding was squeezing the description to four words a line.
-            className="min-h-[13rem] flex-1 p-4"
-            icon={<Sparkles className="size-8" aria-hidden />}
-            title="Ask anything about your bookmarks"
-            description="The agent searches your library, runs SQL for counts and trends, and can search the web — then answers with citations."
-          />
+          // THREE stacked blocks, not `ConversationEmptyState` — that primitive
+          // assumes it owns the whole pane (size-full, centered), and the empty
+          // state now carries a free-credits greeting on top and rotating sample
+          // prompts underneath the icon/heading. flex-1 fills the min-h-full
+          // column above; the min-h floor keeps everything intact (scrolling
+          // instead of clipping) in a short panel, and p-4 rather than p-8 —
+          // at the dock's 340px floor the extra padding squeezed the description
+          // to four words a line.
+          <div className="not-prose flex min-h-[13rem] flex-1 flex-col gap-4 p-4">
+            {showGreeting && (
+              <AiCreditsCallout
+                usage={aiUsage}
+                loading={settingsLoading}
+                onDismiss={dismissGreeting}
+                className="shrink-0"
+                action={
+                  <button
+                    type="button"
+                    onClick={openAiSettings}
+                    className="font-medium underline-offset-2 transition-opacity hover:underline hover:opacity-80"
+                  >
+                    or use your own key →
+                  </button>
+                }
+              />
+            )}
+            {/* The original icon + heading, unchanged in wording — centered in
+                whatever height is left between the greeting and the prompts. */}
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+              <Sparkles className="size-8 text-muted-foreground" aria-hidden />
+              <div className="space-y-1">
+                <h3 className="text-sm font-medium">Ask anything about your bookmarks</h3>
+                <p className="text-sm text-muted-foreground">
+                  The agent searches your library, runs SQL for counts and trends, and can search
+                  the web — then answers with citations.
+                </p>
+              </div>
+            </div>
+            {/* Rotation lives entirely in this component and unmounts with the
+                empty state, so it stops the instant a message exists. */}
+            <ChatSamplePrompts onPick={send} className="shrink-0" />
+          </div>
         )}
         {messages.map((message) => (
           <Message from={message.role} key={message.id}>
@@ -576,6 +618,10 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
         {keyFormOpen && (
           <AiSetupCard
             className="not-prose mt-2 w-full"
+            // The wall only appears once the free credits are gone, so the
+            // secondary path is the ONLY path left — open it, don't hide the form
+            // behind a chevron the user has to discover.
+            defaultProviderOpen
             onSaved={handleKeySaved}
             onDismiss={() => setKeyFormOpen(false)}
           />
@@ -633,7 +679,6 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card">
       {header}
       {thread}
-      {setupBanner}
       {composer}
     </div>
   );

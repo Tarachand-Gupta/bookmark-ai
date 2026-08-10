@@ -1,96 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Globe, Search } from "lucide-react";
-import { cn } from "@/lib/utils";
-
 /**
- * Small, self-contained loop animations for the onboarding tour, built from the
- * app's own tokens/type (deliberately NOT the marketing island's mono font). Each
- * gates its motion behind prefers-reduced-motion by starting in the finished
- * state and only animating when motion is allowed.
+ * Shared chrome for the onboarding tour: the numbered "how it works" list and
+ * the stage that frames each real landing-page animation (see
+ * onboarding-dialog.tsx, which now reuses the marketing mocks from
+ * components/marketing/ instead of static screenshots).
  */
 
-/** Advances 0..steps on an interval, holding full for a beat then looping. Static
- * (returns `steps`) when the user prefers reduced motion. */
-function useLoop(steps: number, intervalMs = 1000): number {
-  const [n, setN] = useState(steps);
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    setN(0);
-    let cur = 0;
-    const id = window.setInterval(() => {
-      cur = cur >= steps ? 0 : cur + 1;
-      setN(cur);
-    }, intervalMs);
-    return () => window.clearInterval(id);
-  }, [steps, intervalMs]);
-  return n;
-}
-
-/** Search by meaning: a query with no shared words still surfaces the right page. */
-export function MeaningSearchDemo() {
-  // 0: nothing, 1: exact-ish highlighted, 2: related-by-meaning highlighted.
-  const step = useLoop(2, 1100);
-  return (
-    <DemoFrame>
-      <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 shadow-sm">
-        <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="text-xs">how to make text readable</span>
-      </div>
-      <div className="mt-2 space-y-1.5">
-        <ResultRow
-          title="Practical Typography"
-          host="practicaltypography.com"
-          active={step >= 1}
-        />
-        <ResultRow
-          title="Better line length &amp; spacing"
-          host="css-tricks.com"
-          note="by meaning"
-          active={step >= 2}
-        />
-      </div>
-    </DemoFrame>
-  );
-}
-
-function ResultRow({
-  title,
-  host,
-  note,
-  active,
-}: {
-  title: string;
-  host: string;
-  note?: string;
-  active: boolean;
-}) {
+/**
+ * Stage that frames a marketing animation inside the tour's narrow content
+ * pane. Same visual vocabulary as the marketing mocks' own muted frames
+ * (aria-hidden, inert, rounded-xl border, muted fill) so the animation reads
+ * as one continuous "screen" rather than a demo bolted onto a demo.
+ * `overflow-hidden` + `w-full` keep it from ever spilling past the ~490px
+ * (desktop) / ~320px (mobile) content pane, however wide the animation's own
+ * fixed-width internals get.
+ */
+export function TourStage({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className={cn(
-        "flex items-center gap-2 rounded-md border px-2.5 py-1.5 transition-colors duration-500 motion-reduce:transition-none",
-        active ? "border-primary/40 bg-primary/[0.05]" : "border-transparent bg-background",
-      )}
+      aria-hidden
+      className="pointer-events-none w-full select-none overflow-hidden rounded-xl border bg-muted/30 p-4"
     >
-      <Globe className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[11px] font-medium">{title}</p>
-        <p className="truncate text-[9px] text-muted-foreground">{host}</p>
-      </div>
-      {note && active && (
-        <span className="shrink-0 rounded-full border px-1.5 py-0.5 text-[8px] text-muted-foreground">
-          {note}
-        </span>
-      )}
-    </div>
-  );
-}
-
-/** Shared framing so every demo sits in the same padded, muted stage. */
-function DemoFrame({ children }: { children: React.ReactNode }) {
-  return (
-    <div aria-hidden className="pointer-events-none select-none rounded-xl border bg-muted/30 p-4">
       {children}
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { KeyRound, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatCredits, tokensToCredits } from "@/lib/ai-credits";
 
 export interface ChatLimitInfo {
   usedTokens?: number;
@@ -21,8 +22,11 @@ export interface ChatLimitCardProps {
  * be retried and runs unmetered against the user's own provider.
  */
 export function ChatLimitCard({ info, onConfigure }: ChatLimitCardProps) {
-  const used = formatTokens(info.usedTokens);
-  const limit = formatTokens(info.limitTokens);
+  // Credits, not tokens — same 1,000-tokens-per-credit rate the meters use
+  // (lib/ai-credits.ts), so the wall's numbers match what the user was watching
+  // count up. The wire payload is tokens because that's what the server meters.
+  const used = formatCreditsOrUndefined(info.usedTokens);
+  const limit = formatCreditsOrUndefined(info.limitTokens);
   return (
     <div className="not-prose w-full rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4">
       <div className="flex items-start gap-2.5">
@@ -30,13 +34,14 @@ export function ChatLimitCard({ info, onConfigure }: ChatLimitCardProps) {
           <Sparkles className="size-4 text-amber-600 dark:text-amber-500" aria-hidden />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold">Free AI limit reached</h3>
+          <h3 className="text-sm font-semibold">This week&apos;s free credits are used up</h3>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
-            You exceeded the free AI usage limit. Configure your own API key to keep chatting.
+            Free credits reset every Monday. To keep chatting now, add your own API key — your key
+            isn&apos;t metered.
           </p>
           {used && limit && (
             <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
-              {used} / {limit} tokens used
+              {used} of {limit} credits used this week
             </p>
           )}
           <Button size="sm" className="mt-3" onClick={onConfigure}>
@@ -49,10 +54,9 @@ export function ChatLimitCard({ info, onConfigure }: ChatLimitCardProps) {
   );
 }
 
-/** "1,234" / "12.3k" / "1.2M" — compact token counts, or undefined when absent. */
-function formatTokens(n: number | undefined): string | undefined {
-  if (typeof n !== "number" || !Number.isFinite(n)) return undefined;
-  if (n < 1000) return String(n);
-  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
-  return `${(n / 1_000_000).toFixed(1)}M`;
+/** Tokens → a grouped credit count, or undefined when the 402 body omitted it
+ * (the wall still renders, just without the numbers line). */
+function formatCreditsOrUndefined(tokens: number | undefined): string | undefined {
+  if (typeof tokens !== "number" || !Number.isFinite(tokens)) return undefined;
+  return formatCredits(tokensToCredits(tokens));
 }

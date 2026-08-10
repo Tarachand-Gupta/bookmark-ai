@@ -116,7 +116,9 @@ function Ripple({ style }: { style?: React.CSSProperties }) {
 const SAVE_PHASES = [1000, 560, 380, 720, 880, 2000];
 // 0 idle · 1 cursor→icon · 2 click icon · 3 popup opens, cursor→button · 4 saving · 5 saved (settled)
 
-function SaveBookmarkMock() {
+function SaveBookmarkMock({ className }: { className?: string }) {
+  // `className` is optional and unused on the landing page — it exists so the
+  // in-app onboarding tour can re-space this same animation inside its own stage.
   const phase = usePhaseLoop(SAVE_PHASES, 0);
   const open = phase >= 3; // popup visible from the moment it drops
   const atButton = phase >= 3; // cursor moves down onto the save button
@@ -128,7 +130,10 @@ function SaveBookmarkMock() {
   return (
     <div
       aria-hidden
-      className="pointer-events-none relative select-none overflow-hidden rounded-xl border border-border/60 bg-card/60 shadow-sm"
+      className={cn(
+        "pointer-events-none relative select-none overflow-hidden rounded-xl border border-border/60 bg-card/60 shadow-sm",
+        className,
+      )}
     >
       <style>{KEYFRAMES}</style>
 
@@ -363,7 +368,9 @@ const SESSION_TABS = [
   { letter: "F", title: "Fastify streaming responses" },
 ];
 
-function SessionMock() {
+function SessionMock({ className }: { className?: string }) {
+  // `className` is optional and unused on the landing page — it exists so the
+  // in-app onboarding tour can re-space this same animation inside its own stage.
   const phase = usePhaseLoop(SESSION_PHASES, 1300);
   const atButton = phase === 1 || phase === 2;
   const clicking = phase === 2;
@@ -375,7 +382,7 @@ function SessionMock() {
   return (
     <div
       aria-hidden
-      className="pointer-events-none relative select-none"
+      className={cn("pointer-events-none relative select-none", className)}
     >
       <style>{KEYFRAMES}</style>
       <div className="relative min-h-[11.5rem]">
@@ -630,7 +637,10 @@ function ModeBadge({ mode }: { mode: "meaning" | "text" }) {
   );
 }
 
-function SearchDemo() {
+function SearchDemo({ className }: { className?: string }) {
+  // `className` is optional and unused on the landing page — it exists so the
+  // in-app onboarding tour can re-space this same animation (override the
+  // baked-in `mt-6`) inside its own stage.
   const { q, typed, stage } = useSearchCycle();
   const query = SEARCH_QUERIES[q];
   const shown = query.text.slice(0, typed);
@@ -638,7 +648,7 @@ function SearchDemo() {
   const revealed = stage === "results";
 
   return (
-    <div aria-hidden className="pointer-events-none mt-6 select-none">
+    <div aria-hidden className={cn("pointer-events-none mt-6 select-none", className)}>
       <style>{KEYFRAMES}</style>
 
       {/* The query box — icon, live-typed text, blinking caret. */}

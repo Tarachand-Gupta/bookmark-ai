@@ -2,11 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   parseMcpToolAllowlist,
   updateUserSettingsSchema,
+  type AiUsage,
   type UserSettings,
 } from "@bookmark-ai/types";
-import { getUserSettings, upsertUserSettings, type UserSettingsRow } from "@bookmark-ai/db";
-import { assertSafeUrl } from "@bookmark-ai/engine";
+import { getUserSettings, upsertUserSettings, type Db, type UserSettingsRow } from "@bookmark-ai/db";
+import { assertSafeUrl, getWeeklyUsage } from "@bookmark-ai/engine";
 import { getRequestApiContext } from "@/lib/server/api-context";
+import { getFreeAiWeeklyLimit } from "@/lib/server/ai-limit";
+import { nextWeeklyResetUtc } from "@/lib/ai-credits";
 import { decryptApiKey, encryptApiKey } from "@/lib/server/ai-key-crypto";
 
 /**
@@ -18,10 +21,34 @@ function settingsKey(userId: string | null): string {
   return userId ?? "local";
 }
 
+/**
+ * The caller's free-tier weekly AI meter, or null if it can't be read.
+ *
+ * Same two inputs the chat route's 402 wall compares (live weekly usage from the
+ * tenant DB + the admin-adjustable global limit from the master DB), so the meter
+ * the user sees and the limit that actually stops them can't drift. `resetsAt` is
+ * the next Monday 00:00 UTC — the week key usage is stored under.
+ *
+ * NEVER throws: settings is the payload the whole AI UI boots from, and a slow or
+ * missing master DB must degrade to "no meter shown", not a failed GET.
+ */
+async function readAiUsage(db: Db): Promise<AiUsage | null> {
+  try {
+    const [usedTokens, limitTokens] = await Promise.all([
+      getWeeklyUsage(db),
+      getFreeAiWeeklyLimit(),
+    ]);
+    return { usedTokens, limitTokens, resetsAt: nextWeeklyResetUtc() };
+  } catch (err) {
+    console.warn("[settings] ai usage read failed:", (err as Error).message);
+    return null;
+  }
+}
+
 /** Mask a stored row (or its absence) into the key-free client view. Defaults to
  * provider "google" / no key when the user has never saved settings. The stored
  * key is encrypted at rest, so decrypt before deriving the masked last-4. */
-function toApiSettings(row: UserSettingsRow | null): UserSettings {
+function toApiSettings(row: UserSettingsRow | null, aiUsage: AiUsage | null): UserSettings {
   const key = decryptApiKey(row?.aiApiKey ?? null);
   return {
     provider: (row?.aiProvider as UserSettings["provider"]) ?? "google",
@@ -36,6 +63,7 @@ function toApiSettings(row: UserSettingsRow | null): UserSettings {
     nativeSyncEnabled: row?.nativeSyncEnabled ?? true,
     nativeSyncFull: row?.nativeSyncFull ?? false,
     mcpTools: parseMcpToolAllowlist(row?.mcpToolsJson ?? null),
+    aiUsage,
   };
 }
 
@@ -44,8 +72,13 @@ export async function GET() {
   if ("response" in ctx) return ctx.response;
   const { db, ready, userId } = ctx;
   await ready;
-  const row = await getUserSettings(db, settingsKey(userId));
-  return NextResponse.json({ settings: toApiSettings(row) });
+  // Both reads are independent — the settings row is the tenant DB, the meter is
+  // the tenant DB + master config — so pay for one round trip, not two.
+  const [row, aiUsage] = await Promise.all([
+    getUserSettings(db, settingsKey(userId)),
+    readAiUsage(db),
+  ]);
+  return NextResponse.json({ settings: toApiSettings(row, aiUsage) });
 }
 
 export async function PUT(req: NextRequest) {
@@ -108,5 +141,7 @@ export async function PUT(req: NextRequest) {
   if (mcpTools !== undefined) patch.mcpToolsJson = mcpTools === null ? null : JSON.stringify(mcpTools);
 
   const row = await upsertUserSettings(db, settingsKey(userId), patch);
-  return NextResponse.json({ settings: toApiSettings(row) });
+  // PUT returns the meter too, so a client that re-renders straight from the save
+  // response (the setup card does) keeps a live meter instead of blanking it.
+  return NextResponse.json({ settings: toApiSettings(row, await readAiUsage(db)) });
 }

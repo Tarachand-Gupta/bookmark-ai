@@ -78,7 +78,10 @@ function usePhaseLoop(durations: number[]): number {
   return phase;
 }
 
-export function LiveTabsDemo() {
+export function LiveTabsDemo({ className }: { className?: string }) {
+  // `className` is optional and unused on the landing page — it exists so the
+  // in-app onboarding tour can re-space this same animation (override the
+  // baked-in `mt-6`) inside its own stage.
   const phase = usePhaseLoop(PHASES);
 
   const toggledOn = phase >= 1; // the switch has been flipped
@@ -88,7 +91,7 @@ export function LiveTabsDemo() {
   const streaming = phase >= 2; // tabs arrive as the app view appears
 
   return (
-    <div aria-hidden className="pointer-events-none mt-6 select-none">
+    <div aria-hidden className={cn("pointer-events-none mt-6 select-none", className)}>
       <style>{KEYFRAMES}</style>
       {/* Fixed height, panes cross-fade inside it — no layout jump on the loop.
           Sized to the taller (live app) pane so nothing clips or overlaps. */}

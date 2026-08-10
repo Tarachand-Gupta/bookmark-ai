@@ -53,7 +53,12 @@ describe("mintMcpToken / verifyMcpToken", () => {
 
   it("rejects a tampered signature", () => {
     const { token } = mintMcpToken("user_abc");
-    const flipped = token.slice(0, -1) + (token.endsWith("A") ? "B" : "A");
+    // Flip a char NEAR the end, never the LAST one: a 32-byte HMAC base64urls
+    // to 43 chars, so the final char carries 2 padding bits Buffer.from()
+    // ignores — flipping 'A'→'B' there decodes to the SAME bytes and the
+    // verify correctly succeeds (this test flaked ~1/64 runs that way).
+    const i = token.length - 10;
+    const flipped = token.slice(0, i) + (token[i] === "A" ? "B" : "A") + token.slice(i + 1);
     expect(verifyMcpToken(flipped)).toBeNull();
   });
 

@@ -13,8 +13,13 @@ import { cn } from "@/lib/utils";
 import { FEATURE_ICONS } from "./feature-icons";
 import { AiSetupCard } from "./ai-setup-card";
 import { ExtensionStoreButton } from "./extension-cta";
-import { ThemeShot } from "./onboarding-screenshot";
-import { MeaningSearchDemo, TourSteps } from "./onboarding-visuals";
+import { TourStage, TourSteps } from "./onboarding-visuals";
+// The tour reuses the SAME landing-page animations, not static screenshots or a
+// hand-rolled demo — one source of truth for "how it works". Each mock gates
+// its own motion behind prefers-reduced-motion and settles on its *finished*
+// frame, so nothing extra is needed here for that.
+import { SaveBookmarkMock, SearchDemo, SessionMock } from "@/components/marketing/feature-mocks";
+import { LiveTabsDemo } from "@/components/marketing/live-tabs-demo";
 
 interface Feature {
   id: string;
@@ -25,25 +30,22 @@ interface Feature {
   render: () => React.ReactNode;
 }
 
-// Tour order (rail + Next/Back advance): AI setup → Bookmarks → Saved sessions →
-// Live tabs → Search by meaning. AI setup leads so the user can configure (or
-// skip) their provider before touring what the app does with it.
+// Tour order (rail + Next/Back advance): AI → Bookmarks → Saved sessions →
+// Live tabs → Search by meaning. AI leads because it's the answer to "do I have
+// to set anything up?" — no — and the rest of the tour is what it works on.
 const FEATURES: Feature[] = [
   {
     id: "ai",
-    navLabel: "AI setup",
+    navLabel: "AI",
     icon: FEATURE_ICONS.ai,
-    title: "Set up your AI",
+    title: "AI is included, free",
+    // This step used to be titled "Set up your AI" over a provider/key form,
+    // which told a brand-new account that AI needs configuring. It doesn't:
+    // every account gets free weekly credits on the shared AI, and bringing your
+    // own key is the optional second path (collapsed inside the card below).
     description:
-      "Connect an AI provider to power chat and answers over your library. OpenRouter is the quickest start — it has free models.",
-    render: () => (
-      <div className="space-y-3">
-        <AiSetupCard />
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          You can skip this — AI runs with the built-in provider until you bring your own key.
-        </p>
-      </div>
-    ),
+      "Chat and answers run on our shared AI, with free credits every week — nothing to set up. You can plug in your own provider key any time instead.",
+    render: () => <AiSetupCard />,
   },
   {
     id: "bookmarks",
@@ -67,7 +69,9 @@ const FEATURES: Feature[] = [
             ]}
           />
         </div>
-        <ThemeShot name="library" alt="The bookmark library with categorized, tagged cards." />
+        <TourStage>
+          <SaveBookmarkMock />
+        </TourStage>
       </div>
     ),
   },
@@ -90,10 +94,9 @@ const FEATURES: Feature[] = [
             </>,
           ]}
         />
-        <ThemeShot
-          name="saved-sessions"
-          alt="Saved sessions list, each holding a window of tabs to restore."
-        />
+        <TourStage>
+          <SessionMock />
+        </TourStage>
       </div>
     ),
   },
@@ -119,10 +122,11 @@ const FEATURES: Feature[] = [
             </>,
           ]}
         />
-        <ThemeShot
-          name="live-sessions"
-          alt="Live sessions view showing another device's open windows with a live indicator."
-        />
+        <TourStage>
+          {/* Zeroes the marketing card's baked-in `mt-6` — the tour stage
+              supplies its own spacing via TourStage's padding. */}
+          <LiveTabsDemo className="mt-0" />
+        </TourStage>
         <p className="text-xs leading-relaxed text-muted-foreground">
           Opt-in only. Private windows are never sent, and a live session disappears after 7 days.
         </p>
@@ -136,7 +140,13 @@ const FEATURES: Feature[] = [
     title: "Find it by what it means",
     description:
       "Search blends keywords with meaning, so the right page surfaces even when you don't remember its exact words. Ask AI to get an answer with citations.",
-    render: () => <MeaningSearchDemo />,
+    render: () => (
+      <TourStage>
+        {/* Zeroes the marketing card's baked-in `mt-6` — the tour stage
+            supplies its own spacing via TourStage's padding. */}
+        <SearchDemo className="mt-0" />
+      </TourStage>
+    ),
   },
 ];
 
