@@ -14,6 +14,7 @@ import {
   Home,
   Laptop,
   Monitor,
+  Plug,
   Plus,
   Settings,
   Smartphone,
@@ -39,6 +40,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { LibraryFilters } from "@/lib/api";
 import { FEATURE_ICONS } from "./feature-icons";
 import { ExtensionCard } from "./extension-cta";
+import type { SectionId } from "./settings-dialog";
 
 /** Facet rows shown before a section needs its "View all" toggle. */
 const VISIBLE_CATEGORIES = 6;
@@ -81,8 +83,9 @@ export interface AppSidebarProps {
   onShowLive?: () => void;
   /** Opens the add-bookmark dialog (the + next to the branding). */
   onAdd?: () => void;
-  /** Opens the settings modal (owned by the page so other surfaces can open it). */
-  onOpenSettings?: () => void;
+  /** Opens the settings modal at a section (owned by the page so other surfaces
+   * can open it). The MCP row below passes "mcp"; Settings passes nothing. */
+  onOpenSettings?: (section?: SectionId) => void;
   /** Reopens the first-run feature tour. */
   onOpenTour?: () => void;
 }
@@ -357,8 +360,28 @@ export function AppSidebar({
               </SidebarMenuButton>
             </SidebarMenuItem>
           )}
+          {/* MCP sits next to Settings rather than in the facet nav: it isn't a
+              view of your library, it's a way to hand your library to an agent.
+              Opening straight into Settings → MCP keeps ONE implementation of
+              the setup UI (same panel the ?settings=mcp deep link lands on). */}
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => onOpenSettings?.()}>
+            <SidebarMenuButton
+              onClick={() => {
+                onOpenSettings?.("mcp");
+                setOpenMobile(false);
+              }}
+            >
+              <Plug aria-hidden />
+              <span>MCP</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={() => {
+                onOpenSettings?.();
+                setOpenMobile(false);
+              }}
+            >
               <Settings aria-hidden />
               <span>Settings</span>
             </SidebarMenuButton>
@@ -394,7 +417,11 @@ interface CollapsibleGroupProps {
  */
 function CollapsibleGroup({ label, loading, count, children }: CollapsibleGroupProps) {
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
-  if (!loading && count === 0) return null;
+  // While /api/meta is in flight the groups don't exist at all — four labelled
+  // headers over skeleton bars read as broken empty dropdowns (owner feedback
+  // on the landing loader), and the nav rows above are enough sidebar until
+  // real facets arrive. Loading and empty therefore render the same: nothing.
+  if (loading || count === 0) return null;
   const open = userOpen ?? true;
 
   return (
@@ -410,36 +437,10 @@ function CollapsibleGroup({ label, loading, count, children }: CollapsibleGroupP
           </CollapsibleTrigger>
         </SidebarGroupLabel>
         <CollapsibleContent>
-          <SidebarGroupContent>{loading ? <FacetSkeleton /> : children}</SidebarGroupContent>
+          <SidebarGroupContent>{children}</SidebarGroupContent>
         </CollapsibleContent>
       </SidebarGroup>
     </Collapsible>
-  );
-}
-
-/** Varied bar widths so the placeholder reads as a list, not a barcode. */
-const FACET_SKELETON_WIDTHS = ["72%", "56%", "84%", "63%"];
-
-/**
- * Placeholder rows while /api/meta is in flight — loading must not look empty.
- *
- * Deliberately NOT shadcn's <SidebarMenuSkeleton>, which picks its bar width
- * with Math.random() at render: meta.loading starts true, so these DO render on
- * the server, and the client then rolls different numbers — a hydration
- * mismatch React logs and explicitly "won't patch up". Same markup, fixed widths.
- */
-function FacetSkeleton() {
-  return (
-    <SidebarMenu>
-      {FACET_SKELETON_WIDTHS.map((width) => (
-        <SidebarMenuItem key={width}>
-          <div className="flex h-8 items-center gap-2 rounded-md px-2">
-            <Skeleton className="size-4 shrink-0 rounded-md" />
-            <Skeleton className="h-4 flex-1" style={{ maxWidth: width }} />
-          </div>
-        </SidebarMenuItem>
-      ))}
-    </SidebarMenu>
   );
 }
 

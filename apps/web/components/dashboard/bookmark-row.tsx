@@ -23,9 +23,14 @@ import { categoryHref } from "./links";
  */
 export function DashboardBookmarkRow({
   bookmark: b,
+  dense,
   className,
 }: {
   bookmark: Bookmark;
+  /** Tighter line height + smaller favicon/type, for cards that must stay small
+   * next to a taller neighbour (Recent saves, the hero's saved-elsewhere peek).
+   * Still a 32px+ hit area — this trims padding, not tappability. */
+  dense?: boolean;
   className?: string;
 }) {
   const href = safeHref(b.url);
@@ -42,27 +47,41 @@ export function DashboardBookmarkRow({
     // (and no wider at lg), where a viewport-based chip left ~12 characters of title.
     <div
       className={cn(
-        "group @container flex items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-muted/50",
+        "group @container flex items-center px-4 transition-colors hover:bg-muted/50",
+        dense ? "gap-2 py-1.5" : "gap-2.5 py-2.5",
         className,
       )}
     >
-      <RowFavicon bookmark={b} />
+      <RowFavicon bookmark={b} dense={dense} />
       <div className="min-w-0 flex-1">
         {href ? (
           <a
             href={href}
             target="_blank"
             rel="noreferrer noopener"
-            className="line-clamp-1 text-sm font-medium [overflow-wrap:anywhere] hover:underline"
+            className={cn(
+              "line-clamp-1 font-medium [overflow-wrap:anywhere] hover:underline",
+              dense ? "text-[13px]" : "text-sm",
+            )}
           >
             {b.title || b.domain}
           </a>
         ) : (
-          <span className="line-clamp-1 text-sm font-medium text-muted-foreground">
+          <span
+            className={cn(
+              "line-clamp-1 font-medium text-muted-foreground",
+              dense ? "text-[13px]" : "text-sm",
+            )}
+          >
             {b.title || b.url}
           </span>
         )}
-        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div
+          className={cn(
+            "flex items-center gap-1.5 text-muted-foreground",
+            dense ? "text-[11px]" : "mt-0.5 text-xs",
+          )}
+        >
           <span className="truncate">{b.domain}</span>
           <span aria-hidden>·</span>
           <time dateTime={b.source.savedAt} className="shrink-0">
@@ -92,10 +111,11 @@ export function DashboardBookmarkRow({
   );
 }
 
-function RowFavicon({ bookmark: b }: { bookmark: Bookmark }) {
+function RowFavicon({ bookmark: b, dense }: { bookmark: Bookmark; dense?: boolean }) {
   const [failed, setFailed] = useState(false);
+  const size = dense ? "size-3.5" : "size-4";
   if (!b.og.favicon || failed) {
-    return <Globe className="size-4 shrink-0 text-muted-foreground" aria-hidden />;
+    return <Globe className={cn(size, "shrink-0 text-muted-foreground")} aria-hidden />;
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element -- arbitrary external hosts
@@ -104,7 +124,7 @@ function RowFavicon({ bookmark: b }: { bookmark: Bookmark }) {
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}
-      className="size-4 shrink-0 rounded-sm"
+      className={cn(size, "shrink-0 rounded-sm")}
     />
   );
 }

@@ -13,7 +13,7 @@ import {
   Upload,
   UserRound,
 } from "lucide-react";
-import type { AiModel, AiProvider } from "@bookmark-ai/types";
+import type { AiModel, AiProvider, AiUsage } from "@bookmark-ai/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -39,6 +39,7 @@ import {
   updateSettings,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { AiCreditsCallout } from "./ai-credits-meter";
 import { DevicesSection } from "./devices-settings";
 import { FEATURE_ICONS } from "./feature-icons";
 import { McpSection } from "./mcp-settings";
@@ -83,6 +84,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
   // user off the section they navigated to.
   const initialSectionRef = useRef(initialSection);
   initialSectionRef.current = initialSection;
+  const railRef = useRef<HTMLUListElement>(null);
 
   // Loaded/edited AI settings.
   const [provider, setProvider] = useState<AiProvider>("google");
@@ -93,6 +95,9 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [models, setModels] = useState<AiModel[]>([]);
+  // The free-tier weekly meter, rendered above the provider form (see the AI
+  // pane): free credits are the default path, so they lead here too.
+  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
 
   // Async status.
   const [loading, setLoading] = useState(true);
@@ -127,6 +132,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
         setModels(settings.model ? [{ id: settings.model, label: settings.model }] : []);
         setApiKeySet(settings.apiKeySet);
         setApiKeyLast4(settings.apiKeyLast4);
+        setAiUsage(settings.aiUsage);
       })
       .catch((e: unknown) => {
         if (!cancelled) setLoadError((e as Error).message);
@@ -138,6 +144,23 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
       cancelled = true;
     };
   }, [open]);
+
+  // MOBILE: keep the ACTIVE section chip on screen. The rail is one horizontally
+  // scrollable strip on narrow screens, and every deep link that opens the dialog
+  // straight onto a later section (?settings=mcp, the sidebar's MCP row, the MCP
+  // promo CTA) left the strip parked at scrollLeft 0 — so the selected chip sat
+  // off-screen to the right and the visible chips all looked unselected, reading
+  // as "nothing is selected" on top of a section the user didn't ask for.
+  // Runs on open AND on every section change (including clicks, which is how a
+  // chip half-off the right edge finishes scrolling itself into view).
+  // `block: "nearest"` keeps this from scrolling the dialog vertically; the strip
+  // is the only scrollable ancestor on the inline axis, so nothing else moves.
+  useEffect(() => {
+    if (!open) return;
+    railRef.current
+      ?.querySelector<HTMLElement>('[aria-current="page"]')
+      ?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [open, section]);
 
   // A stored key belongs to the saved provider; if the user switches provider,
   // the "Saved (••••…)" hint no longer applies.
@@ -196,6 +219,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
       setLoadedProvider(settings.provider);
       setApiKeySet(settings.apiKeySet);
       setApiKeyLast4(settings.apiKeyLast4);
+      setAiUsage(settings.aiUsage);
       setApiKeyInput("");
       setSaveMsg("Saved");
     } catch (e: unknown) {
@@ -209,8 +233,16 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* max-h + a scrollable pane (below) instead of a taller-than-viewport
           dialog: at 390px the MCP and Live-sessions sections are far longer than
-          the screen. */}
-      <DialogContent className="max-h-[92svh] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          the screen.
+          `flex flex-col` is load-bearing and overrides DialogContent's own
+          `grid`: a grid container's auto row is sized from its item's
+          min-content HEIGHT and never shrinks to a max-height, so the row grew
+          to the full ~900px of the MCP section, `overflow-hidden` clipped it,
+          and the pane below never had a reason to scroll — the Tokens and
+          Client-setup blocks were simply unreachable. As a flex column the
+          single row IS the constrained box (`flex-1 min-h-0`), so the pane's
+          own overflow-y takes over. */}
+      <DialogContent className="flex max-h-[92svh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogDescription className="sr-only">
           Configure Bookmark AI, including the AI provider and default model.
         </DialogDescription>
@@ -221,7 +253,14 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             buttons outside the clipped 672px box. Every child of this row needs
             the same reset, or the min-content width just propagates one level
             down. */}
-        <div className="flex min-h-0 min-w-0 flex-col sm:min-h-[27rem] sm:flex-row">
+        {/* flex-1 + min-h-0: this row is the dialog's only flex child, so it
+            takes the clamped height and lets its scroll pane (not the page)
+            absorb a long section. The 27rem floor — which keeps the desktop
+            dialog from resizing every time you switch sections — is gated on
+            the viewport being TALL enough to spare it, because a min-height
+            beats a max-height in CSS and would re-break scrolling on a short
+            landscape window. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col sm:flex-row [@media(min-width:640px)_and_(min-height:40rem)]:min-h-[27rem]">
           <nav
             aria-label="Settings sections"
             className="shrink-0 border-b bg-muted/30 p-3 sm:w-48 sm:border-r sm:border-b-0"
@@ -234,7 +273,10 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
                 shrink truncated every label). contain:inline-size keeps the
                 strip's summed width from becoming the dialog's min-content
                 width — see the min-w-0 note above. */}
-            <ul className="-mb-2 flex gap-1 overflow-x-auto pb-2 [contain:inline-size] sm:mb-0 sm:flex-col sm:overflow-x-visible sm:pb-0 sm:[contain:none]">
+            <ul
+              ref={railRef}
+              className="-mb-2 flex scroll-smooth gap-1 overflow-x-auto pb-2 [contain:inline-size] sm:mb-0 sm:flex-col sm:overflow-x-visible sm:pb-0 sm:[contain:none]"
+            >
               {SECTIONS.map((s) => {
                 const Icon = s.icon;
                 return (
@@ -242,6 +284,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
                     <button
                       type="button"
                       onClick={() => setSection(s.id)}
+                      aria-current={section === s.id ? "page" : undefined}
                       className={cn(
                         "flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-1.5 text-sm transition-colors",
                         section === s.id
@@ -261,10 +304,17 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
             {section === "ai" && (
               <div className="space-y-5">
+                {/* Free credits FIRST, everywhere: the shared AI is what powers
+                    chat out of the box, and this pane used to open on a provider
+                    form that implied setup was required. Dimmed once the user has
+                    their own key, since own-key requests aren't metered. */}
+                <AiCreditsCallout usage={aiUsage} loading={loading} dim={apiKeySet} />
+
                 <div>
-                  <h3 className="text-sm font-semibold">AI provider</h3>
+                  <h3 className="text-sm font-semibold">Use your own AI provider</h3>
                   <p className="text-xs text-muted-foreground">
-                    Pick the provider and model that power the chat agent.
+                    Optional. Bring a key and chat runs unmetered on the provider and model you
+                    pick.
                   </p>
                 </div>
 

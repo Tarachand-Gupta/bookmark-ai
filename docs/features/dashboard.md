@@ -57,6 +57,16 @@ resolve to the library, so nothing breaks — the dashboard owns only the bare `
 Layout: 12-col responsive grid, two visual tiers. Tier 1 is the working row (always above
 the fold at 1280×800); tier 2 is informational.
 
+> **Revised 2026-08 (design review on prod).** Cards are no longer placed individually into
+> the 12-col grid. The grid now holds exactly TWO flex columns — main `lg:col-span-7`
+> (Continue hero, Recent saves) and rail `lg:col-span-5` (Activity, Reading list, Sessions
+> shelf, MCP promo) — plus the full-width omnibox and setup card. Reason: a grid row is as
+> tall as its tallest card, so a null or short card left dead space beside/above its
+> neighbour's footer. Columns end where their content ends. An empty column hands its span
+> back (`lg:col-span-12`) so nothing leaves a hole. Below `lg` everything is ONE column: at
+> `md` the content area is ~510px next to the sidebar, too narrow for a 7/5 split.
+> Card-by-card deltas are noted inline below.
+
 ### Tier 1 — act
 
 **1. Omnibox (full width, slim).** Search-first: the library's hybrid search, plus an
@@ -73,26 +83,37 @@ resume target, picking the single best of:
    Show at most the winner + one runner-up row. The ranking is recency-weighted, and the
    card labels itself honestly ("Active now" vs "Earlier today on iPhone").
 
-**3. "Live now" (1/3 width).** One row per currently-live device: green pulse, label,
-browser icon, window/tab counts, relative last-seen. Click → the live sessions view.
-Powered by the same SSE stream the sessions page uses, so it updates without refresh.
-Renders only when live sessions are enabled AND ≥1 device reported in the last 7 days.
+   *Revised 2026-08:* BOTH ranked targets render as equally rich rows — identity tile with
+   presence dot, title + freshness, browser/tab/window counts and last-seen, a preview of the
+   first 3 tab titles (+N more) from the live/session snapshot, and that row's own verbs. Only
+   the top row gets the solid button. Header carries an "N live" pill; the footer is
+   "All live sessions →" (or All sessions / All bookmarks when no row is live).
+
+**3. "Live now" — MERGED into the hero (2026-08), component deleted.** It listed the same
+devices the hero was already ranking, so a device appeared twice on the landing page with two
+different verbs. The hero's live rows are that list (same SSE stream, so they still update
+without a refresh) and its footer goes to the live view for everything the two-target cap
+leaves out. The "N live" pill counts devices the live view would show, not ranked rows.
 
 ### Tier 2 — recall & awareness
 
-**4. Recent saves (2/3 width).** 6–8 compact bookmark rows (favicon, title, domain, category
+**4. Recent saves (main column).** 6–8 compact bookmark rows (favicon, title, domain, category
 chip, relative time + device origin badge). Row click opens the URL; category chip jumps to
 the filtered library. Footer link "All bookmarks →".
+*Revised 2026-08:* capped at 6 rows and rendered in the row's `dense` variant (tighter
+padding, 14px favicon, 13/11px type) — at 8 full-height rows this was the tallest thing on
+the page. The endpoint still returns 8; the card just stops drawing them.
 
-**5. Reading queue (1/3 width).** Bookmarks tagged `reading`/`article`, newest first, count
+**5. Reading queue (rail).** Bookmarks tagged `reading`/`article`, newest first, count
 in the header ("Reading list · 12"). This is native-sync's payoff surface. One-click open;
 footer jumps to `/app/library?tag=reading`.
 
-**6. Sessions shelf (1/2 width).** 3–4 most recent saved sessions as rows (name, tab count,
+**6. Sessions shelf (rail).** 3–4 most recent saved sessions as rows (name, tab count,
 browser/device/os badges — the badges shipped in 355e01a). Primary action per row: "Open all".
 Footer "All sessions →".
 
-**7. Activity (1/2 width, deliberately small).** Exactly three facts, computed from saves:
+**7. Activity (rail, FIRST in it since 2026-08 — it was two rows lower, below a card nobody
+scrolled to; deliberately small).** Exactly three facts, computed from saves:
    - a 14-day sparkline of saves/day (from `meta.days`);
    - top 3 categories this month (clickable → filtered library);
    - a device/browser split donut or simple "Chrome 62% · Safari 30% · Mobile 8%".
@@ -103,6 +124,14 @@ Footer "All sessions →".
 install extension (detection-gated — reuses the CTA card logic), import browser bookmarks,
 enable live sessions, "Connect an AI client (MCP)" once, dismissible. Once everything's set
 up this card never appears again.
+
+**9. MCP promo (rail, added 2026-08).** "Connect any AI agent" — one line of copy and a
+"Set up MCP" button that opens Settings → MCP (the same panel `?settings=mcp` and the new
+sidebar MCP row land on; there is one implementation of that UI). Shown ONLY while the
+account has no live MCP token and hasn't dismissed it (`bmk:dashboard-mcp-dismissed`), and
+never on a first-run account. Visibility comes from a lazy client-side `GET /api/mcp/tokens`
+(`useMcpPromo`), deliberately NOT from `/api/dashboard` — the aggregator is on every visit's
+critical path and a promo has no business slowing it down. Any failure = don't show it.
 
 Explicitly rejected for v1: AI weekly digest (LLM cost per landing; revisit as P2 opt-in),
 tag cloud (low action density), calendar heatmap (vanity at our data volumes), pinned/

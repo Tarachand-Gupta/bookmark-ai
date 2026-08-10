@@ -114,6 +114,14 @@ The Settings → MCP pane (`apps/web/components/library/mcp-settings.tsx`) surfa
 endpoint URL, the four tool switches, the token list with revoke confirmation, mint-and-copy-once,
 and a collapsible client-setup snippet.
 
+**Discovery (2026-08).** Three doors, one pane — nothing duplicates the setup UI:
+the sidebar's **MCP** row (`app-sidebar.tsx`, next to Settings, on both `/app` and
+`/app/library`), the dashboard's dismissible **"Connect any AI agent"** promo card
+(`components/dashboard/mcp-promo-card.tsx`, shown only until the first token exists), and the
+`?settings=mcp` deep link. All three call `onOpenSettings("mcp")` / open the same dialog
+section. The pane itself scrolls inside the dialog — see the flex-column note in
+`settings-dialog.tsx` before touching that layout.
+
 ## Schema
 
 Tenant migration **v9 "mcp"** (`packages/db/src/migrations.ts`, additive-only):

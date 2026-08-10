@@ -74,14 +74,27 @@ export function Omnibox({ className }: { className?: string }) {
           /
         </kbd>
       </div>
-      <Button type="submit" size="sm" className="h-9 shrink-0">
+      {/* Ask AI is the PRIMARY action here (solid/dark) and plain search is the
+          quiet one (outline/white): asking is what this product does that a
+          browser's own history box doesn't. Enter in the field still runs a
+          search — the outline treatment demotes the button, not the behavior. */}
+      {/* aria-label, not just the label span: below sm both buttons are
+          icon-only, and an icon with an aria-hidden glyph has no name at all. */}
+      <Button
+        type="submit"
+        size="sm"
+        variant="outline"
+        className="h-9 shrink-0"
+        aria-label="Search"
+        title="Search"
+      >
         <Search aria-hidden />
         <span className="hidden sm:inline">Search</span>
       </Button>
       {/* Opens the library's docked chat, EMPTY — it never auto-sends the box's
           text (that behavior burned a turn on a question nobody asked). */}
-      <Button asChild size="sm" variant="outline" className="h-9 shrink-0">
-        <Link href={askAiHref()}>
+      <Button asChild size="sm" className="h-9 shrink-0">
+        <Link href={askAiHref()} aria-label="Ask AI" title="Ask AI">
           <Sparkles aria-hidden />
           <span className="hidden sm:inline">Ask AI</span>
         </Link>

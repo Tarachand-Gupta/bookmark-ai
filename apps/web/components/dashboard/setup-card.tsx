@@ -120,9 +120,34 @@ export function SetupCard({
         </button>
       </div>
 
-      <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {steps.map((step) => (
-          <li key={step.key} className="flex flex-col gap-2 rounded-lg border bg-background/50 p-3">
+      {/* The grid used to be hardcoded to sm:grid-cols-2 lg:grid-cols-3 regardless
+          of how many steps remained — with one step left that left ~2/3 of the
+          card's full-width body empty, and ~1/3 empty with two. Column count now
+          tracks steps.length so the tiles fill the card's width no matter which
+          steps are outstanding. A single remaining tile also switches to a row
+          layout at sm+ (label/hint left, action right) instead of the stacked
+          layout — a lone full-width tile stacked top-to-bottom just left the
+          same dead space underneath the text instead of beside it. */}
+      <ul
+        className={cn(
+          "mt-3 grid gap-2",
+          steps.length >= 2 && "sm:grid-cols-2",
+          steps.length >= 3 && "lg:grid-cols-3",
+        )}
+      >
+        {steps.map((step, i) => (
+          <li
+            key={step.key}
+            className={cn(
+              "flex flex-col gap-2 rounded-lg border bg-background/50 p-3",
+              steps.length === 1 && "sm:flex-row sm:items-center sm:justify-between sm:gap-4",
+              // Three steps in a 2-column grid (sm/md) leaves the third tile
+              // alone with an empty cell beside it — the same hole, one row
+              // lower. Let it span the row there; at lg the grid is 3-up and it
+              // goes back to one column.
+              steps.length === 3 && i === 2 && "sm:col-span-2 lg:col-span-1",
+            )}
+          >
             <div className="flex items-start gap-2">
               <span
                 aria-hidden
@@ -135,7 +160,9 @@ export function SetupCard({
                 <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{step.hint}</p>
               </div>
             </div>
-            <div className="mt-auto">{step.action}</div>
+            <div className={cn("mt-auto", steps.length === 1 && "sm:mt-0 sm:shrink-0")}>
+              {step.action}
+            </div>
           </li>
         ))}
       </ul>

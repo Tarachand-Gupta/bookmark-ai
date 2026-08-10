@@ -30,7 +30,7 @@ import {
 import type { LibraryFilters } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { DateRangeFilter } from "./date-range-filter";
-import { ViewToggle, type LibraryView } from "./view-toggle";
+import { ViewMenu, type LibraryView } from "./view-toggle";
 
 const BROWSER_ICONS: Record<string, React.ElementType> = {
   chrome: Chrome,
@@ -67,6 +67,17 @@ const TOUCH_TARGET = "h-11";
  */
 const CHIP_TOUCH =
   "relative h-9 after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']";
+
+/**
+ * Container-query threshold (see the `@container` comment on the control row)
+ * below which the Filters/Tags/Select buttons drop their text and become
+ * icon-only. 26rem (~416px) is the width where "Filters" + its count badge +
+ * "Tags" + its badge + "Select" + the view menu trigger started to crowd a
+ * phone's own edge padding — comfortably above 320px, so the icon-only form
+ * is what the smallest phones see, and comfortably below where full labels
+ * fit, so nothing sits in an awkward half-truncated middle.
+ */
+const LABEL_VISIBLE = "hidden @min-[26rem]:inline";
 
 export interface MobileFilterBarProps {
   meta: MetaResponse | null;
@@ -147,21 +158,27 @@ export function MobileFilterBar({
   const active = activeChips(filters);
 
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      {/* flex-wrap + min-w-0, not a single nowrap line: a count badge on Filters
-          (and a second one on Tags) pushed this row past a 390px viewport, and
-          the shrink-0 view switcher on its right edge meant the overflow became
-          a 6px horizontal scroll on the whole PAGE. Wrapping keeps every control
-          reachable at any width — nothing here is wider than a phone on its own. */}
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+    <div className={cn("flex flex-col gap-2 @container", className)}>
+      {/* `@container` above (not a viewport breakpoint) because this bar sits
+          inside a main that the sidebar insets — viewport width overstates the
+          room this row actually has. flex-nowrap, not flex-wrap: wrapping used
+          to be how this row avoided overflowing on narrow phones, but it broke
+          the view switcher onto its own line, which is worse than the overflow
+          it was avoiding. Now nothing here wraps — the buttons drop their text
+          (LABEL_VISIBLE, icon + badge survive) below @min-[26rem], and the view
+          switcher is a single dropdown button instead of three segments, so the
+          row's natural width never gets close to overflowing at any phone size. */}
+      <div className="flex min-w-0 flex-nowrap items-center gap-2">
         <Button
           variant={filterCount ? "secondary" : "outline"}
           size="sm"
           className={TOUCH_TARGET}
           onClick={() => setOpenDrawer("filters")}
+          aria-label="Filters"
+          title="Filters"
         >
           <SlidersHorizontal aria-hidden />
-          Filters
+          <span className={LABEL_VISIBLE}>Filters</span>
           {filterCount > 0 && <CountPill>{filterCount}</CountPill>}
         </Button>
         {tags.length > 0 && (
@@ -170,9 +187,11 @@ export function MobileFilterBar({
             size="sm"
             className={TOUCH_TARGET}
             onClick={() => setOpenDrawer("tags")}
+            aria-label="Tags"
+            title="Tags"
           >
             <Tag aria-hidden />
-            Tags
+            <span className={LABEL_VISIBLE}>Tags</span>
             {tagCount > 0 && <CountPill>{tagCount}</CountPill>}
           </Button>
         )}
@@ -186,18 +205,19 @@ export function MobileFilterBar({
             className={TOUCH_TARGET}
             onClick={() => onSelectMode(!selectionActive)}
             aria-pressed={selectionActive}
+            aria-label={selectionActive ? "Done selecting" : "Select"}
+            title={selectionActive ? "Done selecting" : "Select"}
           >
             <CheckSquare aria-hidden />
-            {selectionActive ? "Done" : "Select"}
+            <span className={LABEL_VISIBLE}>{selectionActive ? "Done" : "Select"}</span>
           </Button>
         )}
-        {/* The segmented control's own 28px squares are a desktop-rail size; this
-            surface is phone-only, so its segments get the touch target too. */}
-        <ViewToggle
-          view={view}
-          onChange={onViewChange}
-          className="ml-auto [&>button]:size-11"
-        />
+        {/* A single dropdown button, not the desktop's three-segment ViewToggle:
+            three squares plus their own touch targets is exactly the chrome that
+            forced this row to wrap in the first place. `ViewMenu` (view-toggle.tsx)
+            shares the same VIEWS table as ViewToggle, so the two surfaces can't
+            drift on labels/icons even though they render differently. */}
+        <ViewMenu view={view} onChange={onViewChange} className="ml-auto" />
       </div>
 
       {active.length > 0 && (

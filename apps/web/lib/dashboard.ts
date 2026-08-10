@@ -20,6 +20,11 @@ import type {
 export const DASHBOARD_SNAPSHOT_KEY = "bmk:dashboard-snapshot";
 /** localStorage key remembering that the setup card was dismissed. */
 export const SETUP_DISMISSED_KEY = "bmk:dashboard-setup-dismissed";
+/** localStorage key remembering that the MCP promo is settled for this account —
+ * written both when the user dismisses the card and when we find they already
+ * have a live MCP token (see useMcpPromo: it's also what keeps that lookup from
+ * repeating on every visit). */
+export const MCP_PROMO_DISMISSED_KEY = "bmk:dashboard-mcp-dismissed";
 
 /** A live device stops being a resume candidate once it's this stale (24h). */
 export const LIVE_CANDIDATE_MAX_AGE_SECONDS = 24 * 60 * 60;
