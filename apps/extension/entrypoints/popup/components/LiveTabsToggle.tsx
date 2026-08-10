@@ -12,12 +12,17 @@ import {
 
 /**
  * The authoritative on/off control for publishing this browser's open tabs
- * (§4.9). Default off (§5.1). Collapsed to a single line — a real switch that
- * flips publishing plus a chevron that expands the explanatory copy, the device
- * rename field, and a link to the live view. Flipping the switch delegates to
- * the background (which holds the Clerk token): it mirrors the flag into
- * storage.local AND writes the account flag server-side. Copy avoids the banned
- * words "sync"/"live"/"real-time" (§3.4).
+ * (§4.9). Default off (§5.1). Flipping the switch delegates to the background
+ * (which holds the Clerk token): it mirrors the flag into storage.local AND
+ * writes the account flag server-side. Copy avoids the banned words
+ * "sync"/"live"/"real-time" (§3.4).
+ *
+ * ONE line by default. Everything else — the per-window "Share this window"
+ * override, the explanatory copy, the device rename field, the link to the live
+ * view — is behind the chevron, because two stacked switches made a secondary,
+ * set-once feature compete with the save actions above it. Expansion is
+ * per-popup-open state, NOT persisted: nothing else in the popup persists UI
+ * state, and a collapsed default is the whole point.
  */
 export function LiveTabsToggle() {
   const [enabled, setEnabled] = useState(false);
@@ -120,8 +125,9 @@ export function LiveTabsToggle() {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="rounded-xl border bg-muted/40">
-        {/* Collapsed row: clicking anywhere but the switch expands the card. */}
+      <div className="rounded-lg border bg-muted/30">
+        {/* Collapsed row: clicking anywhere but the switch expands the card. This
+            is the ONLY thing the block shows by default — one switch, one line. */}
         <div
           role="button"
           tabIndex={0}
@@ -133,11 +139,21 @@ export function LiveTabsToggle() {
             }
           }}
           aria-expanded={expanded}
-          className="flex cursor-pointer items-center gap-2.5 p-3"
+          className="flex cursor-pointer items-center gap-2.5 px-3 py-2"
         >
           <Switch checked={enabled} disabled={busy} onToggle={() => void toggle()} />
-          <span className="flex-1 text-sm font-medium leading-tight">
-            Share window as live session
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-xs font-medium leading-tight">
+              Share window as live session
+            </span>
+            {/* The per-window switch now lives inside the expander, so a window
+                the user has opted OUT of would otherwise look identical to a
+                shared one. Shown only in that non-default case. */}
+            {enabled && !expanded && !windowShared && (
+              <span className="truncate text-[10px] leading-tight text-muted-foreground">
+                This window isn&rsquo;t shared
+              </span>
+            )}
           </span>
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -147,7 +163,7 @@ export function LiveTabsToggle() {
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className={`size-4 shrink-0 text-muted-foreground transition-transform ${
+            className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${
               expanded ? "rotate-180" : ""
             }`}
             aria-hidden="true"
@@ -175,26 +191,29 @@ export function LiveTabsToggle() {
           </p>
         )}
 
-        {/* Subordinate per-window control: only meaningful once publishing is on.
-            The switch reflects this window's resolved decision (override ?? policy).
-            Off here drops the current window from pushes (removed from the mirror
-            immediately, since pushes are full-replace); on shares it. */}
-        {enabled && windowId !== null && (
-          <div className="flex items-center gap-2.5 border-t px-3 py-2.5">
-            <Switch
-              checked={windowShared}
-              disabled={windowBusy}
-              onToggle={() => void toggleWindow()}
-              ariaLabel="Share this window"
-            />
-            <span className="flex-1 text-xs font-medium leading-tight text-muted-foreground">
-              Share this window
-            </span>
-          </div>
-        )}
-
         {expanded && (
           <div className="flex flex-col gap-2 border-t px-3 pb-3 pt-2">
+            {/* Subordinate per-window control — BEHIND the expander (it used to
+                sit stacked under the main switch, where two toggles read as two
+                equally important decisions). Only meaningful once publishing is
+                on. The switch reflects this window's resolved decision
+                (override ?? policy): off drops the current window from pushes
+                (removed from the mirror immediately, since pushes are
+                full-replace), on shares it. */}
+            {enabled && windowId !== null && (
+              <div className="flex items-center gap-2.5">
+                <Switch
+                  checked={windowShared}
+                  disabled={windowBusy}
+                  onToggle={() => void toggleWindow()}
+                  ariaLabel="Share this window"
+                />
+                <span className="flex-1 text-xs font-medium leading-tight text-muted-foreground">
+                  Share this window
+                </span>
+              </div>
+            )}
+
             <p className="text-[11px] leading-snug text-muted-foreground">
               Sends the title, address, and icon of every open tab so you can pick one up on your
               phone. Private windows are never sent. Nothing is saved until you tap Save.

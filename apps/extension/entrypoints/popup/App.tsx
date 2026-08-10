@@ -4,6 +4,7 @@ import type { Bookmark, Session } from "@bookmark-ai/types";
 import { DEFAULT_WEB_URL, getWebBaseUrl } from "@/lib/api";
 import { diag } from "@/lib/diag";
 import { iconUrl } from "@/lib/icon";
+import { PerfTrace } from "@/lib/perf";
 import {
   requestSaveBookmark,
   requestSaveSession,
@@ -33,6 +34,10 @@ const AUTH_POLL_MS = 2000;
  * forever. This is correct on every browser: a boot that can't resolve auth in a
  * few seconds should still render a usable, actionable UI. */
 const BOOT_TIMEOUT_MS = 5000;
+/** A session save that takes longer than this says so, instead of leaving the user
+ * staring at a spinner wondering whether the click registered. Long enough that a
+ * normal save (well under a second) never shows it. */
+const SLOW_SAVE_MS = 1500;
 
 const DEGRADED_NOTE =
   "Couldn't reach the extension background. Sign in on the website — your session still syncs back here.";
@@ -87,6 +92,9 @@ export default function App() {
   const [auth, setAuth] = useState<UserInfo | null>(null);
   const [tab, setTab] = useState<TabInfo | null>(null);
   const [tabCount, setTabCount] = useState<number | null>(null);
+  // Pre-resolved at mount so the save click doesn't pay a `windows.getCurrent()`
+  // round trip before it can even send the message.
+  const [windowId, setWindowId] = useState<number | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [bookmark, setBookmark] = useState<Bookmark | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -95,6 +103,9 @@ export default function App() {
   // Set only when the boot timeout fires before any background answer — surfaces
   // a note on the gate so a stuck background reads as a state, not a bug.
   const [degraded, setDegraded] = useState(false);
+  // A session save still running after SLOW_SAVE_MS — swaps the silent spinner for
+  // a "still working, your tabs are safe" line.
+  const [slowSave, setSlowSave] = useState(false);
 
   // Auth check on open (popup mount) + a re-check whenever the popup regains
   // visibility — e.g. returning from the sign-in tab.
@@ -157,6 +168,9 @@ export default function App() {
     void browser.tabs
       .query({ currentWindow: true })
       .then((tabs) => setTabCount(tabs.filter((t) => t.url && /^https?:/i.test(t.url)).length));
+    void browser.windows.getCurrent().then((win) => {
+      if (typeof win.id === "number") setWindowId(win.id);
+    });
     void getWebBaseUrl().then(setWebUrl);
   }, []);
 
@@ -182,12 +196,25 @@ export default function App() {
 
   async function handleSaveSession(keepOpen: boolean) {
     if (status === "savingSession" || status === "savingSessionKeepOpen") return;
+    // Feedback FIRST: the spinner state is set before any await, so the click is
+    // acknowledged in the same frame no matter how slow the round trip is.
     setStatus(keepOpen ? "savingSessionKeepOpen" : "savingSession");
     setError(null);
+    const perf = new PerfTrace("session save (popup)");
+    // A save that outlives the button spinner gets a line of reassurance —
+    // especially on the closing path, where the honest thing to say is that the
+    // tabs are still safe (nothing closes until the server confirms the save).
+    const slowTimer = window.setTimeout(() => setSlowSave(true), SLOW_SAVE_MS);
     // Scope the session to the popup's window; the background can't resolve
-    // "current window" reliably from its own context.
-    const win = await browser.windows.getCurrent();
-    const result = await requestSaveSession({ windowId: win.id, keepOpen });
+    // "current window" reliably from its own context. Pre-resolved at mount, so
+    // the click path normally skips this hop entirely.
+    const id = windowId ?? (await browser.windows.getCurrent()).id;
+    perf.mark("windowId");
+    const result = await requestSaveSession({ windowId: id, keepOpen });
+    perf.mark("roundTrip");
+    perf.end({ ok: result.ok, keepOpen, prewarmedWindowId: windowId !== null });
+    window.clearTimeout(slowTimer);
+    setSlowSave(false);
     if (result.ok) {
       if (keepOpen) {
         // The window survives, so this popup does too — confirm the save, then
@@ -235,7 +262,8 @@ export default function App() {
   const savable = tab !== null && /^https?:/i.test(tab.url);
   const busy =
     status === "saving" || status === "savingSession" || status === "savingSessionKeepOpen";
-  const tabSuffix = tabCount ? ` (${tabCount} tab${tabCount === 1 ? "" : "s"})` : "";
+  const tabLabel = `${tabCount ?? 0} tab${tabCount === 1 ? "" : "s"}`;
+  const tabSuffix = tabCount ? ` (${tabLabel})` : "";
 
   return (
     <div className="flex min-w-[20rem] flex-col gap-3 p-4">
@@ -296,12 +324,25 @@ export default function App() {
               {status === "savingSession" && <Spinner />}
               {status === "savingSession" ? "Saving session…" : `Save session & close${tabSuffix}`}
             </button>
+
+            {/* Only after SLOW_SAVE_MS. On the closing path it doubles as the
+                promise we actually keep: the window is closed AFTER the server
+                confirms the save, never before. */}
+            {slowSave && (
+              <p className="px-0.5 text-[11px] leading-snug text-muted-foreground" role="status">
+                {status === "savingSession"
+                  ? `Saving ${tabLabel}… your tabs stay open until the save is confirmed.`
+                  : `Saving ${tabLabel}… hang on.`}
+              </p>
+            )}
           </div>
         </>
       )}
 
       {status === "error" && error && <ErrorNote message={error} />}
 
+      {/* Quiet tier: a secondary, mostly-set-once control. It sits below the save
+          actions and reads as a settings row, not a fourth button. */}
       <LiveTabsToggle />
 
       <footer className="mt-1 flex items-center justify-between gap-2 border-t pt-2">

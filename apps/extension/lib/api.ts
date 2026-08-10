@@ -9,6 +9,7 @@ import { refreshCredential } from "./auth-refresh";
 import { getUsableDeviceToken } from "./device-token";
 import { diag } from "./diag";
 import { tokenFresh, type CachedToken } from "./live-token";
+import { timed } from "./perf";
 
 /** The app origin (web UI + its `/api/*` routes — one deployment serves both).
  * Selected at BUILD time per target via WXT's env/mode: `.env.production` →
@@ -145,7 +146,15 @@ export async function authHeaders(): Promise<Record<string, string>> {
  * `authFetch` meaningful: the second attempt picks up whatever the refresh stored.
  */
 async function sendAuthed(url: string, init: RequestInit): Promise<Response> {
-  const token = await authTokenProvider?.().catch(() => null);
+  // Timed: credential resolution used to be the dominant cost of a save (a full
+  // Clerk client construction + token mint per request). Logged only when it's
+  // slow enough to matter, so the every-5s live push doesn't spam the log.
+  const token = await timed(
+    "token resolve",
+    10,
+    () => authTokenProvider?.().catch(() => null) ?? Promise.resolve(null),
+    (t) => ({ hasToken: !!t }),
+  );
   const headers: Record<string, string> = {
     ...(init.headers as Record<string, string> | undefined),
   };
@@ -315,12 +324,19 @@ export async function getLiveToken(forceRefresh = false): Promise<string | null>
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const base = await getApiBaseUrl();
   let res: Response;
+  const payload = JSON.stringify(body);
   try {
-    res = await authFetch(`${base}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    res = await timed(
+      "api post",
+      10,
+      () =>
+        authFetch(`${base}${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+        }),
+      (r) => ({ path, status: r.status, bytes: payload.length }),
+    );
   } catch {
     throw new Error(`Could not reach ${base}. Is the Bookmark AI server running?`);
   }

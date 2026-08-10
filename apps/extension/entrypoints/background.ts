@@ -27,6 +27,7 @@ import { diag } from "@/lib/diag";
 import { fullName } from "@/lib/identity";
 import { MintGate } from "@/lib/mint-gate";
 import { getNativeSession, getNativeSessionToken, nativeSignOut } from "@/lib/native-session";
+import { PerfTrace } from "@/lib/perf";
 import {
   drainNativeSyncQueue,
   refreshNativeSyncSettings,
@@ -106,13 +107,46 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   });
 }
 
-/** The Clerk SDK client, bounded by the race timeout. */
-function racedClerkClient() {
-  return withTimeout(
+/** How long a constructed Clerk client is reused (see `racedClerkClient`). Short
+ * enough that a sign-out on the website is reflected on the next popup open, long
+ * enough that "open the popup, click save" doesn't build the client twice. */
+const CLERK_CLIENT_TTL_MS = 60_000;
+type ClerkClient = Awaited<ReturnType<typeof createClerkClient>>;
+let clerkClientCache: { client: Promise<ClerkClient>; at: number } | null = null;
+
+/** The Clerk SDK client, bounded by the race timeout and MEMOIZED for
+ * `CLERK_CLIENT_TTL_MS`.
+ *
+ * Constructing the client is the expensive part — it handshakes with the syncHost
+ * to adopt the web session — and it used to happen on EVERY `GET_USER` **and**
+ * again on EVERY authenticated request. A session save therefore paid a full
+ * client construction plus a token mint (measured: ~355ms of a ~420ms local save)
+ * even though the popup had built one seconds earlier. Reads of `.session`/`.user`
+ * and `session.getToken()` are all we do with it, and `getToken()` refreshes the
+ * JWT itself, so reusing the instance is safe; a construction that throws/times
+ * out is NOT cached, and sign-out drops the cache immediately. */
+function racedClerkClient(): Promise<ClerkClient> {
+  const now = Date.now();
+  if (clerkClientCache && now - clerkClientCache.at < CLERK_CLIENT_TTL_MS) {
+    return clerkClientCache.client;
+  }
+  const client = withTimeout(
     createClerkClient({ publishableKey: CLERK_PUBLISHABLE_KEY, syncHost: CLERK_SYNC_HOST }),
     CLERK_RACE_MS,
     "createClerkClient",
   );
+  clerkClientCache = { client, at: now };
+  // A failed/timed-out construction must not be remembered — the next call has to
+  // be free to try again (and to fall through to the native/device paths).
+  void client.catch(() => {
+    if (clerkClientCache?.client === client) clerkClientCache = null;
+  });
+  return client;
+}
+
+/** Drop the memoized client (sign-out, or a rejected credential). */
+function resetClerkClient(): void {
+  clerkClientCache = null;
 }
 
 /** Clerk session JWT (same syncHost session the popup shows). SDK first (dev
@@ -120,14 +154,26 @@ function racedClerkClient() {
  * Null when signed out or Clerk is unreachable — saves still work against the
  * open local server; the auth-enforcing deployed server rejects them. */
 async function getSessionToken(): Promise<string | null> {
-  // Device path: the persisted device token IS the bearer — a token-bearing
-  // path like sdk/native, so skip the SDK race and native mint and hand it
-  // straight to authFetch. Cross-browser (Chrome/Firefox mint it via the native
-  // session, Safari via the bridge); if it vanished (cleared out from under us),
-  // fall through to re-resolve. `getUsableDeviceToken` (not `getStoredDeviceToken`)
-  // so a token in its last 60s renews INLINE instead of returning null and
-  // dropping us down a ladder whose Clerk session is probably long gone.
-  if (winningPath === "device") {
+  // Rung 1 — the persisted DEVICE TOKEN, whenever one is stored. It is a plain
+  // 90-day Bearer scoped to exactly the routes the background calls
+  // (`DEVICE_TOKEN_ROUTES` in apps/web/lib/server/require-user.ts: bookmark/session
+  // saves, settings, /api/me, its own renewal, plus the live server by contract),
+  // so resolving it is ONE storage read — no network, no Clerk.
+  //
+  // This used to be gated on `winningPath === "device"`, i.e. it was skipped
+  // whenever identity happened to resolve through the SDK or the Native API —
+  // which is the normal case. Every save then rebuilt a Clerk client and minted a
+  // fresh session JWT (~355ms locally, and a FAPI round trip in production) to
+  // authenticate a request that the token already in storage authenticates for
+  // free. That was the single largest slice of "Save session takes a lot of time".
+  //
+  // `winningPath` is deliberately NOT set from here: it drives IDENTITY and
+  // sign-out semantics (a "device" pin makes sign-out hand off to the web app),
+  // and which bearer a request carries must not silently change those.
+  // `getUsableDeviceToken` (not `getStoredDeviceToken`) so a token in its last 60s
+  // renews INLINE instead of returning null and dropping us down a ladder whose
+  // Clerk session is probably long gone.
+  {
     const deviceToken = await getUsableDeviceToken();
     if (deviceToken) return deviceToken;
   }
@@ -154,12 +200,11 @@ async function getSessionToken(): Promise<string | null> {
   if (token) winningPath = "native";
   diag("token", "native fallback", { hasToken: !!token });
   if (token) return token;
-  // The SDK/native mints came up empty, but a device token may persist (a fresh
-  // worker boots winningPath === null; the token survives in storage.local).
-  // Attach it so authFetch carries a Bearer on every API call — this is the path
-  // that keeps saves working after the server-side Clerk session expires. Again
-  // the near-expiry-renewing read: this is the LAST rung, so returning null here
-  // means the request goes out unauthenticated.
+  // Last rung: rung 1 found no device token, but one of the fire-and-forget mints
+  // kicked off by `handleGetUser` may have landed WHILE we were racing the SDK /
+  // native paths — so re-read before giving up. Returning null here means the
+  // request goes out unauthenticated (fine against an open local server, a 401
+  // against the deployed one, which `authFetch` then recovers from).
   {
     const deviceToken = await getUsableDeviceToken();
     if (deviceToken) {
@@ -169,6 +214,24 @@ async function getSessionToken(): Promise<string | null> {
     }
   }
   return token; // null
+}
+
+/**
+ * Resolve the request credential NOW so the next authenticated call doesn't have
+ * to. Called (fire-and-forget) right after the popup's `GET_USER` is answered.
+ *
+ * With a device token stored this is a storage read; without one it walks the
+ * SDK/native rungs, which both leave a warm client + a cached Clerk JWT behind —
+ * so either way the save click starts from a hot credential. Never throws.
+ */
+async function warmCredential(): Promise<void> {
+  const started = Date.now();
+  try {
+    const token = await getSessionToken();
+    diag("perf", "credential warm", { ms: Date.now() - started, hasToken: !!token });
+  } catch (e) {
+    diag("perf", "credential warm failed", { error: errMsg(e) });
+  }
 }
 
 const SIGNED_OUT: UserInfo = { signedIn: false, name: null, email: null };
@@ -498,11 +561,26 @@ async function probeDeviceToken(token: string, scope: string): Promise<DevicePro
   }
 }
 
-/** TEMP migration cleanup: the domain switched Clerk instances (dev → prod) on
- * 2026-07-22; browsers that used the dev era carry stale dev-suffixed cookies
- * (`*_vm2h_-wW`) that can shadow the prod session for the sync SDK. Surgically
- * remove exactly those. */
+/** TEMP migration cleanup: the PRODUCTION domain switched Clerk instances
+ * (dev → prod) on 2026-07-22; browsers that used the dev era carry stale
+ * dev-suffixed cookies (`*_vm2h_-wW`) that can shadow the prod session for the
+ * sync SDK. Surgically remove exactly those.
+ *
+ * PRODUCTION BUILDS ONLY, and once per background lifetime.
+ *  • `_vm2h_-wW` is the DEV instance's cookie suffix, and the local (`localhost:3000`)
+ *    and dev (`bookmark-ai-dev`) targets legitimately run on that instance — so on
+ *    those builds this "cleanup" deleted the CURRENT session cookies of the very
+ *    origin it syncs with (`__session_vm2h_-wW` & friends on `http://localhost`),
+ *    signing the user out of the web app every time the popup was opened. Gating on
+ *    the live publishable key confines it to the one instance pair it was written for.
+ *  • It also ran on EVERY `GET_USER`, i.e. twice per popup open, for a one-time
+ *    migration — two full cookie scans on the path the popup blocks its UI on. */
+let devEraCookiesPurged = false;
+
 async function purgeDevEraCookies(): Promise<void> {
+  if (devEraCookiesPurged) return;
+  devEraCookiesPurged = true;
+  if (!CLERK_PUBLISHABLE_KEY.startsWith("pk_live_")) return;
   for (const url of [CLERK_SYNC_HOST, "https://www.bookmark-ai.cloud"]) {
     try {
       const all = await browser.cookies.getAll({ url });
@@ -652,6 +730,10 @@ async function handleGetUser(reentered = false): Promise<UserInfo> {
  * (which ends the same client session the WEB app uses — signing out of the
  * extension signs out of the site too, which is the honest behavior). */
 async function handleSignOut(): Promise<SignOutResult> {
+  // Drop the memoized Clerk client: whatever happens below, the session it holds
+  // is on its way out, and the next resolve must build a fresh one rather than
+  // report the signed-out user as still signed in.
+  resetClerkClient();
   // The device token is our OWN long-lived bearer, not a Clerk session — clear it
   // locally on any sign-out (all browsers) so it's never reused. Ending the
   // shared web session itself still happens via the SDK/native paths below or
@@ -702,8 +784,10 @@ async function handleSaveBookmark(message: SaveBookmarkMessage): Promise<SaveBoo
 }
 
 async function handleSaveSession(message: SaveSessionMessage): Promise<SaveSessionResult> {
+  const perf = new PerfTrace("session save (bg)");
   try {
     const tabs = await gatherOpenTabs(message.windowId);
+    perf.mark("gatherTabs");
     if (tabs.length === 0) throw new Error("No open tabs in this window to save.");
     const src = detectSource();
     const session = await saveSession({
@@ -714,15 +798,21 @@ async function handleSaveSession(message: SaveSessionMessage): Promise<SaveSessi
       os: src.os,
       savedAt: src.savedAt,
     });
+    perf.mark("save");
     // Saved successfully — only now is it safe to close the window + open the app.
-    // `keepOpen` is the checkpoint path: nothing closes, nothing opens, the user
-    // stays exactly where they are.
+    // HARD RULE: nothing closes before the server has confirmed the save, so a
+    // failed save can never cost the user their tabs. `keepOpen` is the checkpoint
+    // path: nothing closes, nothing opens, the user stays exactly where they are.
     if (!message.keepOpen) {
       const webUrl = await getWebBaseUrl();
+      perf.mark("webUrl");
       await closeWindowsAndOpen(`${webUrl}/app?section=sessions`, message.windowId);
+      perf.mark("closeWindows");
     }
+    perf.end({ tabs: tabs.length, keepOpen: message.keepOpen === true });
     return { ok: true, session };
   } catch (error) {
+    perf.end({ failed: true });
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
@@ -951,7 +1041,19 @@ export default defineBackground(() => {
       ) => void,
     ) => {
       if (isGetUserMessage(message)) {
-        void handleGetUser().then(sendResponse);
+        const started = Date.now();
+        void handleGetUser().then((info) => {
+          // The popup blocks its whole UI on this answer, so its cost is part of
+          // "the extension feels slow" — measure it alongside the save path.
+          diag("perf", "getUser", { ms: Date.now() - started, signedIn: info.signedIn });
+          sendResponse(info);
+          // PRE-WARM: the popup opening is the earliest possible signal that a
+          // save click is coming, and `GET_USER` is the message it always sends
+          // first. Resolving the credential now (off the reply path — the popup is
+          // already rendering) means the click starts with a warm one instead of
+          // paying for it inside the save.
+          if (info.signedIn) void warmCredential();
+        });
         return true; // keep the channel open for the async response
       }
       if (isSignOutMessage(message)) {
