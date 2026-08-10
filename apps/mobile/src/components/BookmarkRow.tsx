@@ -32,7 +32,11 @@ export function BookmarkRow({ bookmark, last }: { bookmark: Bookmark; last?: boo
 
 export function FaviconTile({ url, size = 36 }: { url?: string | null; size?: number }) {
   const { colors, radius } = useAppTheme();
-  const [failed, setFailed] = useState(false);
+  // Which url the failure belongs to, not a sticky boolean: a broken favicon
+  // falls back to the neutral dot, but a later refresh that swaps in a working
+  // one (the server backfills OG data seconds after a save) still gets tried.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const showImage = Boolean(url) && url !== failedUrl;
   return (
     <View
       style={{
@@ -44,10 +48,10 @@ export function FaviconTile({ url, size = 36 }: { url?: string | null; size?: nu
         justifyContent: "center",
       }}
     >
-      {url && !failed ? (
+      {showImage ? (
         <Image
-          source={{ uri: url }}
-          onError={() => setFailed(true)}
+          source={{ uri: url as string }}
+          onError={() => setFailedUrl(url ?? null)}
           style={{ width: size * 0.55, height: size * 0.55, borderRadius: 4 }}
         />
       ) : (

@@ -208,7 +208,10 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
   },
-  input: { flex: 1, fontSize: 17, paddingVertical: 11 },
+  // letterSpacing: 0 is explicit, not a default — iOS leaks the tracked
+  // attribute from the sign-in OTP field (letterSpacing 6) into every later
+  // TextInput, so the placeholder renders as "T i t l e s ,   t a g s …".
+  input: { flex: 1, fontSize: 17, paddingVertical: 11, letterSpacing: 0 },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 20 },
   statusText: { fontSize: 13 },
   sectionLabel: {

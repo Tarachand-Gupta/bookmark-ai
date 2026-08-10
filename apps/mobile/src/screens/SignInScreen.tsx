@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,7 +14,6 @@ import {
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useSignIn, useSignUp, useSSO } from "@clerk/clerk-expo";
-import { SERVER_TARGET } from "../api";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 
@@ -25,20 +25,16 @@ WebBrowser.maybeCompleteAuthSession();
  * TARGET Clerk instance (and therefore the web app) actually exposes:
  *
  *  - PROD (bookmark-ai.cloud, pk_live): email + password, email one-time code,
- *    and forgot-password — verified against the instance's FAPI /environment
- *    (identification: email_address; first_factors: email_code, password,
- *    reset_password_email_code). The prod instance has NO social providers
- *    configured, so there is NO Google button — it would only dead-end.
- *  - LOCAL/dev (*.accounts.dev, pk_test): the dev instance additionally has
- *    Google/Apple/GitHub OAuth enabled, so we surface "Continue with Google"
- *    for convenient local testing.
+ *    forgot-password, AND Google OAuth — verified against the instance's FAPI
+ *    /environment (oauth_google enabled + authenticatable as of 2026-08-10),
+ *    with the native redirect URLs (bookmarkai:// and bookmarkai://sso-callback)
+ *    registered on the prod instance's /v1/redirect_urls allowlist.
+ *  - LOCAL/dev (*.accounts.dev, pk_test): same set via the dev instance.
  *
- * To offer Google in production the prod Clerk instance must first enable the
- * Google OAuth provider (Dashboard → SSO connections) with a GCP OAuth client,
- * and add the native redirect URL (bookmarkai://sso-callback) to its allowlist;
- * until then the web app doesn't show it either, so mobile matches by hiding it.
+ * If a target instance ever drops its Google connection, gate this back off for
+ * that target — an unbacked button dead-ends in the OAuth browser sheet.
  */
-const OAUTH_ENABLED = SERVER_TARGET === "local";
+const OAUTH_ENABLED = true;
 
 /** Clerk's code for "no account with this identifier" — the API message is the
  * bare "Couldn't find your account.", which is a dead end on its own. */
@@ -98,6 +94,11 @@ export function SignInScreen() {
   const [mode, setMode] = useState<Mode>("signIn");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Replaces the code phase's default "Enter the code sent to …" line when we
+  // landed there as a FALLBACK the user didn't ask for (a correct password that
+  // Clerk still wants an email code behind) — otherwise the screen looks like
+  // it ignored the password.
+  const [notice, setNotice] = useState<string | null>(null);
 
   // Clerk resource methods (create/prepare/attempt) each return the UPDATED
   // resource; the useSignIn()/useSignUp() hook objects can be a stale copy
@@ -123,6 +124,7 @@ export function SignInScreen() {
     setCode("");
     setNewPassword("");
     setError(null);
+    setNotice(null);
     setMode("signIn");
     activeSignIn.current = null;
     activeSignUp.current = null;
@@ -130,7 +132,27 @@ export function SignInScreen() {
 
   const signInWithGoogle = async () => {
     setError(null);
+    setNotice(null);
     setBusy(true);
+    // After the user closes the OAuth sheet, startSSOFlow can take 20s+ to
+    // resolve (QA-measured on Android) — don't hold the whole form hostage.
+    // Once the app is foregrounded again, give the flow a short grace period,
+    // then re-enable the form; the late resolution stays useful (a real
+    // session still activates) but must no longer surface cancel-noise.
+    let abandoned = false;
+    let graceTimer: ReturnType<typeof setTimeout> | null = null;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      graceTimer = setTimeout(() => {
+        abandoned = true;
+        setBusy(false);
+      }, 2500);
+      sub.remove();
+    });
+    const settle = () => {
+      sub.remove();
+      if (graceTimer) clearTimeout(graceTimer);
+    };
     try {
       const {
         createdSessionId,
@@ -143,6 +165,7 @@ export function SignInScreen() {
         // an entry in the Clerk instance's native redirect_urls allowlist.
         redirectUrl: AuthSession.makeRedirectUri({ path: "sso-callback" }),
       });
+      settle();
 
       // Happy path: Clerk minted a session directly.
       if (createdSessionId && activate) {
@@ -181,21 +204,42 @@ export function SignInScreen() {
         }
       }
 
-      // User closed the browser: no states to report, just stop quietly.
-      if (!ssoSignIn && !ssoSignUp) {
+      // The user closed the browser sheet. Nothing was ever attempted, so Clerk
+      // hands the resources back untouched — no resources at all, or a signIn
+      // still in its initial `needs_identifier` state. Cancelling is a choice,
+      // not a failure: say NOTHING rather than flashing a raw status at them.
+      // NOTE: an untouched flow reports verification status "unverified", NOT
+      // null/undefined (QA-reproduced on device) — treat both as "no signal";
+      // only a verification that actually progressed past unverified counts.
+      const untouched = (s: string | null | undefined) => s == null || s === "unverified";
+      const cancelled =
+        (!ssoSignIn || ssoSignIn.status === "needs_identifier") &&
+        untouched(ssoSignIn?.firstFactorVerification.status) &&
+        untouched(ssoSignUp?.verifications.externalAccount.status);
+      if (cancelled) {
         setBusy(false);
         return;
       }
-      // Anything else: never fail silently — name the states.
+      // A real failure: never fail silently — name the states. (Unless the
+      // user already moved on: a late resolution after the grace period must
+      // not shout about a flow they abandoned minutes ago.)
       console.warn(
         `[sso] unresolved: signIn=${ssoSignIn?.status ?? "-"} signUp=${ssoSignUp?.status ?? "-"}`,
       );
-      setError(
-        `Google sign-in didn't finish (${ssoSignIn?.status ?? ssoSignUp?.status ?? "unknown"}). ` +
-          "Try again, or use your email and password below.",
-      );
+      if (!abandoned) {
+        setError(
+          `Google sign-in didn't finish (${ssoSignIn?.status ?? ssoSignUp?.status ?? "unknown"}). ` +
+            "Try again, or use your email and password above.",
+        );
+      }
       setBusy(false);
     } catch (err) {
+      settle();
+      if (abandoned) {
+        console.warn("[sso] late failure after user abandoned the flow:", err);
+        setBusy(false);
+        return;
+      }
       failed(err);
     }
   };
@@ -208,6 +252,7 @@ export function SignInScreen() {
     const identifier = email.trim();
     if (!identifier || !password) return;
     setError(null);
+    setNotice(null);
     setBusy(true);
     // Start from a clean slate so a leftover code/verification from a previous
     // (failed or abandoned) attempt can't leak into this one.
@@ -229,6 +274,26 @@ export function SignInScreen() {
         await setActive({ session: res.createdSessionId });
         return;
       }
+      // The password was right but Clerk still wants a first factor (instances
+      // can require email verification on top of the password). Don't dead-end
+      // the user on the web app — if email_code is one of the offered
+      // strategies, send it and collect it right here.
+      const emailFactor = res.supportedFirstFactors?.find(
+        (f) => f.strategy === "email_code",
+      );
+      if (res.status === "needs_first_factor" && emailFactor && "emailAddressId" in emailFactor) {
+        const prepared = await res.prepareFirstFactor({
+          strategy: "email_code",
+          emailAddressId: emailFactor.emailAddressId,
+        });
+        activeSignIn.current = prepared;
+        setMode("signIn");
+        setPhase("code");
+        setNotice(`We emailed you a code to finish signing in — sent to ${identifier}`);
+        setBusy(false);
+        return;
+      }
+      // Genuinely unsupported here (real 2FA, an unknown factor): unchanged.
       setError("Extra verification is required — finish signing in on the web app.");
       setBusy(false);
     } catch (err) {
@@ -261,6 +326,7 @@ export function SignInScreen() {
   const sendEmailCode = async () => {
     if (!isLoaded || !email.trim()) return;
     setError(null);
+    setNotice(null);
     setBusy(true);
     setCode("");
     setNewPassword("");
@@ -304,6 +370,7 @@ export function SignInScreen() {
       return;
     }
     setError(null);
+    setNotice(null);
     setBusy(true);
     setCode("");
     setNewPassword("");
@@ -579,11 +646,12 @@ export function SignInScreen() {
           ) : (
             <>
               <Text style={{ fontSize: 15, color: colors.mutedForeground, textAlign: "center" }}>
-                {mode === "signUp"
-                  ? `Creating your account — enter the code sent to ${email.trim()}`
-                  : mode === "reset"
-                    ? `Enter the code sent to ${email.trim()} and choose a new password`
-                    : `Enter the code sent to ${email.trim()}`}
+                {notice ??
+                  (mode === "signUp"
+                    ? `Creating your account — enter the code sent to ${email.trim()}`
+                    : mode === "reset"
+                      ? `Enter the code sent to ${email.trim()} and choose a new password`
+                      : `Enter the code sent to ${email.trim()}`)}
               </Text>
               <TextInput
                 value={code}
@@ -597,6 +665,8 @@ export function SignInScreen() {
                 style={[
                   styles.input,
                   styles.codeInput,
+                  // letterSpacing/large type deform the placeholder — only track a real value
+                  code.length === 0 && styles.codeInputEmpty,
                   {
                     color: colors.foreground,
                     backgroundColor: colors.card,
@@ -702,7 +772,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 13,
     borderWidth: StyleSheet.hairlineWidth,
+    // Explicit, not a default: iOS leaks codeInput's tracking into any
+    // TextInput that doesn't declare its own (see codeInput below).
+    letterSpacing: 0,
   },
   codeInput: { textAlign: "center", fontSize: 22, letterSpacing: 6 },
+  codeInputEmpty: { fontSize: 17, letterSpacing: 0 },
   error: { fontSize: 14, textAlign: "center", lineHeight: 19 },
 });

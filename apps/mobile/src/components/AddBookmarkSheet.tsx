@@ -204,7 +204,9 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
   },
-  input: { flex: 1, fontSize: 17, paddingVertical: 11 },
+  // letterSpacing: 0 is explicit — iOS leaks the sign-in OTP field's tracking
+  // (letterSpacing 6) into every later TextInput if none is declared.
+  input: { flex: 1, fontSize: 17, paddingVertical: 11, letterSpacing: 0 },
   error: { fontSize: 15, marginTop: 12, marginLeft: 4 },
   footnote: { fontSize: 13, lineHeight: 18, marginTop: 16, marginHorizontal: 4 },
 });

@@ -52,10 +52,13 @@ export function LiveEmptyState({
         }
       : kind === "error"
         ? {
-            icon: "questionmark.circle",
-            fallback: "?",
-            title: "Couldn't load open tabs",
-            body: message ?? "Check your connection and try again.",
+            // A warning, not a question mark: this is the reader being
+            // unreachable, not something the user needs explained. `message`
+            // is guaranteed human copy by useLiveDevices — never an exception.
+            icon: "exclamationmark.triangle",
+            fallback: "⚠",
+            title: message ?? "Couldn't reach the live sessions server.",
+            body: "Check your connection, then tap Retry.",
           }
         : {
             icon: "laptopcomputer",
@@ -92,7 +95,7 @@ export function LiveEmptyState({
             pressed && { backgroundColor: colors.muted },
           ]}
         >
-          <Text style={[styles.buttonLabel, { color: colors.foreground }]}>Try again</Text>
+          <Text style={[styles.buttonLabel, { color: colors.foreground }]}>Retry</Text>
         </Pressable>
       )}
     </View>

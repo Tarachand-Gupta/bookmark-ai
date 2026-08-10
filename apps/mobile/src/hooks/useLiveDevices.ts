@@ -9,6 +9,20 @@ export type SessionsSegment = "saved" | "ongoing";
 
 type LiveStreamEvent = "state";
 
+/**
+ * The ONE thing the user is told when the live reader can't be reached. Never
+ * surface the underlying exception: RN hands back transport strings like
+ * "Failed to connect to /10.0.2.2:8091" (Android) or a bare "Network request
+ * failed", which read as a crash in the middle of the Ongoing segment. The raw
+ * detail goes to console.warn for whoever is debugging.
+ */
+const LIVE_UNREACHABLE = "Couldn't reach the live sessions server.";
+
+function reportLiveFailure(err: unknown): string {
+  console.warn("[live] unreachable:", err instanceof Error ? err.message : String(err));
+  return LIVE_UNREACHABLE;
+}
+
 export interface LiveDevicesState {
   devices: LiveDevice[];
   enabled: boolean;
@@ -16,6 +30,7 @@ export interface LiveDevicesState {
   /** First load with nothing to show yet — render a spinner, not empty state A. */
   loading: boolean;
   refreshing: boolean;
+  /** Always human copy — never a raw exception string (see LIVE_UNREACHABLE). */
   error: string | null;
   /** 503 code === "provisioning" — the tenant DB is still being created. */
   provisioning: boolean;
@@ -104,7 +119,7 @@ export function useLiveDevices({
         } else {
           // Keep last-known data (rendered dimmed) rather than dropping to an
           // error screen — a stale tab list is still useful (§4.7).
-          setError(err instanceof Error ? err.message : String(err));
+          setError(reportLiveFailure(err));
         }
       } finally {
         if (!cancelled) {
@@ -135,8 +150,9 @@ export function useLiveDevices({
         if (cancelled) return;
         // Keep last-known devices (same "stale is still useful" rule as the
         // initial fetch) — never clear `devices`/`loaded` here.
-        if (event.type === "error") setError(event.message);
-        else if (event.type === "exception") setError(event.message);
+        if (event.type === "error" || event.type === "exception") {
+          setError(reportLiveFailure(event.message));
+        }
       });
       // "open" and keepalive comments need no handling.
     };

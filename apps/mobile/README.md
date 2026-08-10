@@ -9,28 +9,40 @@ lists, long-press action sheets, and haptics.
 
 The app is Clerk-gated like the web app: Google SSO or an emailed one-time code. The
 session token is stored in the iOS keychain (SecureStore) and attached to every API
-request. **Settings → Server** switches between the open local dev API and the deployed
-API at `bookmark-ai.cloud` (Next.js route handlers in `apps/web`, which verify the token
-on every request).
+request, which the Next.js route handlers in `apps/web` verify.
+
+### Server target (build-time, not an in-app switch)
+
+There is **no in-app server switch** — which API the build talks to is decided once at
+bundle time by `resolveServerTarget()` in `src/api.ts`:
+
+1. `EXPO_PUBLIC_SERVER_TARGET=local|production` — explicit override, wins.
+2. else `__DEV__` — a dev run (`expo start` / `expo run:*`) → `local`, a release build
+   (`eas build`) → `production`.
+
+`local` means the Next dev server (`localhost:3000`, `10.0.2.2:3000` on the Android
+emulator); `production` means `https://bookmark-ai.cloud`. To point a dev run at prod:
+
+```bash
+EXPO_PUBLIC_SERVER_TARGET=production npx expo run:ios
+```
+
+`EXPO_PUBLIC_API_URL` (and `EXPO_PUBLIC_LIVE_API_URL` for the live server) hard-override
+the resolved host in any build. Settings shows the target read-only.
 
 ### Clerk instance
 
-The app defaults to the Clerk **production** instance (`clerk.bookmark-ai.cloud`), baked
-into `src/lib/clerk.ts` — a build mirrors accounts from the deployed web app out of the
-box. For **local development** against the dev instance, override the publishable key at
-build time, inline:
+The publishable key **follows the server target** (`src/lib/clerk.ts`) so a session is
+never sent to the other environment's API — no manual pairing needed:
 
-```bash
-EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_ZGFybGluZy1iYWJvb24tMTMuY2xlcmsuYWNjb3VudHMuZGV2JA npx expo run:ios
-```
+| Server target | Clerk instance | Publishable key |
+| --- | --- | --- |
+| `production` | `clerk.bookmark-ai.cloud` | `pk_live_Y2xlcmsuYm9va21hcmstYWkuY2xvdWQk` |
+| `local` | dev (`darling-baboon-13.accounts.dev`) | `pk_test_ZGFybGluZy1iYWJvb24tMTMuY2xlcmsuYWNjb3VudHMuZGV2JA` |
 
-or persist it in a gitignored `.env.local` (`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_…`).
-`EXPO_PUBLIC_*` values are inlined at bundle time, so **rebuild** after changing the key.
-
-| Instance | Publishable key |
-| --- | --- |
-| Production (default) | `pk_live_Y2xlcmsuYm9va21hcmstYWkuY2xvdWQk` |
-| Dev (local development) | `pk_test_ZGFybGluZy1iYWJvb24tMTMuY2xlcmsuYWNjb3VudHMuZGV2JA` |
+`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` overrides it (escape hatch for a throwaway/staging
+instance). `EXPO_PUBLIC_*` values are inlined at bundle time, so **rebuild** after
+changing any of them.
 
 ## Layout
 
@@ -65,11 +77,11 @@ npx expo run:android
 The iOS simulator reaches the local API (the web dev server) at `localhost:3000`; the
 Android emulator sees the host machine as `10.0.2.2` (handled in `src/api.ts`).
 
-Dev-only env flags (bundle-time, ignored in release builds):
+Other bundle-time env flags (see "Server target" above for `EXPO_PUBLIC_SERVER_TARGET` /
+`EXPO_PUBLIC_API_URL`):
 
-- `EXPO_PUBLIC_API_URL` — hard-override the API host
-- `EXPO_PUBLIC_INITIAL_TAB=search|settings|filters` — open on a specific screen (headless screenshots)
-- `EXPO_PUBLIC_SKIP_AUTH=1` — skip the sign-in gate against the open local server (QA agents)
+- `EXPO_PUBLIC_INITIAL_TAB=sessions|search|settings|filters` — open on a specific screen (headless screenshots)
+- `EXPO_PUBLIC_SKIP_AUTH=1` — skip the sign-in gate against the open local server (QA agents); `__DEV__`-only, ignored in release builds
 
 See `AGENTS.md` here before writing code: Expo APIs change fast — check the versioned
 docs for **SDK 57** specifically.

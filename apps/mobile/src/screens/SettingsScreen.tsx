@@ -110,13 +110,19 @@ export function SettingsScreen() {
 
       <GroupLabel>About</GroupLabel>
       <Group>
+        {/* Which backend a build talks to is a build-time decision (api.ts
+            resolveServerTarget), not a user choice — surface it only in dev
+            builds where QA actually needs to confirm the target. */}
+        {__DEV__ ? (
+          <GroupRow
+            first
+            symbol={SERVER_TARGET === "local" ? "laptopcomputer" : "cloud"}
+            label="Server"
+            detail={SERVER_HOST}
+          />
+        ) : null}
         <GroupRow
-          first
-          symbol={SERVER_TARGET === "local" ? "laptopcomputer" : "cloud"}
-          label="Server"
-          detail={SERVER_HOST}
-        />
-        <GroupRow
+          first={!__DEV__}
           symbol="safari"
           label="Open web app"
           chevron
@@ -224,8 +230,11 @@ function GroupRow({
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20 },
-  largeTitle: { fontSize: 34, fontWeight: "700", letterSpacing: 0.2, paddingTop: 8 },
+  // paddingTop 8 / paddingHorizontal 20 is exactly the `header` block
+  // Library/Search/Sessions use, so all four large titles share one baseline.
+  // (paddingBottom is supplied per-render as the tab-bar clearance.)
+  content: { paddingHorizontal: 20, paddingTop: 8 },
+  largeTitle: { fontSize: 34, fontWeight: "700", letterSpacing: 0.2 },
   profile: { alignItems: "center", gap: 4, paddingVertical: 24 },
   avatar: {
     width: 64,

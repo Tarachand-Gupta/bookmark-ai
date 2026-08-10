@@ -3,6 +3,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import type { Session, SessionTab } from "@bookmark-ai/types";
 import { useAppTheme } from "../context/PreferencesContext";
+import { FaviconTile } from "./BookmarkRow";
 import { Symbol } from "./Symbol";
 
 export function hostOf(url: string): string {
@@ -166,6 +167,10 @@ function TabRow({ tab, matched }: { tab: SessionTab; matched: boolean }) {
         pressed && { backgroundColor: colors.border },
       ]}
     >
+      {/* Sessions saved by the extension carry each tab's favIconUrl; rows
+          seeded by other clients may not — FaviconTile falls back to the
+          neutral glyph, so the leading slot is stable either way. */}
+      <FaviconTile url={tab.favIconUrl} size={24} />
       <View style={styles.tabTexts}>
         <Text
           numberOfLines={1}
@@ -214,7 +219,9 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    marginLeft: 62,
+    // 28 + padding 14 + favicon 24 + gap 10 = 76: tab TITLES keep the exact
+    // x-position they had before the favicon (62 + 14), icon under the badge.
+    marginLeft: 28,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   tabTexts: { flex: 1, gap: 1 },

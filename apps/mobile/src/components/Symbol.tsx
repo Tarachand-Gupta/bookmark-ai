@@ -18,6 +18,7 @@ const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   desktopcomputer: "desktop-outline",
   display: "desktop-outline",
   "doc.on.clipboard": "clipboard-outline",
+  "exclamationmark.triangle": "warning-outline",
   "eye.slash": "eye-off-outline",
   gearshape: "settings-outline",
   "gearshape.fill": "settings",

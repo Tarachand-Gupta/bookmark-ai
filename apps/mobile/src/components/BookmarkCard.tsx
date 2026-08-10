@@ -9,8 +9,10 @@ import { FaviconTile } from "./BookmarkRow";
  * and category chip. Tap opens, long-press shows the action sheet. */
 export function BookmarkCard({ bookmark }: { bookmark: Bookmark }) {
   const { colors, radius } = useAppTheme();
-  const [imageFailed, setImageFailed] = useState(false);
-  const image = !imageFailed ? bookmark.og.image : null;
+  // Keyed on the url that failed rather than a sticky flag, so the OG image the
+  // server scrapes moments after a save isn't hidden behind a stale failure.
+  const [failedImage, setFailedImage] = useState<string | null>(null);
+  const image = bookmark.og.image !== failedImage ? bookmark.og.image : null;
 
   return (
     <Pressable
@@ -31,7 +33,7 @@ export function BookmarkCard({ bookmark }: { bookmark: Bookmark }) {
         {image ? (
           <Image
             source={{ uri: image }}
-            onError={() => setImageFailed(true)}
+            onError={() => setFailedImage(image)}
             style={StyleSheet.absoluteFill}
             resizeMode="cover"
           />
