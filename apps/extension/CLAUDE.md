@@ -191,3 +191,12 @@ Gotchas:
 - Keyboard shortcut Alt+Shift+S opens the popup (`_execute_action` / `_execute_browser_action`).
 - Loading instructions per browser: see `docs/TESTING.md` §3 (Safari needs
   `xcrun safari-web-extension-converter`).
+
+- **One-shot wxt commands NEVER exit on their own** (since 2026-08-10): importing the
+  background entrypoint pulls in `@clerk/chrome-extension`, which opens a module-scope
+  handle that keeps Node alive — `wxt prepare`/`build` print "✔ Finished" and hang
+  (locally: zombie builds deadlocking `.output`; on Vercel: postinstall hangs the deploy
+  to the 45-min timeout). ALL build/zip/postinstall scripts therefore go through
+  `scripts/wxt-run.mjs`, which force-exits after the success line and skips `prepare`
+  entirely under `VERCEL`. Never call bare `wxt build|zip|prepare` in scripts or CI;
+  `wxt dev` is exempt (it must stay alive).
