@@ -4,6 +4,7 @@ import {
   createBookmarkSchema,
   listBookmarksQuerySchema,
   savedAtBoundSchema,
+  MAX_SEARCH_DEPTH,
   MCP_TOOL_NAMES,
   type Bookmark,
   type McpToolName,
@@ -31,11 +32,20 @@ import { defineTool, type AnyMcpTool, type McpTool } from "./tool-kit";
 
 // ── search_bookmarks ──
 
-const searchArgs = z.object({
-  query: z.string().min(1),
-  mode: z.enum(["text", "semantic", "hybrid"]).default("hybrid"),
-  limit: z.number().int().min(1).max(40).default(10),
-});
+const searchArgs = z
+  .object({
+    query: z.string().min(1),
+    mode: z.enum(["text", "semantic", "hybrid"]).default("hybrid"),
+    limit: z.number().int().min(1).max(40).default(10),
+    offset: z.number().int().min(0).max(MAX_SEARCH_DEPTH - 1).default(0),
+  })
+  // Same ceiling GET /api/search enforces (searchQuerySchema): a ranked search
+  // has to retrieve everything above a page to place it, so total depth is
+  // capped rather than each argument separately.
+  .refine(({ limit, offset }) => offset + limit <= MAX_SEARCH_DEPTH, {
+    message: `offset + limit must not exceed ${MAX_SEARCH_DEPTH}`,
+    path: ["offset"],
+  });
 
 /** The compact bookmark shape every tool returns. Never includes embeddings or
  * the raw Open Graph blob — an agent pays for every token it reads. */
@@ -54,7 +64,7 @@ function summarize(b: Bookmark) {
 const searchBookmarks: McpTool<z.infer<typeof searchArgs>> = {
   name: "search_bookmarks",
   description:
-    "Search the user's saved bookmarks and return the best matches. Use this whenever the user refers to something they saved, bookmarked, or read before, or when you need a link they already have. 'hybrid' (default) blends keyword and meaning-based matching and is almost always the right choice; 'text' matches exact words, domains, and phrases; 'semantic' matches by meaning when the user's wording differs from the page's. Returns id, url, title, description, category, tags, savedAt, and a relevance score.",
+    "Search the user's saved bookmarks and return the best matches, most relevant first. Use this whenever the user refers to something they saved, bookmarked, or read before, or when you need a link they already have. 'hybrid' (default) blends keyword and meaning-based matching and is almost always the right choice; 'text' matches exact words, domains, and phrases; 'semantic' matches by meaning when the user's wording differs from the page's. Returns id, url, title, description, category, tags, savedAt, and a relevance score. Paging: the response carries 'offset' and 'hasMore' — while 'hasMore' is true you can fetch the next page by calling again with the SAME query and mode and offset increased by limit (0 → 10 → 20 …). Do that only when the current page really did not answer the question; relevance drops fast, and offset + limit may not exceed 200.",
   inputSchema: {
     type: "object",
     properties: {
@@ -70,23 +80,41 @@ const searchBookmarks: McpTool<z.infer<typeof searchArgs>> = {
         minimum: 1,
         maximum: 40,
         default: 10,
-        description: "Maximum results to return.",
+        description: "Maximum results to return in this page.",
+      },
+      offset: {
+        type: "integer",
+        minimum: 0,
+        maximum: MAX_SEARCH_DEPTH - 1,
+        default: 0,
+        description: `How many top-ranked results to skip — 0 for the first page, then add 'limit' per page while the response says hasMore. offset + limit must not exceed ${MAX_SEARCH_DEPTH} (each page re-ranks everything above it, so depth is capped).`,
       },
     },
     required: ["query"],
     additionalProperties: false,
   },
   args: searchArgs,
-  execute: async (ctx, { query, mode, limit }) => {
+  execute: async (ctx, { query, mode, limit, offset }) => {
     await ctx.ready;
     // The engine speaks "ai" for the vector path; the tool exposes "semantic".
     const engineMode = mode === "semantic" ? "ai" : mode;
-    const data = await performSearch(ctx.db, ctx.gemini, { q: query, mode: engineMode, limit });
+    // `offset` is always passed (it defaults to 0), which is what makes the
+    // engine return the paging fields — the REST route omits it for the web grid.
+    const data = await performSearch(ctx.db, ctx.gemini, {
+      q: query,
+      mode: engineMode,
+      limit,
+      offset,
+    });
     return {
       mode: data.mode,
       // Surfaced so the agent knows a semantic request silently degraded to
       // keyword matching (no embeddings available) rather than found nothing.
       fallback: data.fallback ?? false,
+      // Echoed with the results so a model can page without re-deriving them.
+      offset: data.offset ?? offset,
+      limit,
+      hasMore: data.hasMore ?? false,
       results: data.results.map(({ bookmark, score }) => ({
         ...summarize(bookmark),
         score: Math.round(score * 1000) / 1000,

@@ -25,7 +25,10 @@
 
 Reads: `GET /api/bookmarks` (facet filters), `/api/search` (`text` → FTS5 bm25;
 `ai` → embed query → `vector_distance_cos` ORDER BY; `hybrid` → RRF of both), `/api/meta`
-(sidebar facets) — all via `packages/engine`'s `performSearch`.
+(sidebar facets) — all via `packages/engine`'s `performSearch`. Search paging is an optional
+`offset` on `performSearch` (hence on `/api/search` and the MCP `search_bookmarks` tool alike):
+retrieval runs to `offset + limit` deep — both candidate lists before the RRF merge — and the
+fused ranking is sliced, capped at `MAX_SEARCH_DEPTH` (200). Details in `docs/features/mcp.md`.
 
 ## Key decisions (user-confirmed)
 

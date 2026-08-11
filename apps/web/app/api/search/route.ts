@@ -25,5 +25,9 @@ export async function GET(req: NextRequest) {
     if (overQuota) return overQuota;
   }
 
+  // `parsed.data` carries `offset` only when the client actually sent one, which
+  // is what keeps the paging fields (and the extra row they cost) off the web
+  // grid's requests while giving a paging client — MCP, scripts — the same
+  // surface. Everything else about the page is the engine's business.
   return NextResponse.json(await performSearch(db, gemini, parsed.data));
 }

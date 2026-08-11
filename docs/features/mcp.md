@@ -65,7 +65,7 @@ MCP token is refused everywhere `requireUser()` guards.
 
 | Tool | Arguments | Backed by |
 | --- | --- | --- |
-| `search_bookmarks` | `query`, `mode` `text\|semantic\|hybrid` (default `hybrid`), `limit` 1–40 (default 10) | engine `performSearch` (same stack as the web grid; `semantic` → the engine's `ai` mode) |
+| `search_bookmarks` | `query`, `mode` `text\|semantic\|hybrid` (default `hybrid`), `limit` 1–40 (default 10), `offset` ≥0 (default 0, `offset + limit` ≤ 200) | engine `performSearch` (same stack as the web grid; `semantic` → the engine's `ai` mode) |
 | `save_bookmark` | `url` (http/https), `title?` | engine `saveBookmarkFast` + `after()` `enrichBookmark`/`embedPending` — byte-for-byte the `POST /api/bookmarks` flow, `browser`/`device` = `"other"` |
 | `list_bookmarks` | `category?`, `tag?`, `browser?`, `device?`, `day?` (YYYY-MM-DD), `from?`/`to?` (inclusive saved-at range — YYYY-MM-DD for a whole day, or an ISO 8601 datetime for a sub-day window; either end optional), `limit` 1–100 (default 20), `offset?` | db `listBookmarks` (validated through the REST `listBookmarksQuerySchema`; range bounds share its `savedAtBoundSchema`) |
 | `get_library_overview` | none | db `getMeta` — the `/api/meta` facets |
@@ -73,6 +73,26 @@ MCP token is refused everywhere `requireUser()` guards.
 Results are compact summaries (`id, url, title, description, category, tags, savedAt`, plus
 `score` for search) — never embeddings or the raw Open Graph blob. Descriptions are written for an
 LLM caller and live in `apps/web/lib/server/mcp/tools.ts`.
+
+### Paging a search
+
+`search_bookmarks` returns `offset`, `limit`, and `hasMore` alongside `results`: page by calling
+again with the same `query`/`mode` and `offset += limit` while `hasMore` is true. Paging lives in
+the ENGINE (`performSearch`'s optional `offset`), so `GET /api/search?…&offset=` behaves
+identically — MCP and REST are the same surface, and both reject `offset + limit > 200`
+(`MAX_SEARCH_DEPTH` in `packages/types`).
+
+Why a cap: ranked retrieval has no cursor. Each page re-runs retrieval from rank 0 to the end of
+that page and slices the tail — and for `hybrid` BOTH candidate lists (FTS and vector) must be
+fetched to that full depth *before* the RRF merge, because the fused order of the rows on page 2
+depends on everything above them. An SQL `OFFSET` on either candidate list would produce a
+different, wrong ranking. Consequence: successive pages are disjoint and reassemble exactly the
+ranking one unpaged call of the same total depth would return (verified against the web grid's
+hybrid ranking). One row past the page is fetched to make `hasMore` exact — no count query.
+
+A request that omits `offset` (the web grid, mobile, the chat agent's tools) is byte-for-byte the
+pre-paging response: no `offset`/`hasMore` fields and no extra row fetched. Passing `offset=0`
+explicitly is how a client opts in.
 
 ## Rate limits
 
@@ -188,6 +208,14 @@ curl -s -X POST $B/api/mcp -H "Authorization: Bearer $TOKEN" -H 'content-type: a
 curl -s -X POST $B/api/mcp -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_bookmarks",
        "arguments":{"query":"rust async","mode":"hybrid","limit":5}}}'
+# → {"mode":"hybrid","fallback":false,"offset":0,"limit":5,"hasMore":true,"results":[…]}
+
+# the next page: same query/mode, offset += limit (repeat while hasMore)
+curl -s -X POST $B/api/mcp -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_bookmarks",
+       "arguments":{"query":"rust async","mode":"hybrid","limit":5,"offset":5}}}'
+# the same page over REST, identical ids:
+curl -s "$B/api/search?q=rust+async&mode=hybrid&limit=5&offset=5"
 
 # save
 curl -s -X POST $B/api/mcp -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
@@ -223,9 +251,13 @@ curl -s -X POST $B/api/mcp -H "Authorization: Bearer $TOKEN" -H 'content-type: a
 
 ## Tests
 
-`apps/web` has vitest now (`pnpm --filter @bookmark-ai/web test`) — 33 unit tests covering the
-token round-trip/tamper/expiry/wrong-scope rejection, the rate-limit window math, and the JSON-RPC
-dispatcher (negotiation, notifications, tool errors, batch rejection, limit refusals). The
-dispatcher is tested through its framework-free entry points rather than the route handler, since
-the handler needs a Next request scope for `after()`; the HTTP layer is covered by the live smoke
-flow above instead.
+`apps/web` has vitest now (`pnpm --filter @bookmark-ai/web test`) — 62 unit tests under
+`lib/server/` covering the token round-trip/tamper/expiry/wrong-scope rejection, the rate-limit
+window math, the JSON-RPC dispatcher (negotiation, notifications, tool errors, batch rejection,
+limit refusals), the tool argument contracts (`mcp/tools.test.ts`: the JSON Schema a client sees
+vs. the parser that runs, including `search_bookmarks`'s `offset` and the depth cap), and the
+engine's search paging (`search-paging.test.ts`: candidate depth, disjoint pages cut from the
+FUSED hybrid ranking, `hasMore`, and the unchanged no-offset response shape — it lives in
+`apps/web` because `packages/*` has no test runner). The dispatcher is tested through its
+framework-free entry points rather than the route handler, since the handler needs a Next request
+scope for `after()`; the HTTP layer is covered by the live smoke flow above instead.

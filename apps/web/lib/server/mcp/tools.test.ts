@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ListBookmarksQuery } from "@bookmark-ai/types";
+import { MAX_SEARCH_DEPTH, type ListBookmarksQuery } from "@bookmark-ai/types";
 import type { AnyMcpTool, McpToolContext } from "@/lib/server/mcp/tool-kit";
 
 /**
@@ -15,12 +15,23 @@ const listBookmarks = vi.fn(async () => ({ bookmarks: [], total: 0 }));
 const getMeta = vi.fn(async () => ({}));
 
 vi.mock("@bookmark-ai/db", () => ({ listBookmarks, getMeta }));
-// The engine is imported by sibling tools (search/save) that these tests never
-// call; stubbing it keeps the module graph off the Gemini/network code.
+/** What the engine hands back for a page; the tool only reshapes it. The engine
+ * is the authority on which page was served, so the stub echoes the offset it
+ * was asked for rather than a constant. */
+const performSearch = vi.fn(
+  async (_db: unknown, _gemini: unknown, params: { offset?: number }) => ({
+    mode: "hybrid" as const,
+    results: [],
+    offset: params.offset ?? 0,
+    hasMore: true,
+  }),
+);
+// The engine is stubbed so the module graph stays off the Gemini/network code —
+// these tests are about the tool's argument contract, not about retrieval.
 vi.mock("@bookmark-ai/engine", () => ({
   embedPending: vi.fn(),
   enrichBookmark: vi.fn(),
-  performSearch: vi.fn(),
+  performSearch,
   saveBookmarkFast: vi.fn(),
 }));
 
@@ -47,8 +58,84 @@ function lastQuery(): ListBookmarksQuery {
   return call[1];
 }
 
+/** The SearchParams `search_bookmarks` handed to the engine on its last run. */
+function lastSearch(): { q: string; mode: string; limit: number; offset?: number } {
+  const call = performSearch.mock.calls.at(-1) as unknown as [
+    unknown,
+    unknown,
+    { q: string; mode: string; limit: number; offset?: number },
+  ];
+  if (!call) throw new Error("performSearch was not called");
+  return call[2];
+}
+
 beforeEach(() => {
   listBookmarks.mockClear();
+  performSearch.mockClear();
+});
+
+describe("search_bookmarks — paging", () => {
+  it("advertises offset in the tools/list input schema, with the depth cap", () => {
+    const props = tool("search_bookmarks").inputSchema.properties as Record<
+      string,
+      { type: string; minimum?: number; maximum?: number; default?: number; description?: string }
+    >;
+    expect(props.offset).toMatchObject({ type: "integer", minimum: 0, default: 0 });
+    // The cap has to be discoverable from the schema, not only from a 400.
+    expect(props.offset?.maximum).toBe(MAX_SEARCH_DEPTH - 1);
+    expect(props.offset?.description).toMatch(String(MAX_SEARCH_DEPTH));
+    // Still the only required argument — paging must not become mandatory.
+    expect(tool("search_bookmarks").inputSchema.required).toEqual(["query"]);
+  });
+
+  it("tells the model how to page in its description", () => {
+    const description = tool("search_bookmarks").description;
+    expect(description).toMatch(/hasMore/);
+    expect(description).toMatch(/offset/);
+    expect(description).toMatch(new RegExp(String(MAX_SEARCH_DEPTH)));
+  });
+
+  it("passes offset through to the engine and echoes the page back", async () => {
+    const out = (await tool("search_bookmarks").run(ctx, {
+      query: "rust async",
+      mode: "semantic",
+      limit: 5,
+      offset: 10,
+    })) as { offset: number; limit: number; hasMore: boolean };
+    // "semantic" is the tool's word for the engine's "ai" mode.
+    expect(lastSearch()).toMatchObject({ q: "rust async", mode: "ai", limit: 5, offset: 10 });
+    expect(out).toMatchObject({ offset: 10, limit: 5, hasMore: true });
+  });
+
+  it("defaults to the first page and still asks the engine for paging fields", async () => {
+    const out = (await tool("search_bookmarks").run(ctx, { query: "rust" })) as {
+      offset: number;
+      hasMore: boolean;
+    };
+    // offset 0 is passed EXPLICITLY: that is what opts the engine into returning
+    // hasMore, which an agent needs to know a second page exists at all.
+    expect(lastSearch()).toMatchObject({ mode: "hybrid", limit: 10, offset: 0 });
+    expect(out.offset).toBe(0);
+    expect(out.hasMore).toBe(true);
+  });
+
+  it("rejects a negative, fractional, or non-numeric offset, and never searches", async () => {
+    for (const bad of [-1, -20, 1.5, "10", null]) {
+      await expect(
+        tool("search_bookmarks").run(ctx, { query: "rust", offset: bad }),
+      ).rejects.toThrow(/Invalid arguments for search_bookmarks/);
+    }
+    expect(performSearch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a page deeper than the retrieval cap", async () => {
+    await expect(
+      tool("search_bookmarks").run(ctx, { query: "rust", limit: 40, offset: 170 }),
+    ).rejects.toThrow(/Invalid arguments for search_bookmarks/);
+    // The last page the cap allows at limit 40 is still accepted.
+    await tool("search_bookmarks").run(ctx, { query: "rust", limit: 40, offset: 160 });
+    expect(lastSearch()).toMatchObject({ limit: 40, offset: 160 });
+  });
 });
 
 describe("list_bookmarks — from/to range", () => {

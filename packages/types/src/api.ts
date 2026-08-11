@@ -145,12 +145,29 @@ export type ListSessionsResponse = z.infer<typeof listSessionsResponseSchema>;
 export const searchModeSchema = z.enum(["text", "ai", "hybrid"]);
 export type SearchMode = z.infer<typeof searchModeSchema>;
 
-/** GET /api/search query params. */
-export const searchQuerySchema = z.object({
-  q: z.string().min(1),
-  mode: searchModeSchema.default("text"),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
-});
+/**
+ * How deep any search is allowed to reach: `offset + limit` may not exceed this.
+ * Paging a ranked search is not free — every page re-runs retrieval to the FULL
+ * depth of its last row (hybrid must rank the union of both candidate lists
+ * before it can cut a page out of it), so the cap bounds the work a single
+ * request can ask for. 200 is ~5 pages of the web grid's 40.
+ */
+export const MAX_SEARCH_DEPTH = 200;
+
+/** GET /api/search query params. `offset` is optional: omit it for the first
+ * page (the historical response shape), pass it — even 0 — to opt into the
+ * `offset`/`hasMore` paging fields. */
+export const searchQuerySchema = z
+  .object({
+    q: z.string().min(1),
+    mode: searchModeSchema.default("text"),
+    limit: z.coerce.number().int().min(1).max(50).default(20),
+    offset: z.coerce.number().int().min(0).optional(),
+  })
+  .refine(({ limit, offset }) => (offset ?? 0) + limit <= MAX_SEARCH_DEPTH, {
+    message: `offset + limit must not exceed ${MAX_SEARCH_DEPTH}`,
+    path: ["offset"],
+  });
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
 
 export const searchResultSchema = z.object({
@@ -177,6 +194,11 @@ export const searchResponseSchema = z.object({
   sessionResults: z.array(sessionSearchResultSchema).optional(),
   /** Set when an AI search silently fell back to full-text (e.g. no API key). */
   fallback: z.boolean().optional(),
+  /** Paging (present only when the caller passed an `offset`): where this page
+   * starts in the ranking, and whether the ranking continued past its end.
+   * Page again with `offset + limit` while `hasMore` is true. */
+  offset: z.number().optional(),
+  hasMore: z.boolean().optional(),
 });
 export type SearchResponse = z.infer<typeof searchResponseSchema>;
 

@@ -58,11 +58,16 @@ export async function searchVector(db: Db, embedding: number[], limit: number): 
  * score(d) = Σ 1/(K + rank_in_list). Rank-based, so the incomparable bm25
  * and cosine scales never fight; documents found by BOTH lists rise to the
  * top, and K=60 (the standard constant) keeps single-list hits competitive.
+ *
+ * `limit` is optional: omit it to get the WHOLE fused ranking (the union of both
+ * lists, best first), which is what a paging caller needs — it has to cut a
+ * window out of the merged order, and it can only do that once the merge has
+ * seen every candidate. Passing a limit truncates, exactly as before.
  */
 export function mergeHybrid(
   textResults: Scored[],
   vectorResults: Scored[],
-  limit: number,
+  limit?: number,
 ): Scored[] {
   const K = 60;
   const merged = new Map<string, Scored>();
@@ -79,7 +84,8 @@ export function mergeHybrid(
       }
     });
   }
-  return [...merged.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+  const ranked = [...merged.values()].sort((a, b) => b.score - a.score);
+  return limit === undefined ? ranked : ranked.slice(0, limit);
 }
 
 /** Store the embedding for a bookmark (marks it searchable by AI). */
