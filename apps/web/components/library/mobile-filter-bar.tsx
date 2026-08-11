@@ -72,13 +72,28 @@ const CHIP_TOUCH =
 /**
  * Container-query threshold (see the `@container` comment on the control row)
  * below which the Filters/Tags/Select buttons drop their text and become
- * icon-only. 26rem (~416px) is the width where "Filters" + its count badge +
- * "Tags" + its badge + "Select" + the view menu trigger started to crowd a
- * phone's own edge padding — comfortably above 320px, so the icon-only form
- * is what the smallest phones see, and comfortably below where full labels
- * fit, so nothing sits in an awkward half-truncated middle.
+ * icon-only. The labels come off only when they genuinely stop fitting, so the
+ * number is measured, not guessed — at the app's own type scale the fully
+ * labeled row in its WIDEST realistic state measures (Chrome, default 16px root):
+ *
+ *   Filters+badge 104.8 + Tags+badge 95.1 + Select 85.6 + view trigger 58
+ *   + 3 × 8px gap = 367.6px
+ *
+ * (badges are always single-digit: the facet filters are mutually exclusive, so
+ * filterCount tops out at 2 — one facet + a date range — and tagCount at 1.)
+ * 24rem = 384px is that width plus ~16px of slack. Reserving for the widest
+ * state, not the current one, is deliberate: keying the threshold off whether a
+ * badge happens to be showing would make every label vanish the moment you
+ * applied a filter. Unlabeled the same row is 327.6px, so nothing overflows
+ * below the threshold either.
+ *
+ * Container width, NOT viewport: `main` insets this row by p-3/p-4 and the
+ * sidebar insets it again on tablets, so a 430px phone only offers 406px here
+ * and a viewport-keyed breakpoint of the same number collapses too early —
+ * which is the bug this replaced (26rem/416px hid the labels on every phone).
+ * In rem so the threshold scales with the root font size the labels do.
  */
-const LABEL_VISIBLE = "hidden @min-[26rem]:inline";
+const LABEL_VISIBLE = "hidden @min-[24rem]:inline";
 
 export interface MobileFilterBarProps {
   meta: MetaResponse | null;
@@ -166,9 +181,10 @@ export function MobileFilterBar({
           to be how this row avoided overflowing on narrow phones, but it broke
           the view switcher onto its own line, which is worse than the overflow
           it was avoiding. Now nothing here wraps — the buttons drop their text
-          (LABEL_VISIBLE, icon + badge survive) below @min-[26rem], and the view
-          switcher is a single dropdown button instead of three segments, so the
-          row's natural width never gets close to overflowing at any phone size. */}
+          (LABEL_VISIBLE, icon + badge survive) below the measured threshold on
+          that constant, and the view switcher is a single dropdown button
+          instead of three segments, so the row's natural width never gets close
+          to overflowing at any phone size. */}
       <div className="flex min-w-0 flex-nowrap items-center gap-2">
         <Button
           variant={filterCount ? "secondary" : "outline"}

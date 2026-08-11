@@ -83,15 +83,21 @@ export function ViewMenu({
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
-          size="icon"
-          // size-9 → size-11: the icon size is a desktop/pointer size (36px);
-          // this trigger is the entire view control on a touch-only surface.
-          className={cn("size-11", className)}
+          // size="sm" (not "icon"): `icon` is a fixed 36px SQUARE, and this
+          // trigger holds two glyphs — icon + chevron — so squeezing them into a
+          // square left 4px of side padding against the 10px its row-mates use,
+          // which read as cramped and off-grid next to them. `sm` gives the same
+          // px-2.5 / gap-1.5 / rounded-md as the Filters/Tags/Select buttons and
+          // sizes to its content; h-11 matches their 44px touch height (the sm
+          // default, 32px, is a pointer size — this is the whole view control on
+          // a touch-only surface).
+          size="sm"
+          className={cn("h-11", className)}
           aria-label={`Change layout (currently ${current.label})`}
           title={current.label}
         >
           <current.Icon aria-hidden />
-          <ChevronDown className="size-3" aria-hidden />
+          <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
