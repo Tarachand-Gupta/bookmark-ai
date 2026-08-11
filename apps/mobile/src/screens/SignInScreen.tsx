@@ -15,6 +15,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useSignIn, useSignUp, useSSO } from "@clerk/clerk-expo";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
+import { useFinishPendingSession } from "../hooks/useFinishPendingSession";
 import { SSO_REDIRECT_URL } from "../lib/clerk";
 
 // Completes the SSO browser round-trip when the app regains focus.
@@ -74,6 +75,10 @@ export function SignInScreen() {
   const { startSSOFlow } = useSSO();
   const { signIn, setActive, isLoaded } = useSignIn();
   const { signUp, isLoaded: signUpLoaded } = useSignUp();
+  // Finishes an OAuth sign-in that Clerk completed server-side but hasn't
+  // handed back yet — the app must never sit there looking dead while a session
+  // it already owns waits behind a retrying request.
+  const finish = useFinishPendingSession();
 
   // Android: pre-warm the custom tab so the SSO browser opens instantly
   // and reliably (Clerk's recommendation for Expo on Android).
@@ -134,11 +139,15 @@ export function SignInScreen() {
     setError(null);
     setNotice(null);
     setBusy(true);
-    // After the user closes the OAuth sheet, startSSOFlow can take 20s+ to
-    // resolve (QA-measured on Android) — don't hold the whole form hostage.
-    // Once the app is foregrounded again, give the flow a short grace period,
-    // then re-enable the form; the late resolution stays useful (a real
-    // session still activates) but must no longer surface cancel-noise.
+    // The session Clerk creates during the OAuth round trip is only handed back
+    // to us when startSSOFlow resolves — which can be 20s+ AFTER the sheet
+    // closes (see useFinishPendingSession for the measured reason). Arm the
+    // watcher first so the app can finish the sign-in on its own the moment
+    // Clerk's client knows about that session, whatever this promise does.
+    finish.arm();
+    // Independently: once the app is foregrounded again, give the flow a short
+    // grace period, then re-enable the form; a late resolution stays useful (a
+    // real session still activates) but must no longer surface cancel-noise.
     let abandoned = false;
     let graceTimer: ReturnType<typeof setTimeout> | null = null;
     const sub = AppState.addEventListener("change", (state) => {
@@ -171,6 +180,7 @@ export function SignInScreen() {
 
       // Happy path: Clerk minted a session directly.
       if (createdSessionId && activate) {
+        finish.disarm();
         await activate({ session: createdSessionId });
         return;
       }
@@ -225,15 +235,24 @@ export function SignInScreen() {
           untouched(ssoSignIn?.firstFactorVerification.status) &&
           untouched(ssoSignUp?.verifications.externalAccount.status));
       if (cancelled) {
+        finish.disarm();
         setBusy(false);
         return;
       }
-      // A real failure: never fail silently — name the states. (Unless the
-      // user already moved on: a late resolution after the grace period must
-      // not shout about a flow they abandoned minutes ago.)
+      // Nothing usable came back. If the browser sheet actually ran, this is
+      // very likely the case documented in useFinishPendingSession — the
+      // session exists server-side and `reload()` returned null (or is still
+      // grinding through clerk-js's retry ladder). Leave the watcher armed and
+      // let it finish the job rather than telling the user it failed.
       console.warn(
-        `[sso] unresolved: signIn=${ssoSignIn?.status ?? "-"} signUp=${ssoSignUp?.status ?? "-"}`,
+        `[sso] unresolved: signIn=${ssoSignIn?.status ?? "-"} signUp=${ssoSignUp?.status ?? "-"}` +
+          ` sheetRan=${finish.sawExternalFlow()}`,
       );
+      if (finish.sawExternalFlow()) return;
+      // The flow never left the app, so there is no session to wait for: a real
+      // failure, and it must not be silent. (Unless the user already moved on —
+      // a late resolution must not shout about a flow they abandoned.)
+      finish.disarm();
       if (!abandoned) {
         setError(
           `Google sign-in didn't finish (${ssoSignIn?.status ?? ssoSignUp?.status ?? "unknown"}). ` +
@@ -243,6 +262,14 @@ export function SignInScreen() {
       setBusy(false);
     } catch (err) {
       settle();
+      // Same reasoning as above: a throw AFTER the sheet ran can still be a
+      // recoverable session (that is exactly what a null `reload()` looks like
+      // one frame later), so the watcher keeps its budget. Only log it.
+      if (finish.sawExternalFlow()) {
+        console.warn("[sso] threw after the sheet ran; watcher still finishing:", err);
+        return;
+      }
+      finish.disarm();
       if (abandoned) {
         console.warn("[sso] late failure after user abandoned the flow:", err);
         setBusy(false);
@@ -502,6 +529,23 @@ export function SignInScreen() {
     }
   };
 
+  /** The app is back from the OAuth sheet with a sign-in still being completed
+   * behind the scenes. Takes over the form: a half-disabled set of buttons over
+   * an invisible in-flight sign-in is exactly what "looks dead" means. */
+  const finishing = finish.phase === "finishing";
+
+  // The watcher spent its whole budget on a flow that demonstrably ran, so this
+  // is a genuine failure and gets a real message (a cancel never lands here —
+  // it leaves no evidence and resolves as `idle`).
+  useEffect(() => {
+    if (finish.phase !== "failed") return;
+    setBusy(false);
+    setError(
+      "We couldn't finish signing you in — the connection dropped at the last step. " +
+        "Tap Continue with Google again, or use your email and password.",
+    );
+  }, [finish.phase]);
+
   const codeTooShort = code.trim().length < 4;
   const resetPwTooShort = mode === "reset" && newPassword.length < 8;
   const verifyDisabled = busy || codeTooShort || resetPwTooShort;
@@ -526,7 +570,17 @@ export function SignInScreen() {
         </View>
 
         <View style={styles.form}>
-          {phase === "credentials" ? (
+          {finishing ? (
+            <View style={styles.finishing} accessibilityLiveRegion="polite">
+              <ActivityIndicator color={colors.mutedForeground} />
+              <Text style={[styles.finishingTitle, { color: colors.foreground }]}>
+                Finishing sign-in…
+              </Text>
+              <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+                Google is done — we're waiting on the last handshake with the server.
+              </Text>
+            </View>
+          ) : phase === "credentials" ? (
             <>
               {OAUTH_ENABLED && (
                 <>
@@ -731,7 +785,8 @@ export function SignInScreen() {
             </>
           )}
 
-          {busy && <ActivityIndicator color={colors.mutedForeground} />}
+          {/* The finishing panel has its own spinner — one is enough. */}
+          {busy && !finishing && <ActivityIndicator color={colors.mutedForeground} />}
           {error && (
             <Text style={[styles.error, { color: colors.destructive }]} accessibilityRole="alert">
               {error}
@@ -747,6 +802,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   root: { flexGrow: 1, justifyContent: "center", padding: 28, gap: 32 },
   hero: { alignItems: "center", gap: 8 },
+  finishing: { alignItems: "center", gap: 12, paddingVertical: 24 },
+  finishingTitle: { fontSize: 17, fontWeight: "600" },
   mark: {
     width: 72,
     height: 72,

@@ -163,7 +163,21 @@ export function setAuthTokenProvider(provider: () => Promise<string | null>): vo
  * needs raw headers up front) can attach the same Bearer token as everything
  * else. */
 export async function authHeaders(): Promise<Record<string, string>> {
-  const token = await authTokenProvider?.().catch(() => null);
+  // A THROWING provider is not the same as a tokenless one. Returning null is
+  // legitimate (no session yet, or a local dev server run with DEV_OPEN_API=1),
+  // but a throw means Clerk failed to mint a token — and since we then send the
+  // request bare, the server can only answer "Missing or invalid bearer token",
+  // which reads like an auth bug rather than a token-fetch failure. Control flow
+  // is deliberately unchanged (the live-server probe relies on getting a
+  // response, not an exception); the warning is what makes it diagnosable.
+  const token = await authTokenProvider?.().catch((err: unknown) => {
+    console.warn(
+      `[api] token fetch failed, sending an UNAUTHENTICATED request — expect a 401: ${
+        (err as Error).message
+      }`,
+    );
+    return null;
+  });
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
