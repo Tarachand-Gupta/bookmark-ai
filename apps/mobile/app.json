@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "ai.purecode.bookmarkai",
-      "appleTeamId": "BB7CP2R7GG",
+      "appleTeamId": "L3PP7DQZWS",
       "buildNumber": "1",
       "infoPlist": {
         "NSAppTransportSecurity": {
