@@ -52,7 +52,18 @@ export function detectSource(): Pick<
  */
 export const LOCAL_API_URL =
   Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
-export const PROD_API_URL = "https://bookmark-ai.cloud";
+/**
+ * `www` is the CANONICAL host and the ONLY correct base for a Bearer client:
+ * the apex 308s every path (including `/api/*`) to www, and every HTTP stack —
+ * URLSession on iOS, OkHttp on Android, curl, browsers — strips the
+ * `Authorization` header when following a redirect to a different origin. The
+ * retried request arrives bare, so the server correctly answers
+ * `401 {"error":"Missing or invalid bearer token"}` while the app looks signed
+ * in. Cookies survive the hop (Clerk's is a `.bookmark-ai.cloud` domain
+ * cookie), which is why the web app never saw this and the app did.
+ * The extension hit the identical trap once — see apps/extension/.env.production.
+ */
+export const PROD_API_URL = "https://www.bookmark-ai.cloud";
 
 /**
  * The dedicated live server (Live Sessions reads only — no `/api` prefix).

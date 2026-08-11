@@ -11,11 +11,11 @@ import {
   TextInput,
   View,
 } from "react-native";
-import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useSignIn, useSignUp, useSSO } from "@clerk/clerk-expo";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
+import { SSO_REDIRECT_URL } from "../lib/clerk";
 
 // Completes the SSO browser round-trip when the app regains focus.
 WebBrowser.maybeCompleteAuthSession();
@@ -159,11 +159,13 @@ export function SignInScreen() {
         setActive: activate,
         signIn: ssoSignIn,
         signUp: ssoSignUp,
+        authSessionResult,
       } = await startSSOFlow({
         strategy: "oauth_google",
-        // Explicit path so the URL is deterministic — it must exactly match
-        // an entry in the Clerk instance's native redirect_urls allowlist.
-        redirectUrl: AuthSession.makeRedirectUri({ path: "sso-callback" }),
+        // A build-time CONSTANT, never a runtime-derived URL: it has to match a
+        // Clerk native redirect_urls entry byte for byte in dev runs AND release
+        // builds. See SSO_REDIRECT_URL for what `makeRedirectUri()` does instead.
+        redirectUrl: SSO_REDIRECT_URL,
       });
       settle();
 
@@ -204,18 +206,24 @@ export function SignInScreen() {
         }
       }
 
-      // The user closed the browser sheet. Nothing was ever attempted, so Clerk
-      // hands the resources back untouched — no resources at all, or a signIn
-      // still in its initial `needs_identifier` state. Cancelling is a choice,
-      // not a failure: say NOTHING rather than flashing a raw status at them.
-      // NOTE: an untouched flow reports verification status "unverified", NOT
-      // null/undefined (QA-reproduced on device) — treat both as "no signal";
-      // only a verification that actually progressed past unverified counts.
+      // The user closed the browser sheet. Cancelling is a choice, not a
+      // failure: say NOTHING rather than flashing a raw status at them.
+      //   * `authSessionResult` is the AUTHORITATIVE signal — expo-web-browser
+      //     reports "cancel" (swiped/× the sheet) or "dismiss" (closed by the
+      //     app/OS) and Clerk passes it straight through.
+      //   * the resource shapes are the fallback for the case where the flow
+      //     never got as far as opening a browser: no resources at all, or a
+      //     signIn still in its initial `needs_identifier` state. NOTE that an
+      //     untouched flow reports verification status "unverified", NOT
+      //     null/undefined (QA-reproduced on device) — treat both as "no
+      //     signal"; only a verification past unverified counts as progress.
       const untouched = (s: string | null | undefined) => s == null || s === "unverified";
       const cancelled =
-        (!ssoSignIn || ssoSignIn.status === "needs_identifier") &&
-        untouched(ssoSignIn?.firstFactorVerification.status) &&
-        untouched(ssoSignUp?.verifications.externalAccount.status);
+        authSessionResult?.type === "cancel" ||
+        authSessionResult?.type === "dismiss" ||
+        ((!ssoSignIn || ssoSignIn.status === "needs_identifier") &&
+          untouched(ssoSignIn?.firstFactorVerification.status) &&
+          untouched(ssoSignUp?.verifications.externalAccount.status));
       if (cancelled) {
         setBusy(false);
         return;

@@ -1,3 +1,4 @@
+import * as Linking from "expo-linking";
 import * as SecureStore from "expo-secure-store";
 import type { TokenCache } from "@clerk/clerk-expo";
 import { SERVER_TARGET, type ServerTarget } from "../api";
@@ -30,6 +31,59 @@ const CLERK_PUBLISHABLE_KEYS: Record<ServerTarget, string> = {
  */
 export const CLERK_PUBLISHABLE_KEY =
   process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? CLERK_PUBLISHABLE_KEYS[SERVER_TARGET];
+
+/**
+ * The app's URI scheme — `expo.scheme` in app.json, which prebuild turns into the
+ * native CFBundleURLSchemes / Android intent filter. Kept here as a constant
+ * because SSO_REDIRECT_URL below must be byte-identical to a Clerk allowlist
+ * entry, so it cannot be derived at runtime (see below).
+ */
+export const APP_SCHEME = "bookmarkai";
+
+/**
+ * Native OAuth/SSO callback handed to Clerk's `startSSOFlow`. A LITERAL on
+ * purpose — this string has to match an entry in the Clerk instance's native
+ * redirect allowlist (`/v1/redirect_urls`: `bookmarkai://` and
+ * `bookmarkai://sso-callback` are registered on both the prod and dev
+ * instances) EXACTLY, and every runtime way of producing it is conditional on
+ * how the app was launched:
+ *
+ *  - `AuthSession.makeRedirectUri({ path: "sso-callback" })` (Clerk's Expo
+ *    docs snippet, and clerk-expo's own default) resolves through
+ *    `expo-linking`'s `createURL`, which splices in `Constants.expoConfig.hostUri`
+ *    whenever a dev server is attached → `bookmarkai://192.168.x.x:8081sso-callback`,
+ *    which Clerk's FAPI rejects outright (`redirect_url must be a url`).
+ *  - the same call THROWS ("expo-linking needs access to the expo-constants
+ *    manifest") in any build whose embedded `EXConstants.bundle/app.config` is
+ *    missing or unreadable — a release-only failure mode invisible in dev.
+ *  - a mismatch is not a clean error either: clerk-expo reads the callback URL
+ *    back off the sign-in resource and, when FAPI didn't hand one over, throws
+ *    the opaque "Missing external verification redirect URL for SSO flow".
+ *
+ * So: one constant, identical in dev runs and release builds, on iOS and
+ * Android. If `expo.scheme` in app.json ever changes, change it here too and
+ * re-register the URL with Clerk — the dev-only assertion below shouts if the
+ * two drift apart.
+ */
+export const SSO_REDIRECT_URL = `${APP_SCHEME}://sso-callback`;
+
+if (__DEV__) {
+  // The scheme the NATIVE app actually registered (read from the embedded Expo
+  // config) — if app.json's `scheme` is renamed without updating APP_SCHEME,
+  // SSO_REDIRECT_URL keeps looking right while nothing can open it any more.
+  try {
+    const registered = Linking.createURL("").split(":")[0];
+    if (registered !== APP_SCHEME) {
+      console.warn(
+        `[clerk] app scheme drift: native app registers "${registered}" but ` +
+          `SSO_REDIRECT_URL uses "${APP_SCHEME}". Google/SSO sign-in will not ` +
+          `return to the app until they match (and the URL is registered with Clerk).`,
+      );
+    }
+  } catch {
+    // createURL throws without an expo-constants manifest — nothing to compare.
+  }
+}
 
 /** Clerk session persistence in the iOS keychain / Android keystore. Clerk
  * namespaces its stored keys by publishable key, so each instance's session is

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { ActivityIndicator, Linking, LogBox, StyleSheet, View } from "react-native";
+import { Linking, LogBox, StyleSheet, View } from "react-native";
 import { BlurTargetView } from "expo-blur";
 import * as SplashScreen from "expo-splash-screen";
 import {
@@ -11,6 +11,7 @@ import {
 import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { ShareIntentProvider } from "expo-share-intent";
 import { setAuthTokenProvider } from "./src/api";
+import { LaunchScreen } from "./src/components/LaunchScreen";
 import { ShareSavedBanner } from "./src/components/ShareSavedBanner";
 import { PreferencesProvider, useAppTheme, usePreferences } from "./src/context/PreferencesContext";
 import { useAccountStatus } from "./src/hooks/useAccountStatus";
@@ -39,8 +40,8 @@ LogBox.ignoreLogs([/Clerk has been loaded with development keys/]);
 
 /**
  * Native splash (app.json → expo-splash-screen plugin: the brand bookmark mark
- * on #ffffff / #0a0a0a) stays up until the first real screen can paint, so the
- * launch never flashes a bare background or a lone spinner.
+ * on #ffffff / #0a0a0a) stays up until the app paints its OWN first frame — see
+ * useHideSplashOnFirstPaint below and LaunchScreen, its pixel twin.
  *
  * Called at module scope, NOT in a component — by the time a component body
  * runs, auto-hide may already have fired (expo-splash-screen's documented
@@ -51,66 +52,67 @@ void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 SplashScreen.setOptions({ fade: true, duration: 250 });
 
 /**
- * Hard ceiling on how long the splash may stay up. Anything that wedges startup
- * — Clerk's `isLoaded` never flipping on an instance with the Native API
- * disabled (see the mobile memory notes), a stuck storage read — would otherwise
- * leave the splash on screen forever with no spinner and no error visible behind
- * it. Armed at module scope so it holds even for a tree that never gets far
- * enough to mount the gate.
+ * Hard ceiling on how long the splash may stay up, armed when this module is
+ * EVALUATED — i.e. once the JS bundle is already running, with the native splash
+ * having covered process start for free. React's first commit follows within a
+ * few dozen ms, so this only ever fires when the tree itself never paints (a
+ * throw during render, a provider that wedges). It is not the normal path: the
+ * splash is dismissed on the first painted frame, so a low ceiling can't cause
+ * a bare-background flash the way a pre-JS timer would.
  */
-const SPLASH_MAX_MS = 4_000;
+const SPLASH_MAX_MS = 1_500;
 setTimeout(() => void SplashScreen.hideAsync().catch(() => undefined), SPLASH_MAX_MS);
 
-/** Hide the splash the moment the app has real content to show. Idempotent: a
- * hide after the ceiling above already fired is a no-op. */
-function useHideSplash(ready: boolean): void {
+/**
+ * Dismiss the native splash on the first frame the app can paint CORRECTLY —
+ * i.e. once the persisted theme has been read (`hydrated`, a single AsyncStorage
+ * round trip: ~250ms measured on a cold simulator start). What paints then is
+ * LaunchScreen, an identical mark on an identical background, so nothing visibly
+ * changes at the handoff except the spinner that starts moving.
+ *
+ * It used to wait for Clerk's `isLoaded` — a cold-start network round trip to
+ * FAPI (+1377ms measured against production on a warm simulator, seconds on a
+ * phone) — and, behind that, the account probe, so the launch sat on a frozen
+ * image with no sign of life. Waiting for storage but NOT for the network is the
+ * whole change: the theme can't flip after the handoff, and nothing on the far
+ * side of a network call can freeze the launch again.
+ */
+function useHideSplashOnFirstPaint(hydrated: boolean): void {
   useEffect(() => {
-    if (!ready) return;
-    void SplashScreen.hideAsync().catch(() => undefined);
-  }, [ready]);
+    if (!hydrated) return;
+    // Two frames deep: an effect runs after the commit but BEFORE that commit
+    // reaches the screen, so hiding synchronously here can expose one bare
+    // frame between the splash and our own background.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => void SplashScreen.hideAsync().catch(() => undefined)),
+    );
+  }, [hydrated]);
 }
 
+/**
+ * ClerkProvider mounts ABOVE PreferencesProvider deliberately: it kicks off
+ * Clerk's cold-start FAPI round trip (environment + client) the moment the tree
+ * mounts, so that network time overlaps the AsyncStorage read of persisted
+ * preferences instead of queueing behind it. It takes this build's publishable
+ * key once (CLERK_PUBLISHABLE_KEY is a build-time constant derived from
+ * SERVER_TARGET — there is no in-app server switch) and never remounts.
+ */
 export default function App() {
   return (
     // "Save to Bookmark AI" in the iOS/Android share sheets lands here. The
     // provider has to sit above every other provider (it reads the launch URL /
     // Android intent on mount), so it is the outermost thing in the tree.
     <ShareIntentProvider options={SHARE_INTENT_OPTIONS}>
-      <PreferencesProvider>
-        <ClerkGate />
-      </PreferencesProvider>
+      <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
+        <PreferencesProvider>
+          {/* initialMetrics avoids the Android first-frame zero-inset flash
+              (Settings title rendered under the status bar on first mount). */}
+          <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+            <Gate />
+          </SafeAreaProvider>
+        </PreferencesProvider>
+      </ClerkProvider>
     </ShareIntentProvider>
-  );
-}
-
-/**
- * Mounts ClerkProvider once with this build's publishable key (CLERK_PUBLISHABLE_KEY
- * is a build-time constant derived from SERVER_TARGET — there is no in-app server
- * switch, so the provider never needs to remount). We still gate the first paint
- * on `hydrated` (persisted theme/view read from storage) to avoid a theme flash.
- */
-function ClerkGate() {
-  const { colors } = useAppTheme();
-  const { hydrated } = usePreferences();
-
-  if (!hydrated) {
-    return (
-      <View style={[styles.root, { backgroundColor: colors.background }]}>
-        <View style={styles.splash}>
-          <ActivityIndicator color={colors.mutedForeground} />
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
-      {/* initialMetrics avoids the Android first-frame zero-inset flash
-          (Settings title rendered under the status bar on first mount). */}
-      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-        <Gate />
-      </SafeAreaProvider>
-    </ClerkProvider>
   );
 }
 
@@ -118,10 +120,12 @@ function ClerkGate() {
 // exercise the UI against the open local server. Ignored in release builds.
 const SKIP_AUTH = __DEV__ && process.env.EXPO_PUBLIC_SKIP_AUTH === "1";
 
-/** Auth gate: splash while Clerk restores the session, sign-in when there is
- * none, the app otherwise. Also feeds the session token to the API client. */
+/** Auth gate: the launch scaffold while storage/Clerk are still settling,
+ * sign-in when there is no session, the app otherwise. Also feeds the session
+ * token to the API client. */
 function Gate() {
   const { colors, dark } = useAppTheme();
+  const { hydrated } = usePreferences();
   const { isLoaded, isSignedIn, getToken } = useAuth();
   // Captured HERE, above the sign-in/app branch: a share that arrives while
   // signed out is held in memory (never persisted) through the whole sign-in
@@ -140,20 +144,19 @@ function Gate() {
   const account = useAccountStatus();
   const gated = signedIn && !SKIP_AUTH;
 
-  // The splash covers startup until a real screen can paint: sign-in, the
-  // provisioning takeover, the no-access screen, or the tab shell. `checking`
-  // only ever holds here for an account we have no evidence about yet (a fresh
-  // signup) — and the module-scope ceiling above bounds even that.
-  useHideSplash(clerkReady && (!gated || account.status !== "checking"));
+  // The native splash goes away on our first correctly-themed frame — which is
+  // the LaunchScreen below, its pixel twin — never waiting on the network.
+  useHideSplashOnFirstPaint(hydrated);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {!clerkReady || (gated && account.status === "checking") ? (
-        // Behind the native splash in practice; still rendered so a slow start
-        // (or the splash ceiling firing first) shows motion rather than a blank.
-        <View style={styles.splash}>
-          <ActivityIndicator color={colors.mutedForeground} />
-        </View>
+      {!hydrated || !clerkReady || (gated && account.status === "checking") ? (
+        // Still settling: the persisted theme/view read, Clerk restoring the
+        // session, and (for an account we have no evidence about yet — a fresh
+        // signup) the account probe. Renders the splash's own mark plus a
+        // spinner, so this is a seamless continuation of the launch image
+        // rather than a second, emptier loading state.
+        <LaunchScreen />
       ) : !signedIn ? (
         <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.body}>
           <SignInScreen />
@@ -333,5 +336,4 @@ const styles = StyleSheet.create({
   body: { flex: 1 },
   screen: { flex: 1 },
   hidden: { display: "none" },
-  splash: { flex: 1, alignItems: "center", justifyContent: "center" },
 });
