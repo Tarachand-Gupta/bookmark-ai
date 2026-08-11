@@ -97,29 +97,48 @@ export async function deleteSession(db: Db, id: string): Promise<boolean> {
 }
 
 /**
- * Case-insensitive substring search over session names and tab text (titles +
- * URLs live in tabs_json). Sessions are capped at 200 rows, so LIKE is plenty;
- * a name hit outranks a tabs-only hit.
+ * Case-insensitive substring search over session names, the AI-written
+ * `description`, and tab text (titles + URLs live in tabs_json). Sessions are
+ * capped at 200 rows, so LIKE is plenty; a name-or-description hit outranks a
+ * tabs-only hit.
+ *
+ * The description is a first-class match target because it is often the ONLY
+ * place a session's actual subject is written down: names default to a device +
+ * timestamp, and the tabs themselves are URLs and page titles, so "the research
+ * on rust async runtimes" only matches the summary. Description hits share the
+ * name tier — a summary hit is about the session as a whole, exactly like its
+ * name, and clients treat both the same (a card with no matching TAB doesn't
+ * fold its tab list). NULL descriptions (pre-v12 rows, or a session whose
+ * summary hasn't been generated yet) behave exactly as they did: `NULL LIKE ?`
+ * is NULL, which SQLite treats as false in a WHERE, and the COALESCE below
+ * pins it to 0 in the SELECT so the rank flag is never NULL.
  */
 export async function searchSessions(
   db: Db,
   q: string,
   limit: number,
 ): Promise<{ session: Session; score: number }[]> {
-  // Escape LIKE wildcards in user text; \ is the escape char below.
+  // Escape LIKE wildcards in user text; \ is the escape char below. Every
+  // comparison is a bound parameter — user text is NEVER interpolated into SQL.
   const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`);
   const pattern = `%${escaped}%`;
   const rs = await db.execute({
-    sql: `SELECT *, (name LIKE ? ESCAPE '\\') AS name_hit
+    // `session_hit` = the query matched the session ITSELF (name or summary)
+    // rather than only one of its tabs — the two-tier rank the caller scores on.
+    sql: `SELECT *,
+                 (name LIKE ? ESCAPE '\\'
+                  OR COALESCE(description LIKE ? ESCAPE '\\', 0)) AS session_hit
           FROM sessions
-          WHERE name LIKE ? ESCAPE '\\' OR tabs_json LIKE ? ESCAPE '\\'
-          ORDER BY name_hit DESC, created_at DESC, saved_at DESC
+          WHERE name LIKE ? ESCAPE '\\'
+             OR COALESCE(description LIKE ? ESCAPE '\\', 0)
+             OR tabs_json LIKE ? ESCAPE '\\'
+          ORDER BY session_hit DESC, created_at DESC, saved_at DESC
           LIMIT ?`,
-    args: [pattern, pattern, pattern, limit],
+    args: [pattern, pattern, pattern, pattern, pattern, limit],
   });
   return rs.rows.map((r) => {
     const row = r as unknown as Record<string, unknown>;
-    return { session: rowToSession(row), score: Number(row.name_hit) ? 2 : 1 };
+    return { session: rowToSession(row), score: Number(row.session_hit) ? 2 : 1 };
   });
 }
 

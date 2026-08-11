@@ -30,8 +30,12 @@ const isoDatetimeSchema = z.string().datetime({ offset: true });
  * would report two errors for one bad value; refine keeps the message single and
  * readable, and reuses the same `.datetime({ offset: true })` validation the
  * write paths use rather than a hand-rolled regex.
+ *
+ * Exported so non-REST callers that build the same query by hand (the MCP
+ * `list_bookmarks` tool declares its own arg parser) validate a bound with THIS
+ * schema instead of a second, drifting copy of the rule.
  */
-const savedAtBoundSchema = z
+export const savedAtBoundSchema = z
   .string()
   .refine(
     (v) => dayOnlySchema.safeParse(v).success || isoDatetimeSchema.safeParse(v).success,

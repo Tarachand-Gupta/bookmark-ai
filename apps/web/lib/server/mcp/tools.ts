@@ -3,6 +3,7 @@ import { getMeta, listBookmarks } from "@bookmark-ai/db";
 import {
   createBookmarkSchema,
   listBookmarksQuerySchema,
+  savedAtBoundSchema,
   MCP_TOOL_NAMES,
   type Bookmark,
   type McpToolName,
@@ -156,6 +157,11 @@ const listArgs = z.object({
   browser: z.enum(["chrome", "firefox", "safari", "edge", "arc", "other"]).optional(),
   device: z.enum(["desktop", "laptop", "mobile", "tablet", "other"]).optional(),
   day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  // Inclusive saved-at range bounds, validated by the SAME schema GET
+  // /api/bookmarks uses (a calendar day OR a full ISO datetime), so the MCP path
+  // can't accept a bound the REST path would reject — or reject one it accepts.
+  from: savedAtBoundSchema.optional(),
+  to: savedAtBoundSchema.optional(),
   limit: z.number().int().min(1).max(100).default(20),
   offset: z.number().int().min(0).default(0),
 });
@@ -163,7 +169,7 @@ const listArgs = z.object({
 const listBookmarksTool: McpTool<z.infer<typeof listArgs>> = {
   name: "list_bookmarks",
   description:
-    "Browse the user's bookmarks newest-first, optionally filtered by category, tag, browser, device, or the day they were saved. Use this for 'what did I save yesterday', 'show me everything tagged X', or paging through a category — NOT for topical lookup (use search_bookmarks for that). Call get_library_overview first to learn which categories, tags, and days actually exist. Returns the bookmarks plus the total number of matches, for paging via offset.",
+    "Browse the user's bookmarks newest-first, optionally filtered by category, tag, browser, device, the single day they were saved, or a saved-at time range ('from'/'to'). Use this for 'what did I save yesterday', 'anything from last week', 'what did I save in the last hour', 'show me everything tagged X', or paging through a category — NOT for topical lookup (use search_bookmarks for that). Ranges are inclusive on both ends and each end is optional, so 'from' alone means 'since then' and 'to' alone means 'up to then'; a range accepts a calendar day (the whole day) or a full ISO 8601 datetime for sub-day windows. Call get_library_overview first to learn which categories, tags, and days actually exist. Returns the bookmarks plus the total number of matches, for paging via offset.",
   inputSchema: {
     type: "object",
     properties: {
@@ -180,6 +186,16 @@ const listBookmarksTool: McpTool<z.infer<typeof listArgs>> = {
         description: "Only bookmarks saved from this kind of device.",
       },
       day: { type: "string", description: "A single saved day, YYYY-MM-DD (UTC)." },
+      from: {
+        type: "string",
+        description:
+          "Start of an INCLUSIVE saved-at range: either YYYY-MM-DD (UTC), meaning that whole day onwards, or a full ISO 8601 datetime such as 2026-08-11T15:00:00Z (offsets like +05:30 are accepted). Optional on its own — 'from' without 'to' means everything saved since then.",
+      },
+      to: {
+        type: "string",
+        description:
+          "End of an INCLUSIVE saved-at range, same formats as 'from': YYYY-MM-DD (UTC) covers that whole day, a full ISO 8601 datetime cuts at that instant. Optional on its own — 'to' without 'from' means everything saved up to then.",
+      },
       limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
       offset: { type: "integer", minimum: 0, default: 0, description: "Skip this many results." },
     },
@@ -202,7 +218,7 @@ const overviewArgs = z.object({}).strict();
 const getLibraryOverview: McpTool<z.infer<typeof overviewArgs>> = {
   name: "get_library_overview",
   description:
-    "Get the shape of the user's library: every category, tag, browser, device, and saved day with counts, plus the total number of bookmarks. Call this FIRST when you need to know what filter values are valid before calling list_bookmarks, or to answer questions about how much the user has saved and where it came from. Takes no arguments.",
+    "Get the shape of the user's library: every category, tag, browser, device, and saved day with counts, plus the total number of bookmarks. Call this FIRST when you need to know what filter values are valid before calling list_bookmarks (its category/tag/browser/device/day filters all take values from here; its 'from'/'to' range filter does not need them, since any date or ISO datetime is valid), or to answer questions about how much the user has saved and where it came from. Takes no arguments.",
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
   args: overviewArgs,
   execute: async (ctx) => {

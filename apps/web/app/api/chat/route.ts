@@ -68,7 +68,9 @@ const listSessionsInput = z.object({
   query: z
     .string()
     .optional()
-    .describe("Optional text filter — matches session names and tab titles/URLs"),
+    .describe(
+      "Optional text filter — matches session names, their AI summary/description, and tab titles/URLs",
+    ),
   limit: z.number().int().min(1).max(50).default(20),
 });
 
@@ -131,10 +133,14 @@ async function runListSessions(ctx: ToolContext, query: string | undefined, limi
     await ctx.ready;
     const sessions = await listSessions(ctx.db);
     const q = query?.trim().toLowerCase();
+    // Same match targets as searchSessions() in packages/db: name, the
+    // AI-written description (often the only place the session's subject is
+    // spelled out), and tab titles/URLs.
     const filtered = q
       ? sessions.filter(
           (s) =>
             s.name.toLowerCase().includes(q) ||
+            (s.description ?? "").toLowerCase().includes(q) ||
             s.tabs.some(
               (t) => (t.title ?? "").toLowerCase().includes(q) || t.url.toLowerCase().includes(q),
             ),
@@ -145,6 +151,9 @@ async function runListSessions(ctx: ToolContext, query: string | undefined, limi
       sessions: filtered.slice(0, limit).map((s) => ({
         id: s.id,
         name: s.name,
+        // Carried through because the filter above matches on it: a session that
+        // hit on its summary has to show the model WHY it matched.
+        description: s.description,
         tabCount: s.tabCount,
         browser: s.browser,
         savedAt: s.savedAt,

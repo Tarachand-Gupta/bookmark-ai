@@ -67,7 +67,7 @@ MCP token is refused everywhere `requireUser()` guards.
 | --- | --- | --- |
 | `search_bookmarks` | `query`, `mode` `text\|semantic\|hybrid` (default `hybrid`), `limit` 1–40 (default 10) | engine `performSearch` (same stack as the web grid; `semantic` → the engine's `ai` mode) |
 | `save_bookmark` | `url` (http/https), `title?` | engine `saveBookmarkFast` + `after()` `enrichBookmark`/`embedPending` — byte-for-byte the `POST /api/bookmarks` flow, `browser`/`device` = `"other"` |
-| `list_bookmarks` | `category?`, `tag?`, `browser?`, `device?`, `day?` (YYYY-MM-DD), `limit` 1–100 (default 20), `offset?` | db `listBookmarks` (validated through the REST `listBookmarksQuerySchema`) |
+| `list_bookmarks` | `category?`, `tag?`, `browser?`, `device?`, `day?` (YYYY-MM-DD), `from?`/`to?` (inclusive saved-at range — YYYY-MM-DD for a whole day, or an ISO 8601 datetime for a sub-day window; either end optional), `limit` 1–100 (default 20), `offset?` | db `listBookmarks` (validated through the REST `listBookmarksQuerySchema`; range bounds share its `savedAtBoundSchema`) |
 | `get_library_overview` | none | db `getMeta` — the `/api/meta` facets |
 
 Results are compact summaries (`id, url, title, description, category, tags, savedAt`, plus
@@ -197,6 +197,11 @@ curl -s -X POST $B/api/mcp -H "Authorization: Bearer $TOKEN" -H 'content-type: a
 # facets
 curl -s -X POST $B/api/mcp -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"get_library_overview"}}'
+
+# browse a saved-at range (inclusive both ends; a bare YYYY-MM-DD means the whole day)
+curl -s -X POST $B/api/mcp -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"list_bookmarks",
+       "arguments":{"from":"2026-08-01","to":"2026-08-11T15:00:00Z","limit":5}}}'
 ```
 
 ## Files
