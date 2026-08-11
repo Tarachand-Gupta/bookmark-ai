@@ -72,6 +72,19 @@
           },
           "androidIntentFilters": ["text/*"]
         }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 128,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "image": "./assets/splash-icon-dark.png",
+            "backgroundColor": "#0a0a0a"
+          }
+        }
       ]
     ]
   }

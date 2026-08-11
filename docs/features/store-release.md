@@ -98,12 +98,17 @@ category you do not use is its own violation (ITMS-91055).
 
 ### Known-optional gaps (not store blockers)
 
-- **Splash screen is the default blank one.** SDK 57 removed the top-level `splash` key; the
-  only supported path is the `expo-splash-screen` config plugin, which is not installed.
-  `assets/splash-icon.png` exists and is currently unused. To brand it:
-  `cd apps/mobile && npx expo install expo-splash-screen`, then add to `plugins`:
-  `["expo-splash-screen", { "image": "./assets/splash-icon.png", "imageWidth": 200, "resizeMode": "contain", "backgroundColor": "#ffffff", "dark": { "backgroundColor": "#0a0a0a" } }]`,
-  then `npx expo prebuild --clean` and rebuild both platforms.
+- ~~**Splash screen is the default blank one.**~~ **DONE 2026-08-11.** `expo-splash-screen` is
+  installed and configured in `app.json` → `plugins`: the brand bookmark mark on `#ffffff`
+  (`assets/splash-icon.png`) with a `dark` variant on `#0a0a0a`
+  (`assets/splash-icon-dark.png`), `imageWidth: 128`, `resizeMode: "contain"`. Both marks are
+  transparent-background glyph-only PNGs (Android 12+ masks the splash icon to a circle, so the
+  artwork stays inside a centred circle of 66% of the canvas) drawn in the `src/theme.ts`
+  neutral tokens. `App.tsx` calls `preventAutoHideAsync()` at module scope and hides the splash
+  when the first real screen can paint, with a 4s module-scope ceiling so nothing that wedges
+  startup can leave the splash up forever. Screenshot-verified on both simulators, light + dark.
+  **The launcher icon (`assets/icon.png`) is still the default Expo template artwork** — the
+  splash is on-brand, the app icon is not, so they do not match yet.
 - **`userInterfaceStyle: "automatic"` has no effect on Android** — prebuild says so:
   *"Install expo-system-ui in your project to enable this feature."* The app reads
   `useColorScheme()` directly so dark mode works anyway; installing `expo-system-ui` would only
@@ -299,10 +304,15 @@ Option C — leave it unset (open signup). Only sane once per-user quotas exist.
 Whatever you choose, mirror it on the **live server** (`apps/live-server`, its own
 `CLERK_ALLOWED_USER_IDS` in the VM env) or Live Sessions will disagree with the main API.
 
-Follow-up worth doing before external testers: mobile does **not** yet special-case the 403
-`code: "forbidden"` response the way the web app does (`FORBIDDEN_MESSAGE` in
-`apps/web/lib/api.ts`), so a non-allowlisted tester sees a generic error string instead of
-"this account doesn't have access".
+~~Follow-up worth doing before external testers: mobile does **not** yet special-case the 403
+`code: "forbidden"` response…~~ **DONE 2026-08-11.** `apps/mobile/src/api.ts` now classifies
+responses exactly like `apps/web/lib/api.ts` (`ForbiddenError` on 403 `code: "forbidden"`,
+`ProvisioningError` on 503 `code: "provisioning"`), and `useAccountStatus` turns those into
+full-screen states above the tab shell: `src/screens/NoAccessScreen.tsx` ("This account doesn't
+have access", names the signed-in email, Sign out + Check again) and
+`src/screens/AccountSetupScreen.tsx` ("Setting up your account", 2s polling). So a
+non-allowlisted tester now gets the same honest screen the web app shows, not a network error.
+Verified on both simulators against a real server 403 (allowlist Option A set locally).
 
 ### 7.5 Store-listing assets and questionnaires
 

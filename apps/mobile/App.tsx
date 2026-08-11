@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, Linking, LogBox, StyleSheet, View } from "react-native";
 import { BlurTargetView } from "expo-blur";
+import * as SplashScreen from "expo-splash-screen";
 import {
   initialWindowMetrics,
   SafeAreaProvider,
@@ -12,7 +13,10 @@ import { ShareIntentProvider } from "expo-share-intent";
 import { setAuthTokenProvider } from "./src/api";
 import { ShareSavedBanner } from "./src/components/ShareSavedBanner";
 import { PreferencesProvider, useAppTheme, usePreferences } from "./src/context/PreferencesContext";
+import { useAccountStatus } from "./src/hooks/useAccountStatus";
 import type { SessionsSegment } from "./src/hooks/useLiveDevices";
+import { AccountSetupScreen } from "./src/screens/AccountSetupScreen";
+import { NoAccessScreen } from "./src/screens/NoAccessScreen";
 import { CLERK_PUBLISHABLE_KEY, tokenCache } from "./src/lib/clerk";
 import {
   SHARE_INTENT_OPTIONS,
@@ -32,6 +36,39 @@ import { SignInScreen } from "./src/screens/SignInScreen";
 // Only fires when the dev Clerk instance is used for local development (the
 // production default doesn't emit it); silenced to keep the log clean.
 LogBox.ignoreLogs([/Clerk has been loaded with development keys/]);
+
+/**
+ * Native splash (app.json → expo-splash-screen plugin: the brand bookmark mark
+ * on #ffffff / #0a0a0a) stays up until the first real screen can paint, so the
+ * launch never flashes a bare background or a lone spinner.
+ *
+ * Called at module scope, NOT in a component — by the time a component body
+ * runs, auto-hide may already have fired (expo-splash-screen's documented
+ * requirement). Failures are swallowed on purpose: the only consequence is the
+ * splash hiding early, which must never be a startup crash.
+ */
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+SplashScreen.setOptions({ fade: true, duration: 250 });
+
+/**
+ * Hard ceiling on how long the splash may stay up. Anything that wedges startup
+ * — Clerk's `isLoaded` never flipping on an instance with the Native API
+ * disabled (see the mobile memory notes), a stuck storage read — would otherwise
+ * leave the splash on screen forever with no spinner and no error visible behind
+ * it. Armed at module scope so it holds even for a tree that never gets far
+ * enough to mount the gate.
+ */
+const SPLASH_MAX_MS = 4_000;
+setTimeout(() => void SplashScreen.hideAsync().catch(() => undefined), SPLASH_MAX_MS);
+
+/** Hide the splash the moment the app has real content to show. Idempotent: a
+ * hide after the ceiling above already fired is a no-op. */
+function useHideSplash(ready: boolean): void {
+  useEffect(() => {
+    if (!ready) return;
+    void SplashScreen.hideAsync().catch(() => undefined);
+  }, [ready]);
+}
 
 export default function App() {
   return (
@@ -91,20 +128,48 @@ function Gate() {
   // round trip and handed to the Shell the moment a session exists.
   const share = usePendingSharedLink();
   const signedIn = isSignedIn || SKIP_AUTH;
+  const clerkReady = isLoaded || SKIP_AUTH;
 
   useEffect(() => {
     setAuthTokenProvider(() => getToken());
   }, [getToken]);
 
+  // One probe classifies the whole account: ready, still provisioning, or not
+  // allowed (see useAccountStatus). Never consulted in the SKIP_AUTH QA session,
+  // which has no Clerk user and talks to an open local server.
+  const account = useAccountStatus();
+  const gated = signedIn && !SKIP_AUTH;
+
+  // The splash covers startup until a real screen can paint: sign-in, the
+  // provisioning takeover, the no-access screen, or the tab shell. `checking`
+  // only ever holds here for an account we have no evidence about yet (a fresh
+  // signup) — and the module-scope ceiling above bounds even that.
+  useHideSplash(clerkReady && (!gated || account.status !== "checking"));
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {!isLoaded && !SKIP_AUTH ? (
+      {!clerkReady || (gated && account.status === "checking") ? (
+        // Behind the native splash in practice; still rendered so a slow start
+        // (or the splash ceiling firing first) shows motion rather than a blank.
         <View style={styles.splash}>
           <ActivityIndicator color={colors.mutedForeground} />
         </View>
       ) : !signedIn ? (
         <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.body}>
           <SignInScreen />
+        </SafeAreaView>
+      ) : gated && account.status === "provisioning" ? (
+        // A brand-new account's own database is still being created. Full-screen
+        // on purpose — the Shell is NOT mounted behind it, so when provisioning
+        // finishes every screen's first fetch already sees a ready DB.
+        <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.body}>
+          <AccountSetupScreen />
+        </SafeAreaView>
+      ) : gated && account.status === "forbidden" ? (
+        // Signed in fine, but this identity isn't allowed to use the API. A
+        // dedicated screen, never a generic network error.
+        <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.body}>
+          <NoAccessScreen onRecheck={account.recheck} />
         </SafeAreaView>
       ) : (
         <Shell pendingShare={share.pending} onShareConsumed={share.clear} />

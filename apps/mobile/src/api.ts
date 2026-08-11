@@ -162,6 +162,61 @@ interface RequestOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * Thrown for the 503 a tenant gets while its DB is still being provisioned
+ * (server contract: `{code: "provisioning"}` — see apps/web/lib/server/api-context.ts).
+ * NOT a real failure: a brand-new signup waits ~10-15s for its own isolated
+ * database, so callers retry instead of surfacing an error (useAccountStatus
+ * polls, and the Shell is replaced by AccountSetupScreen while it does).
+ *
+ * A subclass rather than a string match on the message, so the check survives
+ * any rewording of the server's prose. Mirrors ProvisioningError in
+ * apps/web/lib/api.ts.
+ */
+export class ProvisioningError extends Error {
+  constructor(message = "Account not provisioned yet") {
+    super(message);
+    this.name = "ProvisioningError";
+  }
+}
+
+/**
+ * The request authenticated fine, but this Clerk account isn't on the API's
+ * allowlist (server 403 `{code: "forbidden"}` from
+ * apps/web/lib/server/require-user.ts). NOT a "you're signed out / bad token"
+ * failure — the user IS signed in, just with an identity that has no access
+ * (Google's account picker landing on the wrong one is the common cause). A
+ * distinct type so the UI can say "this account doesn't have access" and offer
+ * a sign-out, instead of the misleading "check your connection" error.
+ * Mirrors ForbiddenError in apps/web/lib/api.ts.
+ */
+export class ForbiddenError extends Error {
+  constructor(message = "This account may not use this API") {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
+
+/** The exact 403 body the server emits for an allowlist rejection — the message
+ * fallback for detecting a ForbiddenError when `code` is absent (older server
+ * builds). Keep in sync with apps/web/lib/server/require-user.ts. */
+const FORBIDDEN_MESSAGE = "This account may not use this API";
+
+/**
+ * Map a failed response's parsed body to the right typed Error. Shared by
+ * `request()` and the direct-fetch live-server calls so every surface in the app
+ * classifies provisioning/forbidden identically (same rules as the web client's
+ * errorFromBody).
+ */
+function errorFromBody(status: number, body: { error?: string; code?: string } | null): Error {
+  const message = body?.error ?? `Request failed (${status})`;
+  if (body?.code === "provisioning") return new ProvisioningError(message);
+  if (status === 403 && (body?.code === "forbidden" || body?.error === FORBIDDEN_MESSAGE)) {
+    return new ForbiddenError(message);
+  }
+  return new Error(message);
+}
+
 async function request<T>(
   path: string,
   { method = "GET", body, signal }: RequestOptions = {},
@@ -173,8 +228,10 @@ async function request<T>(
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   if (!res.ok) {
-    const errBody = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(errBody?.error ?? `Request failed (${res.status})`);
+    const errBody = (await res.json().catch(() => null)) as
+      | { error?: string; code?: string }
+      | null;
+    throw errorFromBody(res.status, errBody);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -277,35 +334,22 @@ export function createSession(input: CreateSessionInput): Promise<{ session: Ses
   return request<{ session: Session }>("/api/sessions", { method: "POST", body: input });
 }
 
-/**
- * Thrown for the 503 a tenant gets while its DB is still being provisioned. The
- * generic `request()` collapses every non-2xx into a plain Error, losing the
- * machine-readable `code`; the live reader must branch on that code (never the
- * prose `error`) to show "Setting up your account…" instead of a failure, so
- * `listLiveDevices` does its own fetch and raises this distinct type.
- */
-export class ProvisioningError extends Error {
-  constructor() {
-    super("Account not provisioned yet");
-    this.name = "ProvisioningError";
-  }
-}
-
 /** GET /live on the dedicated live server — the tabs every armed device is
  * currently mirroring. Used for the instant first paint before the SSE
- * stream (see useLiveDevices) takes over, and as its reconnect fallback. */
+ * stream (see useLiveDevices) takes over, and as its reconnect fallback.
+ * Its own fetch (not `request()`) because the live server is a different origin,
+ * but it classifies failures through the same `errorFromBody` so a provisioning
+ * 503 / forbidden 403 from the live server reads exactly like one from /api. */
 export async function listLiveDevices(signal?: AbortSignal): Promise<ListLiveResponse> {
   const res = await fetch(`${await getLiveBaseUrl()}/live`, {
     signal,
     headers: { "content-type": "application/json", ...(await authHeaders()) },
   });
-  if (res.status === 503) {
-    const body = (await res.json().catch(() => null)) as { code?: string } | null;
-    if (body?.code === "provisioning") throw new ProvisioningError();
-  }
   if (!res.ok) {
-    const errBody = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(errBody?.error ?? `Request failed (${res.status})`);
+    const errBody = (await res.json().catch(() => null)) as
+      | { error?: string; code?: string }
+      | null;
+    throw errorFromBody(res.status, errBody);
   }
   return (await res.json()) as ListLiveResponse;
 }
