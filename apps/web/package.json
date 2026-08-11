@@ -6,7 +6,7 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "apple-icon": "node scripts/generate-apple-icon.mjs",
+    "icons": "python3 scripts/generate-pwa-icons.py",
     "check-types": "tsc --noEmit",
     "test": "vitest run"
   },

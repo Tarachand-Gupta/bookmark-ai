@@ -25,6 +25,69 @@
 }
 
 /* -------------------------------------------------------------------------
+ * iOS home-screen install (standalone) — the status-bar strip.
+ *
+ * app/layout.tsx asks for `black-translucent` + `viewport-fit=cover`, which is
+ * the only combination where the strip behind the clock follows the app theme:
+ * iOS hands that strip to the PAGE instead of colouring it itself (with
+ * `default` it colours it once, at install time, and never again; without
+ * `cover` it shows the window background, i.e. the manifest's static
+ * background_color). Owning it means we have to draw it:
+ *
+ * The fixed strip is painted in `--background`, so the band is the page colour in
+ * both themes and follows a theme toggle live. It also stops scrolled content
+ * from travelling up behind a see-through status bar, which is what you get
+ * otherwise (the page's own text sliding under the clock).
+ *
+ * Anything pinned to the very top of the viewport has to clear the strip, hence
+ * the `top` overrides — they cover the sticky library header and full-screen
+ * fixed overlays (chat panel, dialog overlays, sheets). All of this is scoped to
+ * standalone display mode: in a browser tab the insets are 0 and none of it
+ * applies. Keep the strip's z-index above the chat dock (z-40) and dialog
+ * overlays (z-50) so it can never end up underneath one of them.
+ * ---------------------------------------------------------------------- */
+@media (display-mode: standalone) {
+  /* NOTE: no padding on <body>. iOS applies the top inset as a scroll inset, so
+     in-flow content already starts below the clock; padding here would inset it
+     twice. What it does NOT inset is sticky/fixed positioning, which pins to the
+     true window top — that is what the rules below deal with. */
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top);
+    background: var(--background);
+    z-index: 60;
+    pointer-events: none;
+  }
+
+  .sticky.top-0,
+  .fixed.inset-0,
+  .fixed.inset-y-0 {
+    top: env(safe-area-inset-top);
+  }
+
+  /* Those overlays also carry `h-full`, which measures the whole window: left
+     alone it would hang off the bottom of the screen by exactly the top inset
+     (the nav sheet's last rows disappeared under the home indicator). `height:
+     auto` hands the height back to the top/bottom offsets. The padding then keeps
+     their contents — a chat composer, a sheet's footer — clear of the home
+     indicator, which `cover` also exposed. */
+  .fixed.inset-0,
+  .fixed.inset-y-0 {
+    height: auto;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* The "new bookmarks" pill that floats over the grid (bookmark-grid.tsx). */
+  .sticky.top-3 {
+    top: calc(env(safe-area-inset-top) + 0.75rem);
+  }
+}
+
+/* -------------------------------------------------------------------------
  * Provisioning screen — the indeterminate bar on the "Setting up your account"
  * takeover (components/library/account-setup.tsx). A sliver travels across its
  * track because provisioning reports no percentage; a reduced-motion viewer gets
