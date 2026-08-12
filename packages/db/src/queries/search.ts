@@ -31,8 +31,51 @@ export async function searchFullText(db: Db, query: string, limit: number): Prom
 }
 
 /**
+ * Minimum cosine similarity (1 - vector_distance_cos) a vector candidate must
+ * reach to be considered a match AT ALL. Without a floor, a pure top-K nearest
+ * -neighbour scan always returns K rows: search for "sourdough starter" in a
+ * library of frontend docs and the frontend docs come back, because "closest"
+ * says nothing about "close".
+ *
+ * CALIBRATED EMPIRICALLY (2026-08-13) against the local dev corpus (10 embedded
+ * bookmarks — react.dev/nextjs.org/vercel.com/svelte.dev/vitejs.dev/expo.dev
+ * docs + blogs) with the production embedding path (`gemini-embedding-001`,
+ * 768 dims, L2-normalized). Best similarity per probe query:
+ *
+ *   SHOULD match        "svelte frontend framework blog"        0.8329
+ *                       "next.js deployment on vercel"          0.6935
+ *                       "react hooks tutorial"                  0.6638
+ *   borderline          "kubernetes cluster autoscaling"        0.4915
+ *                       "tax return deadline"                   0.4359
+ *   SHOULD NOT match    "qwzx plorbnag flooble" (nonsense)      0.4689
+ *                       "sourdough bread starter recipe"        0.4603
+ *                       "1994 honda civic transmission fluid"   0.4273
+ *
+ * Note how high the junk baseline is: this model puts *unrelated* text at
+ * ~0.40-0.49 rather than near 0, which is exactly why "top K by distance" felt
+ * random. 0.55 sits above every non-matching probe (max 0.4915, ~0.06 margin)
+ * and below every genuinely-matching one (min 0.6638, ~0.11 margin), and it
+ * still keeps the weaker-but-real neighbours of a matching query (e.g.
+ * reactnative.dev at 0.5598 for "react hooks tutorial") while dropping the
+ * merely-same-genre ones (svelte.dev at 0.5299 for that query).
+ *
+ * Consequence, by design: a query with no keyword hits and nothing above the
+ * floor returns NO results instead of plausible-looking noise.
+ */
+export const MIN_VECTOR_SIMILARITY = 0.55;
+
+/** Cosine DISTANCE cutoff equivalent to `MIN_VECTOR_SIMILARITY` (SQL compares distance). */
+const MAX_VECTOR_DISTANCE = 1 - MIN_VECTOR_SIMILARITY;
+
+/**
  * Semantic search over stored embeddings using libSQL's native vector
  * functions. Cosine distance in [0, 2] is mapped to similarity = 1 - distance.
+ *
+ * The `MIN_VECTOR_SIMILARITY` floor is applied IN SQL rather than to the returned
+ * rows. Both produce the same set (the ranking is ordered by that very distance,
+ * so the floor only ever cuts a suffix), but in the query the DB stops
+ * materializing and shipping rows the caller would immediately discard — and the
+ * guarantee lives next to the scoring it constrains instead of in every caller.
  */
 export async function searchVector(db: Db, embedding: number[], limit: number): Promise<Scored[]> {
   const vector = JSON.stringify(embedding);
@@ -42,10 +85,11 @@ export async function searchVector(db: Db, embedding: number[], limit: number): 
              vector_distance_cos(embedding, vector32(?)) AS distance
       FROM bookmarks
       WHERE embedding IS NOT NULL
+        AND vector_distance_cos(embedding, vector32(?)) <= ?
       ORDER BY distance ASC
       LIMIT ?
     `,
-    args: [vector, limit],
+    args: [vector, vector, MAX_VECTOR_DISTANCE, limit],
   });
   return rs.rows.map((row) => ({
     bookmark: rowToBookmark(row),

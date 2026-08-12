@@ -1,5 +1,5 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { summarizeSessionById } from "@bookmark-ai/engine";
+import { after, NextResponse, type NextRequest } from "next/server";
+import { embedSession, summarizeSessionById } from "@bookmark-ai/engine";
 import { getRequestApiContext } from "@/lib/server/api-context";
 
 type Params = { params: Promise<{ id: string }> };
@@ -23,6 +23,17 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const result = await summarizeSessionById(db, gemini, (await params).id);
   if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // Applying the summary cleared the session's embedding (its text changed, and
+  // the description is the bulk of what gets embedded) — recompute after the
+  // response so the new summary is searchable by meaning immediately.
+  if (gemini) {
+    const session = result.session;
+    after(async () => {
+      await embedSession(gemini, db, session).catch((err: unknown) => {
+        console.warn(`[embed] session ${session.id}: ${(err as Error).message}`);
+      });
+    });
+  }
   return NextResponse.json({
     session: result.session,
     name: result.session.name,

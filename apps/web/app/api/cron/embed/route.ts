@@ -18,9 +18,12 @@ const MAX_ELAPSED_MS = 250_000;
 const BATCH = 10;
 
 /**
- * Daily straggler sweep (Vercel cron, see vercel.json): embeds bookmarks the
- * post-save hook missed (transient Gemini failures, deploys mid-save). Gated
- * by CRON_SECRET, which Vercel attaches to cron invocations automatically.
+ * Daily straggler sweep (Vercel cron, see vercel.json): embeds bookmarks AND
+ * saved sessions the post-save hooks missed (transient Gemini failures, deploys
+ * mid-save, a rename/summary that cleared a vector, an imported bundle — the
+ * embed columns are always regenerated, never exported). `embedPending` covers
+ * both tables. Gated by CRON_SECRET, which Vercel attaches to cron invocations
+ * automatically.
  *
  * Flag OFF → sweep the single shared DB (unchanged). Flag ON → iterate every
  * active tenant, sweeping each tenant's own DB, bounded by a total-embedding

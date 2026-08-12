@@ -182,15 +182,26 @@ export type SearchResult = z.infer<typeof searchResultSchema>;
 
 export const sessionSearchResultSchema = z.object({
   session: sessionSchema,
+  /**
+   * Text tier (2 = the session's own name/summary matched, 1 = only a tab did) or,
+   * for a `semantic` hit, the cosine similarity of its embedding. Two scales in
+   * one field, like `searchResultSchema.score` (bm25 vs cosine) — compare only
+   * within a kind; the array is already in presentation order.
+   */
   score: z.number(),
+  /** Set when the session was found by MEANING alone (its embedding), with none
+   * of the query's words appearing in its name, summary or tabs — clients can
+   * label these "closest by meaning". Optional: text hits omit it. */
+  semantic: z.boolean().optional(),
 });
 export type SessionSearchResult = z.infer<typeof sessionSearchResultSchema>;
 
 export const searchResponseSchema = z.object({
   mode: searchModeSchema,
   results: z.array(searchResultSchema),
-  /** Matching saved sessions (name/tab text) — kept separate from bookmark
-   * results so clients can present the two kinds distinctly. */
+  /** Matching saved sessions (name/summary/tab text, plus semantic matches in the
+   * ai/hybrid modes) — kept separate from bookmark results so clients can present
+   * the two kinds distinctly. Never paged: the same handful rides every page. */
   sessionResults: z.array(sessionSearchResultSchema).optional(),
   /** Set when an AI search silently fell back to full-text (e.g. no API key). */
   fallback: z.boolean().optional(),

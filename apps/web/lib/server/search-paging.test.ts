@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Bookmark } from "@bookmark-ai/types";
-import type { Scored } from "@bookmark-ai/db";
+import type { Bookmark, Session } from "@bookmark-ai/types";
+import type { Scored, ScoredSession } from "@bookmark-ai/db";
 
 /**
  * Paging behavior of the engine's `performSearch`.
@@ -29,14 +29,19 @@ const searchFullText = vi.fn(async (_db: unknown, _q: string, limit: number) =>
 const searchVector = vi.fn(async (_db: unknown, _v: number[], limit: number) =>
   scored(VECTOR_IDS.slice(0, limit)),
 );
-const searchSessions = vi.fn(async () => []);
+// Signatures spelled out (not `async () => []`) so `mock.calls[i][2]` — the limit
+// these are asked for — is typed and assertable.
+const searchSessions = vi.fn(async (_db: unknown, _q: string, _limit: number) => [] as ScoredSession[]);
+const searchSessionsVector = vi.fn(
+  async (_db: unknown, _v: number[], _limit: number) => [] as ScoredSession[],
+);
 
 vi.mock("@bookmark-ai/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@bookmark-ai/db")>();
-  return { ...actual, searchFullText, searchVector, searchSessions };
+  return { ...actual, searchFullText, searchVector, searchSessions, searchSessionsVector };
 });
 
-const { performSearch } = await import("@bookmark-ai/engine");
+const { performSearch, SESSION_RESULT_LIMIT } = await import("@bookmark-ai/engine");
 const { mergeHybrid } = await import("@bookmark-ai/db");
 
 /** A Gemini stand-in: `performSearch` only ever asks it to embed the query. */
@@ -143,5 +148,43 @@ describe("performSearch — text and ai paging", () => {
     // 190 + 40 would be 230; the engine clamps the depth it asks the db for.
     await performSearch(db, null, { q: "x", mode: "text", limit: 40, offset: 190 });
     expect(searchFullText.mock.calls.at(-1)?.[2]).toBe(201);
+  });
+});
+
+describe("performSearch — sessionResults ride every page", () => {
+  const session = (id: string) => ({ session: { id } as Session, score: 2 });
+
+  it("asks for the same fixed handful of sessions whatever the page", async () => {
+    searchSessions.mockClear();
+    searchSessionsVector.mockClear();
+    await performSearch(db, gemini, { q: "x", mode: "hybrid", limit: 40, offset: 120 });
+    // Not `depth`: sessions are deliberately unpaged, so both session queries ask
+    // for SESSION_RESULT_LIMIT rows no matter how deep the bookmark page is.
+    expect(searchSessions.mock.calls.at(-1)?.[2]).toBe(SESSION_RESULT_LIMIT);
+    expect(searchSessionsVector.mock.calls.at(-1)?.[2]).toBe(SESSION_RESULT_LIMIT);
+  });
+
+  it("skips the session vector search when no query embedding exists", async () => {
+    searchSessionsVector.mockClear();
+    await performSearch(db, null, { q: "x", mode: "text", limit: 5 });
+    expect(searchSessionsVector).not.toHaveBeenCalled();
+  });
+
+  it("survives a failing session vector search with the text hits alone", async () => {
+    searchSessions.mockResolvedValueOnce([session("s1")]);
+    searchSessionsVector.mockRejectedValueOnce(new Error("no vector support"));
+    const res = await performSearch(db, gemini, { q: "x", mode: "hybrid", limit: 5 });
+    expect(res.sessionResults?.map((r) => r.session.id)).toEqual(["s1"]);
+  });
+
+  it("keeps sessions text-only when the query embedding itself failed", async () => {
+    searchSessionsVector.mockClear();
+    searchSessions.mockResolvedValueOnce([session("s1")]);
+    const broken = { embed: async () => Promise.reject(new Error("no key")) } as unknown as
+      typeof gemini;
+    const res = await performSearch(db, broken, { q: "x", mode: "hybrid", limit: 5 });
+    expect(res.fallback).toBe(true);
+    expect(searchSessionsVector).not.toHaveBeenCalled();
+    expect(res.sessionResults?.map((r) => r.session.id)).toEqual(["s1"]);
   });
 });

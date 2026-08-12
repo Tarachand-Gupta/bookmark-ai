@@ -51,6 +51,7 @@ export {
   searchVector,
   storeEmbedding,
   listUnembedded,
+  MIN_VECTOR_SIMILARITY,
   type Scored,
 } from "./queries/search";
 export {
@@ -61,7 +62,13 @@ export {
   applySessionSummary,
   deleteSession,
   searchSessions,
+  searchSessionsVector,
+  storeSessionEmbedding,
+  listUnembeddedSessions,
+  SESSION_SCORE_SELF,
+  SESSION_SCORE_TABS,
   type InsertSession,
+  type ScoredSession,
 } from "./queries/sessions";
 export {
   getUserSettings,

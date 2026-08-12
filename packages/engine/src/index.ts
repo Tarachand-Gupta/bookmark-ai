@@ -10,12 +10,19 @@ export {
 } from "./categorize";
 export {
   bookmarkToEmbeddingText,
+  sessionToEmbeddingText,
   embedQuery,
   embedBookmark,
+  embedSession,
   embedPending,
 } from "./embeddings";
 export { saveBookmarkFast, enrichBookmark } from "./ingest";
-export { performSearch, type SearchParams } from "./search";
+export {
+  performSearch,
+  mergeSessionResults,
+  SESSION_RESULT_LIMIT,
+  type SearchParams,
+} from "./search";
 export {
   getDashboard,
   assembleDashboard,

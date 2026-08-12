@@ -3,9 +3,11 @@ import {
   mergeHybrid,
   searchFullText,
   searchSessions,
+  searchSessionsVector,
   searchVector,
   type Db,
   type Scored,
+  type ScoredSession,
 } from "@bookmark-ai/db";
 import { embedQuery } from "./embeddings";
 import type { GeminiClient } from "./gemini";
@@ -50,6 +52,34 @@ function pageOf(
   };
 }
 
+/** How many saved sessions ride alongside the bookmark results, in every mode. */
+export const SESSION_RESULT_LIMIT = 5;
+
+/**
+ * Combine the two ways a saved session can match: literal text (name/summary/tab
+ * text) and meaning (its embedding). Deduped by session id.
+ *
+ * Text hits come FIRST, in the order the db query ranked them (self tier before
+ * tabs tier), because a session the user's own words appear in is never worse
+ * than one merely close in embedding space; the vector-only remainder follows,
+ * best similarity first. A session found by BOTH keeps its text score — the
+ * scales are incomparable (tier 2/1 vs cosine), so mixing them into one number
+ * would be meaningless, exactly as with bookmark results.
+ *
+ * Pure and exported so the ordering is unit-testable without a DB.
+ */
+export function mergeSessionResults(
+  textResults: ScoredSession[],
+  vectorResults: ScoredSession[],
+  limit: number,
+): ScoredSession[] {
+  const seen = new Set(textResults.map((r) => r.session.id));
+  const semanticOnly = vectorResults
+    .filter((r) => !seen.has(r.session.id))
+    .sort((a, b) => b.score - a.score);
+  return [...textResults, ...semanticOnly].slice(0, limit);
+}
+
 /**
  * The one search implementation every surface shares (Next.js routes, the MCP
  * tools, the chat agent's tools). Hybrid mode runs full-text and vector
@@ -74,22 +104,41 @@ export async function performSearch(
   // exact and leaves the non-paging queries (and their SQL) untouched.
   const candidates = depth + (paging ? 1 : 0);
 
-  // Sessions match by plain text in every mode (they have no embeddings);
-  // results ride alongside so clients can present the two kinds distinctly.
-  // They are NOT paged — the same handful accompanies every page.
-  const sessionsPromise = searchSessions(db, q, 5).catch((err: Error) => {
+  // Sessions match by plain text in EVERY mode; results ride alongside so
+  // clients can present the two kinds distinctly. They are NOT paged — the same
+  // handful accompanies every page.
+  const textSessionsPromise = searchSessions(db, q, SESSION_RESULT_LIMIT).catch((err: Error) => {
     console.warn(`[search] session search failed: ${err.message}`);
-    return [];
+    return [] as ScoredSession[];
   });
+
+  /**
+   * The `sessionResults` for this response. When a query embedding was computed
+   * for the bookmark search, it is REUSED here to also match sessions by meaning
+   * (no second embed call) and merged with the text hits; without one (text mode,
+   * or an embed failure) this is the text hits alone, exactly as before.
+   */
+  const sessionResultsFor = async (vector: number[] | null): Promise<ScoredSession[]> => {
+    const text = await textSessionsPromise;
+    if (!vector) return text;
+    const semantic = await searchSessionsVector(db, vector, SESSION_RESULT_LIMIT).catch(
+      (err: Error) => {
+        console.warn(`[search] session vector search failed: ${err.message}`);
+        return [] as ScoredSession[];
+      },
+    );
+    return mergeSessionResults(text, semantic, SESSION_RESULT_LIMIT);
+  };
 
   if (mode === "hybrid") {
     const textPromise = searchFullText(db, q, candidates);
     let vectorResults: Scored[] = [];
+    let queryVector: number[] | null = null;
     let degraded = true;
     if (gemini) {
       try {
-        const vector = await embedQuery(gemini, q);
-        vectorResults = await searchVector(db, vector, candidates);
+        queryVector = await embedQuery(gemini, q);
+        vectorResults = await searchVector(db, queryVector, candidates);
         degraded = false;
       } catch (err) {
         console.warn(`[search] hybrid embed failed, text only: ${(err as Error).message}`);
@@ -100,7 +149,7 @@ export async function performSearch(
     return {
       mode: "hybrid",
       ...pageOf(merged, from, limit, paging),
-      sessionResults: await sessionsPromise,
+      sessionResults: await sessionResultsFor(queryVector),
       ...(degraded ? { fallback: true } : {}),
     };
   }
@@ -112,7 +161,7 @@ export async function performSearch(
       return {
         mode: "ai",
         ...pageOf(ranked, from, limit, paging),
-        sessionResults: await sessionsPromise,
+        sessionResults: await sessionResultsFor(vector),
       };
     } catch (err) {
       console.warn(`[search] AI search failed, falling back: ${(err as Error).message}`);
@@ -123,7 +172,7 @@ export async function performSearch(
   return {
     mode: "text",
     ...pageOf(ranked, from, limit, paging),
-    sessionResults: await sessionsPromise,
+    sessionResults: await sessionResultsFor(null),
     ...(mode === "ai" ? { fallback: true } : {}),
   };
 }

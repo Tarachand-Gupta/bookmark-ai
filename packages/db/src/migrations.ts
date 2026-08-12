@@ -384,4 +384,37 @@ export const TENANT_MIGRATIONS: Migration[] = [
     name: "session-description",
     statements: [{ sql: "ALTER TABLE sessions ADD COLUMN description TEXT", tolerant: true }],
   },
+  // Semantic search over SAVED SESSIONS: the same F32_BLOB(768) vector the
+  // bookmarks table has carried since v1, so "the research on rust async
+  // runtimes" finds a session whose name is "Aug 11, 1:22 am · 37 tabs" and
+  // whose subject only exists in its AI description and tab titles.
+  //
+  // Additive, nullable ADD COLUMN + the same `tolerant` ANN index as
+  // idx_bookmarks_embedding (libSQL builds without vector support degrade to an
+  // unindexed scan instead of wedging this and every later migration). Every
+  // existing session reads back NULL, which is exactly the "needs embedding"
+  // state `listUnembeddedSessions` sweeps — no backfill step, the embed sweep IS
+  // the backfill. Both statements tolerant so a retry after a partial apply
+  // ("duplicate column name: embedding") records the version instead of leaving
+  // it permanently pending.
+  //
+  // NOT exported and NO SCHEMA_VERSION bump: an embedding is regenerable derived
+  // data, so it is excluded from the export bundle for the same reason
+  // bookmarks.embedding is (see packages/types/src/export.ts) — an imported
+  // session simply comes back with a NULL vector and the sweep refills it.
+  //
+  // v13 because 12 is the highest version ever recorded in prod: numbers are
+  // burned forever, and a migration numbered at or below one prod already has in
+  // `schema_migrations` is SILENTLY SKIPPED there.
+  {
+    version: 13,
+    name: "session-embedding",
+    statements: [
+      { sql: `ALTER TABLE sessions ADD COLUMN embedding F32_BLOB(${EMBEDDING_DIM})`, tolerant: true },
+      {
+        sql: "CREATE INDEX IF NOT EXISTS idx_sessions_embedding ON sessions(libsql_vector_idx(embedding))",
+        tolerant: true,
+      },
+    ],
+  },
 ];

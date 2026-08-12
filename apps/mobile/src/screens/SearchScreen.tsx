@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Keyboard,
   Pressable,
   SectionList,
@@ -11,12 +10,15 @@ import {
   View,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import type { Bookmark } from "@bookmark-ai/types";
+import type { Bookmark, Session } from "@bookmark-ai/types";
 import { BookmarkRow } from "../components/BookmarkRow";
+import { LiveSearchMatchGroup } from "../components/LiveSearchMatchGroup";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { SessionCard } from "../components/SessionCard";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
+import type { LiveDeviceMatchGroup } from "../hooks/useLiveSearchMatches";
+import { useLiveSearchMatches } from "../hooks/useLiveSearchMatches";
 import { useSearch } from "../hooks/useSearch";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 
@@ -38,6 +40,10 @@ export function SearchScreen({
   const tabBarClearance = useTabBarClearance();
   const onScroll = useTabBarScroll();
   const search = useSearch();
+  // Live devices are searched entirely client-side and independently of
+  // useSearch — see the hook's doc comment for why (optional-everywhere,
+  // never blocks or errors alongside the bookmark/session results).
+  const live = useLiveSearchMatches(search.query);
   const hasQuery = search.query.trim().length > 0;
   const inputRef = useRef<TextInput>(null);
 
@@ -68,9 +74,33 @@ export function SearchScreen({
   if (search.related.length > 0)
     sections.push({ key: "related", data: relatedVisible ? search.related : [] });
 
-  const hasSessionResults = hasQuery && search.sessions.length > 0;
+  // Live matches count toward the Sessions segment too — a live-only search
+  // hit (no saved session, no bookmark) still needs somewhere to surface.
+  const hasSessionResults = hasQuery && (search.sessions.length > 0 || live.groups.length > 0);
   const showingSessions = hasSessionResults && resultsTab === "sessions";
   const bookmarkCount = noExact ? search.related.length : search.matches.length;
+  const sessionsCount = search.sessions.length + live.matchCount;
+
+  // The Sessions segment's list: live device matches first (their own
+  // section, only present when there ARE any), saved sessions below — same
+  // "distinct group above the saved cards" idea SessionCard's own diff-style
+  // folding uses for non-matching tabs within a session.
+  type SessionSectionItem =
+    | { kind: "live"; group: LiveDeviceMatchGroup }
+    | { kind: "saved"; session: Session };
+  const sessionSections: { key: "live" | "saved"; data: SessionSectionItem[] }[] = [];
+  if (live.groups.length > 0) {
+    sessionSections.push({
+      key: "live",
+      data: live.groups.map((group) => ({ kind: "live" as const, group })),
+    });
+  }
+  if (search.sessions.length > 0) {
+    sessionSections.push({
+      key: "saved",
+      data: search.sessions.map((session) => ({ kind: "saved" as const, session })),
+    });
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -110,7 +140,7 @@ export function SearchScreen({
           <SegmentedControl
             segments={[
               { value: "bookmarks", label: `Bookmarks · ${bookmarkCount}` },
-              { value: "sessions", label: `Sessions · ${search.sessions.length}` },
+              { value: "sessions", label: `Sessions · ${sessionsCount}` },
             ]}
             value={resultsTab}
             onChange={setResultsTab}
@@ -119,22 +149,36 @@ export function SearchScreen({
       </View>
 
       {showingSessions ? (
-        <FlatList
-          data={search.sessions}
-          keyExtractor={(s) => s.id}
+        <SectionList
+          sections={sessionSections}
+          keyExtractor={(item) =>
+            item.kind === "live" ? `live-${item.group.deviceId}` : item.session.id
+          }
           keyboardDismissMode="on-drag"
           onScrollBeginDrag={Keyboard.dismiss}
           onScroll={onScroll}
           scrollEventThrottle={16}
           contentContainerStyle={{ paddingTop: 12, paddingBottom: tabBarClearance }}
-          renderItem={({ item }) => (
-            <SessionCard
-              session={item}
-              matchQuery={search.query}
-              // open on the matches, like a diff opens on its hunks
-              initialExpanded
-            />
-          )}
+          renderItem={({ item }) =>
+            item.kind === "live" ? (
+              <LiveSearchMatchGroup group={item.group} />
+            ) : (
+              <SessionCard
+                session={item.session}
+                matchQuery={search.query}
+                // open on the matches, like a diff opens on its hunks
+                initialExpanded
+              />
+            )
+          }
+          renderSectionHeader={({ section }) =>
+            section.key === "live" ? (
+              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
+                LIVE — {live.matchCount} MATCH{live.matchCount === 1 ? "" : "ES"}
+              </Text>
+            ) : null
+          }
+          stickySectionHeadersEnabled={false}
         />
       ) : (
       <SectionList
