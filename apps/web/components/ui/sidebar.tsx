@@ -304,12 +304,23 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   )
 }
 
+// `min-w-0` is a FIX, not upstream shadcn (keep it through any CLI re-add).
+// Without it this flex item keeps min-width:auto, i.e. a content-based minimum,
+// so one unbreakable string in the page — a saved tab's
+// `…/callback#access_token=eyJhbGciOi…`, 2900px of min-content that `truncate`
+// does NOT clamp intrinsically — stops the inset shrinking into the width the
+// expanded sidebar leaves it. Measured on production: viewport 1411, sidebar
+// 256, inset stuck at 1312 → 157px of horizontal document overflow, and the
+// page scrolls sideways with content sliding under the fixed sidebar. Collapsed
+// there was room, so it looked like the toggle broke the layout. min-width:0
+// lets the flex algorithm hand it the 1155 it's due; every `truncate`/`min-w-0`
+// inside then has a definite width to ellipsize against.
 function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   return (
     <main
       data-slot="sidebar-inset"
       className={cn(
-        "relative flex w-full flex-1 flex-col bg-background",
+        "relative flex w-full min-w-0 flex-1 flex-col bg-background",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
         className
       )}

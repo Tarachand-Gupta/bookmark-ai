@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveDevice, LiveTab, LiveWindow } from "@bookmark-ai/types";
 import {
   ChevronDown,
@@ -402,6 +402,11 @@ function WindowCard({
   );
 }
 
+/** How long the button holds its "Saved" confirmation before it can be used
+ * again. Long enough to register as a result of the click, short enough that a
+ * second save never feels blocked. */
+const SAVED_FEEDBACK_MS = 2_000;
+
 /** Saves ONLY this window (owner decision — one window, never all/cross-browser).
  * A stale window asks once before saving (§4.4). */
 function SaveWindowButton({
@@ -419,6 +424,13 @@ function SaveWindowButton({
 }) {
   const [status, setStatus] = useState<"idle" | "confirm" | "saving" | "saved">("idle");
   const [error, setError] = useState<string | null>(null);
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (resetTimer.current) clearTimeout(resetTimer.current);
+    },
+    [],
+  );
 
   const doSave = async () => {
     setStatus("saving");
@@ -437,6 +449,11 @@ function SaveWindowButton({
         os: device.os,
       });
       setStatus("saved");
+      // "Saved" is FEEDBACK, not a terminal state: a live window keeps changing
+      // (tabs open and close after the snapshot), so saving it again a minute
+      // later is a normal thing to want. Hand the button back once the
+      // confirmation has been read.
+      resetTimer.current = setTimeout(() => setStatus("idle"), SAVED_FEEDBACK_MS);
       onSaved();
     } catch (e) {
       setError((e as Error).message);
