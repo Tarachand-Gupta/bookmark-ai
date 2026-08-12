@@ -2,8 +2,6 @@ import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
   StyleSheet,
   Text,
   View,
@@ -13,6 +11,7 @@ import {
 import type { UIMessage } from "ai";
 import { useAppTheme } from "../../context/PreferencesContext";
 import { useAiChat } from "../../hooks/useAiChat";
+import { useKeyboardOverlap } from "../../hooks/useKeyboardOverlap";
 import { ChatComposer } from "./ChatComposer";
 import { ChatMessage } from "./ChatMessage";
 import { ChatErrorNotice, ChatLimitNotice, ChatQuotaNotice } from "./ChatNotice";
@@ -43,10 +42,13 @@ export function ChatThread({
   onConversationId?: (id: string) => void;
   /** A turn finished streaming — the history list is now stale. */
   onTurnFinished?: () => void;
-  /** Safe-area bottom inset; the composer sits on top of it. */
+  /** Safe-area bottom inset; the composer sits on top of it while the keyboard is
+   * down — once it's up the keyboard's own frame (which already spans that inset)
+   * takes over. */
   bottomInset: number;
 }) {
   const { colors } = useAppTheme();
+  const keyboardOverlap = useKeyboardOverlap();
   const chat = useAiChat({
     initialMessages,
     conversationId: initialConversationId,
@@ -102,12 +104,22 @@ export function ChatThread({
   );
 
   return (
-    <KeyboardAvoidingView
-      // Android resizes the window itself (windowSoftInputMode=adjustResize), so
-      // a behavior there double-counts the keyboard — same split as SignInScreen.
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={styles.flex}
-    >
+    // Keyboard avoidance by hand, NOT KeyboardAvoidingView: this thread lives
+    // inside a full-screen native Modal, below ModalSafeArea's paddingTop and a
+    // header, and KeyboardAvoidingView measures its own frame relative to its
+    // PARENT while comparing it to a window-space keyboard edge — so it padded by
+    // (keyboard height − insets.top), i.e. insets.top too little, and the composer
+    // hung that far under the keyboard (measured on iPhone 17 / iOS 26.5 with the
+    // QuickType bar up: keyboard 335, top inset 62 → padding 273, leaving 28pt of
+    // the 62pt composer row clipped; worse on the 14 Pro Max that reported it).
+    // No `keyboardVerticalOffset` constant tracks that across devices.
+    //
+    // `max`, not `+`: the raised keyboard already covers the home-indicator area,
+    // so adding the bottom inset on top of it would leave a gap; with the
+    // keyboard down the inset is all that's needed. This View reaches the window
+    // bottom (ModalSafeArea deliberately applies no bottom padding), which is the
+    // frame useKeyboardOverlap's number is measured against.
+    <View style={[styles.flex, { paddingBottom: Math.max(keyboardOverlap, bottomInset) }]}>
       <FlatList
         ref={listRef}
         data={chat.messages}
@@ -135,17 +147,15 @@ export function ChatThread({
       {showJumpHint && chat.messages.length > 0 && (
         <JumpToLatest onPress={() => scrollToEnd(true)} />
       )}
-      <View style={{ paddingBottom: bottomInset }}>
-        <ChatComposer
-          streaming={streaming}
-          onSend={send}
-          onStop={chat.stop}
-          placeholder={
-            chat.messages.length === 0 ? "Ask anything about your bookmarks…" : "Ask a follow-up…"
-          }
-        />
-      </View>
-    </KeyboardAvoidingView>
+      <ChatComposer
+        streaming={streaming}
+        onSend={send}
+        onStop={chat.stop}
+        placeholder={
+          chat.messages.length === 0 ? "Ask anything about your bookmarks…" : "Ask a follow-up…"
+        }
+      />
+    </View>
   );
 }
 

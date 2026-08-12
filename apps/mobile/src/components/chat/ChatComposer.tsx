@@ -13,8 +13,8 @@ const MAX_INPUT_HEIGHT = 22 * 4 + 20;
  * while the thread is idle and Stop while a turn streams (never both — there is
  * nothing to send mid-stream, and a second Send would race the same thread).
  *
- * Keyboard avoidance and safe-area padding belong to the screen that hosts this
- * (see ConversationScreen) — the composer is only as tall as its content.
+ * Keyboard avoidance and safe-area padding belong to the thread that hosts this
+ * (see ChatThread) — the composer is only as tall as its content.
  */
 export function ChatComposer({
   streaming,

@@ -72,8 +72,18 @@ const TABS: {
 ];
 
 const BAR_HEIGHT = 64;
-const BAR_GAP = 16; // gap between bar bottom and safe-area/home indicator
 const COLLAPSED_SCALE = 0.84;
+
+// ── Floating geometry (shared by BOTH states) ──────────────────────────────
+// SCREEN_MARGIN is the ONE margin the capsule keeps from every screen edge, so
+// the expanded and collapsed pills can't drift apart: same left/right inset,
+// same visible clearance below. The bottom offset is the safe-area inset PLUS
+// that margin — using the inset AS the gap (the old `max(inset, 16)`) parked the
+// expanded pill's bottom edge exactly on the home-indicator band, which reads as
+// a docked bar with rounded corners instead of a floating pill.
+const SCREEN_MARGIN = 12; // breathing room the capsule keeps from each screen edge
+const MIN_BOTTOM_GAP = 20; // devices without a home indicator still float
+const CONTENT_GAP = 20; // extra scroll padding below the bar
 
 // Item sizing. Fixed-width items keep the pill highlight the same distance from
 // the capsule's rounded ends on every tab, but a fifth tab (Home) no longer fits
@@ -83,7 +93,6 @@ const TAB_WIDTH_MAX = 82;
 const TAB_WIDTH_MIN = 56;
 const BAR_PADDING = 8; // capsule's own horizontal padding
 const TAB_GAP = 4;
-const SCREEN_MARGIN = 12; // breathing room the capsule keeps from each screen edge
 
 function tabWidth(windowWidth: number, count: number): number {
   const available =
@@ -91,15 +100,18 @@ function tabWidth(windowWidth: number, count: number): number {
   return Math.max(TAB_WIDTH_MIN, Math.min(TAB_WIDTH_MAX, Math.floor(available / count)));
 }
 
+/** Distance from the screen bottom to the capsule's bottom edge — the same in the
+ * expanded and collapsed states (the collapse only scales the pill, anchored on
+ * this edge, see `barShift`), so the bar never jumps while animating. */
 function bottomOffset(insetBottom: number): number {
-  return Math.max(insetBottom, BAR_GAP);
+  return Math.max(insetBottom + SCREEN_MARGIN, MIN_BOTTOM_GAP);
 }
 
 /** Bottom padding screens need so scrollable content clears the floating bar
  * (content deliberately scrolls UNDER the glass). */
 export function useTabBarClearance(): number {
   const insets = useSafeAreaInsets();
-  return bottomOffset(insets.bottom) + BAR_HEIGHT + 20;
+  return bottomOffset(insets.bottom) + BAR_HEIGHT + CONTENT_GAP;
 }
 
 // Instagram-style shrink: one shared animated scale for the single tab bar.
@@ -241,8 +253,10 @@ export function TabBar({
 const styles = StyleSheet.create({
   wrap: {
     position: "absolute",
-    left: 0,
-    right: 0,
+    // Same SCREEN_MARGIN the width math assumes, enforced in layout as well, so
+    // the capsule's side gaps can never end up smaller than its bottom one.
+    left: SCREEN_MARGIN,
+    right: SCREEN_MARGIN,
     alignItems: "center", // the capsule hugs its content, centered
   },
   shadow: {
