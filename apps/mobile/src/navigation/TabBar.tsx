@@ -10,7 +10,6 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import * as Haptics from "expo-haptics";
@@ -75,14 +74,14 @@ const BAR_HEIGHT = 64;
 const COLLAPSED_SCALE = 0.84;
 
 // ── Floating geometry (shared by BOTH states) ──────────────────────────────
-// SCREEN_MARGIN is the ONE margin the capsule keeps from every screen edge, so
-// the expanded and collapsed pills can't drift apart: same left/right inset,
-// same visible clearance below. The bottom offset is the safe-area inset PLUS
-// that margin — using the inset AS the gap (the old `max(inset, 16)`) parked the
-// expanded pill's bottom edge exactly on the home-indicator band, which reads as
-// a docked bar with rounded corners instead of a floating pill.
+// SCREEN_MARGIN is the ONE margin the capsule keeps from every screen edge —
+// including the bottom, measured from the PHYSICAL screen edge, not the safe
+// area. That's the Instagram treatment (owner-approved reference): the pill
+// dips into the home-indicator band with the same 12pt gap it keeps at the
+// sides. Both `inset + margin` (floats too high, looks detached from the
+// screen) and `max(inset, gap)` (parks the edge exactly on the indicator
+// band) were tried and rejected — do not "fix" this back to inset math.
 const SCREEN_MARGIN = 12; // breathing room the capsule keeps from each screen edge
-const MIN_BOTTOM_GAP = 20; // devices without a home indicator still float
 const CONTENT_GAP = 20; // extra scroll padding below the bar
 
 // Item sizing. Fixed-width items keep the pill highlight the same distance from
@@ -102,16 +101,16 @@ function tabWidth(windowWidth: number, count: number): number {
 
 /** Distance from the screen bottom to the capsule's bottom edge — the same in the
  * expanded and collapsed states (the collapse only scales the pill, anchored on
- * this edge, see `barShift`), so the bar never jumps while animating. */
-function bottomOffset(insetBottom: number): number {
-  return Math.max(insetBottom + SCREEN_MARGIN, MIN_BOTTOM_GAP);
+ * this edge, see `barShift`), so the bar never jumps while animating. Ignores the
+ * safe-area inset on purpose: the pill lives inside the home-indicator band. */
+function bottomOffset(): number {
+  return SCREEN_MARGIN;
 }
 
 /** Bottom padding screens need so scrollable content clears the floating bar
  * (content deliberately scrolls UNDER the glass). */
 export function useTabBarClearance(): number {
-  const insets = useSafeAreaInsets();
-  return bottomOffset(insets.bottom) + BAR_HEIGHT + CONTENT_GAP;
+  return bottomOffset() + BAR_HEIGHT + CONTENT_GAP;
 }
 
 // Instagram-style shrink: one shared animated scale for the single tab bar.
@@ -169,7 +168,6 @@ export function TabBar({
   blurTarget?: RefObject<View | null>;
 }) {
   const { colors, dark } = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const itemWidth = tabWidth(windowWidth, TABS.length);
 
@@ -213,7 +211,7 @@ export function TabBar({
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.wrap, { bottom: bottomOffset(insets.bottom) }]}
+      style={[styles.wrap, { bottom: bottomOffset() }]}
     >
       <Animated.View
         style={[styles.shadow, { transform: [{ translateY: barShift }, { scale: barScale }] }]}
