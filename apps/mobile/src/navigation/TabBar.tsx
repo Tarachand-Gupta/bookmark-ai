@@ -18,10 +18,12 @@ import type { SymbolViewProps } from "expo-symbols";
 import { useAppTheme } from "../context/PreferencesContext";
 import { Symbol } from "../components/Symbol";
 
-export type TabKey = "home" | "library" | "sessions" | "search" | "settings";
+export type TabKey = "home" | "library" | "sessions" | "search" | "chat";
 
 // Order is priority (docs/features/dashboard.md §4): Home lands first, the
-// storage/browse views follow.
+// storage/browse views follow, and Ask AI closes the row. Settings is NOT a tab
+// — it's a full-screen presentation opened from Home's title row (App.tsx), so
+// the fifth slot goes to a destination people actually use daily.
 const TABS: {
   key: TabKey;
   label: string;
@@ -44,11 +46,13 @@ const TABS: {
     fallback: "▤",
   },
   {
+    // The radio icon, not the old card stack: the tab now leads with the LIVE
+    // segment, and `square.stack` moved onto the Saved segment inside it.
     key: "sessions",
     label: "Sessions",
-    symbol: "square.stack",
-    activeSymbol: "square.stack.fill",
-    fallback: "▣",
+    symbol: "dot.radiowaves.left.and.right",
+    activeSymbol: "dot.radiowaves.left.and.right",
+    fallback: "◉",
   },
   {
     key: "search",
@@ -58,11 +62,12 @@ const TABS: {
     fallback: "⌕",
   },
   {
-    key: "settings",
-    label: "Settings",
-    symbol: "gearshape",
-    activeSymbol: "gearshape.fill",
-    fallback: "⚙",
+    // `sparkles` has no .fill variant either — same glyph both states.
+    key: "chat",
+    label: "Ask AI",
+    symbol: "sparkles",
+    activeSymbol: "sparkles",
+    fallback: "✦",
   },
 ];
 

@@ -13,7 +13,7 @@ type LiveStreamEvent = "state";
  * The ONE thing the user is told when the live reader can't be reached. Never
  * surface the underlying exception: RN hands back transport strings like
  * "Failed to connect to /10.0.2.2:8091" (Android) or a bare "Network request
- * failed", which read as a crash in the middle of the Ongoing segment. The raw
+ * failed", which read as a crash in the middle of the Live segment. The raw
  * detail goes to console.warn for whoever is debugging.
  */
 const LIVE_UNREACHABLE = "Couldn't reach the live sessions server.";
@@ -47,7 +47,7 @@ export interface LiveDevicesState {
 }
 
 /**
- * The Ongoing segment's data story. A single SSE connection to the dedicated
+ * The Live segment's data story. A single SSE connection to the dedicated
  * live server replaces the old adaptive-polling loop: one `GET /live` for an
  * instant first paint (and as the provisioning/error fallback), then
  * `GET /live/stream` pushes full-snapshot `state` frames on every change plus
@@ -95,7 +95,7 @@ export function useLiveDevices({
     setLoaded(true);
   }, []);
 
-  // Hold the connection only while on the Ongoing segment, foregrounded, and
+  // Hold the connection only while on the Live segment, foregrounded, and
   // active; reconnect whenever the server target changes or a refresh is
   // requested. Mirrors the old effect's dependency shape.
   useEffect(() => {

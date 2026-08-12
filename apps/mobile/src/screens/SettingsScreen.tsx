@@ -19,7 +19,6 @@ import {
   usePreferences,
   type ThemePreference,
 } from "../context/PreferencesContext";
-import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 
 const WEB_URL = "https://bookmark-ai.cloud";
 
@@ -33,16 +32,16 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
 // build time (dev run → local, release → production); there is no in-app switch.
 const SERVER_HOST = getApiUrl().replace(/^https?:\/\//, "");
 
-/** Settings tab: signed-in account card, appearance override, links — iOS
+/** Settings: signed-in account card, appearance override, links — iOS
  * inset-grouped lists. The server is fixed by the build, so it's shown as a
- * read-only info row rather than a toggle. */
+ * read-only info row rather than a toggle. No longer a tab and no longer its own
+ * large title: SettingsPresentation (src/navigation) presents it full-screen
+ * with a "Settings" header, so there's no tab bar to clear either. */
 export function SettingsScreen() {
   const { colors } = useAppTheme();
   const { themePreference, setThemePreference } = usePreferences();
   const { user } = useUser();
   const { signOut } = useClerk();
-  const tabBarClearance = useTabBarClearance();
-  const onScroll = useTabBarScroll();
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
 
@@ -93,12 +92,8 @@ export function SettingsScreen() {
     <>
       <ScrollView
         style={{ backgroundColor: colors.background }}
-        contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
+        contentContainerStyle={styles.content}
       >
-        <Text style={[styles.largeTitle, { color: colors.foreground }]}>Settings</Text>
-
         <View style={styles.profile}>
           {user?.imageUrl && !avatarFailed ? (
             <Image
@@ -282,11 +277,9 @@ function GroupRow({
 }
 
 const styles = StyleSheet.create({
-  // paddingTop 8 / paddingHorizontal 20 is exactly the `header` block
-  // Library/Search/Sessions use, so all four large titles share one baseline.
-  // (paddingBottom is supplied per-render as the tab-bar clearance.)
-  content: { paddingHorizontal: 20, paddingTop: 8 },
-  largeTitle: { fontSize: 34, fontWeight: "700", letterSpacing: 0.2 },
+  // Presented full-screen under its own header, so this is plain list padding —
+  // no large title above it and no floating tab bar below it to clear.
+  content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 48 },
   profile: { alignItems: "center", gap: 4, paddingVertical: 24 },
   avatar: {
     width: 64,

@@ -4,7 +4,7 @@ import { useAppTheme } from "../context/PreferencesContext";
 import { Symbol } from "./Symbol";
 
 /**
- * The Ongoing segment's zero-card states (§4.7). "All stale" (C) is not here:
+ * The Live segment's zero-card states (§4.7). "All stale" (C) is not here:
  * a device old enough to matter is still within the 7-day TTL, so the server
  * still returns it and it renders as a dimmed, hollow-dot card — the mock's
  * exact treatment. Only truly card-less states need copy:

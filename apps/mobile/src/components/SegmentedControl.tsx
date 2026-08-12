@@ -20,7 +20,10 @@ export function SegmentedControl<T extends string>({
   onChange,
 }: {
   segments: Segment<T>[];
-  value: T;
+  /** `null` = nothing selected yet — an empty track. Used by Sessions, whose
+   * default segment is inferred from the first live payload: highlighting a
+   * guess and then moving the highlight reads as a glitch (see SessionsScreen). */
+  value: T | null;
   onChange: (value: T) => void;
 }) {
   const { colors, radius } = useAppTheme();

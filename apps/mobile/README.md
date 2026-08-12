@@ -104,7 +104,7 @@ Android emulator sees the host machine as `10.0.2.2` (handled in `src/api.ts`).
 Other bundle-time env flags (see "Server target" above for `EXPO_PUBLIC_SERVER_TARGET` /
 `EXPO_PUBLIC_API_URL`):
 
-- `EXPO_PUBLIC_INITIAL_TAB=sessions|search|settings|filters` — open on a specific screen (headless screenshots)
+- `EXPO_PUBLIC_INITIAL_TAB=sessions|search|chat|filters|settings` — open on a specific screen (headless screenshots); `settings` opens Home with the Settings presentation over it, since Settings is no longer a tab
 - `EXPO_PUBLIC_SKIP_AUTH=1` — skip the sign-in gate against the open local server (QA agents); `__DEV__`-only, ignored in release builds
 
 See `AGENTS.md` here before writing code: Expo APIs change fast — check the versioned

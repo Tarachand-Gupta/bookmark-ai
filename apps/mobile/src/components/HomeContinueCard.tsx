@@ -50,7 +50,7 @@ export function HomeContinueCard({
         ].join(" · "),
         glyph: deviceGlyph(device.device),
         dot: stale ? "stale" : "live",
-        // The Ongoing segment is where the tabs actually are.
+        // The Live segment is where the tabs actually are.
         onPress: () => onNavigate({ tab: "sessions", segment: "ongoing" }),
       };
     }

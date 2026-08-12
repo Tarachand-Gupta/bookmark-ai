@@ -18,5 +18,7 @@ export type NavTarget =
     }
   | { tab: "sessions"; segment?: SessionsSegment }
   | { tab: "search"; focus?: boolean }
-  | { tab: "settings" }
+  // Settings is deliberately absent: it's no longer a tab but a shell-level
+  // full-screen presentation, opened via HomeScreen's `onOpenSettings` callback
+  // rather than a nav target.
   | { tab: "home" };

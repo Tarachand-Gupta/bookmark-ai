@@ -39,11 +39,15 @@ const READING_TAG = "reading";
 export function HomeScreen({
   active,
   onNavigate,
+  onOpenSettings,
   refreshSignal = 0,
 }: {
   /** Home is the foreground tab — gates the live stream and the staleness refetch. */
   active: boolean;
   onNavigate: (target: NavTarget) => void;
+  /** Settings lost its tab slot to Ask AI, so Home's title row is its entry
+   * point (the Shell presents it full-screen — see SettingsPresentation). */
+  onOpenSettings: () => void;
   /** Counter bumped by the Shell after a save it owns (a share-sheet save), so
    * "Recently saved" picks it up without waiting out the staleness window. */
   refreshSignal?: number;
@@ -53,7 +57,7 @@ export function HomeScreen({
   const onScroll = useTabBarScroll();
   const dash = useDashboard(active);
 
-  // Same stream the Sessions tab's Ongoing segment uses; it holds the
+  // Same stream the Sessions tab's Live segment uses; it holds the
   // connection only while Home is the foreground tab and the app is active. Any
   // failure leaves `devices` empty and is NEVER surfaced here — the live card
   // and strip simply don't render (§4.2: no error states on the landing page).
@@ -99,7 +103,26 @@ export function HomeScreen({
       }
     >
       <View style={styles.header}>
-        <Text style={[styles.largeTitle, { color: colors.foreground }]}>Home</Text>
+        <View style={styles.titleRow}>
+          <Text style={[styles.largeTitle, { color: colors.foreground }]}>Home</Text>
+          {/* The app's only way into Settings now that it isn't a tab: a ghost
+              circular button on the title's baseline row, 44pt hit target. */}
+          <Pressable
+            onPress={() => {
+              void Haptics.selectionAsync();
+              onOpenSettings();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.settingsButton,
+              pressed && { backgroundColor: colors.muted },
+            ]}
+          >
+            <Symbol name="gearshape" size={23} color={colors.foreground} fallback="⚙" />
+          </Pressable>
+        </View>
         {/*
           Visually the Search tab's field, but a Pressable rather than a real
           TextInput: tapping hands the query straight to the Search tab (which
@@ -268,7 +291,18 @@ const styles = StyleSheet.create({
   // paddingTop 8 / paddingHorizontal 20 — the exact `header` block Library,
   // Search, Sessions and Settings use, so all five large titles share a baseline.
   header: { gap: 12, paddingTop: 8, paddingHorizontal: 20, paddingBottom: 8 },
+  titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   largeTitle: { fontSize: 34, fontWeight: "700", letterSpacing: 0.2 },
+  // Circular ghost button; negative right margin pulls the GLYPH (not the 44pt
+  // box) onto the same 20pt gutter the title and cards sit on.
+  settingsButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: -10,
+  },
   field: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12 },
   // Mirrors SearchScreen's `input` metrics exactly (17pt, 11pt vertical) so the
   // two fields are the same object to the eye.

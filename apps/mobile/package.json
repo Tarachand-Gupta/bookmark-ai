@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "main": "index.ts",
   "dependencies": {
+    "@ai-sdk/react": "^4.0.19",
     "@bookmark-ai/types": "workspace:*",
     "@clerk/clerk-expo": "^2.19.31",
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "ai": "^7.0.18",
     "expo": "~57.0.12",
     "expo-auth-session": "~57.0.6",
     "expo-blur": "~57.0.2",

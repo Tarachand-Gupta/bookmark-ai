@@ -5,6 +5,8 @@ import { SymbolView, type SymbolViewProps } from "expo-symbols";
 /** SF Symbol name → Ionicons equivalent for Android (Ionicons' visual
  * language is iOS-flavored, so the two platforms read the same). */
 const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  "arrow.clockwise": "refresh",
+  "arrow.up.circle.fill": "arrow-up-circle",
   "arrow.up.right": "open-outline",
   bookmark: "bookmark-outline",
   "bookmark.fill": "bookmark",
@@ -13,12 +15,18 @@ const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   checkmark: "checkmark",
   "checkmark.circle.fill": "checkmark-circle",
   "chevron.down": "chevron-down",
+  "chevron.left": "chevron-back",
   "chevron.right": "chevron-forward",
   "chevron.up": "chevron-up",
   cloud: "cloud-outline",
+  // Ask AI: markdown/tool chips + the composer and thread chrome.
+  "doc.text": "document-text-outline",
   desktopcomputer: "desktop-outline",
   display: "desktop-outline",
   "doc.on.clipboard": "clipboard-outline",
+  // Live sessions (Sessions tab + its Live segment). SF has no .fill variant,
+  // so both states map to the same glyph and the tint carries "active".
+  "dot.radiowaves.left.and.right": "radio-outline",
   "exclamationmark.shield": "shield-outline",
   "exclamationmark.triangle": "warning-outline",
   "exclamationmark.triangle.fill": "warning",
@@ -41,9 +49,12 @@ const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   "rectangle.portrait.and.arrow.right": "log-out-outline",
   safari: "compass-outline",
   sparkles: "sparkles",
+  "square.and.pencil": "create-outline",
   "square.grid.2x2": "grid-outline",
   "square.stack": "albums-outline",
   "square.stack.fill": "albums",
+  "stop.circle.fill": "stop-circle",
+  tablecells: "server-outline",
   trash: "trash-outline",
   "xmark.circle.fill": "close-circle",
 };

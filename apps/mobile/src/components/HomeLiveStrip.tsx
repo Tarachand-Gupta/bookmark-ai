@@ -17,7 +17,7 @@ export function HomeLiveStrip({
   onPress,
 }: {
   devices: LiveDevice[];
-  /** Sessions tab → Ongoing segment (where the tabs live). */
+  /** Sessions tab → Live segment (where the tabs live). */
   onPress: () => void;
 }) {
   const { colors, radius } = useAppTheme();

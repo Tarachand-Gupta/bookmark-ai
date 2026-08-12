@@ -1,6 +1,8 @@
 import { Platform } from "react-native";
 import type {
   Bookmark,
+  ChatConversationDetailResponse,
+  ChatConversationsResponse,
   CreateBookmarkInput,
   CreateSessionInput,
   DashboardResponse,
@@ -253,9 +255,10 @@ async function request<T>(
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   if (!res.ok) {
-    const errBody = (await res.json().catch(() => null)) as
-      | { error?: string; code?: string }
-      | null;
+    const errBody = (await res.json().catch(() => null)) as {
+      error?: string;
+      code?: string;
+    } | null;
     throw errorFromBody(res.status, errBody);
   }
   if (res.status === 204) return undefined as T;
@@ -359,6 +362,37 @@ export function createSession(input: CreateSessionInput): Promise<{ session: Ses
   return request<{ session: Session }>("/api/sessions", { method: "POST", body: input });
 }
 
+/**
+ * The chat agent's streaming endpoint (POST). NOT called through `request()`:
+ * the AI SDK transport owns that fetch so it can read the response body as a
+ * stream (see src/hooks/useAiChat.ts). Exported so the URL is derived from
+ * `getApiUrl()` in exactly one place, like every other route here.
+ */
+export function getChatApiUrl(): string {
+  return `${getApiUrl()}/api/chat`;
+}
+
+/** Conversation summaries, newest updated first (the Ask AI history list). */
+export function listChatConversations(signal?: AbortSignal): Promise<ChatConversationsResponse> {
+  return request<ChatConversationsResponse>("/api/chat/conversations", { signal });
+}
+
+/** One stored conversation with its UIMessage-shaped transcript. */
+export function getChatConversation(
+  id: string,
+  signal?: AbortSignal,
+): Promise<ChatConversationDetailResponse> {
+  return request<ChatConversationDetailResponse>(
+    `/api/chat/conversations/${encodeURIComponent(id)}`,
+    { signal },
+  );
+}
+
+/** Delete a conversation and its messages (204). */
+export function deleteChatConversation(id: string): Promise<void> {
+  return request<void>(`/api/chat/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 /** GET /live on the dedicated live server — the tabs every armed device is
  * currently mirroring. Used for the instant first paint before the SSE
  * stream (see useLiveDevices) takes over, and as its reconnect fallback.
@@ -371,9 +405,10 @@ export async function listLiveDevices(signal?: AbortSignal): Promise<ListLiveRes
     headers: { "content-type": "application/json", ...(await authHeaders()) },
   });
   if (!res.ok) {
-    const errBody = (await res.json().catch(() => null)) as
-      | { error?: string; code?: string }
-      | null;
+    const errBody = (await res.json().catch(() => null)) as {
+      error?: string;
+      code?: string;
+    } | null;
     throw errorFromBody(res.status, errBody);
   }
   return (await res.json()) as ListLiveResponse;

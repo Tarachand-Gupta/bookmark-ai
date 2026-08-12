@@ -22,9 +22,18 @@ import { useSessions } from "../hooks/useSessions";
 import { ageLabel, deviceDisplayLabel, isStale } from "../lib/live";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 
-/** Sessions tab. Two segments (Saved default, §5.6): saved snapshots, and the
- * live device → window → tab view of every browser currently mirroring its open
- * tabs. Tap a saved/live tab to open it; save one live window as a session. */
+/**
+ * How long the screen waits for the first live payload before settling on Saved.
+ * Short enough not to read as a stall, long enough for a normal SSE/GET first
+ * frame — and it only ever fires when live is slow or unreachable.
+ */
+const SEGMENT_DECISION_MS = 1_000;
+
+/** Sessions tab. Two segments — Live (the device → window → tab view of every
+ * browser currently mirroring its open tabs) and Saved (snapshots). Neither is a
+ * hardcoded default: the screen opens on whichever one has something in it (see
+ * `picked`/`auto` below). Tap a saved/live tab to open it; save one live window
+ * as a session. */
 export function SessionsScreen({
   active,
   onOpenSettings,
@@ -35,7 +44,7 @@ export function SessionsScreen({
   active: boolean;
   onOpenSettings: () => void;
   /** One-shot segment request from the Shell (Home's Continue card / live chips
-   * land on Ongoing). Cleared via the callback once applied, so the user's own
+   * land on Live). Cleared via the callback once applied, so the user's own
    * segment taps afterwards are never overridden. */
   requestedSegment?: SessionsSegment | null;
   onRequestedSegmentHandled?: () => void;
@@ -44,11 +53,25 @@ export function SessionsScreen({
   const tabBarClearance = useTabBarClearance();
   const onScroll = useTabBarScroll();
 
-  const [segment, setSegment] = useState<SessionsSegment>("saved");
+  /**
+   * No hardcoded default segment. `picked` is a deliberate choice — a segment
+   * tap, a Shell request, or landing on Saved after saving a window — and once
+   * set it wins for the rest of the screen's life. `auto` is the one-shot
+   * inference from the first live payload (devices → Live, nothing → Saved).
+   *
+   * While BOTH are null the effective segment is "ongoing", because live is the
+   * data the decision depends on and useLiveDevices only connects on that
+   * segment; the body renders a spinner rather than a segment's empty state that
+   * may be about to disappear, and the control highlights nothing yet.
+   */
+  const [picked, setPicked] = useState<SessionsSegment | null>(null);
+  const [auto, setAuto] = useState<SessionsSegment | null>(null);
+  const decided = picked ?? auto;
+  const segment: SessionsSegment = decided ?? "ongoing";
 
   useEffect(() => {
     if (requestedSegment === null) return;
-    setSegment(requestedSegment);
+    setPicked(requestedSegment);
     onRequestedSegmentHandled?.();
   }, [requestedSegment, onRequestedSegmentHandled]);
   const [expandedWindows, setExpandedWindows] = useState<Set<string>>(new Set());
@@ -66,6 +89,27 @@ export function SessionsScreen({
     // the fast cadence on.
     expanded: expandedWindows.size > 0,
   });
+
+  // Settle the default segment from the first live payload (see `picked`/`auto`).
+  // Gated on `active` so the timeout can't fire — and pick Saved — for a tab the
+  // user hasn't opened yet, whose stream isn't even connected.
+  useEffect(() => {
+    if (picked !== null || auto !== null || !active) return;
+    if (live.devices.length > 0) {
+      setAuto("ongoing");
+      return;
+    }
+    // Loaded-and-empty, unreachable, or live turned off: all mean "nothing to
+    // show here", so Saved is the useful landing segment.
+    if (live.loaded || live.error !== null) {
+      setAuto("saved");
+      return;
+    }
+    // Nothing has arrived yet — give the first payload a moment rather than
+    // committing to a segment we have no evidence for.
+    const timer = setTimeout(() => setAuto("saved"), SEGMENT_DECISION_MS);
+    return () => clearTimeout(timer);
+  }, [picked, auto, active, live.devices.length, live.loaded, live.error]);
 
   // Drop expansion keys whose window or device is gone, keeping `expanded` honest.
   useEffect(() => {
@@ -118,7 +162,7 @@ export function SessionsScreen({
       });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       saved.refresh(); // pull the new session into the Saved list
-      setSegment("saved"); // …and land the user on it
+      setPicked("saved"); // …and land the user on it (a deliberate choice — see `picked`)
     } catch (err) {
       Alert.alert("Could not save", err instanceof Error ? err.message : String(err));
     } finally {
@@ -163,7 +207,7 @@ export function SessionsScreen({
 
   const savedLabel =
     saved.loading && saved.sessions.length === 0 ? "Saved" : `Saved · ${saved.sessions.length}`;
-  const liveLabel = live.loaded ? `Ongoing · ${live.devices.length}` : "Ongoing";
+  const liveLabel = live.loaded ? `Live · ${live.devices.length}` : "Live";
 
   const savedEmpty = saved.loading ? (
     <ActivityIndicator style={styles.empty} color={colors.mutedForeground} />
@@ -199,12 +243,14 @@ export function SessionsScreen({
       <View style={styles.header}>
         <Text style={[styles.largeTitle, { color: colors.foreground }]}>Sessions</Text>
         <SegmentedControl
+          // Live first: it's the tab's headline (and the tab bar's radio icon),
+          // Saved is the archive behind it.
           segments={[
-            { value: "saved", label: savedLabel },
-            { value: "ongoing", label: liveLabel },
+            { value: "ongoing", label: liveLabel, symbol: "dot.radiowaves.left.and.right", fallback: "◉" },
+            { value: "saved", label: savedLabel, symbol: "square.stack", fallback: "▣" },
           ]}
-          value={segment}
-          onChange={setSegment}
+          value={decided}
+          onChange={setPicked}
         />
         {segment === "ongoing" && live.paused && live.devices.length > 0 && (
           <Text style={[styles.paused, { color: colors.mutedForeground }]}>
@@ -213,7 +259,11 @@ export function SessionsScreen({
         )}
       </View>
 
-      {segment === "saved" ? (
+      {decided === null ? (
+        // Undecided: neither segment's content is painted yet, so nothing has to
+        // be replaced a frame later (§4.9 hydration, applied to the segment too).
+        <ActivityIndicator style={styles.empty} color={colors.mutedForeground} />
+      ) : segment === "saved" ? (
         <FlatList
           style={styles.list}
           data={saved.sessions}

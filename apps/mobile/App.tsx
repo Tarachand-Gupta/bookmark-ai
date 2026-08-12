@@ -26,12 +26,13 @@ import {
   type SharedLink,
 } from "./src/lib/share-intent";
 import type { NavTarget } from "./src/navigation/intents";
+import { SettingsPresentation } from "./src/navigation/SettingsPresentation";
 import { TabBar, type TabKey } from "./src/navigation/TabBar";
+import { ChatScreen } from "./src/screens/ChatScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { LibraryScreen } from "./src/screens/LibraryScreen";
 import { SearchScreen } from "./src/screens/SearchScreen";
 import { SessionsScreen } from "./src/screens/SessionsScreen";
-import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SignInScreen } from "./src/screens/SignInScreen";
 
 // Only fires when the dev Clerk instance is used for local development (the
@@ -182,7 +183,7 @@ function Gate() {
   );
 }
 
-// Dev/screenshot affordance: EXPO_PUBLIC_INITIAL_TAB=home|library|sessions|search|settings|filters
+// Dev/screenshot affordance: EXPO_PUBLIC_INITIAL_TAB=home|library|sessions|search|chat|settings|filters
 // (inlined at bundle time; unset in normal use → Home, the landing tab).
 const INITIAL = process.env.EXPO_PUBLIC_INITIAL_TAB;
 
@@ -192,11 +193,13 @@ function initialTab(): TabKey {
     INITIAL === "library" ||
     INITIAL === "sessions" ||
     INITIAL === "search" ||
-    INITIAL === "settings"
+    INITIAL === "chat"
   ) {
     return INITIAL;
   }
-  // EXPO_PUBLIC_INITIAL_TAB=filters opens the Library with its sheet up.
+  // EXPO_PUBLIC_INITIAL_TAB=filters opens the Library with its sheet up, and
+  // =settings opens Home with the Settings presentation over it (Settings is no
+  // longer a tab — see initialSettingsOpen below).
   return INITIAL === "filters" ? "library" : "home";
 }
 
@@ -210,6 +213,9 @@ function Shell({
 }) {
   const [tab, setTab] = useState<TabKey>(initialTab);
   const [filterSheetOpen, setFilterSheetOpen] = useState(INITIAL === "filters");
+  // Settings is a presentation, not a tab: one shell-level flag, opened from
+  // Home's title row and from the live-off empty state.
+  const [settingsOpen, setSettingsOpen] = useState(INITIAL === "settings");
 
   // One-shot cross-tab requests (see src/navigation/intents.ts). Screens stay
   // mounted, so a "navigation" is a tab switch plus a request the target screen
@@ -263,16 +269,22 @@ function Shell({
 
   const clearLibraryTag = useCallback(() => setLibraryTag(null), []);
   const clearSessionsSegment = useCallback(() => setSessionsSegment(null), []);
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
-  // Deep links: bookmarkai://tab/<home|library|sessions|search|settings>, bookmarkai://filters
+  // Deep links: bookmarkai://tab/<home|library|sessions|search|chat|settings>, bookmarkai://filters
   useEffect(() => {
     const handle = (url: string | null) => {
       if (!url) return;
-      const match = /(?:tab\/)?(home|library|sessions|search|settings|filters)\/?$/.exec(url);
+      const match = /(?:tab\/)?(home|library|sessions|search|chat|settings|filters)\/?$/.exec(url);
       if (!match) return;
       if (match[1] === "filters") {
         setTab("library");
         setFilterSheetOpen(true);
+      } else if (match[1] === "settings") {
+        // Kept as a link target even though it lost its tab: it opens the
+        // presentation over whatever tab is showing.
+        setSettingsOpen(true);
       } else {
         setTab(match[1] as TabKey);
       }
@@ -292,7 +304,12 @@ function Shell({
       <BlurTargetView ref={blurTargetRef} style={styles.body}>
         <SafeAreaView edges={["top", "left", "right"]} style={styles.body}>
           <View style={[styles.screen, tab !== "home" && styles.hidden]}>
-            <HomeScreen active={tab === "home"} onNavigate={navigate} refreshSignal={savedSignal} />
+            <HomeScreen
+              active={tab === "home"}
+              onNavigate={navigate}
+              onOpenSettings={openSettings}
+              refreshSignal={savedSignal}
+            />
           </View>
           <View style={[styles.screen, tab !== "library" && styles.hidden]}>
             <LibraryScreen
@@ -310,7 +327,7 @@ function Shell({
           <View style={[styles.screen, tab !== "sessions" && styles.hidden]}>
             <SessionsScreen
               active={tab === "sessions"}
-              onOpenSettings={() => setTab("settings")}
+              onOpenSettings={openSettings}
               requestedSegment={sessionsSegment}
               onRequestedSegmentHandled={clearSessionsSegment}
             />
@@ -318,12 +335,17 @@ function Shell({
           <View style={[styles.screen, tab !== "search" && styles.hidden]}>
             <SearchScreen focusRequest={searchFocus} />
           </View>
-          <View style={[styles.screen, tab !== "settings" && styles.hidden]}>
-            <SettingsScreen />
+          <View style={[styles.screen, tab !== "chat" && styles.hidden]}>
+            {/* `active` gates the history fetch: every screen is mounted from
+                launch, so Ask AI must not hit /api/chat/conversations before the
+                tab is ever opened. */}
+            <ChatScreen active={tab === "chat"} />
           </View>
         </SafeAreaView>
       </BlurTargetView>
       <TabBar tab={tab} onChange={setTab} blurTarget={blurTargetRef} />
+      {/* A native full-screen modal, so it covers the floating tab bar too. */}
+      <SettingsPresentation visible={settingsOpen} onClose={closeSettings} />
       {share.notice !== null && (
         <ShareSavedBanner notice={share.notice} onDismiss={share.dismiss} />
       )}
