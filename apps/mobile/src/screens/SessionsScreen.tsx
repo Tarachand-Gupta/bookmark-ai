@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -19,8 +20,19 @@ import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 import { useLiveDevices, type SessionsSegment } from "../hooks/useLiveDevices";
 import { useSessions } from "../hooks/useSessions";
-import { ageLabel, deviceDisplayLabel, isStale } from "../lib/live";
+import { ageLabel, deviceDisplayLabel, isOlder, isStale } from "../lib/live";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
+
+/**
+ * One row of the Live list. Devices that have been quiet for hours (`isOlder`)
+ * fold behind a single "Inactive sessions (N)" row, so a screen whose point is
+ * "what's open right now" isn't mostly two-day-old devices reporting nothing but
+ * "N tabs not shown". Kept as a flat row union rather than a ListFooterComponent
+ * so the folded-open devices stay inside FlatList's virtualization.
+ */
+type LiveRow =
+  | { kind: "device"; device: LiveDevice }
+  | { kind: "olderToggle"; count: number; open: boolean };
 
 /**
  * How long the screen waits for the first live payload before settling on Saved.
@@ -76,6 +88,17 @@ export function SessionsScreen({
   }, [requestedSegment, onRequestedSegmentHandled]);
   const [expandedWindows, setExpandedWindows] = useState<Set<string>>(new Set());
   const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  /**
+   * The inactive group's disclosure. `null` = the user hasn't touched it, which
+   * resolves to collapsed — EXCEPT when nothing fresh exists, where collapsing
+   * everything would leave the Live segment looking empty behind one row (and
+   * there's no clutter to hide when the old devices ARE the content). Storing
+   * "untouched" rather than seeding a boolean keeps the toggle live in that case:
+   * one tap still collapses it, instead of fighting a forced-open value. Resets
+   * to collapsed on every mount, by construction.
+   */
+  const [olderOpen, setOlderOpen] = useState<boolean | null>(null);
 
   const saved = useSessions();
 
@@ -205,6 +228,22 @@ export function SessionsScreen({
     );
   };
 
+  // Fresh devices first exactly as before, then the inactive group's toggle, then
+  // the inactive devices themselves when it's open (see `olderOpen`, `LiveRow`).
+  const liveRows = useMemo<LiveRow[]>(() => {
+    const fresh: LiveDevice[] = [];
+    const older: LiveDevice[] = [];
+    for (const d of live.devices) {
+      (isOlder(d.lastSeenAgeSeconds) ? older : fresh).push(d);
+    }
+    const rows: LiveRow[] = fresh.map((device) => ({ kind: "device", device }));
+    if (older.length === 0) return rows;
+    const open = olderOpen ?? fresh.length === 0;
+    rows.push({ kind: "olderToggle", count: older.length, open });
+    if (open) rows.push(...older.map((device): LiveRow => ({ kind: "device", device })));
+    return rows;
+  }, [live.devices, olderOpen]);
+
   const savedLabel =
     saved.loading && saved.sessions.length === 0 ? "Saved" : `Saved · ${saved.sessions.length}`;
   const liveLabel = live.loaded ? `Live · ${live.devices.length}` : "Live";
@@ -286,8 +325,8 @@ export function SessionsScreen({
       ) : (
         <FlatList
           style={styles.list}
-          data={live.devices}
-          keyExtractor={(d) => d.deviceId}
+          data={liveRows}
+          keyExtractor={(row) => (row.kind === "device" ? row.device.deviceId : "older-toggle")}
           onScroll={onScroll}
           onScrollBeginDrag={live.ping}
           scrollEventThrottle={16}
@@ -300,17 +339,50 @@ export function SessionsScreen({
             />
           }
           ListEmptyComponent={liveEmpty}
-          renderItem={({ item: device }) => (
-            <LiveDeviceSection
-              device={device}
-              isWindowExpanded={(windowId) =>
-                expandedWindows.has(windowKey(device.deviceId, windowId))
-              }
-              onToggleWindow={(windowId) => toggleWindow(device.deviceId, windowId)}
-              savingKey={savingKey}
-              onSaveWindow={(win, windowNumber) => requestSaveWindow(device, win, windowNumber)}
-            />
-          )}
+          renderItem={({ item: row }) => {
+            if (row.kind === "olderToggle") {
+              return (
+                <Pressable
+                  onPress={() => {
+                    void Haptics.selectionAsync();
+                    setOlderOpen(!row.open);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: row.open }}
+                  accessibilityLabel={`Inactive sessions, ${row.count} device${row.count === 1 ? "" : "s"}`}
+                  style={({ pressed }) => [
+                    styles.olderToggle,
+                    { borderTopColor: colors.border },
+                    pressed && { backgroundColor: colors.muted },
+                  ]}
+                >
+                  <Text style={[styles.olderLabel, { color: colors.mutedForeground }]}>
+                    Inactive sessions ({row.count})
+                  </Text>
+                  <View style={{ transform: [{ rotate: row.open ? "90deg" : "0deg" }] }}>
+                    <Symbol
+                      name="chevron.right"
+                      size={13}
+                      color={colors.mutedForeground}
+                      fallback="›"
+                    />
+                  </View>
+                </Pressable>
+              );
+            }
+            const device = row.device;
+            return (
+              <LiveDeviceSection
+                device={device}
+                isWindowExpanded={(windowId) =>
+                  expandedWindows.has(windowKey(device.deviceId, windowId))
+                }
+                onToggleWindow={(windowId) => toggleWindow(device.deviceId, windowId)}
+                savingKey={savingKey}
+                onSaveWindow={(win, windowNumber) => requestSaveWindow(device, win, windowNumber)}
+              />
+            );
+          }}
         />
       )}
     </View>
@@ -323,6 +395,20 @@ const styles = StyleSheet.create({
   header: { gap: 10, paddingTop: 8, paddingBottom: 8, paddingHorizontal: 20 },
   largeTitle: { fontSize: 34, fontWeight: "700", letterSpacing: 0.2 },
   paused: { fontSize: 13 },
+  // Quiet, full-width divider row — deliberately not a card, so the fold reads as
+  // a seam in the list rather than another device.
+  olderToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 8,
+    marginHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  olderLabel: { fontSize: 13, fontWeight: "500" },
   empty: { alignItems: "center", gap: 8, paddingVertical: 72, paddingHorizontal: 24 },
   emptyTitle: { fontSize: 17, fontWeight: "600" },
   emptyBody: { fontSize: 15, maxWidth: 320, textAlign: "center", lineHeight: 20 },

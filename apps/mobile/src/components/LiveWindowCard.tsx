@@ -4,6 +4,7 @@ import * as Haptics from "expo-haptics";
 import type { LiveTab, LiveWindow } from "@bookmark-ai/types";
 import { useAppTheme } from "../context/PreferencesContext";
 import { STALE_OPACITY } from "../lib/live";
+import { FaviconTile } from "./BookmarkRow";
 import { hostOf } from "./SessionCard";
 import { Symbol } from "./Symbol";
 
@@ -158,6 +159,10 @@ function LiveTabRow({ tab, deviceLabel }: { tab: LiveTab; deviceLabel: string })
           pressed && { backgroundColor: colors.border },
         ]}
       >
+        {/* Same 24pt tile the saved-session tab rows use (SessionCard.TabRow) —
+            live checkpoints carry each tab's favIconUrl, already narrowed to
+            http(s) at capture time by the extension's sanitizeFavicon. */}
+        <FaviconTile url={tab.favIconUrl} size={24} />
         <View style={styles.tabTexts}>
           <Text numberOfLines={1} style={[styles.tabTitle, { color: colors.foreground }]}>
             {primary}
@@ -173,6 +178,9 @@ function LiveTabRow({ tab, deviceLabel }: { tab: LiveTab; deviceLabel: string })
 
   return (
     <View style={[styles.tabRow, { borderTopColor: colors.border }]}>
+      {/* Inert rows keep the leading slot so titles stay on one x-axis; a
+          browser-internal or redacted tab just shows the neutral fallback. */}
+      <FaviconTile url={tab.favIconUrl} size={24} />
       <View style={styles.tabTexts}>
         <Text numberOfLines={1} style={[styles.tabTitle, { color: colors.mutedForeground }]}>
           {primary}
@@ -220,7 +228,10 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    marginLeft: 62,
+    // 28 + padding 14 + favicon 24 + gap 10 = 76: tab TITLES keep the exact
+    // x-position they had before the favicon (62 + 14), icon under the badge —
+    // identical arithmetic to SessionCard's saved tab rows.
+    marginLeft: 28,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   tabTexts: { flex: 1, gap: 1 },

@@ -30,13 +30,21 @@ export function BookmarkRow({ bookmark, last }: { bookmark: Bookmark; last?: boo
   );
 }
 
+/** Only schemes RN's Image can actually load. Live tabs come off real browser
+ * windows, so their favicon can be `chrome://`, `chrome-extension://` or a
+ * `moz-extension://` url that would just fail to decode — those fall back to
+ * the neutral dot instead of hitting the image loader. */
+function isRenderableFavicon(url?: string | null): boolean {
+  return Boolean(url) && /^(https?:|data:image\/)/i.test(url as string);
+}
+
 export function FaviconTile({ url, size = 36 }: { url?: string | null; size?: number }) {
   const { colors, radius } = useAppTheme();
   // Which url the failure belongs to, not a sticky boolean: a broken favicon
   // falls back to the neutral dot, but a later refresh that swaps in a working
   // one (the server backfills OG data seconds after a save) still gets tried.
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const showImage = Boolean(url) && url !== failedUrl;
+  const showImage = isRenderableFavicon(url) && url !== failedUrl;
   return (
     <View
       style={{

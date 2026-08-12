@@ -2,6 +2,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import type { LiveTab } from "@bookmark-ai/types";
 import { useAppTheme } from "../context/PreferencesContext";
 import type { LiveDeviceMatchGroup } from "../hooks/useLiveSearchMatches";
+import { FaviconTile } from "./BookmarkRow";
 import { PulseDot } from "./PulseDot";
 import { hostOf } from "./SessionCard";
 import { Symbol } from "./Symbol";
@@ -83,6 +84,10 @@ function LiveMatchTabRow({ tab, deviceLabel }: { tab: LiveTab; deviceLabel: stri
           pressed && { backgroundColor: colors.border },
         ]}
       >
+        {/* Same 24pt FaviconTile as the saved-session and Live-segment tab rows;
+            this card is flat (no badge column) so the tile sits at the card's
+            own 14pt gutter rather than indented under a header glyph. */}
+        <FaviconTile url={tab.favIconUrl} size={24} />
         <View style={styles.tabTexts}>
           <Text numberOfLines={1} style={[styles.tabTitle, { color: colors.foreground }]}>
             {primary}
@@ -100,6 +105,9 @@ function LiveMatchTabRow({ tab, deviceLabel }: { tab: LiveTab; deviceLabel: stri
 
   return (
     <View style={[styles.tabRow, { borderTopColor: colors.border }]}>
+      {/* Inert (redacted / browser-internal) rows keep the leading slot so every
+          match in the card lines up on one x-axis. */}
+      <FaviconTile url={tab.favIconUrl} size={24} />
       <View style={styles.tabTexts}>
         <Text numberOfLines={1} style={[styles.tabTitle, { color: colors.mutedForeground }]}>
           {primary}

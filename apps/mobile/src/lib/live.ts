@@ -12,11 +12,28 @@ import type { SymbolViewProps } from "expo-symbols";
 /** A device this old or older is stale — hollow dot, dimmed card (§4.4). */
 const STALE_AFTER_SECONDS = 600;
 
+/**
+ * At or above this (6 h) a device is "inactive": it folds away behind a
+ * collapsed group instead of sitting in the live list. Kept numerically
+ * identical to `OLDER_MIN_SECONDS` in `apps/web/lib/live-format.ts` (whose
+ * "Show N older devices" button is the same split) so web and mobile never
+ * disagree about which devices are old — same `>=` boundary too.
+ *
+ * Deliberately far above `STALE_AFTER_SECONDS`: stale (10 min) only means "gone
+ * quiet, dim it", and a device you closed the laptop lid on 20 minutes ago
+ * still has tabs worth seeing. Only the multi-hour ones are clutter.
+ */
+const OLDER_AFTER_SECONDS = 21_600;
+
 /** Dimming applied to a stale device's cards (mock: ~55%). */
 export const STALE_OPACITY = 0.55;
 
 export function isStale(ageSeconds: number): boolean {
   return ageSeconds >= STALE_AFTER_SECONDS;
+}
+
+export function isOlder(ageSeconds: number): boolean {
+  return ageSeconds >= OLDER_AFTER_SECONDS;
 }
 
 /**
