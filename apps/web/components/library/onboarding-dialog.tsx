@@ -219,8 +219,13 @@ export function OnboardingDialog({ open, onOpenChange }: OnboardingDialogProps) 
                       aria-current={isActive ? "step" : undefined}
                       className={cn(
                         "flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm transition-colors",
+                        // Same active treatment as the Settings dialog's rail
+                        // (bg-primary/text-primary-foreground) — this rail is a
+                        // copy of that one, and `bg-accent` was too close to the
+                        // nav's own bg-muted/30 in dark mode to tell the current
+                        // step apart from the rest.
                         isActive
-                          ? "bg-accent font-medium text-accent-foreground"
+                          ? "bg-primary font-medium text-primary-foreground"
                           : "text-muted-foreground hover:bg-accent/50",
                       )}
                     >

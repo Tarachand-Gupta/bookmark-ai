@@ -35,8 +35,12 @@ function SheetOverlay({
   return (
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
+      // `backdrop-blur-sm` — local deviation from the shadcn default; see the
+      // note on DialogOverlay in dialog.tsx. All three overlays (dialog, sheet,
+      // alert-dialog) blur identically so the mobile sidebar sheet and the
+      // filter sheets don't sit over a sharp page while dialogs blur.
       className={cn(
-        "fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        "fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
         className
       )}
       {...props}

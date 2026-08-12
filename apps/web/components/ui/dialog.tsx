@@ -38,8 +38,15 @@ function DialogOverlay({
   return (
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
+      // `backdrop-blur-sm` is a LOCAL deviation from the shadcn default (dim
+      // only). Dimming alone left the page's text and card grid legible behind
+      // the dialog, which on a phone read as two overlapping screens; the blur
+      // pushes the background out of focus so the dialog is unambiguously the
+      // foreground. Kept at every viewport size (not `sm:`-scoped) so the
+      // overlay looks the same everywhere — matched in sheet.tsx and
+      // alert-dialog.tsx. If the shadcn CLI ever rewrites this file, re-add it.
       className={cn(
-        "fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        "fixed inset-0 z-50 bg-black/50 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
         className
       )}
       {...props}

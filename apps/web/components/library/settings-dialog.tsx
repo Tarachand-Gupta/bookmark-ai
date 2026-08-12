@@ -152,8 +152,18 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
                       aria-current={section === s.id ? "page" : undefined}
                       className={cn(
                         "flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-1.5 text-sm transition-colors",
+                        // ACTIVE = the app's standard selected-chip treatment
+                        // (`bg-primary`/`text-primary-foreground`, same as the tag
+                        // rail, the mobile filter chips and the date-range presets).
+                        // It was `bg-accent`, which in dark mode is
+                        // oklch(0.269 0 0) — a ~2% lift off the dialog's own
+                        // surface, so on a phone the selected chip was
+                        // indistinguishable from the unselected ones. `primary`
+                        // flips per theme (near-white on dark, near-black on
+                        // light), so this reads as the white accent in dark mode
+                        // without hardcoding a color.
                         section === s.id
-                          ? "bg-accent font-medium text-accent-foreground"
+                          ? "bg-primary font-medium text-primary-foreground"
                           : "text-muted-foreground hover:bg-accent/50",
                       )}
                     >
