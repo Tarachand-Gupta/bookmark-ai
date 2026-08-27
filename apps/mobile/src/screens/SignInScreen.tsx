@@ -227,11 +227,31 @@ export function SignInScreen() {
       //     untouched flow reports verification status "unverified", NOT
       //     null/undefined (QA-reproduced on device) — treat both as "no
       //     signal"; only a verification past unverified counts as progress.
+      //
+      //     That fallback MUST stay gated on the sheet never having run, because
+      //     a fully SUCCESSFUL round trip is indistinguishable from an untouched
+      //     one by resource shape alone. clerk-expo 2.19.31's useSSO does
+      //     `signIn.create({ strategy, redirectUrl })` (leaving the resource at
+      //     `needs_identifier` / `unverified`) and only advances it via
+      //     `signIn.reload({ rotatingTokenNonce })` after the callback — and that
+      //     reload is exactly the call clerk-js resolves as a silent no-op when
+      //     it decides it is offline (`_baseFetch` → null, no throw), which is
+      //     the norm right as the auth sheet tears the app's sockets down. The
+      //     resources then come back byte-identical to "never started" with a
+      //     null createdSessionId, on a sign-in Clerk already completed
+      //     server-side. Treating that as a cancel disarmed the very watcher
+      //     built to recover it, and dropped the user back on this form in
+      //     silence — no session, no spinner, no error. See
+      //     useFinishPendingSession for the measured clerk-js behaviour.
       const untouched = (s: string | null | undefined) => s == null || s === "unverified";
+      // `authSessionResult` is non-null whenever openAuthSessionAsync actually
+      // resolved; sawExternalFlow() covers the app having left and come back.
+      const sheetRan = authSessionResult != null || finish.sawExternalFlow();
       const cancelled =
         authSessionResult?.type === "cancel" ||
         authSessionResult?.type === "dismiss" ||
-        ((!ssoSignIn || ssoSignIn.status === "needs_identifier") &&
+        (!sheetRan &&
+          (!ssoSignIn || ssoSignIn.status === "needs_identifier") &&
           untouched(ssoSignIn?.firstFactorVerification.status) &&
           untouched(ssoSignUp?.verifications.externalAccount.status));
       if (cancelled) {
