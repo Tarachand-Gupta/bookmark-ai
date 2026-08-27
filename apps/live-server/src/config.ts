@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { decodeEncryptionSecret } from "./crypto";
 
 /** CSV env → trimmed non-empty list. */
 function csv(value: string | undefined): string[] {
@@ -32,6 +33,12 @@ const rawSchema = z.object({
   // the Clerk path stays primary, so a missing secret just declines `bkd_…` tokens.
   DEVICE_TOKEN_SECRET: z.string().optional(),
 
+  // App-level AES-256-GCM key for encrypting `windowsJson` at rest in Redis
+  // (base64 of 32 raw bytes — see src/crypto.ts). Optional: unset/empty ⇒ windowsJson
+  // is stored as plaintext (dev). SET-BUT-INVALID is a hard boot failure (below) —
+  // silently degrading a configured key to plaintext is the worst outcome.
+  LIVE_ENCRYPTION_SECRET: z.string().optional(),
+
   LIVE_TTL_DAYS: z.coerce.number().int().positive().default(7),
   LIVE_PUSH_QUOTA_PER_DAY: z.coerce.number().int().positive().default(2000),
 
@@ -59,6 +66,7 @@ export type Config = {
   authorizedParties: string[];
   allowedOrigins: string[];
   deviceTokenSecret: string | undefined;
+  liveEncryptionSecret: string | undefined;
   ttlDays: number;
   ttlSeconds: number;
   ttlHours: number;
@@ -97,6 +105,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     );
   }
 
+  // Fail LOUDLY on a set-but-unusable encryption key. An unset/empty value is a
+  // deliberate opt-out (plaintext + a one-time warn, dev ergonomics), but a value
+  // that is present and does NOT decode to exactly 32 base64 bytes means someone
+  // INTENDED encryption and would otherwise get plaintext storage behind a single
+  // warn line — a silent security downgrade. Throwing here exits the process, so
+  // systemd flaps the unit and the deploy's post-deploy health check goes red.
+  // NB: the message never echoes the value (it is a secret and CI logs are public).
+  const liveEncryptionSecret = e.LIVE_ENCRYPTION_SECRET?.trim() || undefined;
+  if (liveEncryptionSecret && !decodeEncryptionSecret(liveEncryptionSecret)) {
+    throw new Error(
+      "live-server: LIVE_ENCRYPTION_SECRET is set but invalid — it must be base64 of exactly " +
+        "32 raw bytes (openssl rand -base64 32). Refusing to start and silently store live " +
+        "tabs as plaintext. Unset the variable to opt into plaintext mode deliberately.",
+    );
+  }
+
   return {
     port: e.PORT,
     redisUrl: e.REDIS_URL,
@@ -107,6 +131,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     authorizedParties: csv(e.CLERK_AUTHORIZED_PARTIES),
     allowedOrigins: csv(e.LIVE_ALLOWED_ORIGINS),
     deviceTokenSecret: e.DEVICE_TOKEN_SECRET,
+    liveEncryptionSecret,
     ttlDays: e.LIVE_TTL_DAYS,
     ttlSeconds: e.LIVE_TTL_DAYS * 24 * 60 * 60,
     ttlHours: e.LIVE_TTL_DAYS * 24,

@@ -67,7 +67,9 @@ async function main(): Promise<void> {
   process.on("SIGTERM", shutdown);
 
   try {
-    await app.listen({ host: "0.0.0.0", port: config.port });
+    // Bound to loopback because Caddy reverse-proxies from 127.0.0.1 (see
+    // deploy/Caddyfile.snippet); avoids relying on the host firewall for the app port.
+    await app.listen({ host: "127.0.0.1", port: config.port });
   } catch (err) {
     app.log.error(err);
     process.exit(1);

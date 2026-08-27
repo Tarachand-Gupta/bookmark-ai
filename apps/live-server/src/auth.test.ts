@@ -60,6 +60,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     authorizedParties: [ALLOWED_PARTY],
     allowedOrigins: [],
     deviceTokenSecret: undefined,
+    liveEncryptionSecret: undefined,
     ttlDays: 7,
     ttlSeconds: 604800,
     ttlHours: 168,

@@ -24,7 +24,8 @@
         "TURSO_GROUP",
         "AI_KEY_ENCRYPTION_SECRET",
         "ADMIN_USER_IDS",
-        "DEVICE_TOKEN_SECRET"
+        "DEVICE_TOKEN_SECRET",
+        "LIVE_ENCRYPTION_SECRET"
       ]
     },
     "dev": {

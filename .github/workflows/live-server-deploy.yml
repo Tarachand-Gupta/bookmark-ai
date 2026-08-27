@@ -83,6 +83,15 @@ jobs:
             "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
             "DEVICE_TOKEN_SECRET='$DEVICE_TOKEN_SECRET' ENV_FILE='${{ secrets.VM_APP_DIR }}/.env' sh -s" <<'REMOTE'
           set -eu
+          # A hand-edited .env whose last line has NO trailing newline would otherwise
+          # get the new assignment GLUED onto it (`FOO=barDEVICE_TOKEN_SECRET=…`),
+          # silently corrupting both vars. `$(tail -c1 …)` strips trailing newlines, so
+          # it is empty exactly when the file already ends in one (and for an empty
+          # file, where a leading blank line would be wrong). Written as `if` — not an
+          # `&&` chain — so a false condition never trips `set -e`.
+          end_with_newline() {
+            if [ -s "$1" ] && [ -n "$(tail -c1 "$1")" ]; then echo >> "$1"; fi
+          }
           touch "$ENV_FILE"
           line="DEVICE_TOKEN_SECRET=$DEVICE_TOKEN_SECRET"
           if grep -q '^DEVICE_TOKEN_SECRET=' "$ENV_FILE"; then
@@ -92,13 +101,67 @@ jobs:
             else
               tmp=$(mktemp)
               grep -v '^DEVICE_TOKEN_SECRET=' "$ENV_FILE" > "$tmp" || true
+              end_with_newline "$tmp"
               printf '%s\n' "$line" >> "$tmp"
               mv "$tmp" "$ENV_FILE"
               echo "DEVICE_TOKEN_SECRET updated"
             fi
           else
+            end_with_newline "$ENV_FILE"
             printf '%s\n' "$line" >> "$ENV_FILE"
             echo "DEVICE_TOKEN_SECRET appended"
+          fi
+          REMOTE
+
+      - name: Ensure live-encryption secret in VM env
+        # Idempotently upsert LIVE_ENCRYPTION_SECRET into the VM's .env (never synced
+        # by rsync). AES-256-GCM key that encrypts live-tab `windowsJson` at rest in
+        # Redis (base64, 32 bytes). If unset, the server degrades to plaintext-with-warn
+        # (no breakage) — so this step is a no-op skip until the secret exists. A secret
+        # that IS set but does not decode to 32 bytes makes the server REFUSE TO BOOT
+        # (config.ts) rather than silently store plaintext, and the health check below
+        # turns the deploy red. GH masks the value in logs; we still avoid echoing it
+        # (no `set -x`, passed via env var).
+        env:
+          LIVE_ENCRYPTION_SECRET: ${{ secrets.LIVE_ENCRYPTION_SECRET }}
+        run: |
+          if [ -z "$LIVE_ENCRYPTION_SECRET" ]; then
+            echo "LIVE_ENCRYPTION_SECRET not set — skipping (live tabs store plaintext)"
+            exit 0
+          fi
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+            "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
+            "LIVE_ENCRYPTION_SECRET='$LIVE_ENCRYPTION_SECRET' ENV_FILE='${{ secrets.VM_APP_DIR }}/.env' sh -s" <<'REMOTE'
+          set -eu
+          # A hand-edited .env whose last line has NO trailing newline would otherwise
+          # get the new assignment GLUED onto it (`FOO=barLIVE_ENCRYPTION_SECRET=…`),
+          # silently corrupting both vars — and a corrupt LIVE_ENCRYPTION_SECRET is now
+          # a hard boot failure (config.ts), so this would take the service down.
+          # `$(tail -c1 …)` strips trailing newlines, so it is empty exactly when the
+          # file already ends in one (and for an empty file, where a leading blank line
+          # would be wrong). Written as `if` — not an `&&` chain — so a false condition
+          # never trips `set -e`.
+          end_with_newline() {
+            if [ -s "$1" ] && [ -n "$(tail -c1 "$1")" ]; then echo >> "$1"; fi
+          }
+          touch "$ENV_FILE"
+          line="LIVE_ENCRYPTION_SECRET=$LIVE_ENCRYPTION_SECRET"
+          if grep -q '^LIVE_ENCRYPTION_SECRET=' "$ENV_FILE"; then
+            current=$(grep '^LIVE_ENCRYPTION_SECRET=' "$ENV_FILE" | head -n1 | cut -d= -f2-)
+            if [ "$current" = "$LIVE_ENCRYPTION_SECRET" ]; then
+              echo "LIVE_ENCRYPTION_SECRET already up to date"
+            else
+              tmp=$(mktemp)
+              grep -v '^LIVE_ENCRYPTION_SECRET=' "$ENV_FILE" > "$tmp" || true
+              end_with_newline "$tmp"
+              printf '%s\n' "$line" >> "$tmp"
+              mv "$tmp" "$ENV_FILE"
+              echo "LIVE_ENCRYPTION_SECRET updated"
+            fi
+          else
+            end_with_newline "$ENV_FILE"
+            printf '%s\n' "$line" >> "$ENV_FILE"
+            echo "LIVE_ENCRYPTION_SECRET appended"
           fi
           REMOTE
 

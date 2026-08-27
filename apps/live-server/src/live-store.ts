@@ -1,6 +1,13 @@
 import type { LiveDevice, LiveWindow, PushLiveStateInput } from "@bookmark-ai/types";
 import type { Config } from "./config";
 import {
+  decryptWindows,
+  encryptionEnabled,
+  encryptWindows,
+  isEncryptedEnvelope,
+  windowsAad,
+} from "./crypto";
+import {
   channelKey,
   devKey,
   enabledKey,
@@ -65,6 +72,12 @@ const DISPLAY_FIELDS = [
 export class LiveStore {
   private readonly ttlSeconds: number;
   private readonly quota: number;
+  /**
+   * The at-rest encryption key (base64), taken from Config and threaded into every
+   * crypto call. Held HERE rather than read from process.env inside crypto.ts so a
+   * test can pin it on the fake Config instead of inheriting the developer's shell.
+   */
+  private readonly encryptionSecret: string | undefined;
 
   constructor(
     private readonly redis: RedisBundle,
@@ -72,6 +85,7 @@ export class LiveStore {
   ) {
     this.ttlSeconds = config.ttlSeconds;
     this.quota = config.pushQuotaPerDay;
+    this.encryptionSecret = config.liveEncryptionSecret;
   }
 
   async ping(): Promise<boolean> {
@@ -156,8 +170,20 @@ export class LiveStore {
     // One extra round-trip: the stored value of exactly the display fields, in the
     // same order. A missing hash yields all-null (⇒ unequal ⇒ changed). The 42KB
     // windowsJson read here is the cost we accept to save the far larger fan-out.
+    // windowsJson is stored ENCRYPTED, so decrypt it back to plaintext before the
+    // compare — otherwise the fresh random IV makes every push look changed and the
+    // no-op fan-out suppression breaks. decrypt(encrypt(x)) === x exactly, and a
+    // legacy plaintext value passes through unchanged, so the equality still holds.
+    const aad = windowsAad(userId, input.deviceId);
     const stored = await this.redis.command.hmget(dk, ...DISPLAY_FIELDS);
-    const changed = DISPLAY_FIELDS.some((field, i) => stored[i] !== display[field]);
+    const storedWindowsJson = stored[DISPLAY_FIELDS.indexOf("windowsJson")] ?? null;
+    const changed = DISPLAY_FIELDS.some((field, i) => {
+      const s =
+        field === "windowsJson" && stored[i] != null
+          ? decryptWindows(stored[i], aad, this.encryptionSecret)
+          : stored[i];
+      return s !== display[field];
+    });
 
     if (!changed) {
       // No-op push: viewers already show this exact state. Refresh liveness + TTL +
@@ -165,18 +191,47 @@ export class LiveStore {
       // "as of" metadata still matches what a full push would leave — it is
       // display-only and never surfaced by listDevices, so this has no read-side
       // effect, but it keeps the suppressed path a pure superset-minus-publish.
+      //
+      // OPPORTUNISTIC MIGRATION: a device whose tabs never change (a parked laptop)
+      // would otherwise keep its pre-encryption PLAINTEXT windowsJson forever, since
+      // only the `changed` branch ever rewrites the field. If encryption is on and
+      // the stored value is not an envelope, re-write it as ciphertext here — the
+      // plaintext we would encrypt is byte-identical to what is stored (that is what
+      // `!changed` just proved), so this is a pure representation change. It bounds
+      // plaintext→ciphertext migration to ONE push cycle (~2 min) fleet-wide.
+      // Deliberately does NOT publish: nothing a viewer renders moved, and
+      // `changed:false` is what suppresses the fan-out in routes/push.
+      const needsMigration =
+        encryptionEnabled(this.encryptionSecret) &&
+        storedWindowsJson !== null &&
+        !isEncryptedEnvelope(storedWindowsJson);
+      const liveness: Record<string, string> = {
+        lastSeenAt: nowIso,
+        capturedAt: input.capturedAt,
+        ...(needsMigration
+          ? { windowsJson: encryptWindows(display.windowsJson, aad, this.encryptionSecret) }
+          : {}),
+      };
       await this.redis.command
         .multi()
-        .hset(dk, { lastSeenAt: nowIso, capturedAt: input.capturedAt })
+        .hset(dk, liveness)
         .zadd(ik, now, input.deviceId)
         .expire(dk, this.ttlSeconds)
         .exec();
       return { changed: false, newWindowsShared };
     }
 
+    // Encrypt ONLY windowsJson at rest (its value carries the real tab URLs/titles/
+    // favicons); label/os/timestamps/tabCount and the separate winnames hash stay
+    // plaintext. The Redis field name is unchanged — the value is just ciphertext now.
     await this.redis.command
       .multi()
-      .hset(dk, { ...display, capturedAt: input.capturedAt, lastSeenAt: nowIso })
+      .hset(dk, {
+        ...display,
+        windowsJson: encryptWindows(display.windowsJson, aad, this.encryptionSecret),
+        capturedAt: input.capturedAt,
+        lastSeenAt: nowIso,
+      })
       .hsetnx(dk, "createdAt", nowIso)
       .zadd(ik, now, input.deviceId)
       .expire(dk, this.ttlSeconds)
@@ -263,7 +318,9 @@ export class LiveStore {
       const names = (nameEntry?.[1] ?? null) as Record<string, string> | null;
       // ABSENT/anything-but-"0" ⇒ shared (the default); overlay false ONLY on "0".
       const newWindowsShared = (newWinEntry?.[1] ?? null) !== "0";
-      devices.push(hashToDevice(id, h, now, names, newWindowsShared));
+      devices.push(
+        hashToDevice(userId, id, h, now, this.encryptionSecret, names, newWindowsShared),
+      );
     });
 
     if (orphaned.length > 0) await this.redis.command.zrem(ik, ...orphaned);
@@ -315,32 +372,98 @@ export class LiveStore {
   }
 }
 
+/**
+ * Minimal structural guard for ONE stored window. A `windowsJson` value that is
+ * valid JSON but the WRONG SHAPE must not reach the winnames overlay (assigning
+ * `.name` onto a number/null throws in strict-mode ESM) or the response-schema
+ * validation in routes/list (a zod throw 500s the whole user's GET /live, taking
+ * their HEALTHY devices down with the corrupt one). Deliberately checks only what
+ * those two steps need — object-ness, an integer `windowId`, and tabs that are
+ * objects with a string `url` — rather than re-implementing `liveWindowSchema`,
+ * which would just be a second copy to drift.
+ */
+function isRenderableWindow(value: unknown): value is LiveWindow {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const w = value as Record<string, unknown>;
+  if (!Number.isInteger(w.windowId)) return false;
+  if (w.name !== undefined && w.name !== null && typeof w.name !== "string") return false;
+  if (w.focused !== undefined && typeof w.focused !== "boolean") return false;
+  if (!Array.isArray(w.tabs)) return false;
+  return w.tabs.every((t) => {
+    if (typeof t !== "object" || t === null || Array.isArray(t)) return false;
+    const tab = t as Record<string, unknown>;
+    return (
+      typeof tab.url === "string" && (tab.title === undefined || typeof tab.title === "string")
+    );
+  });
+}
+
+/**
+ * Parse a stored `windowsJson` into windows that are SAFE to render, never throwing.
+ * Covers every hostile/corrupt shape a Redis value can hold: not JSON, a non-array
+ * (`null`, `{"a":1}`), an array of non-objects (`[1,2,3]`), or ciphertext this key
+ * cannot open. Bad WINDOWS are dropped individually so one wrecked entry does not
+ * blank a device that still has good windows; a bad TOP LEVEL yields zero windows.
+ */
+function parseStoredWindows(
+  stored: string,
+  aad: string,
+  secretB64: string | undefined,
+): LiveWindow[] {
+  try {
+    // windowsJson is stored encrypted; decryptWindows never throws — it returns the
+    // plaintext JSON, passes legacy plaintext through, or yields "[]" on a bad/rotated/
+    // wrong-owner payload so a corrupt snapshot renders as zero windows rather than 500ing.
+    const parsed: unknown = JSON.parse(decryptWindows(stored, aad, secretB64));
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isRenderableWindow);
+  } catch {
+    return [];
+  }
+}
+
+/** Stored counter → a non-negative integer the response schema will accept. */
+function toCount(raw: string | undefined): number {
+  const n = Number(raw ?? "0");
+  return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+}
+
 function hashToDevice(
+  userId: string,
   deviceId: string,
   h: Record<string, string>,
   now: number,
+  secretB64: string | undefined,
   names?: Record<string, string> | null,
   newWindowsShared = true,
 ): LiveDevice {
-  let windows: LiveWindow[] = [];
-  try {
-    windows = JSON.parse(h.windowsJson ?? "[]") as LiveWindow[];
-  } catch {
-    windows = [];
-  }
+  // AAD binds the ciphertext to this (user, device) slot — a hash copied from
+  // another device fails the GCM check and degrades to zero windows.
+  const windows = parseStoredWindows(
+    h.windowsJson ?? "[]",
+    windowsAad(userId, deviceId),
+    secretB64,
+  );
 
   // Overlay user-set window names. Match by the windowId's string form (the same
   // key the rename route stored). Stale entries for windowIds no longer present
   // are simply not applied. Non-empty only — an empty stored value = no override.
+  // Every `w` here passed `isRenderableWindow`, so the assignment cannot throw.
   if (names) {
     for (const w of windows) {
       const override = names[String(w.windowId)];
       if (override) w.name = override;
     }
   }
-  const lastSeenAt = h.lastSeenAt ?? new Date(now).toISOString();
-  const seenMs = Date.parse(lastSeenAt);
-  const ageSeconds = Number.isNaN(seenMs) ? 0 : Math.max(0, Math.floor((now - seenMs) / 1000));
+  // Same defence as the windows guard, one field over: a corrupt/non-ISO
+  // `lastSeenAt` or a non-numeric `tabCount` would fail the response schema in
+  // routes/list and 500 the WHOLE user's read. Degrade the single bad field instead.
+  const seenMs = Date.parse(h.lastSeenAt ?? "");
+  const valid = !Number.isNaN(seenMs);
+  // Re-serialized (not passed through) so the value always satisfies the response
+  // schema's `.datetime()`; for anything our own writer stored it is byte-identical.
+  const lastSeenAt = new Date(valid ? seenMs : now).toISOString();
+  const ageSeconds = valid ? Math.max(0, Math.floor((now - seenMs) / 1000)) : 0;
 
   return {
     deviceId,
@@ -349,8 +472,8 @@ function hashToDevice(
     device: (h.device ?? "other") as LiveDevice["device"],
     os: h.os ? h.os : null,
     windows,
-    tabCount: Number(h.tabCount ?? "0"),
-    hiddenTabCount: Number(h.hiddenTabCount ?? "0"),
+    tabCount: toCount(h.tabCount),
+    hiddenTabCount: toCount(h.hiddenTabCount),
     lastSeenAt,
     lastSeenAgeSeconds: ageSeconds,
     // Only overlay the explicit opt-out; absent (default true) stays undefined so

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { test } from "node:test";
-import type { PushLiveStateInput } from "@bookmark-ai/types";
+import { listLiveResponseSchema, type PushLiveStateInput } from "@bookmark-ai/types";
 import type { Config } from "./config";
+import { decryptWindows, isEncryptedEnvelope, windowsAad } from "./crypto";
 import { devKey, indexKey, newWindowsKey, winNamesKey } from "./keys";
 import { LiveStore } from "./live-store";
 import type { RedisBundle } from "./redis";
@@ -13,7 +15,15 @@ import type { LiveEvent } from "./types";
  * so we can assert the fan-out signal (`changed`) and that liveness/TTL/index are
  * still refreshed on a suppressed push. Run with `pnpm --filter
  * @bookmark-ai/live-server test` (tsx's built-in node:test runner — no extra dep).
+ *
+ * `liveEncryptionSecret` is PINNED on every fake Config below (default: undefined =
+ * plaintext) instead of being inherited from the shell: the store threads it into
+ * crypto.ts explicitly, so exporting LIVE_ENCRYPTION_SECRET in your terminal must
+ * not change what these tests observe.
  */
+
+/** A throwaway 32-byte key, so no test depends on a real/exported secret. */
+const TEST_KEY = randomBytes(32).toString("base64");
 
 interface MultiOp {
   cmd: string;
@@ -82,7 +92,11 @@ function makeHarness(initial?: Record<string, string>): Harness {
   };
 
   const redis = { command } as unknown as RedisBundle;
-  const config = { ttlSeconds: 604800, pushQuotaPerDay: 2000 } as Config;
+  const config = {
+    ttlSeconds: 604800,
+    pushQuotaPerDay: 2000,
+    liveEncryptionSecret: undefined, // pinned: plaintext, never the shell's value
+  } as Config;
   const store = new LiveStore(redis, config);
   return { store, hash, ops, resetOps: () => (ops.length = 0) };
 }
@@ -271,7 +285,7 @@ interface StoreHarness {
   published: LiveEvent[];
 }
 
-function makeStoreHarness(): StoreHarness {
+function makeStoreHarness(liveEncryptionSecret?: string): StoreHarness {
   const hashes = new Map<string, Map<string, string>>();
   const zset = new Map<string, number>();
   const strings = new Map<string, string>();
@@ -385,7 +399,13 @@ function makeStoreHarness(): StoreHarness {
   };
 
   const redis = { command } as unknown as RedisBundle;
-  const config = { ttlSeconds: 604800, pushQuotaPerDay: 2000, ttlHours: 168 } as Config;
+  // Pinned explicitly (undefined unless a test opts in) — see the file header.
+  const config = {
+    ttlSeconds: 604800,
+    pushQuotaPerDay: 2000,
+    ttlHours: 168,
+    liveEncryptionSecret,
+  } as Config;
   return { store: new LiveStore(redis, config), hashes, zset, strings, published };
 }
 
@@ -509,4 +529,228 @@ test("deleteAllDevices removes every device's new-window policy key", async () =
   h.strings.set(newWindowsKey(USER, DEV), "0");
   await h.store.deleteAllDevices(USER);
   assert.equal(h.strings.has(newWindowsKey(USER, DEV)), false);
+});
+
+// ── at-rest encryption of windowsJson ────────────────────────────────────────
+// Everything below runs the SAME store with a pinned test key. The invariants:
+// writes are ciphertext, the no-op fan-out suppression still works despite the
+// random IV, legacy plaintext migrates on a no-op push WITHOUT publishing, a
+// ciphertext is bound to its (user, device) slot, and no stored value — however
+// mangled — can 500 a read.
+
+const DEV_B = "22222222-2222-2222-2222-222222222222";
+
+/** Put a device into the index with a verbatim `windowsJson` value. */
+function seedRawDevice(h: StoreHarness, deviceId: string, windowsJson: string): void {
+  h.zset.set(deviceId, Date.now());
+  h.hashes.set(
+    devKey(USER, deviceId),
+    new Map<string, string>([
+      ["label", `Device ${deviceId.slice(0, 1)}`],
+      ["browser", "chrome"],
+      ["device", "desktop"],
+      ["os", "macOS"],
+      ["windowsJson", windowsJson],
+      ["tabCount", "1"],
+      ["hiddenTabCount", "0"],
+      ["lastSeenAt", new Date().toISOString()],
+    ]),
+  );
+}
+
+const storedWindows = (h: StoreHarness, deviceId = DEV): string =>
+  h.hashes.get(devKey(USER, deviceId))?.get("windowsJson") ?? "";
+
+test("encryption on: a push stores an enc:v1: envelope that round-trips", async () => {
+  const h = makeStoreHarness(TEST_KEY);
+  const res = await h.store.writeSnapshot(USER, BASE_PUSH);
+  assert.equal(res.changed, true);
+
+  const stored = storedWindows(h);
+  assert.ok(isEncryptedEnvelope(stored), "windowsJson is written as ciphertext");
+  assert.ok(!stored.includes("a.test"), "no tab URL survives in the stored value");
+  assert.equal(
+    decryptWindows(stored, windowsAad(USER, DEV), TEST_KEY),
+    JSON.stringify(BASE_PUSH.windows),
+    "and decrypts back to exactly what was pushed",
+  );
+
+  const devices = await h.store.listDevices(USER);
+  assert.deepEqual(devices[0]?.windows, BASE_PUSH.windows, "the read path sees plaintext windows");
+});
+
+test("encryption on: an identical second push is still a no-op despite the random IV", async () => {
+  const h = makeStoreHarness(TEST_KEY);
+  await h.store.writeSnapshot(USER, BASE_PUSH);
+  const first = storedWindows(h);
+
+  const res = await h.store.writeSnapshot(USER, {
+    ...BASE_PUSH,
+    capturedAt: "2026-07-23T11:00:00.000Z",
+  });
+  assert.equal(res.changed, false, "compare decrypts before comparing → no false 'changed'");
+  assert.deepEqual(h.published, [], "and therefore no fan-out");
+  assert.equal(storedWindows(h), first, "an already-encrypted value is left byte-identical");
+});
+
+test("encryption on: a real tab change still publishes and re-encrypts", async () => {
+  const h = makeStoreHarness(TEST_KEY);
+  await h.store.writeSnapshot(USER, BASE_PUSH);
+  const first = storedWindows(h);
+
+  const res = await h.store.writeSnapshot(USER, {
+    ...BASE_PUSH,
+    windows: [{ windowId: 1, tabs: [{ url: "https://a.test", title: "A" }, { url: "https://b.test", title: "B" }] }],
+  });
+  assert.equal(res.changed, true);
+  assert.notEqual(storedWindows(h), first);
+  assert.ok(isEncryptedEnvelope(storedWindows(h)));
+});
+
+test("FIX 2: a legacy PLAINTEXT row migrates to ciphertext on a no-op push, without publishing", async () => {
+  const h = makeStoreHarness(TEST_KEY);
+  // Exactly what a pre-encryption deploy left behind: plaintext windowsJson.
+  seedDevice(h);
+  assert.equal(isEncryptedEnvelope(storedWindows(h)), false, "precondition: plaintext");
+
+  const res = await h.store.writeSnapshot(USER, {
+    ...BASE_PUSH,
+    capturedAt: "2026-07-23T11:00:00.000Z", // nothing a viewer renders has moved
+  });
+
+  assert.equal(res.changed, false, "still a no-op: representation changed, display did not");
+  assert.deepEqual(h.published, [], "migration must NOT fan out — nothing visible moved");
+  assert.ok(isEncryptedEnvelope(storedWindows(h)), "…but the row is now ciphertext");
+  assert.equal(
+    decryptWindows(storedWindows(h), windowsAad(USER, DEV), TEST_KEY),
+    JSON.stringify(BASE_PUSH.windows),
+    "and holds the same windows it did before",
+  );
+  const devices = await h.store.listDevices(USER);
+  assert.deepEqual(devices[0]?.windows, BASE_PUSH.windows, "viewers see no difference");
+});
+
+test("FIX 2: with encryption OFF a no-op push leaves the plaintext row alone", async () => {
+  const h = makeStoreHarness(); // no secret
+  seedDevice(h);
+  const before = storedWindows(h);
+  const res = await h.store.writeSnapshot(USER, {
+    ...BASE_PUSH,
+    capturedAt: "2026-07-23T11:00:00.000Z",
+  });
+  assert.equal(res.changed, false);
+  assert.equal(storedWindows(h), before, "no key ⇒ nothing to migrate to");
+});
+
+test("encryption on: a heartbeat never rewrites an already-encrypted windowsJson", async () => {
+  const h = makeStoreHarness(TEST_KEY);
+  await h.store.writeSnapshot(USER, BASE_PUSH);
+  const before = storedWindows(h);
+
+  const res = await h.store.writeSnapshot(USER, {
+    deviceId: DEV,
+    browser: "chrome",
+    device: "desktop",
+    capturedAt: "2026-07-23T11:00:00.000Z",
+    hiddenTabCount: 0,
+    // windows omitted → heartbeat
+  });
+  assert.equal(res.changed, false);
+  assert.equal(storedWindows(h), before, "byte-identical — heartbeats touch liveness only");
+  assert.deepEqual(h.published, []);
+});
+
+test("FIX 6 (AAD): a ciphertext copied into ANOTHER device's hash yields zero windows", async () => {
+  const h = makeStoreHarness(TEST_KEY);
+  await h.store.writeSnapshot(USER, BASE_PUSH);
+  const cipher = storedWindows(h);
+
+  // Attacker with Redis write access copies device A's blob onto a device B hash.
+  seedRawDevice(h, DEV_B, cipher);
+
+  const devices = await h.store.listDevices(USER);
+  const a = devices.find((d) => d.deviceId === DEV);
+  const b = devices.find((d) => d.deviceId === DEV_B);
+  assert.deepEqual(a?.windows, BASE_PUSH.windows, "the rightful owner is unaffected");
+  assert.deepEqual(b?.windows, [], "the copy fails the GCM auth tag → no disclosure");
+  assert.doesNotThrow(() =>
+    listLiveResponseSchema.parse({ devices, enabled: true, ttlHours: 168 }),
+  );
+});
+
+test("FIX 3: every hostile windowsJson shape renders as zero windows, siblings intact", async () => {
+  const hostile: Array<[string, string]> = [
+    ["valid JSON, wrong shape (object)", '{"a":1}'],
+    ["array of non-objects", "[1,2,3]"],
+    ["JSON null", "null"],
+    ["JSON true", "true"],
+    ["JSON string", '"windows"'],
+    ["not JSON at all", "not-json-at-all"],
+    ["empty string", ""],
+    ["undecryptable envelope", "enc:v1:garbage"],
+    ["windows with a non-integer id", '[{"windowId":"one","tabs":[]}]'],
+    ["window whose tabs are not objects", '[{"windowId":1,"tabs":[1,2,3]}]'],
+    ["window with a non-string name", '[{"windowId":1,"tabs":[],"name":5}]'],
+  ];
+
+  for (const [name, value] of hostile) {
+    const h = makeStoreHarness(TEST_KEY);
+    seedDevice(h); // healthy sibling (plaintext row)
+    seedRawDevice(h, DEV_B, value); // corrupt device
+    // A rename override on the corrupt device — this is what used to throw when the
+    // overlay tried to assign `.name` onto a number/null.
+    h.hashes.set(winNamesKey(USER, DEV_B), new Map([["1", "Research"]]));
+
+    let devices: Awaited<ReturnType<typeof h.store.listDevices>> = [];
+    await assert.doesNotReject(async () => {
+      devices = await h.store.listDevices(USER);
+    }, `listDevices must not throw on: ${name}`);
+
+    const corrupt = devices.find((d) => d.deviceId === DEV_B);
+    const healthy = devices.find((d) => d.deviceId === DEV);
+    assert.deepEqual(corrupt?.windows, [], `${name} → zero windows`);
+    assert.deepEqual(healthy?.windows, BASE_PUSH.windows, `${name} → sibling still renders`);
+    assert.doesNotThrow(
+      () => listLiveResponseSchema.parse({ devices, enabled: true, ttlHours: 168 }),
+      `${name} → the response schema still validates (no 500 in routes/list)`,
+    );
+  }
+});
+
+test("FIX 3: a corrupt lastSeenAt / tabCount cannot fail the response schema either", async () => {
+  const h = makeStoreHarness(TEST_KEY);
+  seedDevice(h);
+  seedRawDevice(h, DEV_B, JSON.stringify(BASE_PUSH.windows));
+  const bad = h.hashes.get(devKey(USER, DEV_B)) as Map<string, string>;
+  bad.set("lastSeenAt", "yesterday-ish");
+  bad.set("tabCount", "not-a-number");
+
+  const devices = await h.store.listDevices(USER);
+  assert.doesNotThrow(() =>
+    listLiveResponseSchema.parse({ devices, enabled: true, ttlHours: 168 }),
+  );
+  const corrupt = devices.find((d) => d.deviceId === DEV_B);
+  assert.equal(corrupt?.tabCount, 0, "unparseable counter degrades to 0");
+  assert.equal(corrupt?.lastSeenAgeSeconds, 0);
+});
+
+test("FIX 6 (AAD): a ciphertext written for user A does not open for user B", async () => {
+  const h = makeStoreHarness(TEST_KEY);
+  await h.store.writeSnapshot(USER, BASE_PUSH);
+  const cipher = storedWindows(h);
+
+  // The same device id under a DIFFERENT user's namespace.
+  const other = "user_other";
+  h.zset.set(DEV, Date.now());
+  h.hashes.set(
+    devKey(other, DEV),
+    new Map<string, string>([
+      ["browser", "chrome"],
+      ["device", "desktop"],
+      ["windowsJson", cipher],
+      ["lastSeenAt", new Date().toISOString()],
+    ]),
+  );
+  const devices = await h.store.listDevices(other);
+  assert.deepEqual(devices[0]?.windows, [], "cross-tenant reuse of a blob discloses nothing");
 });

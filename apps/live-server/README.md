@@ -97,4 +97,33 @@ its DNS CNAME/A record, plus entry in the extension `host_permissions` and the C
 See `.env.example`. Key ones: `REDIS_URL`; `CLERK_SECRET_KEY` (or `CLERK_JWT_KEY` +
 `CLERK_ISSUER` for egress-free verification); `CLERK_ALLOWED_USER_IDS`,
 `CLERK_AUTHORIZED_PARTIES`, `LIVE_ALLOWED_ORIGINS` (mirror the web app);
-`LIVE_TTL_DAYS` (7), `LIVE_PUSH_QUOTA_PER_DAY` (2000).
+`DEVICE_TOKEN_SECRET` (Safari `bkd_…` device tokens, 64-char hex, shared with the
+web app); `LIVE_TTL_DAYS` (7), `LIVE_PUSH_QUOTA_PER_DAY` (2000).
+
+### `LIVE_ENCRYPTION_SECRET` — at-rest encryption of live tabs
+
+The VM's Redis is loopback-bound but has **no password** and RDB persistence is on, so
+`windowsJson` (real tab URLs, titles, favicons) is encrypted at the application layer
+before it is written: AES-256-GCM, `enc:v1:<iv-b64>:<ct+tag-b64>`, key = base64 of 32
+raw bytes (`openssl rand -base64 32`), no KDF. See `src/crypto.ts`. Each envelope is
+bound to its owner with GCM **AAD** = `userId:deviceId`, so a ciphertext copied into a
+different device's or user's hash fails the auth tag and renders as zero windows
+instead of leaking the original owner's tabs.
+
+| Value | Behaviour |
+| --- | --- |
+| unset / empty | `windowsJson` stored **plaintext**, one-time warn. Fine for local dev. |
+| set, valid (32 decoded bytes) | Encrypted at rest. |
+| **set, invalid** | The server **refuses to boot** with a clear error (never echoing the value). A configured key silently degrading to plaintext is the worst outcome, so this is loud. `openssl rand -hex 32` is the classic mistake — 48 decoded bytes, fails boot. |
+
+Only `windowsJson` is encrypted; `label`/`os`/timestamps/counters and the separate
+window-names hash stay plaintext. Reads never throw — a value that cannot be decrypted
+(rotated key, wrong owner, corruption) degrades to zero windows for that device, logged
+at most once per 60s with a cumulative failure count.
+
+**Rotation and migration** are both self-healing within one push cycle (~2 min): a
+device whose tabs changed rewrites the field on its next push, and a device whose tabs
+did *not* change still gets its legacy-plaintext value rewritten as ciphertext by the
+no-op push path (which does **not** publish — nothing a viewer renders moved). CI
+upserts the value into the VM `.env` from the `LIVE_ENCRYPTION_SECRET` GitHub secret on
+every deploy.
