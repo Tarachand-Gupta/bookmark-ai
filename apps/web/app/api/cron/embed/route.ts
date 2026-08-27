@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { listActiveTenants } from "@bookmark-ai/db";
 import { embedPending } from "@bookmark-ai/engine";
@@ -29,9 +30,22 @@ const BATCH = 10;
  * active tenant, sweeping each tenant's own DB, bounded by a total-embedding
  * cap and a wall-clock budget.
  */
+/**
+ * Constant-time string compare. `timingSafeEqual` throws on length-mismatched
+ * buffers, so bail early when lengths differ (the secret's length is not itself
+ * sensitive) before the timing-safe byte comparison.
+ */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
+
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  const header = req.headers.get("authorization");
+  if (!secret || !header || !safeEqual(header, `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const gemini = getGemini();

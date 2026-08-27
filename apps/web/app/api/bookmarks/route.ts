@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     try {
       await enrichBookmark(db, gemini, bookmark.id, parsed.data);
     } catch (err) {
-      console.warn(`[enrich] ${bookmark.url}: ${(err as Error).message} — keeping instant-save data`);
+      console.warn(`[enrich] ${bookmark.id}: ${(err as Error).message} — keeping instant-save data`);
     }
     // Embed either way: enrichment cleared the embedding, and even a failed
     // enrichment leaves heuristic text worth embedding.

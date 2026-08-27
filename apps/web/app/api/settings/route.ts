@@ -126,7 +126,23 @@ export async function PUT(req: NextRequest) {
   // apiKey: absent → keep (omit from patch); "" → clear (store null); else
   // encrypt-at-rest before storing (AES-256-GCM `enc:v1:` envelope). Writing here
   // is also the lazy re-encryption path for any legacy plaintext row.
-  if (apiKey !== undefined) patch.aiApiKey = apiKey === "" ? null : encryptApiKey(apiKey);
+  // encryptApiKey now fails closed (throws) rather than storing plaintext — turn
+  // that into a clean 500 instead of an uncaught crash / leaked stack.
+  if (apiKey !== undefined) {
+    if (apiKey === "") {
+      patch.aiApiKey = null;
+    } else {
+      try {
+        patch.aiApiKey = encryptApiKey(apiKey);
+      } catch (err) {
+        console.warn("[settings] ai key encryption failed:", (err as Error).message);
+        return NextResponse.json(
+          { error: "Encryption is not configured on the server" },
+          { status: 500 },
+        );
+      }
+    }
+  }
   // liveServerUrl: absent → keep (omit); "" or null → clear (store null); else set.
   if (liveServerUrl !== undefined) patch.liveServerUrl = liveServerUrl ? liveServerUrl : null;
   // onboarded: true → stamp onboarded_at to now (marks the tour seen for this

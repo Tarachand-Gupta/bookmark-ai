@@ -15,23 +15,24 @@ function secret(): string | undefined {
 }
 
 /**
- * Encrypt a plaintext API key for storage. If the secret is missing/invalid we
- * DEGRADE to storing plaintext (with a loud warn) rather than crashing the
- * settings save — the read path already tolerates legacy plaintext, and the key
- * gets encrypted on the next write once the secret is present. In every
- * configured environment the secret is set, so this is a safety net only.
+ * Encrypt a plaintext API key for storage. FAIL-CLOSED: if the secret is missing
+ * or encryption fails we THROW rather than persist the key unencrypted. A user's
+ * provider API key must never be written to the DB in plaintext, so the settings
+ * save fails loudly (the callsite turns the throw into a clean HTTP error) and
+ * nothing is stored. The read path (`decryptApiKey`) stays tolerant of legacy
+ * plaintext and a missing secret; only this write path is strict.
  */
 export function encryptApiKey(plaintext: string): string {
   const s = secret();
   if (!s) {
-    console.warn("[ai-key] AI_KEY_ENCRYPTION_SECRET is unset — storing AI key WITHOUT encryption");
-    return plaintext;
+    throw new Error(
+      "AI_KEY_ENCRYPTION_SECRET is not configured — refusing to store AI key unencrypted",
+    );
   }
   try {
     return encryptWithSecret(plaintext, s);
   } catch (err) {
-    console.warn("[ai-key] encryption failed, storing plaintext:", (err as Error).message);
-    return plaintext;
+    throw new Error("Failed to encrypt AI key: " + (err as Error).message);
   }
 }
 
