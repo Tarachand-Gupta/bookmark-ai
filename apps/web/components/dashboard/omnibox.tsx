@@ -70,20 +70,20 @@ export function Omnibox({ className }: { className?: string }) {
           aria-label="Search bookmarks and sessions"
           className="h-10 border-0 bg-transparent pl-9 shadow-none focus-visible:ring-0 md:text-base"
         />
-        <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:block">
+        <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground sm:block">
           /
         </kbd>
       </div>
-      {/* Ask AI is the PRIMARY action here (solid/dark) and plain search is the
-          quiet one (outline/white): asking is what this product does that a
-          browser's own history box doesn't. Enter in the field still runs a
-          search — the outline treatment demotes the button, not the behavior. */}
+      {/* Ask AI is the PAGE's one solid button, and search is a ghost: Enter in
+          the field is the real search gesture (the `/` hint above says how to get
+          there), so the button is a fallback affordance, not a competing CTA.
+          Two solid buttons side by side read as a choice you have to make. */}
       {/* aria-label, not just the label span: below sm both buttons are
           icon-only, and an icon with an aria-hidden glyph has no name at all. */}
       <Button
         type="submit"
         size="sm"
-        variant="outline"
+        variant="ghost"
         className="h-9 shrink-0"
         aria-label="Search"
         title="Search"

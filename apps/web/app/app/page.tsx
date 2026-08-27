@@ -27,14 +27,21 @@ export default function AppPage() {
     <Suspense
       fallback={
         <AppShellSkeleton>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12">
-            <DashboardCardSkeleton rows={1} className="md:col-span-2 lg:col-span-12" />
-            <DashboardCardSkeleton rows={2} className="md:col-span-2 lg:col-span-8" />
-            <DashboardCardSkeleton rows={2} className="md:col-span-2 lg:col-span-4" />
-            <DashboardCardSkeleton rows={6} className="md:col-span-2 lg:col-span-8" />
-            <DashboardCardSkeleton rows={4} className="md:col-span-1 lg:col-span-4" />
-            <DashboardCardSkeleton rows={3} className="md:col-span-1 lg:col-span-6" />
-            <DashboardCardSkeleton rows={3} className="md:col-span-1 lg:col-span-6" />
+          {/* The omnibox strip, then the 2×2 card grid — the exact geometry
+              DashboardPage paints, so the boundary resolving doesn't move
+              anything sideways. Row heights follow the card ORDER: recent saves
+              (5 rows), saved sessions, live now, activity. The install nudge
+              gets no placeholder — it's a client-only decision that renders
+              nothing until it settles, so a skeleton for it would promise a card
+              that may never arrive. */}
+          <div className="flex flex-col gap-4">
+            <DashboardCardSkeleton rows={1} />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <DashboardCardSkeleton rows={5} />
+              <DashboardCardSkeleton rows={4} />
+              <DashboardCardSkeleton rows={4} />
+              <DashboardCardSkeleton rows={4} />
+            </div>
           </div>
         </AppShellSkeleton>
       }

@@ -1,121 +1,99 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import type { Bookmark } from "@bookmark-ai/types";
-import { Folder, Globe } from "lucide-react";
+import { Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { relativeTime } from "@/lib/dashboard";
 import { safeHref } from "@/lib/safe-href";
-import { BROWSER_ICONS, DEVICE_ICONS } from "@/components/library/device-badges";
-import { categoryHref } from "./links";
+import { DEVICE_ICONS } from "@/components/library/device-badges";
+import { CategoryChip } from "./category-chip";
 
 /**
- * One compact bookmark line for the dashboard's Recent saves / Reading queue /
- * Continue cards: favicon, title, domain, a CLICKABLE category chip, relative
- * time and a device+browser origin badge.
+ * ONE compact bookmark line for the dashboard — favicon, title, domain, relative
+ * time, the device it came from, and an inert category chip.
  *
- * Deliberately not packages/ui's `BookmarkCompactRow`: that variant is built for
- * the library's compact view (fixed w-40/w-32/w-20 columns sized to a full-width
- * grid, a non-interactive category chip, no device badge). The dashboard needs a
- * narrower row whose chip is a filter link — the doc's "every card is a verb"
- * rule — so this is its own small component rather than a prop explosion there.
+ * The WHOLE ROW is the anchor, not the title inside it. That's the rule for every
+ * row on this dashboard: one row, one destination, one tab stop. It also means
+ * nothing else in the row may be interactive, which is why the category chip is
+ * inert here (an anchor can't legally contain another anchor) — the same chip
+ * links to the filtered library in Activity, where it stands on its own.
+ *
+ * There is no `dense` variant any more: the four cards are equal-width halves of
+ * one grid, so there is no narrow-column case left to shrink type for, and the
+ * page's type scale is text-sm rows / text-xs meta everywhere.
  */
 export function DashboardBookmarkRow({
   bookmark: b,
-  dense,
   className,
 }: {
   bookmark: Bookmark;
-  /** Tighter line height + smaller favicon/type, for cards that must stay small
-   * next to a taller neighbour (Recent saves, the hero's saved-elsewhere peek).
-   * Still a 32px+ hit area — this trims padding, not tappability. */
-  dense?: boolean;
   className?: string;
 }) {
   const href = safeHref(b.url);
-  const BrowserIcon = BROWSER_ICONS[b.source.browser] ?? Globe;
-  const DeviceIcon = DEVICE_ICONS[b.source.device] ?? Globe;
-  const origin = [b.source.deviceName || b.source.device, b.source.browser]
-    .filter((v) => v && v !== "other")
+  const device = b.source.device && b.source.device !== "other" ? b.source.device : null;
+  const DeviceIcon = device ? (DEVICE_ICONS[device] ?? Globe) : null;
+  // Spoken, not drawn: the glyph is a 12px hint, the screen reader gets the words.
+  const origin = [b.source.deviceName || device, b.source.browser !== "other" ? b.source.browser : null]
+    .filter(Boolean)
     .join(" · ");
 
-  return (
-    // `@container`, so the category chip below can react to how wide THIS ROW is
-    // rather than how wide the window is: the same row renders in a full-width
-    // Recent saves card and in a 4-column Reading list card that is ~300px at md
-    // (and no wider at lg), where a viewport-based chip left ~12 characters of title.
-    <div
-      className={cn(
-        "group @container flex items-center px-4 transition-colors hover:bg-muted/50",
-        dense ? "gap-2 py-1.5" : "gap-2.5 py-2.5",
-        className,
-      )}
-    >
-      <RowFavicon bookmark={b} dense={dense} />
-      <div className="min-w-0 flex-1">
-        {href ? (
-          <a
-            href={href}
-            target="_blank"
-            rel="noreferrer noopener"
-            className={cn(
-              "line-clamp-1 font-medium [overflow-wrap:anywhere] hover:underline",
-              dense ? "text-[13px]" : "text-sm",
-            )}
-          >
-            {b.title || b.domain}
-          </a>
-        ) : (
-          <span
-            className={cn(
-              "line-clamp-1 font-medium text-muted-foreground",
-              dense ? "text-[13px]" : "text-sm",
-            )}
-          >
-            {b.title || b.url}
-          </span>
-        )}
-        <div
-          className={cn(
-            "flex items-center gap-1.5 text-muted-foreground",
-            dense ? "text-[11px]" : "mt-0.5 text-xs",
-          )}
-        >
+  const body = (
+    <>
+      <RowFavicon bookmark={b} />
+      <span className="min-w-0 flex-1">
+        <span className="line-clamp-1 text-sm font-medium [overflow-wrap:anywhere]">
+          {b.title || b.domain}
+        </span>
+        <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
           <span className="truncate">{b.domain}</span>
           <span aria-hidden>·</span>
           <time dateTime={b.source.savedAt} className="shrink-0">
             {relativeTime(b.source.savedAt)}
           </time>
-          {origin && (
-            <span className="hidden shrink-0 items-center gap-1 sm:inline-flex" title={`Saved from ${origin}`}>
+          {DeviceIcon && (
+            <>
               <span aria-hidden>·</span>
-              <DeviceIcon className="size-3" aria-hidden />
-              <BrowserIcon className="size-3" aria-hidden />
-            </span>
+              <DeviceIcon className="size-3 shrink-0" aria-hidden />
+              <span className="sr-only">Saved from {origin}</span>
+            </>
           )}
-        </div>
-      </div>
-      {/* The chip is the card's second verb: it jumps to the filtered library —
-          but only once the row is wide enough (24rem) that it isn't stealing the
-          title's last 150px. Narrow cards get the title, which is the point of the row. */}
-      <Link
-        href={categoryHref(b.category)}
-        title={`Show everything in ${b.category}`}
-        className="hidden max-w-[9rem] shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground @min-[24rem]:inline-flex"
-      >
-        <Folder className="size-3 shrink-0" aria-hidden />
-        <span className="truncate">{b.category}</span>
-      </Link>
-    </div>
+        </span>
+      </span>
+      {/* `@container`: the chip only appears once the ROW is wide enough (24rem)
+          that it isn't eating the title's last 150px — this row renders in a
+          half-width card at lg and full width on a phone. */}
+      <CategoryChip
+        category={b.category}
+        className="hidden shrink-0 @min-[24rem]:inline-flex"
+      />
+    </>
+  );
+
+  const shell =
+    "@container flex min-w-0 items-center gap-2.5 px-4 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+
+  // A non-http(s) URL is never rendered as a link (see safeHref) — the row stays
+  // readable, it just isn't clickable.
+  if (!href) {
+    return <span className={cn(shell, "text-muted-foreground", className)}>{body}</span>;
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className={cn(shell, "hover:bg-muted/50", className)}
+    >
+      {body}
+    </a>
   );
 }
 
-function RowFavicon({ bookmark: b, dense }: { bookmark: Bookmark; dense?: boolean }) {
+function RowFavicon({ bookmark: b }: { bookmark: Bookmark }) {
   const [failed, setFailed] = useState(false);
-  const size = dense ? "size-3.5" : "size-4";
   if (!b.og.favicon || failed) {
-    return <Globe className={cn(size, "shrink-0 text-muted-foreground")} aria-hidden />;
+    return <Globe className="size-4 shrink-0 text-muted-foreground" aria-hidden />;
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element -- arbitrary external hosts
@@ -124,7 +102,7 @@ function RowFavicon({ bookmark: b, dense }: { bookmark: Bookmark; dense?: boolea
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}
-      className={cn(size, "shrink-0 rounded-sm")}
+      className="size-4 shrink-0 rounded-sm"
     />
   );
 }

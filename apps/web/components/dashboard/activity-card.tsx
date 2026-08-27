@@ -1,8 +1,7 @@
-import Link from "next/link";
 import type { DashboardActivity } from "@bookmark-ai/types";
-import { Activity, Folder } from "lucide-react";
-import { DashboardCard } from "./dashboard-card";
-import { browserHref, categoryHref } from "./links";
+import { Activity } from "lucide-react";
+import { CategoryChip } from "./category-chip";
+import { DashboardCard, DashboardCardEmpty } from "./dashboard-card";
 
 /**
  * Activity (doc §3.7): exactly three facts computed from SAVES — a 14-day
@@ -10,8 +9,20 @@ import { browserHref, categoryHref } from "./links";
  * saved 23% more than last week", no telemetry-derived numbers: awareness, not
  * nagging (and §2's privacy stance — we only ever count what the user saved).
  *
- * `activity` is null below ACTIVITY_MIN_BOOKMARKS (server-side decision) and the
- * card then renders nothing at all — a sparkline over four saves looks broken.
+ * The quietest card on the page on purpose: it has no header action (there is no
+ * "all activity" view to send anyone to) and its browser legend is plain text.
+ * Its category chips are the only thing here you can click, and they're the same
+ * `CategoryChip` the bookmark rows render inert.
+ *
+ * `activity` is null below ACTIVITY_MIN_BOOKMARKS (server-side decision) — a
+ * sparkline over four saves looks broken, so the card says so in one line rather
+ * than drawing it.
+ *
+ * *2026-08-27 (Tara):* on the DASHBOARD that sentence is now unreachable. This
+ * is the one card allowed to be absent rather than empty, so the page gates it
+ * on `hasDashboardActivity(activity)` (lib/dashboard.ts) — no saves in the
+ * window, no card. The empty branch stays for any other consumer that renders
+ * this card unconditionally; it is not the dashboard's path.
  */
 export function ActivityCard({
   activity,
@@ -20,7 +31,16 @@ export function ActivityCard({
   activity: DashboardActivity | null;
   className?: string;
 }) {
-  if (!activity) return null;
+  if (!activity) {
+    return (
+      <DashboardCard title="Activity" Icon={Activity} className={className} flush>
+        <DashboardCardEmpty>
+          Save a few more pages and a 14-day picture of your activity shows up here.
+        </DashboardCardEmpty>
+      </DashboardCard>
+    );
+  }
+
   const total = activity.days.reduce((sum, d) => sum + d.count, 0);
 
   return (
@@ -41,16 +61,8 @@ export function ActivityCard({
           <div>
             <p className="text-xs font-medium text-muted-foreground">Top categories</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {activity.topCategories.map((c) => (
-                <Link
-                  key={c.name}
-                  href={categoryHref(c.name)}
-                  className="inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors hover:bg-muted"
-                >
-                  <Folder className="size-3 shrink-0 text-muted-foreground" aria-hidden />
-                  <span className="truncate">{c.name}</span>
-                  <span className="tabular-nums text-muted-foreground">{c.count}</span>
-                </Link>
+              {activity.topCategories.slice(0, 3).map((c) => (
+                <CategoryChip key={c.name} category={c.name} count={c.count} interactive />
               ))}
             </div>
           </div>
@@ -114,7 +126,12 @@ function Sparkline({ days }: { days: { day: string; count: number }[] }) {
   );
 }
 
-/** "Chrome 62% · Safari 30% · Other 8%" as one proportion bar + a legend. */
+/**
+ * "Chrome 62% · Safari 30% · Other 8%" as one proportion bar plus a plain-text
+ * legend. The legend used to be four links to the filtered library — four more
+ * click targets in the quietest card on the page, for a filter the sidebar
+ * already offers. It's a label now.
+ */
 function BrowserSplit({ rows }: { rows: { name: string; count: number }[] }) {
   const total = rows.reduce((sum, r) => sum + r.count, 0);
   if (total === 0) return null;
@@ -138,18 +155,11 @@ function BrowserSplit({ rows }: { rows: { name: string; count: number }[] }) {
       </div>
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {shown.map((r, i) => (
-          <Link
-            key={r.name}
-            href={browserHref(r.name)}
-            className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
-          >
-            <span
-              className={`size-2 shrink-0 rounded-sm ${shades[i % shades.length]}`}
-              aria-hidden
-            />
+          <span key={r.name} className="inline-flex items-center gap-1.5">
+            <span className={`size-2 shrink-0 rounded-full ${shades[i % shades.length]}`} aria-hidden />
             <span className="capitalize">{r.name}</span>
             <span className="tabular-nums">{Math.round((r.count / total) * 100)}%</span>
-          </Link>
+          </span>
         ))}
       </div>
     </div>

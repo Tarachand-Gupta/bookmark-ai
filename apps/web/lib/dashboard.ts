@@ -1,19 +1,13 @@
-import type {
-  Bookmark,
-  DashboardLastSession,
-  LiveDevice,
-  SessionSummary,
-} from "@bookmark-ai/types";
+import type { Bookmark, DashboardActivity, LiveDevice } from "@bookmark-ai/types";
 
 /**
- * Framework-free logic behind the dashboard's "Continue where you left off"
- * hero and its tab-opening actions. Pure functions on purpose: the ranking is
- * the one genuinely non-obvious rule on the page (docs/features/dashboard.md §3.2)
- * and it's unit-tested rather than eyeballed.
+ * Framework-free logic behind the dashboard's four cards. Pure functions on
+ * purpose: the two genuinely non-obvious rules on the page (which live devices
+ * count as "live now", and how the cross-device saves fold into Recent saves)
+ * are unit-tested rather than eyeballed.
  *
- * Ranking happens CLIENT-side, not in /api/dashboard, because the best resume
- * target is usually a live device — and live state comes from a separate server
- * this app can't proxy the caller's credentials to.
+ * Live ordering happens CLIENT-side, not in /api/dashboard, because live state
+ * comes from a separate server this app can't proxy the caller's credentials to.
  */
 
 /** localStorage key for the stale-while-revalidate snapshot of the last payload. */
@@ -25,6 +19,14 @@ export const SETUP_DISMISSED_KEY = "bmk:dashboard-setup-dismissed";
  * have a live MCP token (see useMcpPromo: it's also what keeps that lookup from
  * repeating on every visit). */
 export const MCP_PROMO_DISMISSED_KEY = "bmk:dashboard-mcp-dismissed";
+/** localStorage key remembering that the "Install the extension" grid card was
+ * dismissed. Separate from the detection memo in lib/extension-detect.ts: that
+ * one records what we FOUND, this one records what the user decided. */
+export const EXTENSION_CARD_DISMISSED_KEY = "bmk:dashboard-extension-dismissed";
+/** localStorage key remembering that the "Get the mobile app" card was dismissed
+ * — on mobile web this doubles as the "I already have it" signal, because there
+ * is no API that can tell us whether a native app is installed. */
+export const MOBILE_APP_DISMISSED_KEY = "bmk:dashboard-mobile-app-dismissed";
 
 /** A live device stops being a resume candidate once it's this stale (24h). */
 export const LIVE_CANDIDATE_MAX_AGE_SECONDS = 24 * 60 * 60;
@@ -42,34 +44,6 @@ export const LIVE_FRESHNESS_BUCKET_SECONDS = 300;
 export const OPEN_TABS_MAX = 10;
 /** Above this many tabs, ask first. */
 export const OPEN_TABS_CONFIRM_OVER = 5;
-
-export type ContinueTarget =
-  | {
-      kind: "live";
-      device: LiveDevice;
-      label: string;
-      /** Openable http(s) tab URLs across that device's windows. */
-      urls: string[];
-    }
-  | {
-      kind: "session";
-      session: SessionSummary | null;
-      tabs: DashboardLastSession;
-      label: string;
-    }
-  | {
-      kind: "bookmarks";
-      bookmarks: Bookmark[];
-      label: string;
-    };
-
-export interface ContinueInputs {
-  /** From the live SSE hook; null when live is off/unreachable. */
-  liveDevices: LiveDevice[] | null;
-  lastSessionTabs: DashboardLastSession | null;
-  recentSessions: SessionSummary[];
-  otherDeviceBookmarks: Bookmark[];
-}
 
 /** "Active now" / "Active 20 min ago" / "Earlier today" / "2 days ago". */
 export function liveAgeLabel(seconds: number): string {
@@ -103,43 +77,28 @@ function freshnessBucket(device: LiveDevice): number {
   return Math.floor(device.lastSeenAgeSeconds / LIVE_FRESHNESS_BUCKET_SECONDS);
 }
 
-/** Only http(s) tabs can be opened; live captures also mark redacted URLs. */
-function openableUrls(device: LiveDevice): string[] {
-  const urls: string[] = [];
-  for (const w of device.windows) {
-    for (const tab of w.tabs) {
-      if (!tab.redacted && /^https?:/i.test(tab.url)) urls.push(tab.url);
-    }
-  }
-  return urls;
-}
-
 /**
- * The ranked resume targets, best first, capped at two (the doc allows a winner
- * plus one runner-up row and no more).
+ * Which devices the "Live now" card is allowed to call live, best first.
  *
- * 1. A live device seen within the last 24h that actually has openable tabs —
- *    the cross-device handoff, the one thing only this product can offer.
- *    Between live devices: freshest BUCKET first (see
- *    LIVE_FRESHNESS_BUCKET_SECONDS), then most open tabs, then raw age. Two
- *    laptops that both checked in a minute ago are equally live, and the one
- *    holding 20 tabs is the one you left mid-task.
- * 2. Else the newest saved session (restore the whole window).
- * 3. Else the last few saves from another device.
+ * Filters: a device that hasn't checked in for 24h isn't "now", and a device
+ * with zero open tabs has nothing to hand off — neither earns a row. A device
+ * can also appear twice in one snapshot while it re-announces, so ids are
+ * de-duped before anything else.
  *
- * Empty array = the card renders nothing (principle 3: no hollow boxes).
+ * Order: freshest BUCKET first (see LIVE_FRESHNESS_BUCKET_SECONDS), then most
+ * open tabs, then raw age. Two laptops that both checked in a minute ago are
+ * equally live, and the one holding 20 tabs is the one you left mid-task.
+ *
+ * `null` in (live off / unreachable) is an empty list out — the card renders its
+ * own quiet empty state rather than guessing.
  */
-export function rankContinueTargets(inputs: ContinueInputs): ContinueTarget[] {
-  const out: ContinueTarget[] = [];
-
-  // De-duped by deviceId first: the runner-up row must never be the same target
-  // as the winner, and a re-announcing device can appear twice in one snapshot.
-  const seenDevices = new Set<string>();
-  const liveCandidates = (inputs.liveDevices ?? [])
+export function rankLiveDevices(devices: LiveDevice[] | null): LiveDevice[] {
+  const seen = new Set<string>();
+  return (devices ?? [])
     .filter((d) => {
       if (d.lastSeenAgeSeconds >= LIVE_CANDIDATE_MAX_AGE_SECONDS || d.tabCount === 0) return false;
-      if (seenDevices.has(d.deviceId)) return false;
-      seenDevices.add(d.deviceId);
+      if (seen.has(d.deviceId)) return false;
+      seen.add(d.deviceId);
       return true;
     })
     .sort(
@@ -148,52 +107,91 @@ export function rankContinueTargets(inputs: ContinueInputs): ContinueTarget[] {
         b.tabCount - a.tabCount ||
         a.lastSeenAgeSeconds - b.lastSeenAgeSeconds,
     );
-
-  for (const device of liveCandidates) {
-    out.push({
-      kind: "live",
-      device,
-      label: liveAgeLabel(device.lastSeenAgeSeconds),
-      urls: openableUrls(device),
-    });
-  }
-
-  if (inputs.lastSessionTabs && inputs.lastSessionTabs.tabs.length > 0) {
-    const session =
-      inputs.recentSessions.find((s) => s.id === inputs.lastSessionTabs!.id) ?? null;
-    out.push({
-      kind: "session",
-      session,
-      tabs: inputs.lastSessionTabs,
-      label: session ? `Saved ${relativeTime(session.savedAt)}` : "Last saved session",
-    });
-  }
-
-  if (inputs.otherDeviceBookmarks.length > 0) {
-    out.push({
-      kind: "bookmarks",
-      bookmarks: inputs.otherDeviceBookmarks,
-      label: "Saved on another device",
-    });
-  }
-
-  return out.slice(0, 2);
 }
 
 /**
- * Which single tag the reading-queue footer should filter by. The queue is an OR
- * of `reading` and `article` (server-side), but the library filters by ONE tag —
- * so pick whichever the returned items actually carry more of, preferring
- * `reading` on a tie or when neither is present.
+ * What the Recent saves card lists. The old dashboard gave "saved on another
+ * device" a card of its own, which meant one save could appear twice under two
+ * different headings; folding the two lists into ONE newest-first stream (the
+ * row itself carries the device it came from) is the same information with one
+ * less thing to read.
+ *
+ * De-duped by id — `otherDeviceBookmarks` is a filtered slice of the same table
+ * `recentBookmarks` comes from, so overlap is the normal case, not an edge one.
  */
-export function dominantReadingTag(items: { tags: string[] }[]): "reading" | "article" {
-  let reading = 0;
-  let article = 0;
-  for (const item of items) {
-    if (item.tags.includes("reading")) reading++;
-    if (item.tags.includes("article")) article++;
+export function mergeRecentSaves(
+  recent: Bookmark[],
+  otherDevice: Bookmark[],
+  limit: number,
+): Bookmark[] {
+  const byId = new Map<string, Bookmark>();
+  for (const b of [...recent, ...otherDevice]) {
+    if (!byId.has(b.id)) byId.set(b.id, b);
   }
-  return article > reading ? "article" : "reading";
+  return [...byId.values()]
+    .sort((a, b) => savedAtMs(b) - savedAtMs(a))
+    .slice(0, limit);
+}
+
+/** `savedAt` for ordering. Unparseable timestamps sort last rather than throwing
+ * NaN through the comparator (which would leave the list in engine order). */
+function savedAtMs(b: Bookmark): number {
+  const t = new Date(b.source.savedAt).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+/**
+ * Whether the Activity card has anything to draw.
+ *
+ * Activity is the ONE card on this page allowed to disappear (see
+ * docs/features/dashboard.md §3.2 — Tara's 2026-08-27 override of the
+ * fixed-grid rule). The rule is deliberately narrow and reads off the payload
+ * shape rather than a vibe: the server sends `activity: null` below
+ * ACTIVITY_MIN_BOOKMARKS, and above that floor it still sends a fully
+ * zero-filled 14-day window — an account whose saves are all older than the
+ * window gets 14 zero buckets, i.e. a sparkline of nothing. Both cases are "no
+ * activity".
+ *
+ * `topCategories`/`browserSplit` are ALL-TIME facets, so they can be non-empty
+ * while the window is empty; they are not part of this test, because a card
+ * whose headline chart is blank is not worth a grid slot for its footnotes.
+ */
+export function hasDashboardActivity(activity: DashboardActivity | null | undefined): boolean {
+  if (!activity) return false;
+  return activity.days.some((d) => d.count > 0);
+}
+
+/** The bits of `navigator` the platform check reads — narrow on purpose so the
+ * rule is unit-testable against a plain object. `userAgentData` is Chromium-only
+ * and still not in every lib.dom, hence the local shape. */
+export interface PlatformNavigator {
+  userAgent?: string;
+  maxTouchPoints?: number;
+  userAgentData?: { mobile?: boolean };
+}
+
+/**
+ * Is this a phone or a tablet? Coarse and safe by design — it only decides
+ * WHICH install nudge to show (browser extension vs. the mobile app), so the
+ * cost of a wrong answer is one irrelevant card, not a broken page.
+ *
+ * Three signals, OR'd, positives only:
+ *  1. `navigator.userAgentData.mobile === true` — Chromium's own answer.
+ *  2. an Android / iPhone / iPod / iPad user agent.
+ *  3. iPadOS's *desktop* UA, which says "Macintosh" and nothing else: a real Mac
+ *     reports `maxTouchPoints === 0`, an iPad reports 5.
+ *
+ * `userAgentData.mobile === false` is deliberately NOT treated as a final "no":
+ * it is false on Android tablets, which have no extension story at all, so
+ * trusting it there would offer a Chrome-Web-Store button to a browser that
+ * cannot install one. Signal 2 catches those.
+ */
+export function isMobilePlatform(nav: PlatformNavigator | null | undefined): boolean {
+  if (!nav) return false;
+  if (nav.userAgentData?.mobile === true) return true;
+  const ua = nav.userAgent ?? "";
+  if (/android|iphone|ipod|ipad/i.test(ua)) return true;
+  return /macintosh/i.test(ua) && (nav.maxTouchPoints ?? 0) > 1;
 }
 
 export interface OpenPlan {

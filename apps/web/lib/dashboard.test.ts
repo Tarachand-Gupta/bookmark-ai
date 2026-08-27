@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Bookmark, DashboardLastSession, LiveDevice, SessionSummary } from "@bookmark-ai/types";
+import type { Bookmark, LiveDevice } from "@bookmark-ai/types";
 import {
   ACTIVITY_DAYS,
   ACTIVITY_MIN_BOOKMARKS,
@@ -11,10 +11,12 @@ import {
   type DashboardParts,
 } from "@bookmark-ai/engine";
 import {
-  dominantReadingTag,
+  hasDashboardActivity,
+  isMobilePlatform,
   liveAgeLabel,
+  mergeRecentSaves,
   planTabOpen,
-  rankContinueTargets,
+  rankLiveDevices,
   relativeTime,
   OPEN_TABS_MAX,
 } from "./dashboard";
@@ -174,7 +176,7 @@ describe("assembleDashboard", () => {
   });
 });
 
-// ── Web: continue-card ranking ─────────────────────────────────────────────
+// ── Web: dashboard card inputs ─────────────────────────────────────────────
 
 function bookmark(over: Partial<Bookmark> = {}): Bookmark {
   return {
@@ -224,132 +226,101 @@ function liveDevice(over: Partial<LiveDevice> = {}): LiveDevice {
   };
 }
 
-const session: SessionSummary = {
-  id: "s1",
-  name: "Research",
-  tabCount: 6,
-  description: null,
-  browser: "safari",
-  device: "laptop",
-  os: "macOS",
-  savedAt: "2026-03-05T09:00:00.000Z",
-};
-const lastSessionTabs: DashboardLastSession = {
-  id: "s1",
-  tabs: [{ url: "https://a.example/1", title: "one" }],
-};
+describe("rankLiveDevices", () => {
+  it("is empty when live is off or unreachable", () => {
+    expect(rankLiveDevices(null)).toEqual([]);
+    expect(rankLiveDevices([])).toEqual([]);
+  });
 
-describe("rankContinueTargets", () => {
-  it("returns nothing when there is nothing to resume", () => {
+  it("drops devices that are stale or have nothing open", () => {
     expect(
-      rankContinueTargets({
-        liveDevices: null,
-        lastSessionTabs: null,
-        recentSessions: [],
-        otherDeviceBookmarks: [],
-      }),
-    ).toEqual([]);
-  });
-
-  it("prefers a fresh live device and keeps only openable http(s) tabs", () => {
-    const [winner] = rankContinueTargets({
-      liveDevices: [liveDevice()],
-      lastSessionTabs,
-      recentSessions: [session],
-      otherDeviceBookmarks: [bookmark()],
-    });
-    expect(winner.kind).toBe("live");
-    if (winner.kind !== "live") throw new Error("unreachable");
-    expect(winner.urls).toEqual(["https://a.example/1"]);
-    expect(winner.label).toBe("Active now");
-  });
-
-  it("ignores live devices that are stale or empty, falling back to the session", () => {
-    const targets = rankContinueTargets({
-      liveDevices: [
+      rankLiveDevices([
         liveDevice({ deviceId: "stale", lastSeenAgeSeconds: 48 * 3600 }),
         liveDevice({ deviceId: "empty", tabCount: 0 }),
-      ],
-      lastSessionTabs,
-      recentSessions: [session],
-      otherDeviceBookmarks: [],
-    });
-    expect(targets.map((t) => t.kind)).toEqual(["session"]);
-    expect(targets[0].kind === "session" && targets[0].session?.name).toBe("Research");
+        liveDevice({ deviceId: "here" }),
+      ]).map((d) => d.deviceId),
+    ).toEqual(["here"]);
   });
 
-  it("orders multiple live devices by freshness and caps at two targets", () => {
-    const targets = rankContinueTargets({
-      liveDevices: [
+  it("orders multiple live devices by freshness", () => {
+    expect(
+      rankLiveDevices([
         liveDevice({ deviceId: "older", lastSeenAgeSeconds: 4000 }),
         liveDevice({ deviceId: "newer", lastSeenAgeSeconds: 60 }),
-      ],
-      lastSessionTabs,
-      recentSessions: [session],
-      otherDeviceBookmarks: [bookmark()],
-    });
-    expect(targets).toHaveLength(2);
-    expect(targets.map((t) => (t.kind === "live" ? t.device.deviceId : t.kind))).toEqual([
-      "newer",
-      "older",
-    ]);
+      ]).map((d) => d.deviceId),
+    ).toEqual(["newer", "older"]);
   });
 
   it("breaks a same-bucket freshness tie on tab count, not raw lastSeen", () => {
     // Both checked in within the 5-min bucket, so they're equally "here now" —
     // the busier device is the one the user actually left mid-task.
-    const targets = rankContinueTargets({
-      liveDevices: [
+    expect(
+      rankLiveDevices([
         liveDevice({ deviceId: "fresher-but-idle", lastSeenAgeSeconds: 10, tabCount: 2 }),
         liveDevice({ deviceId: "busy", lastSeenAgeSeconds: 240, tabCount: 18 }),
-      ],
-      lastSessionTabs: null,
-      recentSessions: [],
-      otherDeviceBookmarks: [],
-    });
-    expect(targets.map((t) => (t.kind === "live" ? t.device.deviceId : t.kind))).toEqual([
-      "busy",
-      "fresher-but-idle",
-    ]);
+      ]).map((d) => d.deviceId),
+    ).toEqual(["busy", "fresher-but-idle"]);
   });
 
   it("keeps freshness ahead of tab count across buckets", () => {
     // A device seen 2h ago does not outrank a live one just because it had more
     // tabs open — the tie-break only applies WITHIN a bucket.
-    const targets = rankContinueTargets({
-      liveDevices: [
+    expect(
+      rankLiveDevices([
         liveDevice({ deviceId: "stale-busy", lastSeenAgeSeconds: 7200, tabCount: 30 }),
         liveDevice({ deviceId: "live-quiet", lastSeenAgeSeconds: 20, tabCount: 1 }),
-      ],
-      lastSessionTabs: null,
-      recentSessions: [],
-      otherDeviceBookmarks: [],
-    });
-    expect(targets.map((t) => (t.kind === "live" ? t.device.deviceId : t.kind))).toEqual([
-      "live-quiet",
-      "stale-busy",
+      ]).map((d) => d.deviceId),
+    ).toEqual(["live-quiet", "stale-busy"]);
+  });
+
+  it("never lists the same device twice (a re-announcing device)", () => {
+    const rows = rankLiveDevices([
+      liveDevice({ deviceId: "same" }),
+      liveDevice({ deviceId: "same" }),
     ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].deviceId).toBe("same");
+  });
+});
+
+describe("mergeRecentSaves", () => {
+  const at = (id: string, savedAt: string) =>
+    bookmark({ id, source: { ...bookmark().source, savedAt } });
+
+  it("interleaves cross-device saves newest-first", () => {
+    expect(
+      mergeRecentSaves(
+        [at("a", "2026-03-05T10:00:00.000Z"), at("c", "2026-03-05T08:00:00.000Z")],
+        [at("b", "2026-03-05T09:00:00.000Z")],
+        5,
+      ).map((b) => b.id),
+    ).toEqual(["a", "b", "c"]);
   });
 
-  it("never lets the runner-up be the winner again (duplicate device ids)", () => {
-    const targets = rankContinueTargets({
-      liveDevices: [liveDevice({ deviceId: "same" }), liveDevice({ deviceId: "same" })],
-      lastSessionTabs: null,
-      recentSessions: [],
-      otherDeviceBookmarks: [],
-    });
-    expect(targets).toHaveLength(1);
-    expect(targets[0].kind === "live" && targets[0].device.deviceId).toBe("same");
+  it("lists a bookmark present in both lists exactly once", () => {
+    // otherDeviceBookmarks is a filtered slice of the same table, so overlap is
+    // the normal case — a save must never show up as two rows.
+    expect(
+      mergeRecentSaves([at("a", "2026-03-05T10:00:00.000Z")], [at("a", "2026-03-05T10:00:00.000Z")], 5)
+        .length,
+    ).toBe(1);
   });
 
-  it("falls back to other-device bookmarks last", () => {
-    const targets = rankContinueTargets({
-      liveDevices: [],
-      lastSessionTabs: null,
-      recentSessions: [],
-      otherDeviceBookmarks: [bookmark({ id: "x" })],
-    });
-    expect(targets.map((t) => t.kind)).toEqual(["bookmarks"]);
+  it("caps the list at the row limit", () => {
+    const many = Array.from({ length: 9 }, (_, i) =>
+      at(`b${i}`, `2026-03-0${(i % 9) + 1}T10:00:00.000Z`),
+    );
+    expect(mergeRecentSaves(many, [], 5)).toHaveLength(5);
+  });
+
+  it("sorts unparseable timestamps last instead of scrambling the list", () => {
+    expect(
+      mergeRecentSaves(
+        [at("broken", "not a date"), at("real", "2026-03-05T10:00:00.000Z")],
+        [],
+        5,
+      ).map((b) => b.id),
+    ).toEqual(["real", "broken"]);
   });
 });
 
@@ -378,14 +349,113 @@ describe("relativeTime", () => {
   });
 });
 
-describe("dominantReadingTag", () => {
-  it("picks the tag the items actually carry, defaulting to reading", () => {
-    expect(dominantReadingTag([])).toBe("reading");
-    expect(dominantReadingTag([{ tags: ["article"] }, { tags: ["article", "dev"] }])).toBe(
-      "article",
-    );
-    expect(dominantReadingTag([{ tags: ["reading"] }, { tags: ["article"] }])).toBe("reading");
-    expect(dominantReadingTag([{ tags: ["dev"] }])).toBe("reading");
+describe("hasDashboardActivity", () => {
+  // The Activity card is the ONE card allowed to be absent rather than empty
+  // (docs/features/dashboard.md §3.2, Tara 2026-08-27), so the rule that decides
+  // it is tested rather than eyeballed.
+  const activity = (days: number[]) => ({
+    days: days.map((count, i) => ({ day: `2026-03-${String(i + 1).padStart(2, "0")}`, count })),
+    topCategories: [{ name: "Dev", count: 9 }],
+    browserSplit: [{ name: "chrome", count: 12 }],
+  });
+
+  it("is false when the server suppressed activity entirely", () => {
+    expect(hasDashboardActivity(null)).toBe(false);
+    expect(hasDashboardActivity(undefined)).toBe(false);
+  });
+
+  it("is false for a fully zero-filled window", () => {
+    // Above ACTIVITY_MIN_BOOKMARKS the server still sends 14 zero buckets when
+    // every save is older than the window — a sparkline of nothing.
+    expect(hasDashboardActivity(activity(Array.from({ length: 14 }, () => 0)))).toBe(false);
+  });
+
+  it("is false when only the all-time facets have data", () => {
+    // topCategories/browserSplit are all-time, so they survive an empty window —
+    // and a card whose headline chart is blank does not earn a grid slot for its
+    // footnotes.
+    expect(
+      hasDashboardActivity({
+        days: [{ day: "2026-03-05", count: 0 }],
+        topCategories: [{ name: "Dev", count: 40 }],
+        browserSplit: [{ name: "chrome", count: 40 }],
+      }),
+    ).toBe(false);
+  });
+
+  it("is true as soon as ONE day in the window has a save", () => {
+    const days = Array.from({ length: 14 }, () => 0);
+    days[0] = 1; // oldest bucket — still inside the window
+    expect(hasDashboardActivity(activity(days))).toBe(true);
+    expect(hasDashboardActivity(activity([0, 0, 3]))).toBe(true);
+  });
+
+  it("is false for an empty days array", () => {
+    expect(hasDashboardActivity(activity([]))).toBe(false);
+  });
+});
+
+describe("isMobilePlatform", () => {
+  const CHROME_MAC =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+  const SAFARI_IPAD_DESKTOP_UA =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
+  const SAFARI_IPHONE =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+  const CHROME_ANDROID_TABLET =
+    "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+
+  it("says no when there is no navigator at all (SSR)", () => {
+    expect(isMobilePlatform(null)).toBe(false);
+    expect(isMobilePlatform(undefined)).toBe(false);
+    expect(isMobilePlatform({})).toBe(false);
+  });
+
+  it("trusts a positive userAgentData.mobile", () => {
+    expect(isMobilePlatform({ userAgent: "anything", userAgentData: { mobile: true } })).toBe(true);
+  });
+
+  it("treats a desktop browser as desktop", () => {
+    expect(
+      isMobilePlatform({
+        userAgent: CHROME_MAC,
+        maxTouchPoints: 0,
+        userAgentData: { mobile: false },
+      }),
+    ).toBe(false);
+  });
+
+  it("catches phones from the user agent", () => {
+    expect(isMobilePlatform({ userAgent: SAFARI_IPHONE, maxTouchPoints: 5 })).toBe(true);
+  });
+
+  it("catches iPadOS asking for the desktop site", () => {
+    // iPadOS reports a Macintosh UA with no iPad token; maxTouchPoints is the
+    // only tell, and a real Mac reports 0.
+    expect(isMobilePlatform({ userAgent: SAFARI_IPAD_DESKTOP_UA, maxTouchPoints: 5 })).toBe(true);
+    expect(isMobilePlatform({ userAgent: SAFARI_IPAD_DESKTOP_UA, maxTouchPoints: 0 })).toBe(false);
+  });
+
+  it("does not mistake a touchscreen Windows laptop for a tablet", () => {
+    expect(
+      isMobilePlatform({
+        userAgent:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+        maxTouchPoints: 10,
+      }),
+    ).toBe(false);
+  });
+
+  it("calls an Android tablet mobile even though userAgentData.mobile is false", () => {
+    // Chrome on Android has no extensions at all, so a false here must NOT be
+    // taken as "desktop, offer the store button".
+    expect(
+      isMobilePlatform({
+        userAgent: CHROME_ANDROID_TABLET,
+        maxTouchPoints: 5,
+        userAgentData: { mobile: false },
+      }),
+    ).toBe(true);
   });
 });
 

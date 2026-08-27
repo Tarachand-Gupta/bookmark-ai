@@ -39,7 +39,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { LibraryFilters } from "@/lib/api";
 import { FEATURE_ICONS } from "./feature-icons";
-import { ExtensionCard } from "./extension-cta";
 import type { SectionId } from "./settings-dialog";
 
 /** Facet rows shown before a section needs its "View all" toggle. */
@@ -349,8 +348,9 @@ export function AppSidebar({
 
       {/* shrink-0: the footer is a flex sibling of the scroll area, and without
           it a tall facet list compresses the footer and clips its last row. */}
+      {/* The extension nudge moved to the dashboard's install card (2026-08-27,
+          Tara: one nudge, not two) — the sidebar footer stays chrome-only. */}
       <SidebarFooter className="shrink-0 border-t">
-        <ExtensionCard />
         <SidebarMenu>
           {onOpenTour && (
             <SidebarMenuItem>

@@ -1,49 +1,61 @@
 import type { Bookmark } from "@bookmark-ai/types";
+import { mergeRecentSaves } from "@/lib/dashboard";
 import { FEATURE_ICONS } from "@/components/library/feature-icons";
 import { DashboardBookmarkRow } from "./bookmark-row";
-import { DashboardCard } from "./dashboard-card";
+import { DashboardCard, DashboardCardEmpty } from "./dashboard-card";
 import { allBookmarksHref } from "./links";
 
 /**
- * Recent saves (doc §3.4): the newest few saves as compact rows. Doubles as
- * save-confirmation ("did the page I just clipped land?"), which is why it sits
- * high in tier 2 even though the library is one click away.
+ * Recent saves — the dashboard's third first-class noun, and its
+ * save-confirmation surface ("did the page I just clipped land?").
  *
- * Six DENSE rows, not the endpoint's full eight at full height: this card is a
- * glance ("it landed") and a doorway, not a second library — at eight normal rows
- * it was the tallest thing on the page and dragged its whole grid row with it.
- * The count the header would show is on the footer's destination anyway.
- *
- * Row click opens the URL; the category chip jumps to the filtered library
- * (see DashboardBookmarkRow). Empty ⇒ nothing renders.
+ * Cross-device saves are folded in here rather than getting a heading of their
+ * own: they're the same objects from the same table, and one save appearing
+ * twice under two labels was exactly the duplication the old resume hero
+ * produced. The device icon on the row carries that fact instead (see
+ * `mergeRecentSaves` and DashboardBookmarkRow).
  */
 
-/** Rows shown before "All bookmarks" takes over. */
-const VISIBLE_SAVES = 6;
+/** Rows shown before "View all" takes over. Five, not the endpoint's eight: this
+ * card is a glance and a doorway, not a second library. */
+const VISIBLE_SAVES = 5;
 
 export function RecentSavesCard({
   bookmarks,
+  otherDeviceBookmarks,
+  total,
   className,
 }: {
   bookmarks: Bookmark[];
+  /** Newest saves from a device other than this one — folded into the list. */
+  otherDeviceBookmarks: Bookmark[];
+  total: number;
   className?: string;
 }) {
-  if (bookmarks.length === 0) return null;
+  const rows = mergeRecentSaves(bookmarks, otherDeviceBookmarks, VISIBLE_SAVES);
 
   return (
     <DashboardCard
       title="Recent saves"
       Icon={FEATURE_ICONS.bookmarks}
-      footerHref={allBookmarksHref()}
-      footerLabel="All bookmarks"
+      count={total || null}
+      viewAllHref={allBookmarksHref()}
       className={className}
       flush
     >
-      <div className="divide-y">
-        {bookmarks.slice(0, VISIBLE_SAVES).map((b) => (
-          <DashboardBookmarkRow key={b.id} bookmark={b} dense />
-        ))}
-      </div>
+      {rows.length === 0 ? (
+        <DashboardCardEmpty>
+          Nothing saved yet — anything you clip from the extension lands here.
+        </DashboardCardEmpty>
+      ) : (
+        <ul className="divide-y">
+          {rows.map((b) => (
+            <li key={b.id}>
+              <DashboardBookmarkRow bookmark={b} />
+            </li>
+          ))}
+        </ul>
+      )}
     </DashboardCard>
   );
 }
