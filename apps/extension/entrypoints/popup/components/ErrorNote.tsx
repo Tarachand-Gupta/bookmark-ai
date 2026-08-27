@@ -1,10 +1,15 @@
+/**
+ * A failed action, in the new card chrome: the same 10px radius and hairline
+ * border as every other block, tinted destructive. 11px so it reads as a note
+ * under the control that failed, not a panel of its own.
+ */
 export function ErrorNote({ message }: { message: string }) {
   return (
-    <div
+    <p
       role="alert"
-      className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive"
+      className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[11px] leading-snug text-destructive"
     >
       {message}
-    </div>
+    </p>
   );
 }

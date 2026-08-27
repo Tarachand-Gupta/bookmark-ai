@@ -21,6 +21,30 @@ for (const level of ["warn", "error"] as const) {
   };
 }
 
+/**
+ * Dark mode. `assets/tailwind.css` declares `@custom-variant dark (&:is(.dark *))`,
+ * so every `dark:` utility is gated on a `.dark` class and the built CSS contains
+ * NO `prefers-color-scheme` rules — nothing was ever setting that class, which
+ * left the popup permanently light and all the dark variants dead.
+ *
+ * Mirror the OS preference onto `<html>` before the first render, and keep
+ * listening: a popup can be open while the system flips at sunset, and Chrome
+ * keeps the document alive across that. No storage, no dependency, no in-popup
+ * theme setting — the popup follows the OS, same as the extension chrome around it.
+ *
+ * The popup is the extension's ONLY rendered UI; `background.ts`,
+ * `bridge.content.ts`, and `marker.content.ts` render nothing (the content
+ * scripts only read/stamp attributes on the host page), so nothing else needs this.
+ */
+function syncTheme(): void {
+  if (typeof window.matchMedia !== "function") return;
+  const query = window.matchMedia("(prefers-color-scheme: dark)");
+  const apply = (dark: boolean) => document.documentElement.classList.toggle("dark", dark);
+  apply(query.matches);
+  query.addEventListener("change", (e) => apply(e.matches));
+}
+syncTheme();
+
 const EXTENSION_URL = browser.runtime.getURL("/");
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
