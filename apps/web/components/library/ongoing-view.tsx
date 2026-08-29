@@ -12,6 +12,7 @@ import {
   Pencil,
   RotateCw,
   Save,
+  SearchX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -26,7 +27,14 @@ import {
   OLDER_MIN_SECONDS,
   windowSubtitle,
 } from "@/lib/live-format";
+import {
+  filterLiveDevices,
+  liveFilterTerms,
+  matchingTabs,
+  totalMatchCount,
+} from "@/lib/live-filter";
 import type { SectionId } from "./settings-dialog";
+import { LiveTabSearch } from "./live-tab-search";
 import { ExtensionStoreButton } from "./extension-cta";
 import { safeHref } from "@/lib/safe-href";
 import { BROWSER_ICONS, DEVICE_ICONS } from "./device-badges";
@@ -49,8 +57,14 @@ export interface OngoingViewProps {
 export function OngoingView({ onSaved, onOpenSettings }: OngoingViewProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showOlder, setShowOlder] = useState(false);
+  /** On-device filter over the current snapshot — never a request (live-filter.ts). */
+  const [query, setQuery] = useState("");
+  const terms = useMemo(() => liveFilterTerms(query), [query]);
+  const filtering = terms.length > 0;
   const { data, loading, error, provisioning, refreshing, reload } = useLiveDevices({
-    fast: expanded.size > 0,
+    // Filtering shows every matching tab expanded, so it counts as "a window is
+    // open" for the cadence hint the same way a manual expansion does.
+    fast: expanded.size > 0 || filtering,
   });
 
   // Drop expansion keys for windows that a later poll no longer returns, so the
@@ -87,13 +101,21 @@ export function OngoingView({ onSaved, onOpenSettings }: OngoingViewProps) {
     });
   }, []);
 
-  const { fresh, older } = useMemo(() => {
-    const devices = data?.devices ?? [];
+  // Re-derived from every snapshot, so an SSE push keeps the active query
+  // applied instead of flashing the unfiltered list back in.
+  const { fresh, older, matchCount } = useMemo(() => {
+    const devices = filterLiveDevices(data?.devices ?? [], terms);
     return {
       fresh: devices.filter((d) => d.lastSeenAgeSeconds < OLDER_MIN_SECONDS),
       older: devices.filter((d) => d.lastSeenAgeSeconds >= OLDER_MIN_SECONDS),
+      matchCount: totalMatchCount(devices, terms),
     };
-  }, [data]);
+  }, [data, terms]);
+
+  // A match on a device that's been quiet for hours is still a match — while a
+  // query is on, the "older" fold opens itself rather than hiding results behind
+  // a button the user has no reason to suspect.
+  const olderVisible = filtering || showOlder;
 
   if (provisioning) return <OngoingNotice icon="spinner">Setting up your account…</OngoingNotice>;
 
@@ -179,6 +201,21 @@ export function OngoingView({ onSaved, onOpenSettings }: OngoingViewProps) {
           Showing the last update — couldn’t refresh just now.
         </p>
       )}
+      <LiveTabSearch value={query} onChange={setQuery} matchCount={matchCount} />
+
+      {filtering && fresh.length === 0 && older.length === 0 && (
+        <OngoingEmpty
+          icon={SearchX}
+          title="No matching tabs"
+          body="None of the tabs your devices have open match that. Every term has to appear in a tab’s title or link."
+          action={
+            <Button size="sm" variant="outline" onClick={() => setQuery("")}>
+              Clear filter
+            </Button>
+          }
+        />
+      )}
+
       {fresh.map((device) => (
         <DeviceSection
           key={device.deviceId}
@@ -187,19 +224,25 @@ export function OngoingView({ onSaved, onOpenSettings }: OngoingViewProps) {
           onToggleWindow={toggleWindow}
           onSaved={onSaved}
           dimmed={Boolean(error)}
+          terms={terms}
         />
       ))}
 
       {older.length > 0 && (
         <div className="space-y-6">
-          <div className="flex justify-center">
-            <Button variant="outline" size="sm" onClick={() => setShowOlder((v) => !v)}>
-              {showOlder
-                ? "Hide older devices"
-                : `Show ${older.length} older device${older.length === 1 ? "" : "s"}`}
-            </Button>
-          </div>
-          {showOlder &&
+          {/* While filtering the group is already open and can't be closed —
+              hiding matches behind it would defeat the filter — so the toggle
+              stands down rather than rendering as a no-op button. */}
+          {!filtering && (
+            <div className="flex justify-center">
+              <Button variant="outline" size="sm" onClick={() => setShowOlder((v) => !v)}>
+                {showOlder
+                  ? "Hide older devices"
+                  : `Show ${older.length} older device${older.length === 1 ? "" : "s"}`}
+              </Button>
+            </div>
+          )}
+          {olderVisible &&
             older.map((device) => (
               <DeviceSection
                 key={device.deviceId}
@@ -208,6 +251,7 @@ export function OngoingView({ onSaved, onOpenSettings }: OngoingViewProps) {
                 onToggleWindow={toggleWindow}
                 onSaved={onSaved}
                 dimmed={Boolean(error)}
+                terms={terms}
               />
             ))}
         </div>
@@ -228,14 +272,18 @@ function DeviceSection({
   onToggleWindow,
   onSaved,
   dimmed,
+  terms,
 }: {
   device: LiveDevice;
   expanded: Set<string>;
   onToggleWindow: (key: string) => void;
   onSaved: () => void;
   dimmed: boolean;
+  /** Active filter terms; empty = the device renders exactly as it always has. */
+  terms: string[];
 }) {
   const { filled, dim } = deviceFreshness(device.lastSeenAgeSeconds);
+  const filtering = terms.length > 0;
   const DeviceIcon = DEVICE_ICONS[device.device] ?? MonitorSmartphone;
   const BrowserIcon = BROWSER_ICONS[device.browser] ?? Globe;
 
@@ -263,22 +311,31 @@ function DeviceSection({
         <p className="px-1 text-sm text-muted-foreground">No windows open.</p>
       ) : (
         <div className="space-y-2">
-          {device.windows.map((win, i) => (
-            <WindowCard
-              key={windowKey(device.deviceId, win.windowId)}
-              device={device}
-              win={win}
-              ordinal={i + 1}
-              open={expanded.has(windowKey(device.deviceId, win.windowId))}
-              onToggle={() => onToggleWindow(windowKey(device.deviceId, win.windowId))}
-              stale={dim}
-              onSaved={onSaved}
-            />
-          ))}
+          {/* Mapped over the FULL window list so the "Window N" ordinals keep
+              their real positions; a filtered-out window drops out of the
+              output rather than renumbering the ones after it. */}
+          {device.windows.map((win, i) => {
+            if (filtering && matchingTabs(win, terms).length === 0) return null;
+            return (
+              <WindowCard
+                key={windowKey(device.deviceId, win.windowId)}
+                device={device}
+                win={win}
+                ordinal={i + 1}
+                open={expanded.has(windowKey(device.deviceId, win.windowId))}
+                onToggle={() => onToggleWindow(windowKey(device.deviceId, win.windowId))}
+                stale={dim}
+                onSaved={onSaved}
+                terms={terms}
+              />
+            );
+          })}
         </div>
       )}
 
-      {device.hiddenTabCount > 0 && (
+      {/* Suppressed while filtering: next to a narrowed list this reads as "the
+          filter hid them", which isn't what it means. */}
+      {!filtering && device.hiddenTabCount > 0 && (
         <p className="px-1 text-xs text-muted-foreground">
           {device.hiddenTabCount} tab{device.hiddenTabCount === 1 ? "" : "s"} not shown (private or
           local)
@@ -296,6 +353,7 @@ function WindowCard({
   onToggle,
   stale,
   onSaved,
+  terms,
 }: {
   device: LiveDevice;
   win: LiveWindow;
@@ -304,8 +362,15 @@ function WindowCard({
   onToggle: () => void;
   stale: boolean;
   onSaved: () => void;
+  terms: string[];
 }) {
-  const subtitle = windowSubtitle(win.tabs);
+  const filtering = terms.length > 0;
+  const tabs = matchingTabs(win, terms);
+  // A filtered card is always open — a collapsed one would hide the very match
+  // that kept it on screen — and its disclosure stands down rather than
+  // rendering a control that can't close it.
+  const expandedNow = open || filtering;
+  const subtitle = windowSubtitle(tabs);
 
   // The authoritative override comes from the server (overlaid onto win.name).
   // `optimistic` holds a just-typed value so the label updates instantly; it's
@@ -334,8 +399,8 @@ function WindowCard({
 
   return (
     <Collapsible
-      open={open}
-      onOpenChange={onToggle}
+      open={expandedNow}
+      onOpenChange={filtering ? undefined : onToggle}
       className="rounded-xl border bg-card text-card-foreground shadow-sm"
     >
       <div className="group flex items-center gap-3 p-3">
@@ -365,14 +430,25 @@ function WindowCard({
           </div>
         ) : (
           <>
-            <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-2 text-left">
+            <CollapsibleTrigger
+              disabled={filtering}
+              className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
+            >
               <ChevronDown
-                className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+                className={cn(
+                  "size-4 shrink-0 text-muted-foreground transition-transform",
+                  expandedNow && "rotate-180",
+                )}
                 aria-hidden
               />
               <div className="min-w-0">
+                {/* "3 of 12 tabs" while filtering, so it's obvious the card is
+                    narrowed — and that Save still takes the whole window. */}
                 <p className="truncate font-medium">
-                  {label} · {win.tabs.length} tab{win.tabs.length === 1 ? "" : "s"}
+                  {label} ·{" "}
+                  {filtering
+                    ? `${tabs.length} of ${win.tabs.length} tab${win.tabs.length === 1 ? "" : "s"}`
+                    : `${win.tabs.length} tab${win.tabs.length === 1 ? "" : "s"}`}
                 </p>
                 {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
               </div>
@@ -393,7 +469,7 @@ function WindowCard({
 
       <CollapsibleContent>
         <ul className="divide-y border-t">
-          {win.tabs.map((tab, i) => (
+          {tabs.map((tab, i) => (
             <LiveTabRow key={`${tab.url}-${i}`} tab={tab} deviceLabel={device.label} />
           ))}
         </ul>
