@@ -2,8 +2,12 @@ import { StyleSheet, Text, View } from "react-native";
 import type { LiveDevice, LiveWindow } from "@bookmark-ai/types";
 import { useAppTheme } from "../context/PreferencesContext";
 import { ageLabel, deviceDisplayLabel, deviceGlyph, deviceHeading, isStale } from "../lib/live";
+import { matchingTabs } from "../lib/live-filter";
 import { LiveWindowCard } from "./LiveWindowCard";
 import { Symbol } from "./Symbol";
+
+/** Stable identity for the unfiltered default, so the prop never churns renders. */
+const EMPTY_TERMS: string[] = [];
 
 /**
  * One device as a plain section header (dot + icon + heading + "as of X ago")
@@ -17,17 +21,21 @@ export function LiveDeviceSection({
   onToggleWindow,
   savingKey,
   onSaveWindow,
+  terms = EMPTY_TERMS,
 }: {
   device: LiveDevice;
   isWindowExpanded: (windowId: number) => boolean;
   onToggleWindow: (windowId: number) => void;
   savingKey: string | null;
   onSaveWindow: (window: LiveWindow, windowNumber: number) => void;
+  /** Active on-device filter terms; empty = the section renders as it always has. */
+  terms?: string[];
 }) {
   const { colors } = useAppTheme();
   const stale = isStale(device.lastSeenAgeSeconds);
   const glyph = deviceGlyph(device.device);
   const label = deviceDisplayLabel(device);
+  const filtering = terms.length > 0;
 
   return (
     <View style={styles.section}>
@@ -51,8 +59,11 @@ export function LiveDeviceSection({
         </View>
       </View>
 
+      {/* Mapped over the FULL window list so "Window N" keeps its real position;
+          a window with no matches drops out rather than renumbering the rest. */}
       {device.windows.map((win, index) => {
         const number = index + 1;
+        if (filtering && matchingTabs(win, terms).length === 0) return null;
         return (
           <LiveWindowCard
             key={win.windowId}
@@ -64,11 +75,14 @@ export function LiveDeviceSection({
             onToggle={() => onToggleWindow(win.windowId)}
             saving={savingKey === `${device.deviceId}:${win.windowId}`}
             onSave={() => onSaveWindow(win, number)}
+            terms={terms}
           />
         );
       })}
 
-      {device.hiddenTabCount > 0 && (
+      {/* Suppressed while filtering: next to a narrowed list this reads as "the
+          filter hid them", which isn't what it means. */}
+      {!filtering && device.hiddenTabCount > 0 && (
         <Text style={[styles.hidden, { color: colors.mutedForeground }]}>
           {device.hiddenTabCount} tab{device.hiddenTabCount === 1 ? "" : "s"} not shown (private or
           local)

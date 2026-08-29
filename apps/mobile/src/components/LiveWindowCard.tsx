@@ -4,6 +4,7 @@ import * as Haptics from "expo-haptics";
 import type { LiveTab, LiveWindow } from "@bookmark-ai/types";
 import { useAppTheme } from "../context/PreferencesContext";
 import { STALE_OPACITY } from "../lib/live";
+import { matchingTabs } from "../lib/live-filter";
 import { FaviconTile } from "./BookmarkRow";
 import { hostOf } from "./SessionCard";
 import { Symbol } from "./Symbol";
@@ -16,6 +17,9 @@ const INITIAL_TABS = 8;
 function isHttp(url: string): boolean {
   return /^https?:\/\//i.test(url);
 }
+
+/** Stable identity for the unfiltered default, so the prop never churns renders. */
+const EMPTY_TERMS: string[] = [];
 
 /**
  * One open browser window as a card, mirroring SessionCard's expand / tab-row /
@@ -31,6 +35,7 @@ export function LiveWindowCard({
   onToggle,
   saving,
   onSave,
+  terms = EMPTY_TERMS,
 }: {
   win: LiveWindow;
   windowNumber: number;
@@ -40,14 +45,21 @@ export function LiveWindowCard({
   onToggle: () => void;
   saving: boolean;
   onSave: () => void;
+  /** Active on-device filter terms; empty = the card renders as it always has. */
+  terms?: string[];
 }) {
   const { colors, radius } = useAppTheme();
   const [showAll, setShowAll] = useState(false);
 
-  const active = win.tabs.find((t) => t.active) ?? win.tabs[0];
+  const filtering = terms.length > 0;
+  // Display only. `onSave` still gets the WHOLE window (it's `win.tabs` at the
+  // caller), which is what "Save" has always meant — hence the "3 of 12 tabs"
+  // title below, so a narrowed card never looks like it would save just three.
+  const tabs = matchingTabs(win, terms);
+  const active = tabs.find((t) => t.active) ?? tabs[0];
   const subtitle = active ? active.title.trim() || hostOf(active.url) : "No tabs";
-  const visible = showAll ? win.tabs : win.tabs.slice(0, INITIAL_TABS);
-  const foldedCount = win.tabs.length - visible.length;
+  const visible = showAll ? tabs : tabs.slice(0, INITIAL_TABS);
+  const foldedCount = tabs.length - visible.length;
 
   return (
     <View
@@ -66,6 +78,10 @@ export function LiveWindowCard({
           void Haptics.selectionAsync();
           onToggle();
         }}
+        // A filtered card is always open — collapsing it would hide the very
+        // match that kept it on screen — so the disclosure stands down rather
+        // than being a tap that does nothing.
+        disabled={filtering}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
         style={({ pressed }) => [styles.header, pressed && { backgroundColor: colors.muted }]}
@@ -75,7 +91,10 @@ export function LiveWindowCard({
         </View>
         <View style={styles.titles}>
           <Text numberOfLines={1} style={[styles.title, { color: colors.foreground }]}>
-            Window {windowNumber} · {win.tabs.length} tab{win.tabs.length === 1 ? "" : "s"}
+            Window {windowNumber} ·{" "}
+            {filtering
+              ? `${tabs.length} of ${win.tabs.length} tab${win.tabs.length === 1 ? "" : "s"}`
+              : `${win.tabs.length} tab${win.tabs.length === 1 ? "" : "s"}`}
           </Text>
           <Text numberOfLines={1} style={[styles.subtitle, { color: colors.mutedForeground }]}>
             {subtitle}

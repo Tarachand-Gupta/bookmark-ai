@@ -14,6 +14,7 @@ import type { LiveDevice, LiveWindow, Session } from "@bookmark-ai/types";
 import { createSession } from "../api";
 import { LiveDeviceSection } from "../components/LiveDeviceSection";
 import { LiveEmptyState } from "../components/LiveEmptyState";
+import { LiveTabSearchField } from "../components/LiveTabSearchField";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { SessionCard } from "../components/SessionCard";
 import { Symbol } from "../components/Symbol";
@@ -21,6 +22,7 @@ import { useAppTheme } from "../context/PreferencesContext";
 import { useLiveDevices, type SessionsSegment } from "../hooks/useLiveDevices";
 import { useSessions } from "../hooks/useSessions";
 import { ageLabel, deviceDisplayLabel, isOlder, isStale } from "../lib/live";
+import { filterLiveDevices, liveFilterTerms, totalMatchCount } from "../lib/live-filter";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 
 /**
@@ -100,6 +102,11 @@ export function SessionsScreen({
    */
   const [olderOpen, setOlderOpen] = useState<boolean | null>(null);
 
+  /** On-device filter over the current live snapshot — never a request (lib/live-filter). */
+  const [liveQuery, setLiveQuery] = useState("");
+  const liveTerms = useMemo(() => liveFilterTerms(liveQuery), [liveQuery]);
+  const filtering = liveTerms.length > 0;
+
   const saved = useSessions();
 
   const windowKey = (deviceId: string, windowId: number) => `${deviceId}:${windowId}`;
@@ -109,8 +116,8 @@ export function SessionsScreen({
     segment,
     // Any expanded window tightens the poll to a few seconds; nothing expanded
     // keeps it slow. Stale keys are pruned below, so a vanished device can't pin
-    // the fast cadence on.
-    expanded: expandedWindows.size > 0,
+    // the fast cadence on. Filtering expands every surviving card, so it counts.
+    expanded: expandedWindows.size > 0 || filtering,
   });
 
   // Settle the default segment from the first live payload (see `picked`/`auto`).
@@ -230,19 +237,33 @@ export function SessionsScreen({
 
   // Fresh devices first exactly as before, then the inactive group's toggle, then
   // the inactive devices themselves when it's open (see `olderOpen`, `LiveRow`).
+  // Re-derived from every snapshot, so an SSE push keeps the active filter
+  // applied rather than flashing the unfiltered list back in.
   const liveRows = useMemo<LiveRow[]>(() => {
     const fresh: LiveDevice[] = [];
     const older: LiveDevice[] = [];
-    for (const d of live.devices) {
+    for (const d of filterLiveDevices(live.devices, liveTerms)) {
       (isOlder(d.lastSeenAgeSeconds) ? older : fresh).push(d);
     }
     const rows: LiveRow[] = fresh.map((device) => ({ kind: "device", device }));
     if (older.length === 0) return rows;
+    // A match on a device that's been quiet for hours is still a match: while a
+    // filter is on the group opens itself and its toggle is dropped, rather than
+    // hiding results behind a row the user has no reason to suspect.
+    if (filtering) {
+      rows.push(...older.map((device): LiveRow => ({ kind: "device", device })));
+      return rows;
+    }
     const open = olderOpen ?? fresh.length === 0;
     rows.push({ kind: "olderToggle", count: older.length, open });
     if (open) rows.push(...older.map((device): LiveRow => ({ kind: "device", device })));
     return rows;
-  }, [live.devices, olderOpen]);
+  }, [live.devices, liveTerms, filtering, olderOpen]);
+
+  const matchCount = useMemo(
+    () => totalMatchCount(filterLiveDevices(live.devices, liveTerms), liveTerms),
+    [live.devices, liveTerms],
+  );
 
   const savedLabel =
     saved.loading && saved.sessions.length === 0 ? "Saved" : `Saved · ${saved.sessions.length}`;
@@ -273,6 +294,10 @@ export function SessionsScreen({
     <LiveEmptyState kind="error" message={live.error} onRetry={live.refresh} />
   ) : !live.enabled ? (
     <LiveEmptyState kind="off" onOpenSettings={onOpenSettings} />
+  ) : filtering && live.devices.length > 0 ? (
+    // Devices ARE reporting — the filter is what emptied the list, so say that
+    // instead of the "no devices yet" copy, which would read as a live outage.
+    <LiveEmptyState kind="no-match" onClearFilter={() => setLiveQuery("")} />
   ) : (
     <LiveEmptyState kind="no-device" />
   );
@@ -291,6 +316,15 @@ export function SessionsScreen({
           value={decided}
           onChange={setPicked}
         />
+        {/* Only where there's something to filter — and kept while a query is
+            on even if the devices vanish, so it's always possible to clear. */}
+        {segment === "ongoing" && (live.devices.length > 0 || filtering) && (
+          <LiveTabSearchField
+            value={liveQuery}
+            onChange={setLiveQuery}
+            matchCount={matchCount}
+          />
+        )}
         {segment === "ongoing" && live.paused && live.devices.length > 0 && (
           <Text style={[styles.paused, { color: colors.mutedForeground }]}>
             Paused — pull to refresh
@@ -375,11 +409,14 @@ export function SessionsScreen({
               <LiveDeviceSection
                 device={device}
                 isWindowExpanded={(windowId) =>
-                  expandedWindows.has(windowKey(device.deviceId, windowId))
+                  // Filtering surfaces every match, so a card that survived the
+                  // filter is expanded regardless of the user's own toggles.
+                  filtering || expandedWindows.has(windowKey(device.deviceId, windowId))
                 }
                 onToggleWindow={(windowId) => toggleWindow(device.deviceId, windowId)}
                 savingKey={savingKey}
                 onSaveWindow={(win, windowNumber) => requestSaveWindow(device, win, windowNumber)}
+                terms={liveTerms}
               />
             );
           }}

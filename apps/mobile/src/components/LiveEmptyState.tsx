@@ -12,19 +12,23 @@ import { Symbol } from "./Symbol";
  *   no-device    → B (armed, nothing has checked in)
  *   provisioning → D (tenant DB still being created)
  *   error        → a soft first-load failure with a retry
+ *   no-match     → devices ARE reporting, the on-device filter just excluded
+ *                  every tab (not a §4.7 state — it's about the query, not live)
  */
-export type LiveEmptyKind = "off" | "no-device" | "provisioning" | "error";
+export type LiveEmptyKind = "off" | "no-device" | "provisioning" | "error" | "no-match";
 
 export function LiveEmptyState({
   kind,
   message,
   onOpenSettings,
   onRetry,
+  onClearFilter,
 }: {
   kind: LiveEmptyKind;
   message?: string;
   onOpenSettings?: () => void;
   onRetry?: () => void;
+  onClearFilter?: () => void;
 }) {
   const { colors, radius } = useAppTheme();
 
@@ -50,7 +54,14 @@ export function LiveEmptyState({
           title: "Open tabs are off",
           body: "Turn on Show my open tabs in Settings and your browser will show you what it has open here — nothing is saved until you tap Save.",
         }
-      : kind === "error"
+      : kind === "no-match"
+        ? {
+            icon: "magnifyingglass",
+            fallback: "⌕",
+            title: "No matching tabs",
+            body: "None of the tabs your devices have open match that. Every word has to appear in a tab’s title or link.",
+          }
+        : kind === "error"
         ? {
             // A warning, not a question mark: this is the reader being
             // unreachable, not something the user needs explained. `message`
@@ -96,6 +107,19 @@ export function LiveEmptyState({
           ]}
         >
           <Text style={[styles.buttonLabel, { color: colors.foreground }]}>Retry</Text>
+        </Pressable>
+      )}
+      {kind === "no-match" && onClearFilter && (
+        <Pressable
+          onPress={onClearFilter}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.button,
+            { borderColor: colors.border, borderRadius: radius.md },
+            pressed && { backgroundColor: colors.muted },
+          ]}
+        >
+          <Text style={[styles.buttonLabel, { color: colors.foreground }]}>Clear filter</Text>
         </Pressable>
       )}
     </View>
