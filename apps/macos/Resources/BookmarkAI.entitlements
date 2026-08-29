@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Full App Sandbox from day one — this app only ever makes outbound HTTP
+	     requests (the API + the Clerk sign-in WKWebView), so network.client is
+	     the entire capability surface. No file access, no server sockets. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Export/Import in Settings ▸ Data use NSSavePanel/NSOpenPanel; the
+	     powerbox only grants a sandboxed app the user's picked file when this
+	     entitlement is present. No other file access exists. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+</dict>
+</plist>

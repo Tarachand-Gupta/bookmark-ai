@@ -1,0 +1,79 @@
+name: BookmarkAI
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XcodeGen manifest — the COMMITTED source of truth for the Xcode project.
+# `BookmarkAI.xcodeproj` is generated (and gitignored); regenerate with:
+#     cd apps/macos && xcodegen generate
+# ─────────────────────────────────────────────────────────────────────────────
+
+options:
+  bundleIdPrefix: ai.purecode.bookmarkai
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+  minimumXcodeGenVersion: "2.38"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ALWAYS_SEARCH_USER_PATHS: NO
+    DEAD_CODE_STRIPPING: YES
+    ENABLE_HARDENED_RUNTIME: YES
+    SWIFT_STRICT_CONCURRENCY: minimal
+    # Every color/material in the app is semantic, so the app is light/dark
+    # correct by construction; no appearance override here on purpose.
+
+targets:
+  BookmarkAI:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources
+      - path: Resources/Assets.xcassets
+      - path: Resources/Info.plist
+        buildPhase: none
+      - path: Resources/BookmarkAI.entitlements
+        buildPhase: none
+    settings:
+      base:
+        PRODUCT_NAME: BookmarkAI
+        PRODUCT_BUNDLE_IDENTIFIER: ai.purecode.bookmarkai.macos
+        INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Resources/BookmarkAI.entitlements
+        # Automatic signing with Tara's team. If no provisioning profile can be
+        # issued, the build falls back to ad-hoc ("Sign to Run Locally") via:
+        #   xcodebuild … CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=-
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: L3PP7DQZWS
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # No AccentColor asset on purpose: with none defined the app adopts the
+        # user's SYSTEM accent colour, which is what a Mac-native app should do.
+        # `.tint` in the UI therefore follows System Settings ▸ Appearance.
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_PREVIEWS: YES
+        LD_RUNPATH_SEARCH_PATHS: ["$(inherited)", "@executable_path/../Frameworks"]
+    scheme:
+      testTargets:
+        - BookmarkAITests
+
+  BookmarkAITests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests
+    dependencies:
+      - target: BookmarkAI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.purecode.bookmarkai.macos.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/BookmarkAI.app/Contents/MacOS/BookmarkAI"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: L3PP7DQZWS

@@ -1,0 +1,14 @@
+# The Xcode project is GENERATED from project.yml by XcodeGen — never commit it.
+# `xcodegen generate` reproduces it exactly; project.yml is the source of truth.
+BookmarkAI.xcodeproj/
+
+# Build products / local Xcode state
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+build-*/
+
+# Stray Redis snapshot if redis-server is ever started from this directory
+dump.rdb
