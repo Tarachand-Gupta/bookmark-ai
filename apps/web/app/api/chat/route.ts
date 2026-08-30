@@ -4,7 +4,12 @@ import { convertToModelMessages, stepCountIs, streamText, tool, type UIMessage }
 import { z } from "zod";
 import { listSessions, type Db } from "@bookmark-ai/db";
 import type { ListLiveResponse } from "@bookmark-ai/types";
-import { fetchUrl, performSearch, runReadOnlySql, webSearch } from "@bookmark-ai/engine";
+import {
+  fetchUrl,
+  performSearch,
+  runReadOnlySql,
+  webSearchWithFallback,
+} from "@bookmark-ai/engine";
 import {
   appendChatMessage,
   createConversationRecord,
@@ -240,7 +245,7 @@ function systemPrompt(): string {
     "- searchBookmarks: topical or fuzzy finding ('articles about databases'). mode hybrid (default) is best; use semantic for by-meaning and text for exact words/domains.",
     "- listSessions: any question about SAVED browser sessions (named snapshots of tabs the user deliberately kept).",
     "- listLiveTabs: the user's tabs that are OPEN RIGHT NOW, live, across their devices — use for 'what am I working on right now', 'what's open on my laptop/phone', 'what was I just looking at'. Works ONLY when the user has turned on live tab sharing; if it comes back disabled, tell them they can enable 'Live sessions' sharing to let you see current tabs. Takes no parameters. (Distinct from listSessions, which is deliberately-saved snapshots.)",
-    "- webSearch: current or external information NOT in the user's library. Returns titles, URLs, and snippets.",
+    "- webSearch: current or external information NOT in the user's library. Returns a grounded `answer` plus source titles, URLs, and snippets — lean on the answer, cite the sources.",
     "- fetchUrl: read a specific page's live text — including re-reading a saved bookmark's current content before answering questions about it.",
     "",
     "RULES:",
@@ -384,9 +389,9 @@ export async function POST(req: Request) {
       }),
       webSearch: tool({
         description:
-          "Search the public web for current or external information not in the user's library. Returns result titles, URLs, and snippets.",
+          "Search the public web for current or external information not in the user's library. Returns a grounded answer plus source titles, URLs, and snippets.",
         inputSchema: webSearchInput,
-        execute: ({ query, limit }) => runWebSearchTool(query, limit),
+        execute: ({ query, limit }) => runWebSearchTool(gemini, query, limit),
       }),
       fetchUrl: tool({
         description:
@@ -436,7 +441,11 @@ export async function POST(req: Request) {
   });
 }
 
-/** Keyless web search (never throws — degrades to empty results). */
-function runWebSearchTool(query: string, limit: number) {
-  return webSearch(query, limit);
+/**
+ * Web search: Gemini google_search grounding on the server key when present
+ * (works from Vercel's egress IPs), else the keyless DuckDuckGo scrape (which
+ * datacenter IPs get blocked from — it's the self-host fallback). Never throws.
+ */
+function runWebSearchTool(gemini: GeminiClient | null, query: string, limit: number) {
+  return webSearchWithFallback(gemini, query, limit);
 }

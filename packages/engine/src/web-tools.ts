@@ -1,3 +1,4 @@
+import { GeminiClient } from "./gemini";
 import { followRedirects, readCapped } from "./net-guard";
 
 /**
@@ -70,6 +71,55 @@ export interface WebSearchResult {
   title: string;
   url: string;
   snippet: string;
+}
+
+const ANSWER_MAX_CHARS = 4_000;
+const SNIPPET_MAX_CHARS = 300;
+
+/**
+ * The chat agent's webSearch backend. Primary: Gemini's Google Search
+ * grounding (`GeminiClient.groundedSearch`) — a plain Google API call, so it
+ * works from serverless egress IPs. The keyless DuckDuckGo scrape below is the
+ * fallback for self-host installs without a Gemini key (and for a grounding
+ * outage); in production the scrape alone was effectively dead — DDG refuses
+ * Vercel's egress IPs, so every search came back `blocked`.
+ *
+ * Returns the scrape's `{results, blocked?}` shape extended with `answer`: a
+ * synthesized, source-grounded reply the agent can lean on directly. Never
+ * throws.
+ */
+export async function webSearchWithFallback(
+  gemini: GeminiClient | null,
+  query: string,
+  limit = 5,
+): Promise<{ results: WebSearchResult[]; answer?: string; blocked?: boolean }> {
+  const capped = Math.min(Math.max(1, Math.floor(limit) || 5), 8);
+  if (gemini && query.trim()) {
+    try {
+      const grounded = await gemini.groundedSearch(query);
+      if (grounded.answer || grounded.sources.some((s) => s.uri)) {
+        const results: WebSearchResult[] = [];
+        for (let i = 0; i < grounded.sources.length && results.length < capped; i++) {
+          const source = grounded.sources[i];
+          if (!source?.uri) continue;
+          // The first answer segment citing this source doubles as its snippet.
+          const support = grounded.supports.find((s) => s.sourceIndices.includes(i));
+          results.push({
+            title: source.title || source.uri,
+            url: source.uri,
+            snippet: (support?.text ?? "").slice(0, SNIPPET_MAX_CHARS),
+          });
+        }
+        return { results, answer: grounded.answer.slice(0, ANSWER_MAX_CHARS) };
+      }
+      // Grounded call succeeded but carried nothing usable — try the scrape.
+      console.warn("[webSearch] grounded search returned no answer/sources; falling back to scrape");
+    } catch (err) {
+      // Grounding unavailable (quota, network, key restriction) — try the scrape.
+      console.warn("[webSearch] grounded search failed; falling back to scrape:", err);
+    }
+  }
+  return webSearch(query, capped);
 }
 
 /**

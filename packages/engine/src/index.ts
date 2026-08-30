@@ -1,4 +1,4 @@
-export { GeminiClient } from "./gemini";
+export { GeminiClient, parseGroundedSearch, type GroundedSearch } from "./gemini";
 export { scrapeOpenGraph, type ScrapeResult } from "./og";
 export {
   categorize,
@@ -73,6 +73,7 @@ export {
 export {
   fetchUrl,
   webSearch,
+  webSearchWithFallback,
   type FetchUrlResult,
   type WebSearchResult,
 } from "./web-tools";
