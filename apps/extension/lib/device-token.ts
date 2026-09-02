@@ -22,6 +22,7 @@
 import { storage } from "#imports";
 import { getApiBaseUrl } from "./api";
 import { diag } from "./diag";
+import { fetchWithTimeout } from "./net";
 
 /** Persisted device-token record. `rti` is reserved for a future renewal-chain
  * issued-at the server may surface; unused today. */
@@ -209,7 +210,7 @@ async function postRenewal(
 
   const base = await getApiBaseUrl();
   try {
-    const res = await fetch(`${base}/api/device-token`, {
+    const res = await fetchWithTimeout(`${base}/api/device-token`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${stored.token}` },
       body: "{}",

@@ -54,6 +54,13 @@ const MAX_OS = 40; // pushLiveStateSchema.os cap
  */
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let flushing = false;
+/** When the in-flight flush started — lets a later flush detect a WEDGED one
+ * (a push whose promise never settled; caused the 2026-09-02 all-day silent
+ * outage when a network switch stalled a timeout-less fetch and the guard
+ * blocked every subsequent push for the worker's lifetime). Fetches are
+ * bounded now (lib/net.ts), so this is the belt to that suspender. */
+let flushingSince = 0;
+const FLUSH_WEDGE_MS = 60_000;
 
 interface BadgeAction {
   setBadgeText: (details: { text: string }) => Promise<void> | void;
@@ -194,11 +201,18 @@ async function flush(reason: "debounce" | "alarm" | "windowRemoved"): Promise<vo
     return;
   }
   if (flushing) {
-    armDebounce(); // a push is in flight; retry after it settles
-    return;
+    if (Date.now() - flushingSince < FLUSH_WEDGE_MS) {
+      armDebounce(); // a push is in flight; retry after it settles
+      return;
+    }
+    // The "in-flight" push is over a minute old — its promise wedged. Steal the
+    // guard rather than let one dead promise silence the mirror forever.
+    diag("live", "flush guard stolen from wedged push", { ageMs: Date.now() - flushingSince });
   }
 
   flushing = true;
+  const guardStamp = Date.now();
+  flushingSince = guardStamp;
   try {
     const dirty = await liveDirtyItem.getValue();
 
@@ -227,7 +241,9 @@ async function flush(reason: "debounce" | "alarm" | "windowRemoved"): Promise<vo
       await reactToFailure(outcome);
     }
   } finally {
-    flushing = false;
+    // Only the guard's current owner may release it — a wedged push whose
+    // promise finally settles must not clear the flush that stole the guard.
+    if (flushingSince === guardStamp) flushing = false;
   }
 }
 

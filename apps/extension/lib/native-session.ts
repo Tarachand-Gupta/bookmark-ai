@@ -1,6 +1,7 @@
 import { browser } from "wxt/browser";
 import { CLERK_PUBLISHABLE_KEY } from "@/lib/clerk";
 import { diag } from "@/lib/diag";
+import { fetchWithTimeout } from "@/lib/net";
 
 /**
  * Native-API session resolution for PRODUCTION Clerk instances.
@@ -113,7 +114,7 @@ export async function getNativeSession(): Promise<NativeSession | null> {
     return null;
   }
   try {
-    const res = await fetch(`${origin}/v1/client?_is_native=1`, {
+    const res = await fetchWithTimeout(`${origin}/v1/client?_is_native=1`, {
       headers: { Authorization: token },
     });
     diag("native", "GET /v1/client", { status: res.status });
@@ -147,7 +148,7 @@ export async function getNativeSessionToken(): Promise<string | null> {
   const session = await getNativeSession();
   if (!session) return null;
   try {
-    const res = await fetch(`${origin}/v1/client/sessions/${session.sessionId}/tokens?_is_native=1`, {
+    const res = await fetchWithTimeout(`${origin}/v1/client/sessions/${session.sessionId}/tokens?_is_native=1`, {
       method: "POST",
       headers: { Authorization: token },
     });
@@ -169,7 +170,7 @@ export async function nativeSignOut(): Promise<boolean> {
   const session = await getNativeSession();
   if (!session) return false;
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${origin}/v1/client/sessions/${session.sessionId}/remove?_is_native=1`,
       { method: "POST", headers: { Authorization: token } },
     );

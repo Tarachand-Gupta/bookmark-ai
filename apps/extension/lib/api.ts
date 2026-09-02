@@ -8,6 +8,7 @@ import { storage } from "#imports";
 import { refreshCredential } from "./auth-refresh";
 import { getUsableDeviceToken } from "./device-token";
 import { diag } from "./diag";
+import { fetchWithTimeout } from "./net";
 import { tokenFresh, type CachedToken } from "./live-token";
 import { timed } from "./perf";
 
@@ -160,16 +161,16 @@ async function sendAuthed(url: string, init: RequestInit): Promise<Response> {
   };
   if (token) {
     headers.authorization = `Bearer ${token}`;
-    return fetch(url, { ...init, headers });
+    return fetchWithTimeout(url, { ...init, headers });
   }
   if (SAFARI) {
     // No token. The background's registered strategy (bridge tab, else direct
     // credentialed fetch) handles it; without one (popup context) fall back to a
     // direct credentialed fetch.
     if (noTokenFetcher) return noTokenFetcher(url, { ...init, headers });
-    return fetch(url, { ...init, headers, credentials: "include" });
+    return fetchWithTimeout(url, { ...init, headers, credentials: "include" });
   }
-  return fetch(url, { ...init, headers });
+  return fetchWithTimeout(url, { ...init, headers });
 }
 
 /** A body we can put on the wire a SECOND time. Streams and one-shot sources
@@ -237,7 +238,7 @@ export interface MeResponse {
 export async function fetchMe(): Promise<MeResponse | null> {
   const base = await getApiBaseUrl();
   try {
-    const res = await fetch(`${base}/api/me`, {
+    const res = await fetchWithTimeout(`${base}/api/me`, {
       credentials: "include",
       headers: { accept: "application/json" },
     });
