@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { after } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { propagateAttributes } from "@langfuse/tracing";
 import { convertToModelMessages, stepCountIs, streamText, tool, type UIMessage } from "ai";
 import { z } from "zod";
 import { listSessions, type Db } from "@bookmark-ai/db";
@@ -24,6 +26,8 @@ import { resolveChatModel } from "@/lib/server/ai-model";
 import { getFreeAiWeeklyLimit } from "@/lib/server/ai-limit";
 import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
 import { mintLiveSessionToken, resolveLiveBaseUrl } from "@/lib/server/live-token";
+import { isSurfaceEnabled } from "@/lib/server/observability/config";
+import { flushObservability } from "@/lib/server/observability/flush";
 
 export const maxDuration = 60;
 
@@ -354,91 +358,116 @@ export async function POST(req: Request) {
     });
   }
 
-  const result = streamText({
-    model: resolved.model,
-    system: systemPrompt(),
-    messages: await convertToModelMessages(messages),
-    // Bound the whole agent turn to ~10s before the serverless hard kill
-    // (maxDuration = 60) so it winds down cleanly instead of being SIGKILLed
-    // mid-stream. The webSearch/fetchUrl tools keep their own 10s guards.
-    timeout: { totalMs: 50_000 },
-    tools: {
-      searchBookmarks: tool({
-        description:
-          "Search the user's saved bookmarks (full-text, semantic, or a hybrid blend). Best for topical/fuzzy finding. Returns compact bookmark records (never embeddings).",
-        inputSchema: searchBookmarksInput,
-        execute: ({ query, mode, limit }) => runSearchBookmarks(ctx, query, mode, limit),
-      }),
-      queryDatabase: tool({
-        description:
-          "Run a single read-only SQLite SELECT/WITH query over the bookmarks/sessions schema. Best for counts, aggregates, grouping, filters, and date math. Read-only and row-capped.",
-        inputSchema: queryDatabaseInput,
-        execute: ({ sql }) => runQueryDatabase(ctx, sql),
-      }),
-      listSessions: tool({
-        description:
-          "List the user's saved browser sessions (named snapshots of open tabs), newest first, optionally filtered by text.",
-        inputSchema: listSessionsInput,
-        execute: ({ query, limit }) => runListSessions(ctx, query, limit),
-      }),
-      listLiveTabs: tool({
-        description:
-          "See the user's browser tabs that are OPEN RIGHT NOW, live, across their devices — only when the user has enabled live tab sharing. Best for 'what am I working on right now', 'what's open on my other device', 'what was I just looking at'. Read-only; takes no parameters.",
-        inputSchema: z.object({}),
-        execute: () => runListLiveTabs(db, userId, sessionId),
-      }),
-      webSearch: tool({
-        description:
-          "Search the public web for current or external information not in the user's library. Returns a grounded answer plus source titles, URLs, and snippets.",
-        inputSchema: webSearchInput,
-        execute: ({ query, limit }) => runWebSearchTool(gemini, query, limit),
-      }),
-      fetchUrl: tool({
-        description:
-          "Fetch a single web page and return its readable text (title + body). Use to read a specific URL, including a saved bookmark's live content.",
-        inputSchema: fetchUrlInput,
-        execute: ({ url }) => runFetchUrl(url),
-      }),
-    },
-    stopWhen: stepCountIs(8),
-  });
+  // OBSERVABILITY: trace this turn to Langfuse when the ask-ai surface is on.
+  // The propagateAttributes wrapper is safe to apply unconditionally — with
+  // telemetry off (or Langfuse unconfigured) no spans exist to carry the
+  // attributes. Spans are exported after the response via flushObservability
+  // (serverless instances may freeze right after `after()` callbacks run).
+  const traceOn = await isSurfaceEnabled("ask-ai");
+  after(() => flushObservability());
 
-  return result.toUIMessageStreamResponse({
-    // Let the client (and any new-conversation flow) learn the conversation id.
-    headers: { "X-Conversation-Id": conversationId },
-    originalMessages: messages,
-    // MUST set this. Without it, when the last original message is a USER message
-    // (our normal case) the SDK leaves responseMessage.id = "" for EVERY turn — so
-    // persisting under that id makes each assistant message overwrite the previous
-    // (INSERT OR REPLACE by PK), collapsing the whole conversation to its last
-    // assistant reply. A fresh id per response keeps every turn distinct, and it
-    // becomes the assistant message's id on the client too (via the start chunk),
-    // so re-sent history stays consistent.
-    generateMessageId: () => randomUUID(),
-    onFinish: async ({ responseMessage }) => {
-      // Persist the assistant turn (full parts incl. tool calls/results) and,
-      // for a metered request, record the aggregated token total for the week.
-      try {
-        await appendChatMessage(db, conversationId, {
-          id: responseMessage.id,
-          role: responseMessage.role,
-          parts: responseMessage.parts,
-        });
-      } catch (err) {
-        console.error("[chat] failed to persist assistant message:", err);
-      }
-      if (resolved.usesServerKey) {
-        try {
-          const usage = await result.totalUsage;
-          const total =
-            usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
-          await recordWeeklyUsage(db, total);
-        } catch (err) {
-          console.error("[chat] failed to record token usage:", err);
-        }
-      }
+  const modelMessages = await convertToModelMessages(messages);
+  return propagateAttributes(
+    {
+      traceName: "ask-ai",
+      userId: userId ?? undefined,
+      sessionId: conversationId,
+      tags: ["ask-ai"],
+      metadata: {
+        model: resolved.label,
+        usesServerKey: String(resolved.usesServerKey),
+        route: "/api/chat",
+      },
     },
-  });
+    () => {
+      const result = streamText({
+        model: resolved.model,
+        system: systemPrompt(),
+        messages: modelMessages,
+        telemetry: { isEnabled: traceOn, functionId: "ask-ai" },
+        // Bound the whole agent turn to ~10s before the serverless hard kill
+        // (maxDuration = 60) so it winds down cleanly instead of being SIGKILLed
+        // mid-stream. The webSearch/fetchUrl tools keep their own 10s guards.
+        timeout: { totalMs: 50_000 },
+        tools: {
+          searchBookmarks: tool({
+            description:
+              "Search the user's saved bookmarks (full-text, semantic, or a hybrid blend). Best for topical/fuzzy finding. Returns compact bookmark records (never embeddings).",
+            inputSchema: searchBookmarksInput,
+            execute: ({ query, mode, limit }) => runSearchBookmarks(ctx, query, mode, limit),
+          }),
+          queryDatabase: tool({
+            description:
+              "Run a single read-only SQLite SELECT/WITH query over the bookmarks/sessions schema. Best for counts, aggregates, grouping, filters, and date math. Read-only and row-capped.",
+            inputSchema: queryDatabaseInput,
+            execute: ({ sql }) => runQueryDatabase(ctx, sql),
+          }),
+          listSessions: tool({
+            description:
+              "List the user's saved browser sessions (named snapshots of open tabs), newest first, optionally filtered by text.",
+            inputSchema: listSessionsInput,
+            execute: ({ query, limit }) => runListSessions(ctx, query, limit),
+          }),
+          listLiveTabs: tool({
+            description:
+              "See the user's browser tabs that are OPEN RIGHT NOW, live, across their devices — only when the user has enabled live tab sharing. Best for 'what am I working on right now', 'what's open on my other device', 'what was I just looking at'. Read-only; takes no parameters.",
+            inputSchema: z.object({}),
+            execute: () => runListLiveTabs(db, userId, sessionId),
+          }),
+          webSearch: tool({
+            description:
+              "Search the public web for current or external information not in the user's library. Returns a grounded answer plus source titles, URLs, and snippets.",
+            inputSchema: webSearchInput,
+            execute: ({ query, limit }) => runWebSearchTool(gemini, query, limit),
+          }),
+          fetchUrl: tool({
+            description:
+              "Fetch a single web page and return its readable text (title + body). Use to read a specific URL, including a saved bookmark's live content.",
+            inputSchema: fetchUrlInput,
+            execute: ({ url }) => runFetchUrl(url),
+          }),
+        },
+        stopWhen: stepCountIs(8),
+      });
+
+      return result.toUIMessageStreamResponse({
+        // Let the client (and any new-conversation flow) learn the conversation id.
+        headers: { "X-Conversation-Id": conversationId },
+        originalMessages: messages,
+        // MUST set this. Without it, when the last original message is a USER message
+        // (our normal case) the SDK leaves responseMessage.id = "" for EVERY turn — so
+        // persisting under that id makes each assistant message overwrite the previous
+        // (INSERT OR REPLACE by PK), collapsing the whole conversation to its last
+        // assistant reply. A fresh id per response keeps every turn distinct, and it
+        // becomes the assistant message's id on the client too (via the start chunk),
+        // so re-sent history stays consistent.
+        generateMessageId: () => randomUUID(),
+        onFinish: async ({ responseMessage }) => {
+          // Persist the assistant turn (full parts incl. tool calls/results) and,
+          // for a metered request, record the aggregated token total for the week.
+          try {
+            await appendChatMessage(db, conversationId, {
+              id: responseMessage.id,
+              role: responseMessage.role,
+              parts: responseMessage.parts,
+            });
+          } catch (err) {
+            console.error("[chat] failed to persist assistant message:", err);
+          }
+          if (resolved.usesServerKey) {
+            try {
+              const usage = await result.totalUsage;
+              const total =
+                usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+              await recordWeeklyUsage(db, total);
+            } catch (err) {
+              console.error("[chat] failed to record token usage:", err);
+            }
+          }
+        },
+      });
+    },
+  );
 }
 
 /**

@@ -1,7 +1,9 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
+import { propagateAttributes } from "@langfuse/tracing";
 import { searchQuerySchema } from "@bookmark-ai/types";
 import { performSearch } from "@bookmark-ai/engine";
 import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
+import { flushObservability } from "@/lib/server/observability/flush";
 
 export async function GET(req: NextRequest) {
   const ctx = await getRequestApiContext();
@@ -29,5 +31,12 @@ export async function GET(req: NextRequest) {
   // is what keeps the paging fields (and the extra row they cost) off the web
   // grid's requests while giving a paging client — MCP, scripts — the same
   // surface. Everything else about the page is the engine's business.
-  return NextResponse.json(await performSearch(db, gemini, parsed.data));
+  // The search trace (when that surface is on) carries the user; spans export
+  // after the response.
+  after(() => flushObservability());
+  const response = await propagateAttributes(
+    { userId: userId ?? undefined, metadata: { route: "/api/search" } },
+    () => performSearch(db, gemini, parsed.data),
+  );
+  return NextResponse.json(response);
 }

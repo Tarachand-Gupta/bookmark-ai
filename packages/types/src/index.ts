@@ -6,3 +6,4 @@ export * from "./chat";
 export * from "./dashboard";
 export * from "./mcp";
 export * from "./export";
+export * from "./observability";

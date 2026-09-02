@@ -1,4 +1,5 @@
 import { after, type NextRequest } from "next/server";
+import { propagateAttributes } from "@langfuse/tracing";
 import { getMcpToken, getUserSettings, touchMcpToken, type Db } from "@bookmark-ai/db";
 import { parseMcpToolAllowlist } from "@bookmark-ai/types";
 import {
@@ -25,6 +26,7 @@ import {
 } from "@/lib/server/mcp/protocol";
 import { isClerkSubject } from "@/lib/server/mcp/subject";
 import { enabledTools } from "@/lib/server/mcp/tools";
+import { flushObservability } from "@/lib/server/observability/flush";
 import { checkRateLimit } from "@/lib/server/rate-limit";
 
 /**
@@ -178,25 +180,40 @@ export async function POST(req: NextRequest) {
   const validated = validateRpcBody(body);
   if ("error" in validated) return jsonResponse(validated.error, 200, version);
 
-  const outcome = await dispatch(validated.request, {
-    tools,
-    toolContext: {
-      db,
-      gemini: getGemini(),
-      ready,
-      // Post-response work (OG scrape, categorize, embed) rides Next's after()
-      // exactly as POST /api/bookmarks does it.
-      schedule: (work) => after(work),
-    },
-    checkLimit: async () => {
-      const verdict = await enforceMcpLimits(db);
-      if (verdict.allowed) return { allowed: true };
-      return {
-        allowed: false,
-        message: `Rate limit exceeded (${verdict.kind}): retry after ${verdict.retryAfterSeconds} seconds`,
-      };
-    },
-  });
+  // In-request tool AI (search_bookmarks -> performSearch) is traced under the
+  // same user; flush after the response for those spans.
+  after(() => flushObservability());
+  const outcome = await propagateAttributes(
+    { userId: verified.userId, metadata: { route: "/api/mcp" } },
+    () =>
+      dispatch(validated.request, {
+        tools,
+        toolContext: {
+          db,
+          gemini: getGemini(),
+          ready,
+          // Post-response work (OG scrape, categorize, embed) rides Next's after()
+          // exactly as POST /api/bookmarks does it — wrapped so any AI traces it
+          // produces carry the token's user and reach Langfuse before a freeze.
+          schedule: (work) =>
+            after(async () => {
+              await propagateAttributes(
+                { userId: verified.userId, metadata: { route: "/api/mcp" } },
+                work,
+              );
+              await flushObservability();
+            }),
+        },
+        checkLimit: async () => {
+          const verdict = await enforceMcpLimits(db);
+          if (verdict.allowed) return { allowed: true };
+          return {
+            allowed: false,
+            message: `Rate limit exceeded (${verdict.kind}): retry after ${verdict.retryAfterSeconds} seconds`,
+          };
+        },
+      }),
+  );
 
   // A notification gets 202 + empty body; everything else is a 200 JSON-RPC
   // response, INCLUDING protocol errors (JSON-RPC carries its own error object —

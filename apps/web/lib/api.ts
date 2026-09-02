@@ -13,10 +13,12 @@ import type {
   ListModelsResponse,
   ListSessionsResponse,
   MetaResponse,
+  ObservabilityResponse,
   SearchMode,
   SearchResponse,
   Session,
   SummarizeSessionResponse,
+  UpdateObservabilityInput,
   UpdateUserSettingsInput,
   UserSettingsResponse,
 } from "@bookmark-ai/types";
@@ -389,6 +391,24 @@ export function updateSettings(input: UpdateUserSettingsInput): Promise<UserSett
   return request<UserSettingsResponse>("/api/settings", {
     method: "PUT",
     body: JSON.stringify(input),
+  });
+}
+
+// ── Admin: observability (Langfuse tracing) ─────────────────────────────────
+
+/** Admin-only. Throws ForbiddenError for non-admin accounts (the Settings
+ * dialog uses that to hide the Observability section entirely). */
+export function getObservability(signal?: AbortSignal): Promise<ObservabilityResponse> {
+  return request<ObservabilityResponse>("/api/admin/observability", { signal });
+}
+
+/** Persist a subset of the per-surface tracing flags. Admin-only. */
+export function updateObservability(
+  patch: UpdateObservabilityInput,
+): Promise<ObservabilityResponse> {
+  return request<ObservabilityResponse>("/api/admin/observability", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
   });
 }
 

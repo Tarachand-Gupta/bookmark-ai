@@ -1,8 +1,10 @@
 import { after, NextResponse, type NextRequest } from "next/server";
+import { propagateAttributes } from "@langfuse/tracing";
 import { updateSessionSchema } from "@bookmark-ai/types";
 import { deleteSession, getSession } from "@bookmark-ai/db";
 import { embedSession, renameSession } from "@bookmark-ai/engine";
 import { getRequestApiContext } from "@/lib/server/api-context";
+import { flushObservability } from "@/lib/server/observability/flush";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -20,7 +22,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function PATCH(req: NextRequest, { params }: Params) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
-  const { db, gemini, ready } = ctx;
+  const { userId, db, gemini, ready } = ctx;
   await ready;
 
   const parsed = updateSessionSchema.safeParse(await req.json().catch(() => null));
@@ -37,9 +39,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // vector — recompute after the response (the daily sweep is the backstop).
   if (gemini) {
     after(async () => {
-      await embedSession(gemini, db, session).catch((err: unknown) => {
-        console.warn(`[embed] session ${session.id}: ${(err as Error).message}`);
-      });
+      await propagateAttributes(
+        { userId: userId ?? undefined, metadata: { route: "/api/sessions/[id]" } },
+        async () => {
+          await embedSession(gemini, db, session).catch((err: unknown) => {
+            console.warn(`[embed] session ${session.id}: ${(err as Error).message}`);
+          });
+        },
+      );
+      await flushObservability();
     });
   }
   return NextResponse.json({ session });

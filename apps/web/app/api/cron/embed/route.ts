@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
+import { propagateAttributes } from "@langfuse/tracing";
 import { listActiveTenants } from "@bookmark-ai/db";
 import { embedPending } from "@bookmark-ai/engine";
 import {
@@ -9,6 +10,7 @@ import {
   isMultiTenant,
   tenantDbFromRecord,
 } from "@/lib/server/context";
+import { flushObservability } from "@/lib/server/observability/flush";
 
 export const maxDuration = 300;
 
@@ -56,12 +58,20 @@ export async function GET(req: NextRequest) {
     // up unbounded Gemini calls if something upstream loops.
     const { db, ready } = getApiContext();
     await ready;
-    let total = 0;
-    let batch: number;
-    do {
-      batch = await embedPending(gemini, db, BATCH);
-      total += batch;
-    } while (batch === BATCH && total < MAX_EMBEDDINGS);
+    // No user on a cron sweep — traces carry the route instead.
+    const total = await propagateAttributes(
+      { metadata: { route: "/api/cron/embed" } },
+      async () => {
+        let swept = 0;
+        let batch: number;
+        do {
+          batch = await embedPending(gemini, db, BATCH);
+          swept += batch;
+        } while (batch === BATCH && swept < MAX_EMBEDDINGS);
+        return swept;
+      },
+    );
+    await flushObservability();
     return NextResponse.json({ embedded: total });
   }
 
@@ -80,21 +90,29 @@ export async function GET(req: NextRequest) {
     if (total >= MAX_EMBEDDINGS || Date.now() - startedAt > MAX_ELAPSED_MS) break;
     const { db, ready } = tenantDbFromRecord(tenant);
     await ready;
-    let tenantTotal = 0;
-    let batch: number;
-    do {
-      batch = await embedPending(gemini, db, BATCH);
-      tenantTotal += batch;
-      total += batch;
-    } while (
-      batch === BATCH &&
-      total < MAX_EMBEDDINGS &&
-      Date.now() - startedAt < MAX_ELAPSED_MS
+    // No user on a cron sweep — each tenant's traces carry the route + tenant.
+    const tenantTotal = await propagateAttributes(
+      { metadata: { route: "/api/cron/embed", tenant: tenant.clerkUserId } },
+      async () => {
+        let swept = 0;
+        let batch: number;
+        do {
+          batch = await embedPending(gemini, db, BATCH);
+          swept += batch;
+          total += batch;
+        } while (
+          batch === BATCH &&
+          total < MAX_EMBEDDINGS &&
+          Date.now() - startedAt < MAX_ELAPSED_MS
+        );
+        return swept;
+      },
     );
     if (tenantTotal > 0) {
       perTenant[tenant.clerkUserId] = tenantTotal;
       console.log(`[cron/embed] tenant ${tenant.clerkUserId}: embedded ${tenantTotal}`);
     }
   }
+  await flushObservability();
   return NextResponse.json({ embedded: total, tenants: perTenant });
 }

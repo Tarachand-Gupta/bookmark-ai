@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useClerk } from "@clerk/nextjs";
 import {
+  Activity,
   AlertTriangle,
   Database,
   Download,
@@ -21,12 +22,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { deleteAccount, exportData, importData } from "@/lib/api";
+import type { ObservabilityResponse } from "@bookmark-ai/types";
+import { deleteAccount, exportData, getObservability, importData } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AiSetupCard } from "./ai-setup-card";
 import { DevicesSection } from "./devices-settings";
 import { FEATURE_ICONS } from "./feature-icons";
 import { McpSection } from "./mcp-settings";
+import { ObservabilitySection } from "./observability-settings";
 import { SettingsGroup, SettingsSection } from "./settings-section";
 import { SyncSection } from "./sync-settings";
 
@@ -37,13 +40,16 @@ export interface SettingsDialogProps {
   initialSection?: SectionId;
 }
 
-/** Sections in the settings modal, in rail order. */
+/** Sections in the settings modal, in rail order. The "observability" section
+ * is ADMIN-ONLY: it appears in the rail only after the admin-gated GET
+ * succeeds (see the fetch in SettingsDialog). */
 const SECTIONS = [
   { id: "ai", label: "AI", icon: Sparkles },
   { id: "data", label: "Data", icon: Database },
   { id: "sync", label: "Sync", icon: FEATURE_ICONS.bookmarks },
   { id: "devices", label: "Live sessions", icon: FEATURE_ICONS.live },
   { id: "mcp", label: "MCP", icon: Plug },
+  { id: "observability", label: "Observability", icon: Activity },
   { id: "account", label: "Account", icon: UserRound },
 ] as const;
 export type SectionId = (typeof SECTIONS)[number]["id"];
@@ -66,11 +72,28 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
   initialSectionRef.current = initialSection;
   const railRef = useRef<HTMLUListElement>(null);
 
+  // ADMIN-ONLY Observability section: probe the admin-gated endpoint once per
+  // open. Success → the section (and its data) exists; 403/any failure → the
+  // section is omitted entirely, so non-admins never see the chip. A previous
+  // open's payload is kept while re-probing to avoid the chip flickering out.
+  const [observability, setObservability] = useState<ObservabilityResponse | null>(null);
+
   // Open-time reset: land on the requested section (each pane fetches its own
   // data when it mounts, so there's nothing else to (re)load here).
   useEffect(() => {
     if (!open) return;
     setSection(initialSectionRef.current ?? "ai");
+    let cancelled = false;
+    getObservability()
+      .then((response) => {
+        if (!cancelled) setObservability(response);
+      })
+      .catch(() => {
+        if (!cancelled) setObservability(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   // MOBILE: keep the ACTIVE section chip on screen. The rail is one horizontally
@@ -142,7 +165,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
               ref={railRef}
               className="-mb-2 flex scroll-smooth gap-1 overflow-x-auto pb-2 [contain:inline-size] sm:mb-0 sm:flex-col sm:overflow-x-visible sm:pb-0 sm:[contain:none]"
             >
-              {SECTIONS.map((s) => {
+              {SECTIONS.filter((s) => s.id !== "observability" || observability !== null).map((s) => {
                 const Icon = s.icon;
                 return (
                   <li key={s.id} className="shrink-0">
@@ -200,6 +223,13 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             {section === "devices" && <DevicesSection />}
 
             {section === "mcp" && <McpSection />}
+
+            {/* Renders only when the admin probe succeeded, so a non-admin
+                deep link shows nothing. Remounts per open (the dialog unmounts
+                its content when closed), so `initial` is always this open's. */}
+            {section === "observability" && observability && (
+              <ObservabilitySection initial={observability} />
+            )}
 
             {section === "account" && (
               <AccountSection onRequestClose={() => onOpenChange(false)} />

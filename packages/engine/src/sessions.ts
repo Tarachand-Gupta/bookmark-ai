@@ -8,6 +8,7 @@ import {
   type Db,
 } from "@bookmark-ai/db";
 import type { GeminiClient } from "./gemini";
+import { traced } from "./tracing";
 
 /** Persist a saved browser session (snapshot of open tabs). */
 export async function saveSession(db: Db, input: CreateSessionInput): Promise<Session> {
@@ -153,15 +154,24 @@ export async function summarizeSession(
 ): Promise<SessionSummary | null> {
   if (!gemini || tabs.length === 0) return null;
   try {
-    const raw = await gemini.generateJson<{ name?: string; description?: string }>(
-      buildSessionSummaryPrompt(tabs, currentName),
-      {
-        type: "object",
-        properties: { name: { type: "string" }, description: { type: "string" } },
-        required: ["name", "description"],
+    // Traced INSIDE the catch so a Gemini failure records as an errored span
+    // while the function keeps its never-throws contract.
+    return await traced(
+      "session-summary",
+      "summarize-session",
+      { input: { name: currentName ?? null, tabCount: tabs.length }, output: (r) => r },
+      async () => {
+        const raw = await gemini.generateJson<{ name?: string; description?: string }>(
+          buildSessionSummaryPrompt(tabs, currentName),
+          {
+            type: "object",
+            properties: { name: { type: "string" }, description: { type: "string" } },
+            required: ["name", "description"],
+          },
+        );
+        return parseSessionSummary(raw);
       },
     );
-    return parseSessionSummary(raw);
   } catch (err) {
     console.warn(`[summarizeSession] Gemini failed: ${(err as Error).message}`);
     return null;

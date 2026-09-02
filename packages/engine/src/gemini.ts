@@ -1,34 +1,77 @@
+import { childObservation } from "./tracing";
+
 /** Thin Gemini REST client — no SDK dependency needed for two endpoints. */
 
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
 const GENERATION_MODEL = "gemini-2.5-flash";
 const EMBEDDING_MODEL = "gemini-embedding-001";
 
+/** Cap what a traced prompt/answer contributes to an observation — the trace
+ * is for debugging, not archival, and a 500-tab prompt is pure noise past this. */
+const TRACE_PROMPT_MAX = 8_000;
+const TRACE_ANSWER_MAX = 2_000;
+
+/** The REST responses' token accounting, previously discarded. */
+interface UsageMetadata {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+}
+
+/** Map Gemini's usageMetadata to Langfuse usageDetails; undefined when absent
+ * (embedContent, for one, may not report usage). */
+function usageDetailsOf(u: UsageMetadata | undefined): Record<string, number> | undefined {
+  const details: Record<string, number> = {};
+  if (typeof u?.promptTokenCount === "number") details.input = u.promptTokenCount;
+  if (typeof u?.candidatesTokenCount === "number") details.output = u.candidatesTokenCount;
+  return Object.keys(details).length > 0 ? details : undefined;
+}
+
+function truncateForTrace(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
 export class GeminiClient {
   constructor(private readonly apiKey: string) {}
 
   /** Generate a JSON object constrained by `responseSchema`. */
   async generateJson<T>(prompt: string, responseSchema: object): Promise<T> {
-    const res = await fetch(`${BASE}/models/${GENERATION_MODEL}:generateContent`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": this.apiKey },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema,
-          temperature: 0.2,
-        },
-      }),
-      signal: AbortSignal.timeout(20_000),
+    // Child generation only when a feature-level trace is already active —
+    // see childObservation. Purely additive: fetch/timeout/error semantics of
+    // the call itself are untouched.
+    const obs = childObservation("gemini-generate-json", "generation", {
+      model: GENERATION_MODEL,
+      input: truncateForTrace(prompt, TRACE_PROMPT_MAX),
     });
-    if (!res.ok) throw new Error(`Gemini generateContent ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
-    };
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error("Gemini returned no content");
-    return JSON.parse(text) as T;
+    try {
+      const res = await fetch(`${BASE}/models/${GENERATION_MODEL}:generateContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": this.apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema,
+            temperature: 0.2,
+          },
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) throw new Error(`Gemini generateContent ${res.status}: ${await res.text()}`);
+      const data = (await res.json()) as {
+        candidates?: { content?: { parts?: { text?: string }[] } }[];
+        usageMetadata?: UsageMetadata;
+      };
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) throw new Error("Gemini returned no content");
+      const parsed = JSON.parse(text) as T;
+      obs?.update({ output: parsed, usageDetails: usageDetailsOf(data.usageMetadata) });
+      return parsed;
+    } catch (err) {
+      obs?.update({ level: "ERROR", statusMessage: (err as Error).message });
+      throw err;
+    } finally {
+      obs?.end();
+    }
   }
 
   /**
@@ -39,28 +82,50 @@ export class GeminiClient {
    * from — this is the chat agent's primary webSearch backend.
    */
   async groundedSearch(query: string): Promise<GroundedSearch> {
-    const res = await fetch(`${BASE}/models/${GENERATION_MODEL}:generateContent`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": this.apiKey },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: `Search the web and answer concisely from the results: ${query.slice(0, 2_000)}`,
-              },
-            ],
-          },
-        ],
-        tools: [{ google_search: {} }],
-        generationConfig: { temperature: 0 },
-      }),
-      // The chat agent's tools guard themselves at ~10s; grounding does its own
-      // search round-trip, so give it a little more headroom.
-      signal: AbortSignal.timeout(15_000),
+    const obs = childObservation("gemini-grounded-search", "generation", {
+      model: GENERATION_MODEL,
+      input: query,
     });
-    if (!res.ok) throw new Error(`Gemini groundedSearch ${res.status}: ${await res.text()}`);
-    return parseGroundedSearch(await res.json());
+    try {
+      const res = await fetch(`${BASE}/models/${GENERATION_MODEL}:generateContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": this.apiKey },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `Search the web and answer concisely from the results: ${query.slice(0, 2_000)}`,
+                },
+              ],
+            },
+          ],
+          tools: [{ google_search: {} }],
+          generationConfig: { temperature: 0 },
+        }),
+        // The chat agent's tools guard themselves at ~10s; grounding does its own
+        // search round-trip, so give it a little more headroom.
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) throw new Error(`Gemini groundedSearch ${res.status}: ${await res.text()}`);
+      const data: unknown = await res.json();
+      const parsed = parseGroundedSearch(data);
+      obs?.update({
+        output: {
+          answer: truncateForTrace(parsed.answer, TRACE_ANSWER_MAX),
+          sourceCount: parsed.sources.length,
+        },
+        usageDetails: usageDetailsOf(
+          (data as { usageMetadata?: UsageMetadata } | null)?.usageMetadata,
+        ),
+      });
+      return parsed;
+    } catch (err) {
+      obs?.update({ level: "ERROR", statusMessage: (err as Error).message });
+      throw err;
+    } finally {
+      obs?.end();
+    }
   }
 
   /**
@@ -69,22 +134,40 @@ export class GeminiClient {
    * distance in libSQL then behaves as similarity.
    */
   async embed(text: string, dimensions: number): Promise<number[]> {
-    const res = await fetch(`${BASE}/models/${EMBEDDING_MODEL}:embedContent`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": this.apiKey },
-      body: JSON.stringify({
-        content: { parts: [{ text: text.slice(0, 8_000) }] },
-        outputDimensionality: dimensions,
-      }),
-      signal: AbortSignal.timeout(20_000),
+    // Output deliberately omitted from the trace — a 768-float vector is noise.
+    const obs = childObservation("gemini-embed", "embedding", {
+      model: EMBEDDING_MODEL,
+      input: { length: text.length, preview: text.slice(0, 200) },
     });
-    if (!res.ok) throw new Error(`Gemini embedContent ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as { embedding?: { values?: number[] } };
-    const values = data.embedding?.values;
-    if (!values || values.length !== dimensions) {
-      throw new Error(`Gemini embedding has unexpected shape (${values?.length ?? 0})`);
+    try {
+      const res = await fetch(`${BASE}/models/${EMBEDDING_MODEL}:embedContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": this.apiKey },
+        body: JSON.stringify({
+          content: { parts: [{ text: text.slice(0, 8_000) }] },
+          outputDimensionality: dimensions,
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) throw new Error(`Gemini embedContent ${res.status}: ${await res.text()}`);
+      const data = (await res.json()) as {
+        embedding?: { values?: number[] };
+        usageMetadata?: UsageMetadata;
+      };
+      const values = data.embedding?.values;
+      if (!values || values.length !== dimensions) {
+        throw new Error(`Gemini embedding has unexpected shape (${values?.length ?? 0})`);
+      }
+      // embedContent may not report usage — update only when it did.
+      const usageDetails = usageDetailsOf(data.usageMetadata);
+      if (usageDetails) obs?.update({ usageDetails });
+      return normalize(values);
+    } catch (err) {
+      obs?.update({ level: "ERROR", statusMessage: (err as Error).message });
+      throw err;
+    } finally {
+      obs?.end();
     }
-    return normalize(values);
   }
 }
 

@@ -1,5 +1,6 @@
 import type { OpenGraph } from "@bookmark-ai/types";
 import type { GeminiClient } from "./gemini";
+import { traced } from "./tracing";
 
 /** Curated category vocabulary — keeps the sidebar tidy and predictable. */
 export const CATEGORIES = [
@@ -66,6 +67,26 @@ export async function categorize(
 }
 
 async function aiCategorize(
+  gemini: GeminiClient,
+  page: PageFacts,
+  existingTags: TagCount[],
+): Promise<Categorization> {
+  return traced(
+    "categorize",
+    "categorize-bookmark",
+    {
+      input: {
+        url: page.url,
+        title: page.title,
+        ...(page.description ? { description: page.description } : {}),
+      },
+      output: (r) => r,
+    },
+    () => aiCategorizeInner(gemini, page, existingTags),
+  );
+}
+
+async function aiCategorizeInner(
   gemini: GeminiClient,
   page: PageFacts,
   existingTags: TagCount[],

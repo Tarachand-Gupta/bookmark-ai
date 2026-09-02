@@ -25,7 +25,11 @@
         "AI_KEY_ENCRYPTION_SECRET",
         "ADMIN_USER_IDS",
         "DEVICE_TOKEN_SECRET",
-        "LIVE_ENCRYPTION_SECRET"
+        "LIVE_ENCRYPTION_SECRET",
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "LANGFUSE_BASE_URL",
+        "LANGFUSE_TRACING_ENVIRONMENT"
       ]
     },
     "dev": {

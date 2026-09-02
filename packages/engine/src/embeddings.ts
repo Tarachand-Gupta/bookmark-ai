@@ -8,6 +8,7 @@ import {
   type Db,
 } from "@bookmark-ai/db";
 import type { GeminiClient } from "./gemini";
+import { traced } from "./tracing";
 
 /** Text representation of a bookmark fed to the embedding model. */
 export function bookmarkToEmbeddingText(b: Bookmark): string {
@@ -30,8 +31,10 @@ export async function embedQuery(gemini: GeminiClient, query: string): Promise<n
 
 /** Embed one bookmark and persist the vector. */
 export async function embedBookmark(gemini: GeminiClient, db: Db, b: Bookmark): Promise<void> {
-  const vector = await gemini.embed(bookmarkToEmbeddingText(b), EMBEDDING_DIM);
-  await storeEmbedding(db, b.id, vector);
+  return traced("embed", "embed-bookmark", { input: { id: b.id, url: b.url } }, async () => {
+    const vector = await gemini.embed(bookmarkToEmbeddingText(b), EMBEDDING_DIM);
+    await storeEmbedding(db, b.id, vector);
+  });
 }
 
 /** How many tabs of a session feed its embedding — bounds token cost on a
@@ -61,8 +64,10 @@ export function sessionToEmbeddingText(s: Session): string {
 
 /** Embed one saved session and persist the vector. */
 export async function embedSession(gemini: GeminiClient, db: Db, s: Session): Promise<void> {
-  const vector = await gemini.embed(sessionToEmbeddingText(s), EMBEDDING_DIM);
-  await storeSessionEmbedding(db, s.id, vector);
+  return traced("embed", "embed-session", { input: { id: s.id, name: s.name } }, async () => {
+    const vector = await gemini.embed(sessionToEmbeddingText(s), EMBEDDING_DIM);
+    await storeSessionEmbedding(db, s.id, vector);
+  });
 }
 
 /**
@@ -78,31 +83,39 @@ export async function embedSession(gemini: GeminiClient, db: Db, s: Session): Pr
  * up, bounded by the caller's own caps.
  */
 export async function embedPending(gemini: GeminiClient, db: Db, limit = 10): Promise<number> {
-  const pending = await listUnembedded(db, limit);
-  let embedded = 0;
-  for (const b of pending) {
-    try {
-      await embedBookmark(gemini, db, b);
-      embedded++;
-      console.log(`[embed] ${b.id} ${b.domain}`);
-    } catch (err) {
-      console.warn(`[embed] failed for ${b.id}: ${(err as Error).message}`);
-    }
-  }
+  // One sweep = one span; the per-row embed-bookmark/embed-session spans nest.
+  return traced(
+    "embed",
+    "embed-sweep",
+    { metadata: { limit }, output: (embedded) => ({ embedded }) },
+    async () => {
+      const pending = await listUnembedded(db, limit);
+      let embedded = 0;
+      for (const b of pending) {
+        try {
+          await embedBookmark(gemini, db, b);
+          embedded++;
+          console.log(`[embed] ${b.id} ${b.domain}`);
+        } catch (err) {
+          console.warn(`[embed] failed for ${b.id}: ${(err as Error).message}`);
+        }
+      }
 
-  const sessionBudget = limit - pending.length;
-  if (sessionBudget <= 0) return embedded;
-  const pendingSessions = await listUnembeddedSessions(db, sessionBudget);
-  for (const s of pendingSessions) {
-    try {
-      await embedSession(gemini, db, s);
-      embedded++;
-      console.log(`[embed] session ${s.id} (${s.tabCount} tabs)`);
-    } catch (err) {
-      console.warn(`[embed] failed for session ${s.id}: ${(err as Error).message}`);
-    }
-  }
-  return embedded;
+      const sessionBudget = limit - pending.length;
+      if (sessionBudget <= 0) return embedded;
+      const pendingSessions = await listUnembeddedSessions(db, sessionBudget);
+      for (const s of pendingSessions) {
+        try {
+          await embedSession(gemini, db, s);
+          embedded++;
+          console.log(`[embed] session ${s.id} (${s.tabCount} tabs)`);
+        } catch (err) {
+          console.warn(`[embed] failed for session ${s.id}: ${(err as Error).message}`);
+        }
+      }
+      return embedded;
+    },
+  );
 }
 
 function hostnameOf(url: string): string {

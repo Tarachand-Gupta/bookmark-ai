@@ -11,6 +11,7 @@ import {
 } from "@bookmark-ai/db";
 import { embedQuery } from "./embeddings";
 import type { GeminiClient } from "./gemini";
+import { traced } from "./tracing";
 
 export interface SearchParams {
   q: string;
@@ -93,6 +94,22 @@ export function mergeSessionResults(
  * fused order of the rows on the page would be wrong.
  */
 export async function performSearch(
+  db: Db,
+  gemini: GeminiClient | null,
+  params: SearchParams,
+): Promise<SearchResponse> {
+  return traced(
+    "search",
+    "search-bookmarks",
+    {
+      input: { query: params.q, mode: params.mode },
+      output: (r) => ({ mode: r.mode, results: r.results.length, fallback: r.fallback ?? false }),
+    },
+    () => performSearchInner(db, gemini, params),
+  );
+}
+
+async function performSearchInner(
   db: Db,
   gemini: GeminiClient | null,
   { q, mode, limit, offset }: SearchParams,

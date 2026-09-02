@@ -1,6 +1,8 @@
 import { after, NextResponse, type NextRequest } from "next/server";
+import { propagateAttributes } from "@langfuse/tracing";
 import { embedSession, summarizeSessionById } from "@bookmark-ai/engine";
 import { getRequestApiContext } from "@/lib/server/api-context";
+import { flushObservability } from "@/lib/server/observability/flush";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -18,10 +20,16 @@ type Params = { params: Promise<{ id: string }> };
 export async function POST(_req: NextRequest, { params }: Params) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
-  const { db, gemini, ready } = ctx;
+  const { userId, db, gemini, ready } = ctx;
   await ready;
 
-  const result = await summarizeSessionById(db, gemini, (await params).id);
+  // The summarize call runs IN the request; its trace (when the surface is on)
+  // still carries the user. The flush rides the after() below.
+  const { id } = await params;
+  const result = await propagateAttributes(
+    { userId: userId ?? undefined, metadata: { route: "/api/sessions/[id]/ai-name" } },
+    () => summarizeSessionById(db, gemini, id),
+  );
   if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
   // Applying the summary cleared the session's embedding (its text changed, and
   // the description is the bulk of what gets embedded) — recompute after the
@@ -29,10 +37,18 @@ export async function POST(_req: NextRequest, { params }: Params) {
   if (gemini) {
     const session = result.session;
     after(async () => {
-      await embedSession(gemini, db, session).catch((err: unknown) => {
-        console.warn(`[embed] session ${session.id}: ${(err as Error).message}`);
-      });
+      await propagateAttributes(
+        { userId: userId ?? undefined, metadata: { route: "/api/sessions/[id]/ai-name" } },
+        async () => {
+          await embedSession(gemini, db, session).catch((err: unknown) => {
+            console.warn(`[embed] session ${session.id}: ${(err as Error).message}`);
+          });
+        },
+      );
+      await flushObservability();
     });
+  } else {
+    after(() => flushObservability());
   }
   return NextResponse.json({
     session: result.session,

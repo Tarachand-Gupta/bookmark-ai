@@ -160,58 +160,58 @@ importers:
         version: link:../../packages/types
       '@clerk/clerk-expo':
         specifier: ^2.19.31
-        version: 2.19.31(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(@types/react@19.2.17)(bufferutil@4.1.0)(expo-auth-session@57.0.6(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(expo-crypto@57.0.1(expo@57.0.12))(expo-secure-store@57.0.1(expo@57.0.12))(expo-web-browser@57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)))(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.3))(utf-8-validate@6.0.6)(zod@3.25.76)
+        version: 2.19.31(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(@types/react@19.2.17)(bufferutil@4.1.0)(expo-auth-session@57.0.6(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(expo-crypto@57.0.1(expo@57.0.12))(expo-secure-store@57.0.1(expo@57.0.12))(expo-web-browser@57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)))(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.3))(zod@3.25.76)
       '@expo/vector-icons':
         specifier: ^15.1.1
-        version: 15.1.1(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+        version: 15.1.1(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       '@react-native-async-storage/async-storage':
         specifier: 2.2.0
-        version: 2.2.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
+        version: 2.2.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
       ai:
         specifier: ^7.0.18
         version: 7.0.18(zod@3.25.76)
       expo:
         specifier: ~57.0.12
-        version: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+        version: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       expo-auth-session:
         specifier: ~57.0.6
-        version: 57.0.6(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+        version: 57.0.6(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       expo-blur:
         specifier: ~57.0.2
-        version: 57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+        version: 57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       expo-clipboard:
         specifier: ~57.0.1
-        version: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+        version: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       expo-crypto:
         specifier: ~57.0.1
         version: 57.0.1(expo@57.0.12)
       expo-glass-effect:
         specifier: ~57.0.1
-        version: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+        version: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       expo-haptics:
         specifier: ~57.0.1
         version: 57.0.1(expo@57.0.12)
       expo-linking:
         specifier: ~57.0.5
-        version: 57.0.5(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+        version: 57.0.5(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       expo-secure-store:
         specifier: ~57.0.1
         version: 57.0.1(expo@57.0.12)
       expo-share-intent:
         specifier: ^8.0.1
-        version: 8.0.1(expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)))(expo-linking@57.0.5(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)
+        version: 8.0.1(expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)))(expo-linking@57.0.5(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       expo-splash-screen:
         specifier: ~57.0.6
         version: 57.0.6(expo@57.0.12)(typescript@6.0.3)
       expo-status-bar:
         specifier: ~57.0.1
-        version: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+        version: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       expo-symbols:
         specifier: ~57.0.2
-        version: 57.0.2(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+        version: 57.0.2(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       expo-web-browser:
         specifier: ~57.0.2
-        version: 57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
+        version: 57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -220,10 +220,10 @@ importers:
         version: 19.2.3(react@19.2.3)
       react-native:
         specifier: 0.86.2
-        version: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+        version: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
       react-native-safe-area-context:
         specifier: ~5.7.0
-        version: 5.7.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+        version: 5.7.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       react-native-sse:
         specifier: ^1.2.1
         version: 1.2.1
@@ -269,16 +269,34 @@ importers:
         version: link:../../packages/ui
       '@clerk/nextjs':
         specifier: ^7.5.15
-        version: 7.5.15(next@15.5.20(@babel/core@7.29.7)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 7.5.15(next@15.5.20(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@clerk/ui':
         specifier: ^1.25.1
-        version: 1.25.1(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(@types/react@19.2.17)(bs58@6.0.0)(bufferutil@4.1.0)(react-dom@19.2.7(react@19.2.7))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(react@19.2.7)(typescript@5.9.3)
+        version: 1.25.1(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(@types/react@19.2.17)(bs58@6.0.0)(bufferutil@4.1.0)(react-dom@19.2.7(react@19.2.7))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(react@19.2.7)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@langfuse/otel':
+        specifier: ^5.11.0
+        version: 5.11.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))
+      '@langfuse/tracing':
+        specifier: ^5.11.0
+        version: 5.11.0(@opentelemetry/api@1.9.1)
+      '@langfuse/vercel-ai-sdk':
+        specifier: ^5.11.0
+        version: 5.11.0(@opentelemetry/api@1.9.1)(ai@7.0.18(zod@3.25.76))(zod@3.25.76)
       '@libsql/client':
         specifier: ^0.15.0
         version: 0.15.15(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       '@microsoft/fetch-event-source':
         specifier: ^2.0.1
         version: 2.0.1
+      '@opentelemetry/api':
+        specifier: ^1.9.1
+        version: 1.9.1
+      '@opentelemetry/context-async-hooks':
+        specifier: ^2.11.0
+        version: 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace-node':
+        specifier: ^2.11.0
+        version: 2.11.0(@opentelemetry/api@1.9.1)
       ai:
         specifier: ^7.0.18
         version: 7.0.18(zod@3.25.76)
@@ -299,7 +317,7 @@ importers:
         version: 5.1.16
       next:
         specifier: ^15.5.4
-        version: 15.5.20(@babel/core@7.29.7)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 15.5.20(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -386,6 +404,12 @@ importers:
       '@bookmark-ai/types':
         specifier: workspace:*
         version: link:../types
+      '@langfuse/tracing':
+        specifier: ^5.11.0
+        version: 5.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/api':
+        specifier: ^1.9.1
+        version: 1.9.1
       undici:
         specifier: ^7.28.0
         version: 7.28.0
@@ -459,6 +483,12 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  '@ai-sdk/gateway@4.0.72':
+    resolution: {integrity: sha512-iNNgagJ0+Ow1kdOFSyKPRk8kTh7qwhLZPLFdbXw4KMbMMF7JLzWlBSkyMSjh6U4O6D4D+76xj0HGws4JTLNeYA==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/google@4.0.10':
     resolution: {integrity: sha512-+g629pKE4xhLB6LnskHlOkie30UENhiKpdYMGQoGYm09191kfRU8qAU7wgF01PmzGFe0h3JYpls6Ok2aCYmjzQ==}
     engines: {node: '>=22'}
@@ -483,8 +513,18 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  '@ai-sdk/otel@1.0.90':
+    resolution: {integrity: sha512-eBYVU7lQ7k8IPsYzZpsitm9hjQQYBpv3lGj5yiU72UOkhy3ME8YPRLBwkJp1iNH6ruycba8HA/ZGY14jtsqNag==}
+    engines: {node: '>=22'}
+
   '@ai-sdk/provider-utils@5.0.10':
     resolution: {integrity: sha512-uPyec0+85dwxZYXtb8qe8gCjhjDfxP4LCDo/uRQS/iG+FIgYbHPRhr/ys281udG90bTaE18+5cxWraYaf8oHCw==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/provider-utils@5.0.36':
+    resolution: {integrity: sha512-MFXBn6XDyf37PNQAge/HTatPJE8Vmg/g/w4WPtjSV53jq8FKAzoaN5+43hsdQa9bqgN+/13jxug9ChvsG+godQ==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -494,6 +534,10 @@ packages:
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/provider@4.0.10':
+    resolution: {integrity: sha512-fX2ENAc7iDpZ+Wp4+Rk06Usn/Ys7dI9uAkGv0jlF6XVrW13NkRWx5Ou+U6lIM2E1fTLkCs16GGrUAaVvroag7A==}
+    engines: {node: '>=22'}
 
   '@ai-sdk/provider@4.0.2':
     resolution: {integrity: sha512-pfPoy9J1B1xV7cqJ8MYHOsDYrMv5tR3+EMNfI249OhkD2uRakvav3Fo7XpD2luuN/YNCBY7KfEQc7vEV7KEtyw==}
@@ -2860,6 +2904,33 @@ packages:
     peerDependencies:
       tslib: '2'
 
+  '@langfuse/core@5.11.0':
+    resolution: {integrity: sha512-Y5nBcrd8k0bEazb+lcOaEm6ICxxJJLGDkTax7dY4NyiYoO1LlTIFhkfwSOcneQRjpl7EvgL4Dy+9fzDXBDuVaA==}
+    peerDependencies:
+      '@opentelemetry/api': ^1.9.0
+
+  '@langfuse/otel@5.11.0':
+    resolution: {integrity: sha512-O3UYiH2Y0gDVUV42ZQD5NjdySoQ9F49UJxTGZiBMR1OCcrQDJZkz90Wg5OO2j1+NYWvIRbxJzMYNU8l/CqV00g==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@opentelemetry/api': ^1.9.0
+      '@opentelemetry/core': ^2.0.1
+      '@opentelemetry/exporter-trace-otlp-http': '>=0.202.0 <1.0.0'
+      '@opentelemetry/sdk-trace-base': ^2.0.1
+
+  '@langfuse/tracing@5.11.0':
+    resolution: {integrity: sha512-RrAradZuRVYnr7TLv1tHwLzyYxli96E8ujPmrt5LXLsEYsqUlfAhweW8khE1wqwj7uooLFg2FVvw1+IAIQx/+Q==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@opentelemetry/api': ^1.9.0
+
+  '@langfuse/vercel-ai-sdk@5.11.0':
+    resolution: {integrity: sha512-Vst4patsD3tYSwh7ouk1MvLyRFux5Ub8VUuLlWEvEOXeTPXdW/tkoNK+yyPS1l8rUz9+kiMihyZkv1PVIp+yQQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@opentelemetry/api': ^1.9.0
+      ai: '>=7.0.0 <8'
+
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
 
@@ -3055,6 +3126,84 @@ packages:
   '@nodelib/fs.walk@1.2.8':
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
+
+  '@opentelemetry/api-logs@0.222.0':
+    resolution: {integrity: sha512-9mb1If+IF6u0ZVXkHQ6ogEae5HwA6ajIVUgpSDQyRASxft6BSXHvBvPooRle3yFN/fKnCdSOnuu0OC3PLcF6+g==}
+    engines: {node: '>=8.0.0'}
+
+  '@opentelemetry/api@1.9.1':
+    resolution: {integrity: sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==}
+    engines: {node: '>=8.0.0'}
+
+  '@opentelemetry/context-async-hooks@2.11.0':
+    resolution: {integrity: sha512-Tr79DyWI8itsBdg+jH+opjfrwLzX+erk1/ExkIwhWoAVjVrJIn2y5+cGjTC0Vy8fyNIA/y8wuJPZwr1T3xCZeQ==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.0.0 <1.10.0'
+
+  '@opentelemetry/core@2.11.0':
+    resolution: {integrity: sha512-7YP44XH0tV6+Mb54x2YGf84i7yi+31MBZlE8JwvozkxyTvXbSp10X7cI7YE49ChJ3shMJoBmCJF3+1QFBJctGA==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.0.0 <1.10.0'
+
+  '@opentelemetry/exporter-trace-otlp-http@0.222.0':
+    resolution: {integrity: sha512-RCnPWcHppwiquQ+cV3nWvNwdf0MG1w26e5jewW2T83nTZOlXgcg88sY9ulCVgagGHcq1mj0L0GP6YHgzk2v8oA==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': ^1.3.0
+
+  '@opentelemetry/otlp-exporter-base@0.222.0':
+    resolution: {integrity: sha512-YbywG3veEm2Fb6TbdxRkuquWob6eVWXuA8/Ba1tXz9jHfUqpdE3keilOHEtPboC4CvS1bjeeVfNkWGOOrLj+lw==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': ^1.3.0
+
+  '@opentelemetry/otlp-transformer@0.222.0':
+    resolution: {integrity: sha512-/F3BZ89+CJQnZkMh2tCrtcdB+XT2Dxhj4FFE+WPQ//413hmFL0/RfEX6vgOIWGhiSzrkHWTK3+6SiT7K5/g/jQ==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': ^1.3.0
+
+  '@opentelemetry/resources@2.11.0':
+    resolution: {integrity: sha512-Ie7+8q8MDF4FAEQCKVMTx3ReUvxiIAgIiiW3c9JdmP8+HMcDy20puT+AHjexnExgnbvBxjQ9fjkFDWrikJ2jQA==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.3.0 <1.10.0'
+
+  '@opentelemetry/sdk-logs@0.222.0':
+    resolution: {integrity: sha512-+19YHODIjaUCArxleaJtuufFZVpz/xvvK+VllQqE+W8hHolxdoRwHfK/s667zezwh1hkx6FFF+oYzetYgqK+Bg==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.4.0 <1.10.0'
+
+  '@opentelemetry/sdk-metrics@2.11.0':
+    resolution: {integrity: sha512-7GXXcObyHyDUUSG+L+kJoquty01bzm7ivE7+SSgXXJcHuPzGviptxwARmI2c+bnnxjexGQbJnyNlN8HxBP/Y7A==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.9.0 <1.10.0'
+
+  '@opentelemetry/sdk-trace-base@2.11.0':
+    resolution: {integrity: sha512-H19x/TX/LZdqiYOjM7fqtSxwlplC5pgelavqbQdHbhdq0q/AI/TGkM2dfGuuynTXmJPeF2HoZVoPDu+TGoW78A==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.3.0 <1.10.0'
+
+  '@opentelemetry/sdk-trace-node@2.11.0':
+    resolution: {integrity: sha512-CuvCMJmZxswhNLlM2LfuLOW3h3fZujA4hsG4B+Sz4dX2zvaXO8Ng74cnDHWD64gLszTlhiG3c0iNUjj4g+0/sA==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.0.0 <1.10.0'
+
+  '@opentelemetry/sdk-trace@2.11.0':
+    resolution: {integrity: sha512-fFnTqGm8/G73GQVnxYi7LXa1ZVYEUvgL6XI1LpvV0bPC7WQ/ZGgKxCSl8FnlZBKto9JHHEFTO6s6CUpvvtwFrA==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': '>=1.3.0 <1.10.0'
+
+  '@opentelemetry/semantic-conventions@1.43.0':
+    resolution: {integrity: sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg==}
+    engines: {node: '>=14'}
 
   '@oxc-project/types@0.139.0':
     resolution: {integrity: sha512-r9gHphtCs+1M7J0pw6Sn/hh/Wpa/iQrOOkrNAlVLF/gHq+/CJmHIWKKUUhdWjcD6CIa8idarspCsASiXCXvFUw==}
@@ -5841,6 +5990,12 @@ packages:
 
   ai@7.0.18:
     resolution: {integrity: sha512-/DsiRfbLPtoHf9C47Hy+LK+HkjNowX1DQo3id4zWegfU6z1WjVDRAHYJAiX7SXhGp0mWX4tcenUhfIFessDWnw==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  ai@7.0.90:
+    resolution: {integrity: sha512-cvG7Od3DPlnnljkIXP1CQ8wABOfDqV1uBFWemBjGupiqcQD8O9SSg5m4FL+GiMA47NN7dxIJnaw8/uowwN+D2g==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -11463,6 +11618,10 @@ packages:
     resolution: {integrity: sha512-cRZYrTDwWznlnRiPjggAGxZXanty6M8RV1ff8Wm4LWXBp7/IG8v5DnOm74DtUBp9OONpK75YlPnIjQqX0dBDtA==}
     engines: {node: '>=20.18.1'}
 
+  undici@7.29.0:
+    resolution: {integrity: sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==}
+    engines: {node: '>=20.18.1'}
+
   unicode-canonical-property-names-ecmascript@2.0.1:
     resolution: {integrity: sha512-dA8WbNeb2a6oQzAQ55YlT5vQAWGV9WXOsi3SskE3bcCdM0P4SDd+24zS/OCacdRq5BkdsRj9q3Pg6YyQoxIGqg==}
     engines: {node: '>=4'}
@@ -12154,6 +12313,13 @@ snapshots:
       '@vercel/oidc': 3.2.0
       zod: 3.25.76
 
+  '@ai-sdk/gateway@4.0.72(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.10
+      '@ai-sdk/provider-utils': 5.0.36(zod@3.25.76)
+      '@vercel/oidc': 3.2.0
+      zod: 3.25.76
+
   '@ai-sdk/google@4.0.10(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 4.0.2
@@ -12179,12 +12345,29 @@ snapshots:
       '@ai-sdk/provider-utils': 5.0.10(zod@3.25.76)
       zod: 3.25.76
 
+  '@ai-sdk/otel@1.0.90(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.10
+      '@opentelemetry/api': 1.9.1
+      ai: 7.0.90(zod@3.25.76)
+    transitivePeerDependencies:
+      - zod
+
   '@ai-sdk/provider-utils@5.0.10(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 4.0.3
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.0
+      zod: 3.25.76
+
+  '@ai-sdk/provider-utils@5.0.36(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.10
+      '@standard-schema/spec': 1.1.0
+      '@workflow/serde': 4.1.0
+      eventsource-parser: 3.1.0
+      undici: 7.29.0
       zod: 3.25.76
 
   '@ai-sdk/provider-utils@5.0.6(zod@3.25.76)':
@@ -12194,6 +12377,10 @@ snapshots:
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.0
       zod: 3.25.76
+
+  '@ai-sdk/provider@4.0.10':
+    dependencies:
+      json-schema: 0.4.0
 
   '@ai-sdk/provider@4.0.2':
     dependencies:
@@ -13176,7 +13363,7 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@base-org/account@2.0.1(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.3))(utf-8-validate@6.0.6)(zod@3.25.76)':
+  '@base-org/account@2.0.1(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.3))(zod@3.25.76)':
     dependencies:
       '@noble/hashes': 1.4.0
       clsx: 1.2.1
@@ -13184,7 +13371,7 @@ snapshots:
       idb-keyval: 6.2.1
       ox: 0.6.9(typescript@6.0.3)(zod@3.25.76)
       preact: 10.24.2
-      viem: 2.55.0(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(zod@3.25.76)
+      viem: 2.55.0(bufferutil@4.1.0)(typescript@6.0.3)(zod@3.25.76)
       zustand: 5.0.3(@types/react@19.2.17)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
     transitivePeerDependencies:
       - '@types/react'
@@ -13253,19 +13440,19 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@clerk/clerk-expo@2.19.31(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(@types/react@19.2.17)(bufferutil@4.1.0)(expo-auth-session@57.0.6(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(expo-crypto@57.0.1(expo@57.0.12))(expo-secure-store@57.0.1(expo@57.0.12))(expo-web-browser@57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)))(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.3))(utf-8-validate@6.0.6)(zod@3.25.76)':
+  '@clerk/clerk-expo@2.19.31(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(@types/react@19.2.17)(bufferutil@4.1.0)(expo-auth-session@57.0.6(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(expo-crypto@57.0.1(expo@57.0.12))(expo-secure-store@57.0.1(expo@57.0.12))(expo-web-browser@57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)))(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.3))(zod@3.25.76)':
     dependencies:
-      '@clerk/clerk-js': 5.127.0(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(@types/react@19.2.17)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.3))(utf-8-validate@6.0.6)(zod@3.25.76)
+      '@clerk/clerk-js': 5.127.0(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(@types/react@19.2.17)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.3))(zod@3.25.76)
       '@clerk/clerk-react': 5.61.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@clerk/shared': 3.47.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@clerk/types': 4.101.20(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       base-64: 1.0.0
-      expo-auth-session: 57.0.6(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
-      expo-web-browser: 57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
+      expo-auth-session: 57.0.6(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
+      expo-web-browser: 57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
-      react-native-url-polyfill: 2.0.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
+      react-native-url-polyfill: 2.0.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
       tslib: 2.8.1
     optionalDependencies:
       expo-crypto: 57.0.1(expo@57.0.12)
@@ -13284,9 +13471,9 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@clerk/clerk-js@5.127.0(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(@types/react@19.2.17)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.3))(utf-8-validate@6.0.6)(zod@3.25.76)':
+  '@clerk/clerk-js@5.127.0(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(@types/react@19.2.17)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.3))(zod@3.25.76)':
     dependencies:
-      '@base-org/account': 2.0.1(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.3))(utf-8-validate@6.0.6)(zod@3.25.76)
+      '@base-org/account': 2.0.1(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(typescript@6.0.3)(use-sync-external-store@1.6.0(react@19.2.3))(zod@3.25.76)
       '@clerk/localizations': 3.37.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@clerk/shared': 3.47.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@coinbase/wallet-sdk': 4.3.0
@@ -13295,9 +13482,9 @@ snapshots:
       '@floating-ui/react': 0.27.12(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@floating-ui/react-dom': 2.1.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@formkit/auto-animate': 0.8.4
-      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))
-      '@solana/wallet-adapter-react': 0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
-      '@solana/wallet-standard': 1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))
+      '@solana/wallet-adapter-react': 0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+      '@solana/wallet-standard': 1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(react@19.2.3)
       '@stripe/stripe-js': 5.6.0
       '@swc/helpers': 0.5.21
       '@tanstack/query-core': 5.87.4
@@ -13335,9 +13522,9 @@ snapshots:
       '@base-org/account': 2.0.1(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.7))(zod@3.25.76)
       '@clerk/shared': 4.25.6(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@coinbase/wallet-sdk': 4.3.7(bufferutil@4.1.0)(typescript@5.9.3)(zod@3.25.76)
-      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))
-      '@solana/wallet-adapter-react': 0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(react@19.2.7)(typescript@5.9.3)
-      '@solana/wallet-standard': 1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(react@19.2.7)
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
+      '@solana/wallet-adapter-react': 0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(react@19.2.7)(typescript@5.9.3)
+      '@solana/wallet-standard': 1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(react@19.2.7)
       '@stripe/stripe-js': 5.6.0
       '@swc/helpers': 0.5.21
       '@tanstack/query-core': 5.101.2
@@ -13393,12 +13580,12 @@ snapshots:
       - react
       - react-dom
 
-  '@clerk/nextjs@7.5.15(next@15.5.20(@babel/core@7.29.7)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@clerk/nextjs@7.5.15(next@15.5.20(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@clerk/backend': 3.11.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@clerk/react': 6.12.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@clerk/shared': 4.25.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      next: 15.5.20(@babel/core@7.29.7)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      next: 15.5.20(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
       server-only: 0.0.1
@@ -13474,7 +13661,7 @@ snapshots:
       - react
       - react-dom
 
-  '@clerk/ui@1.25.1(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(@types/react@19.2.17)(bs58@6.0.0)(bufferutil@4.1.0)(react-dom@19.2.7(react@19.2.7))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(react@19.2.7)(typescript@5.9.3)':
+  '@clerk/ui@1.25.1(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(@types/react@19.2.17)(bs58@6.0.0)(bufferutil@4.1.0)(react-dom@19.2.7(react@19.2.7))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(react@19.2.7)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
       '@clerk/localizations': 4.13.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@clerk/shared': 4.25.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -13482,9 +13669,9 @@ snapshots:
       '@emotion/react': 11.11.1(@types/react@19.2.17)(react@19.2.7)
       '@floating-ui/react': 0.27.12(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@formkit/auto-animate': 0.8.4
-      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))
-      '@solana/wallet-adapter-react': 0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(react@19.2.7)(typescript@5.9.3)
-      '@solana/wallet-standard': 1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(react@19.2.7)
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
+      '@solana/wallet-adapter-react': 0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(react@19.2.7)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@solana/wallet-standard': 1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)(react@19.2.7)
       '@swc/helpers': 0.5.21
       copy-to-clipboard: 3.3.3
       core-js: 3.47.0
@@ -13513,9 +13700,9 @@ snapshots:
       '@emotion/react': 11.11.1(@types/react@19.2.17)(react@19.2.7)
       '@floating-ui/react': 0.27.12(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@formkit/auto-animate': 0.8.4
-      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))
-      '@solana/wallet-adapter-react': 0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(react@19.2.7)(typescript@5.9.3)
-      '@solana/wallet-standard': 1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(react@19.2.7)
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
+      '@solana/wallet-adapter-react': 0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(react@19.2.7)(typescript@5.9.3)
+      '@solana/wallet-standard': 1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(react@19.2.7)
       '@swc/helpers': 0.5.21
       copy-to-clipboard: 3.3.3
       core-js: 3.47.0
@@ -15113,7 +15300,7 @@ snapshots:
 
   '@expo-google-fonts/material-symbols@0.4.38': {}
 
-  '@expo/cli@57.0.14(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)))(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(expo@57.0.12)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)':
+  '@expo/cli@57.0.14(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)))(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(expo@57.0.12)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)':
     dependencies:
       '@expo/code-signing-certificates': 0.0.6
       '@expo/config': 57.0.7(typescript@6.0.3)
@@ -15123,19 +15310,19 @@ snapshots:
       '@expo/image-utils': 0.11.4(typescript@6.0.3)
       '@expo/inline-modules': 0.1.5(typescript@6.0.3)
       '@expo/json-file': 11.0.1
-      '@expo/log-box': 57.0.2(@expo/dom-webview@57.0.0)(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
-      '@expo/metro': 56.0.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
-      '@expo/metro-config': 57.0.8(bufferutil@4.1.0)(expo@57.0.12)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@expo/log-box': 57.0.2(@expo/dom-webview@57.0.0)(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
+      '@expo/metro': 56.0.0(bufferutil@4.1.0)
+      '@expo/metro-config': 57.0.8(bufferutil@4.1.0)(expo@57.0.12)(typescript@6.0.3)
       '@expo/metro-file-map': 57.0.1
       '@expo/osascript': 2.7.1
       '@expo/package-manager': 1.13.1
       '@expo/plist': 0.8.1
       '@expo/prebuild-config': 57.0.11(typescript@6.0.3)
       '@expo/require-utils': 57.0.4(typescript@6.0.3)
-      '@expo/router-server': 57.0.5(expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)))(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(expo-server@57.0.2)(expo@57.0.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      '@expo/router-server': 57.0.5(expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)))(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(expo-server@57.0.2)(expo@57.0.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@expo/schema-utils': 57.0.2
       '@expo/spawn-async': 1.8.0
-      '@expo/ws-tunnel': 2.0.0(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
+      '@expo/ws-tunnel': 2.0.0(ws@8.21.0(bufferutil@4.1.0))
       '@expo/xcpretty': 4.4.4
       '@react-native/dev-middleware': 0.86.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       accepts: 1.3.8
@@ -15149,7 +15336,7 @@ snapshots:
       connect: 3.7.0
       debug: 4.4.3
       dnssd-advertise: 1.1.6
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       expo-server: 57.0.2
       fetch-nodeshim: 0.4.10
       getenv: 2.0.0
@@ -15175,7 +15362,7 @@ snapshots:
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       zod: 3.25.76
     optionalDependencies:
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
     transitivePeerDependencies:
       - '@expo/dom-webview'
       - '@expo/metro-runtime'
@@ -15258,18 +15445,18 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@expo/devtools@57.0.1(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)':
+  '@expo/devtools@57.0.1(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)':
     dependencies:
       chalk: 4.1.2
     optionalDependencies:
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
-  '@expo/dom-webview@57.0.0(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)':
+  '@expo/dom-webview@57.0.0(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)':
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
   '@expo/env@2.4.2':
     dependencies:
@@ -15335,16 +15522,16 @@ snapshots:
       - supports-color
       - typescript
 
-  '@expo/log-box@57.0.2(@expo/dom-webview@57.0.0)(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)':
+  '@expo/log-box@57.0.2(@expo/dom-webview@57.0.0)(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@expo/dom-webview': 57.0.0(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      '@expo/dom-webview': 57.0.0(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       anser: 1.4.10
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
       stacktrace-parser: 0.1.11
 
-  '@expo/metro-config@57.0.8(bufferutil@4.1.0)(expo@57.0.12)(typescript@6.0.3)(utf-8-validate@6.0.6)':
+  '@expo/metro-config@57.0.8(bufferutil@4.1.0)(expo@57.0.12)(typescript@6.0.3)':
     dependencies:
       '@babel/code-frame': 7.29.7
       '@babel/core': 7.29.7
@@ -15352,7 +15539,7 @@ snapshots:
       '@expo/config': 57.0.7(typescript@6.0.3)
       '@expo/env': 2.4.2
       '@expo/json-file': 11.0.1
-      '@expo/metro': 56.0.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      '@expo/metro': 56.0.0(bufferutil@4.1.0)
       '@expo/require-utils': 57.0.4(typescript@6.0.3)
       '@expo/spawn-async': 1.8.0
       '@jridgewell/gen-mapping': 0.3.13
@@ -15370,7 +15557,7 @@ snapshots:
       postcss: 8.5.16
       resolve-from: 5.0.0
     optionalDependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -15388,9 +15575,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@expo/metro@56.0.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
+  '@expo/metro@56.0.0(bufferutil@4.1.0)':
     dependencies:
-      metro: 0.84.4(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      metro: 0.84.4(bufferutil@4.1.0)
       metro-babel-transformer: 0.84.4
       metro-cache: 0.84.4
       metro-cache-key: 0.84.4
@@ -15403,7 +15590,7 @@ snapshots:
       metro-source-map: 0.84.4
       metro-symbolicate: 0.84.4
       metro-transform-plugins: 0.84.4
-      metro-transform-worker: 0.84.4(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      metro-transform-worker: 0.84.4(bufferutil@4.1.0)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -15470,12 +15657,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@expo/router-server@57.0.5(expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)))(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(expo-server@57.0.2)(expo@57.0.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
+  '@expo/router-server@57.0.5(expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)))(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(expo-server@57.0.2)(expo@57.0.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
       debug: 4.4.3
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
-      expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
-      expo-font: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+      expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
+      expo-font: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       expo-server: 57.0.2
       react: 19.2.3
     optionalDependencies:
@@ -15493,13 +15680,13 @@ snapshots:
 
   '@expo/sudo-prompt@9.3.2': {}
 
-  '@expo/vector-icons@15.1.1(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)':
+  '@expo/vector-icons@15.1.1(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)':
     dependencies:
-      expo-font: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      expo-font: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
-  '@expo/ws-tunnel@2.0.0(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))':
+  '@expo/ws-tunnel@2.0.0(ws@8.21.0(bufferutil@4.1.0))':
     dependencies:
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
 
@@ -15858,6 +16045,32 @@ snapshots:
       '@jsonjoy.com/codegen': 17.67.0(tslib@2.8.1)
       tslib: 2.8.1
 
+  '@langfuse/core@5.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+
+  '@langfuse/otel@5.11.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.222.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1))':
+    dependencies:
+      '@langfuse/core': 5.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/exporter-trace-otlp-http': 0.222.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace-base': 2.11.0(@opentelemetry/api@1.9.1)
+
+  '@langfuse/tracing@5.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@langfuse/core': 5.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/api': 1.9.1
+
+  '@langfuse/vercel-ai-sdk@5.11.0(@opentelemetry/api@1.9.1)(ai@7.0.18(zod@3.25.76))(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/otel': 1.0.90(zod@3.25.76)
+      '@langfuse/core': 5.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/api': 1.9.1
+      ai: 7.0.18(zod@3.25.76)
+    transitivePeerDependencies:
+      - zod
+
   '@leichtgewicht/ip-codec@2.0.5': {}
 
   '@libsql/client@0.15.15(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
@@ -16056,6 +16269,88 @@ snapshots:
     dependencies:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
+
+  '@opentelemetry/api-logs@0.222.0':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+
+  '@opentelemetry/api@1.9.1': {}
+
+  '@opentelemetry/context-async-hooks@2.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+
+  '@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/semantic-conventions': 1.43.0
+
+  '@opentelemetry/exporter-trace-otlp-http@0.222.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/otlp-exporter-base': 0.222.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/otlp-transformer': 0.222.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace': 2.11.0(@opentelemetry/api@1.9.1)
+
+  '@opentelemetry/otlp-exporter-base@0.222.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/otlp-transformer': 0.222.0(@opentelemetry/api@1.9.1)
+
+  '@opentelemetry/otlp-transformer@0.222.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/api-logs': 0.222.0
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/resources': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-logs': 0.222.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-metrics': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace': 2.11.0(@opentelemetry/api@1.9.1)
+
+  '@opentelemetry/resources@2.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/semantic-conventions': 1.43.0
+
+  '@opentelemetry/sdk-logs@0.222.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/api-logs': 0.222.0
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/resources': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/semantic-conventions': 1.43.0
+
+  '@opentelemetry/sdk-metrics@2.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/resources': 2.11.0(@opentelemetry/api@1.9.1)
+
+  '@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/resources': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/semantic-conventions': 1.43.0
+
+  '@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/context-async-hooks': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace-base': 2.11.0(@opentelemetry/api@1.9.1)
+
+  '@opentelemetry/sdk-trace@2.11.0(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/resources': 2.11.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/semantic-conventions': 1.43.0
+
+  '@opentelemetry/semantic-conventions@1.43.0': {}
 
   '@oxc-project/types@0.139.0': {}
 
@@ -16975,22 +17270,22 @@ snapshots:
 
   '@radix-ui/rect@1.1.2': {}
 
-  '@react-native-async-storage/async-storage@1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))':
+  '@react-native-async-storage/async-storage@1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))':
     dependencies:
       merge-options: 3.0.4
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
     optional: true
 
-  '@react-native-async-storage/async-storage@1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))':
+  '@react-native-async-storage/async-storage@1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))':
     dependencies:
       merge-options: 3.0.4
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6)
     optional: true
 
-  '@react-native-async-storage/async-storage@2.2.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))':
+  '@react-native-async-storage/async-storage@2.2.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))':
     dependencies:
       merge-options: 3.0.4
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
   '@react-native/assets-registry@0.86.2': {}
 
@@ -17018,7 +17313,7 @@ snapshots:
       debug: 4.4.3
       invariant: 2.2.4
       metro: 0.84.4(bufferutil@4.1.0)
-      metro-config: 0.84.4(bufferutil@4.1.0)
+      metro-config: 0.84.4(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       metro-core: 0.84.4
       semver: 7.8.5
     transitivePeerDependencies:
@@ -17075,21 +17370,21 @@ snapshots:
 
   '@react-native/normalize-colors@0.86.2': {}
 
-  '@react-native/virtualized-lists@0.86.2(@types/react@19.2.17)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)':
+  '@react-native/virtualized-lists@0.86.2(@types/react@19.2.17)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)':
     dependencies:
       invariant: 2.2.4
       nullthrows: 1.1.1
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
     optionalDependencies:
       '@types/react': 19.2.17
 
-  '@react-native/virtualized-lists@0.86.2(@types/react@19.2.17)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(react@19.2.7)':
+  '@react-native/virtualized-lists@0.86.2(@types/react@19.2.17)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(react@19.2.7)':
     dependencies:
       invariant: 2.2.4
       nullthrows: 1.1.1
       react: 19.2.7
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6)
     optionalDependencies:
       '@types/react': 19.2.17
 
@@ -17357,10 +17652,10 @@ snapshots:
       micromark-util-character: 1.2.0
       micromark-util-symbol: 1.1.0
 
-  '@solana-mobile/mobile-wallet-adapter-protocol-web3js@2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(typescript@5.9.3)':
+  '@solana-mobile/mobile-wallet-adapter-protocol-web3js@2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
-      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(typescript@5.9.3)
-      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
       - bufferutil
       - fastestsmallesttextencoderdecoder
@@ -17368,10 +17663,10 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@solana-mobile/mobile-wallet-adapter-protocol-web3js@2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(utf-8-validate@6.0.6)':
+  '@solana-mobile/mobile-wallet-adapter-protocol-web3js@2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(typescript@5.9.3)':
     dependencies:
-      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(utf-8-validate@6.0.6)
-      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
       - bufferutil
       - fastestsmallesttextencoderdecoder
@@ -17379,73 +17674,102 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@solana-mobile/mobile-wallet-adapter-protocol@2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(utf-8-validate@6.0.6)':
+  '@solana-mobile/mobile-wallet-adapter-protocol-web3js@2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(typescript@6.0.3)':
     dependencies:
-      '@solana/kit': 6.10.0(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(typescript@6.0.3)
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@6.0.3)
+    transitivePeerDependencies:
+      - bufferutil
+      - fastestsmallesttextencoderdecoder
+      - react-native
+      - typescript
+      - utf-8-validate
+
+  '@solana-mobile/mobile-wallet-adapter-protocol@2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(typescript@6.0.3)':
+    dependencies:
+      '@solana/kit': 6.10.0(bufferutil@4.1.0)(typescript@6.0.3)
       '@solana/wallet-standard-features': 1.4.0
       '@solana/wallet-standard-util': 1.1.3
       '@wallet-standard/core': 1.1.2
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
     transitivePeerDependencies:
       - bufferutil
       - fastestsmallesttextencoderdecoder
       - typescript
       - utf-8-validate
 
-  '@solana-mobile/mobile-wallet-adapter-protocol@2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(typescript@5.9.3)':
+  '@solana-mobile/mobile-wallet-adapter-protocol@2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
-      '@solana/kit': 6.10.0(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana/kit': 6.10.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@solana/wallet-standard-features': 1.4.0
       '@solana/wallet-standard-util': 1.1.3
       '@wallet-standard/core': 1.1.2
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
       - bufferutil
       - fastestsmallesttextencoderdecoder
       - typescript
       - utf-8-validate
 
-  '@solana-mobile/wallet-adapter-mobile@2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(typescript@5.9.3)':
+  '@solana-mobile/wallet-adapter-mobile@2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
-      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(typescript@5.9.3)
-      '@solana-mobile/mobile-wallet-adapter-protocol-web3js': 2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(typescript@5.9.3)
-      '@solana-mobile/wallet-standard-mobile': 0.5.3(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(typescript@5.9.3)
-      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))
+      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@solana-mobile/mobile-wallet-adapter-protocol-web3js': 2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@solana-mobile/wallet-standard-mobile': 0.5.3(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
       '@solana/wallet-standard-features': 1.4.0
-      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@wallet-standard/core': 1.1.2
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6)
       tslib: 2.8.1
     optionalDependencies:
-      '@react-native-async-storage/async-storage': 1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))
+      '@react-native-async-storage/async-storage': 1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))
     transitivePeerDependencies:
       - bufferutil
       - fastestsmallesttextencoderdecoder
       - typescript
       - utf-8-validate
 
-  '@solana-mobile/wallet-adapter-mobile@2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(utf-8-validate@6.0.6)':
+  '@solana-mobile/wallet-adapter-mobile@2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(typescript@5.9.3)':
     dependencies:
-      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(utf-8-validate@6.0.6)
-      '@solana-mobile/mobile-wallet-adapter-protocol-web3js': 2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(utf-8-validate@6.0.6)
-      '@solana-mobile/wallet-standard-mobile': 0.5.3(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(utf-8-validate@6.0.6)
-      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))
+      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@solana-mobile/mobile-wallet-adapter-protocol-web3js': 2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana-mobile/wallet-standard-mobile': 0.5.3(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
       '@solana/wallet-standard-features': 1.4.0
-      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@wallet-standard/core': 1.1.2
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
       tslib: 2.8.1
     optionalDependencies:
-      '@react-native-async-storage/async-storage': 1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
+      '@react-native-async-storage/async-storage': 1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
     transitivePeerDependencies:
       - bufferutil
       - fastestsmallesttextencoderdecoder
       - typescript
       - utf-8-validate
 
-  '@solana-mobile/wallet-standard-mobile@0.5.3(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(utf-8-validate@6.0.6)':
+  '@solana-mobile/wallet-adapter-mobile@2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(typescript@6.0.3)':
     dependencies:
-      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(typescript@6.0.3)
+      '@solana-mobile/mobile-wallet-adapter-protocol-web3js': 2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(typescript@6.0.3)
+      '@solana-mobile/wallet-standard-mobile': 0.5.3(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(typescript@6.0.3)
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))
+      '@solana/wallet-standard-features': 1.4.0
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@6.0.3)
+      '@wallet-standard/core': 1.1.2
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
+      tslib: 2.8.1
+    optionalDependencies:
+      '@react-native-async-storage/async-storage': 1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
+    transitivePeerDependencies:
+      - bufferutil
+      - fastestsmallesttextencoderdecoder
+      - typescript
+      - utf-8-validate
+
+  '@solana-mobile/wallet-standard-mobile@0.5.3(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(typescript@6.0.3)':
+    dependencies:
+      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(typescript@6.0.3)
       '@solana/wallet-standard-chains': 1.1.2
       '@solana/wallet-standard-features': 1.4.0
       '@wallet-standard/base': 1.1.1
@@ -17454,7 +17778,7 @@ snapshots:
       qrcode: 1.5.4
       tslib: 2.8.1
     optionalDependencies:
-      '@react-native-async-storage/async-storage': 1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
+      '@react-native-async-storage/async-storage': 1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
     transitivePeerDependencies:
       - bufferutil
       - fastestsmallesttextencoderdecoder
@@ -17462,9 +17786,9 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@solana-mobile/wallet-standard-mobile@0.5.3(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(typescript@5.9.3)':
+  '@solana-mobile/wallet-standard-mobile@0.5.3(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
-      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(typescript@5.9.3)
+      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@solana/wallet-standard-chains': 1.1.2
       '@solana/wallet-standard-features': 1.4.0
       '@wallet-standard/base': 1.1.1
@@ -17473,7 +17797,26 @@ snapshots:
       qrcode: 1.5.4
       tslib: 2.8.1
     optionalDependencies:
-      '@react-native-async-storage/async-storage': 1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))
+      '@react-native-async-storage/async-storage': 1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))
+    transitivePeerDependencies:
+      - bufferutil
+      - fastestsmallesttextencoderdecoder
+      - react-native
+      - typescript
+      - utf-8-validate
+
+  '@solana-mobile/wallet-standard-mobile@0.5.3(bufferutil@4.1.0)(typescript@5.9.3)':
+    dependencies:
+      '@solana-mobile/mobile-wallet-adapter-protocol': 2.2.9(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@solana/wallet-standard-chains': 1.1.2
+      '@solana/wallet-standard-features': 1.4.0
+      '@wallet-standard/base': 1.1.1
+      '@wallet-standard/features': 1.1.1
+      '@wallet-standard/wallet': 1.1.1
+      qrcode: 1.5.4
+      tslib: 2.8.1
+    optionalDependencies:
+      '@react-native-async-storage/async-storage': 1.24.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
     transitivePeerDependencies:
       - bufferutil
       - fastestsmallesttextencoderdecoder
@@ -17775,7 +18118,7 @@ snapshots:
     transitivePeerDependencies:
       - fastestsmallesttextencoderdecoder
 
-  '@solana/kit@6.10.0(bufferutil@4.1.0)(typescript@5.9.3)':
+  '@solana/kit@6.10.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
       '@solana/accounts': 6.10.0(typescript@5.9.3)
       '@solana/addresses': 6.10.0(typescript@5.9.3)
@@ -17794,12 +18137,12 @@ snapshots:
       '@solana/rpc-api': 6.10.0(typescript@5.9.3)
       '@solana/rpc-parsed-types': 6.10.0(typescript@5.9.3)
       '@solana/rpc-spec-types': 6.10.0(typescript@5.9.3)
-      '@solana/rpc-subscriptions': 6.10.0(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana/rpc-subscriptions': 6.10.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@solana/rpc-types': 6.10.0(typescript@5.9.3)
       '@solana/signers': 6.10.0(typescript@5.9.3)
       '@solana/subscribable': 6.10.0(typescript@5.9.3)
       '@solana/sysvars': 6.10.0(typescript@5.9.3)
-      '@solana/transaction-confirmation': 6.10.0(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana/transaction-confirmation': 6.10.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@solana/transaction-messages': 6.10.0(typescript@5.9.3)
       '@solana/transactions': 6.10.0(typescript@5.9.3)
     optionalDependencies:
@@ -17809,7 +18152,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - utf-8-validate
 
-  '@solana/kit@6.10.0(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)':
+  '@solana/kit@6.10.0(bufferutil@4.1.0)(typescript@6.0.3)':
     dependencies:
       '@solana/accounts': 6.10.0(typescript@6.0.3)
       '@solana/addresses': 6.10.0(typescript@6.0.3)
@@ -17828,12 +18171,12 @@ snapshots:
       '@solana/rpc-api': 6.10.0(typescript@6.0.3)
       '@solana/rpc-parsed-types': 6.10.0(typescript@6.0.3)
       '@solana/rpc-spec-types': 6.10.0(typescript@6.0.3)
-      '@solana/rpc-subscriptions': 6.10.0(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@solana/rpc-subscriptions': 6.10.0(bufferutil@4.1.0)(typescript@6.0.3)
       '@solana/rpc-types': 6.10.0(typescript@6.0.3)
       '@solana/signers': 6.10.0(typescript@6.0.3)
       '@solana/subscribable': 6.10.0(typescript@6.0.3)
       '@solana/sysvars': 6.10.0(typescript@6.0.3)
-      '@solana/transaction-confirmation': 6.10.0(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@solana/transaction-confirmation': 6.10.0(bufferutil@4.1.0)(typescript@6.0.3)
       '@solana/transaction-messages': 6.10.0(typescript@6.0.3)
       '@solana/transactions': 6.10.0(typescript@6.0.3)
     optionalDependencies:
@@ -18095,7 +18438,7 @@ snapshots:
     transitivePeerDependencies:
       - fastestsmallesttextencoderdecoder
 
-  '@solana/rpc-subscriptions-channel-websocket@6.10.0(bufferutil@4.1.0)(typescript@5.9.3)':
+  '@solana/rpc-subscriptions-channel-websocket@6.10.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
       '@solana/errors': 6.10.0(typescript@5.9.3)
       '@solana/functional': 6.10.0(typescript@5.9.3)
@@ -18108,7 +18451,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@solana/rpc-subscriptions-channel-websocket@6.10.0(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)':
+  '@solana/rpc-subscriptions-channel-websocket@6.10.0(bufferutil@4.1.0)(typescript@6.0.3)':
     dependencies:
       '@solana/errors': 6.10.0(typescript@6.0.3)
       '@solana/functional': 6.10.0(typescript@6.0.3)
@@ -18139,7 +18482,7 @@ snapshots:
     optionalDependencies:
       typescript: 6.0.3
 
-  '@solana/rpc-subscriptions@6.10.0(bufferutil@4.1.0)(typescript@5.9.3)':
+  '@solana/rpc-subscriptions@6.10.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
       '@solana/errors': 6.10.0(typescript@5.9.3)
       '@solana/fast-stable-stringify': 6.10.0(typescript@5.9.3)
@@ -18147,7 +18490,7 @@ snapshots:
       '@solana/promises': 6.10.0(typescript@5.9.3)
       '@solana/rpc-spec-types': 6.10.0(typescript@5.9.3)
       '@solana/rpc-subscriptions-api': 6.10.0(typescript@5.9.3)
-      '@solana/rpc-subscriptions-channel-websocket': 6.10.0(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana/rpc-subscriptions-channel-websocket': 6.10.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@solana/rpc-subscriptions-spec': 6.10.0(typescript@5.9.3)
       '@solana/rpc-transformers': 6.10.0(typescript@5.9.3)
       '@solana/rpc-types': 6.10.0(typescript@5.9.3)
@@ -18159,7 +18502,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - utf-8-validate
 
-  '@solana/rpc-subscriptions@6.10.0(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)':
+  '@solana/rpc-subscriptions@6.10.0(bufferutil@4.1.0)(typescript@6.0.3)':
     dependencies:
       '@solana/errors': 6.10.0(typescript@6.0.3)
       '@solana/fast-stable-stringify': 6.10.0(typescript@6.0.3)
@@ -18167,7 +18510,7 @@ snapshots:
       '@solana/promises': 6.10.0(typescript@6.0.3)
       '@solana/rpc-spec-types': 6.10.0(typescript@6.0.3)
       '@solana/rpc-subscriptions-api': 6.10.0(typescript@6.0.3)
-      '@solana/rpc-subscriptions-channel-websocket': 6.10.0(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@solana/rpc-subscriptions-channel-websocket': 6.10.0(bufferutil@4.1.0)(typescript@6.0.3)
       '@solana/rpc-subscriptions-spec': 6.10.0(typescript@6.0.3)
       '@solana/rpc-transformers': 6.10.0(typescript@6.0.3)
       '@solana/rpc-types': 6.10.0(typescript@6.0.3)
@@ -18353,7 +18696,7 @@ snapshots:
     transitivePeerDependencies:
       - fastestsmallesttextencoderdecoder
 
-  '@solana/transaction-confirmation@6.10.0(bufferutil@4.1.0)(typescript@5.9.3)':
+  '@solana/transaction-confirmation@6.10.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
       '@solana/addresses': 6.10.0(typescript@5.9.3)
       '@solana/codecs-strings': 6.10.0(typescript@5.9.3)
@@ -18361,7 +18704,7 @@ snapshots:
       '@solana/keys': 6.10.0(typescript@5.9.3)
       '@solana/promises': 6.10.0(typescript@5.9.3)
       '@solana/rpc': 6.10.0(typescript@5.9.3)
-      '@solana/rpc-subscriptions': 6.10.0(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana/rpc-subscriptions': 6.10.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@solana/rpc-types': 6.10.0(typescript@5.9.3)
       '@solana/transaction-messages': 6.10.0(typescript@5.9.3)
       '@solana/transactions': 6.10.0(typescript@5.9.3)
@@ -18372,7 +18715,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - utf-8-validate
 
-  '@solana/transaction-confirmation@6.10.0(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)':
+  '@solana/transaction-confirmation@6.10.0(bufferutil@4.1.0)(typescript@6.0.3)':
     dependencies:
       '@solana/addresses': 6.10.0(typescript@6.0.3)
       '@solana/codecs-strings': 6.10.0(typescript@6.0.3)
@@ -18380,7 +18723,7 @@ snapshots:
       '@solana/keys': 6.10.0(typescript@6.0.3)
       '@solana/promises': 6.10.0(typescript@6.0.3)
       '@solana/rpc': 6.10.0(typescript@6.0.3)
-      '@solana/rpc-subscriptions': 6.10.0(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@solana/rpc-subscriptions': 6.10.0(bufferutil@4.1.0)(typescript@6.0.3)
       '@solana/rpc-types': 6.10.0(typescript@6.0.3)
       '@solana/transaction-messages': 6.10.0(typescript@6.0.3)
       '@solana/transactions': 6.10.0(typescript@6.0.3)
@@ -18461,28 +18804,28 @@ snapshots:
     transitivePeerDependencies:
       - fastestsmallesttextencoderdecoder
 
-  '@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))':
+  '@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))':
     dependencies:
       '@solana/wallet-standard-features': 1.4.0
-      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@wallet-standard/base': 1.1.1
       '@wallet-standard/features': 1.1.1
       eventemitter3: 5.0.4
 
-  '@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))':
+  '@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))':
     dependencies:
       '@solana/wallet-standard-features': 1.4.0
-      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@6.0.3)
       '@wallet-standard/base': 1.1.1
       '@wallet-standard/features': 1.1.1
       eventemitter3: 5.0.4
 
-  '@solana/wallet-adapter-react@0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(react@19.2.7)(typescript@5.9.3)':
+  '@solana/wallet-adapter-react@0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(react@19.2.7)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
-      '@solana-mobile/wallet-adapter-mobile': 2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(typescript@5.9.3)
-      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))
-      '@solana/wallet-standard-wallet-adapter-react': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(react@19.2.7)
-      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana-mobile/wallet-adapter-mobile': 2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
+      '@solana/wallet-standard-wallet-adapter-react': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)(react@19.2.7)
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       react: 19.2.7
     transitivePeerDependencies:
       - bs58
@@ -18492,12 +18835,27 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@solana/wallet-adapter-react@0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)':
+  '@solana/wallet-adapter-react@0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(react@19.2.7)(typescript@5.9.3)':
     dependencies:
-      '@solana-mobile/wallet-adapter-mobile': 2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(typescript@6.0.3)(utf-8-validate@6.0.6)
-      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))
-      '@solana/wallet-standard-wallet-adapter-react': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(react@19.2.3)
-      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@solana-mobile/wallet-adapter-mobile': 2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
+      '@solana/wallet-standard-wallet-adapter-react': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(react@19.2.7)
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      react: 19.2.7
+    transitivePeerDependencies:
+      - bs58
+      - bufferutil
+      - fastestsmallesttextencoderdecoder
+      - react-native
+      - typescript
+      - utf-8-validate
+
+  '@solana/wallet-adapter-react@0.15.39(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)':
+    dependencies:
+      '@solana-mobile/wallet-adapter-mobile': 2.2.9(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(bufferutil@4.1.0)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(typescript@6.0.3)
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))
+      '@solana/wallet-standard-wallet-adapter-react': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(react@19.2.3)
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@6.0.3)
       react: 19.2.3
     transitivePeerDependencies:
       - bs58
@@ -18528,35 +18886,35 @@ snapshots:
       '@solana/wallet-standard-chains': 1.1.2
       '@solana/wallet-standard-features': 1.4.0
 
-  '@solana/wallet-standard-wallet-adapter-base@1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)':
+  '@solana/wallet-standard-wallet-adapter-base@1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)':
     dependencies:
-      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
       '@solana/wallet-standard-chains': 1.1.2
       '@solana/wallet-standard-features': 1.4.0
       '@solana/wallet-standard-util': 1.1.3
-      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@wallet-standard/app': 1.1.1
       '@wallet-standard/base': 1.1.1
       '@wallet-standard/features': 1.1.1
       '@wallet-standard/wallet': 1.1.1
       bs58: 6.0.0
 
-  '@solana/wallet-standard-wallet-adapter-base@1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))':
+  '@solana/wallet-standard-wallet-adapter-base@1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))':
     dependencies:
-      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))
       '@solana/wallet-standard-chains': 1.1.2
       '@solana/wallet-standard-features': 1.4.0
       '@solana/wallet-standard-util': 1.1.3
-      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@6.0.3)
       '@wallet-standard/app': 1.1.1
       '@wallet-standard/base': 1.1.1
       '@wallet-standard/features': 1.1.1
       '@wallet-standard/wallet': 1.1.1
 
-  '@solana/wallet-standard-wallet-adapter-react@1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(react@19.2.7)':
+  '@solana/wallet-standard-wallet-adapter-react@1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)(react@19.2.7)':
     dependencies:
-      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))
-      '@solana/wallet-standard-wallet-adapter-base': 1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
+      '@solana/wallet-standard-wallet-adapter-base': 1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)
       '@wallet-standard/app': 1.1.1
       '@wallet-standard/base': 1.1.1
       react: 19.2.7
@@ -18564,10 +18922,21 @@ snapshots:
       - '@solana/web3.js'
       - bs58
 
-  '@solana/wallet-standard-wallet-adapter-react@1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(react@19.2.3)':
+  '@solana/wallet-standard-wallet-adapter-react@1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(react@19.2.7)':
     dependencies:
-      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))
-      '@solana/wallet-standard-wallet-adapter-base': 1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
+      '@solana/wallet-standard-wallet-adapter-base': 1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)
+      '@wallet-standard/app': 1.1.1
+      '@wallet-standard/base': 1.1.1
+      react: 19.2.7
+    transitivePeerDependencies:
+      - '@solana/web3.js'
+      - bs58
+
+  '@solana/wallet-standard-wallet-adapter-react@1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(react@19.2.3)':
+    dependencies:
+      '@solana/wallet-adapter-base': 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))
+      '@solana/wallet-standard-wallet-adapter-base': 1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))
       '@wallet-standard/app': 1.1.1
       '@wallet-standard/base': 1.1.1
       react: 19.2.3
@@ -18575,47 +18944,67 @@ snapshots:
       - '@solana/web3.js'
       - bs58
 
-  '@solana/wallet-standard-wallet-adapter@1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(react@19.2.7)':
+  '@solana/wallet-standard-wallet-adapter@1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)(react@19.2.7)':
     dependencies:
-      '@solana/wallet-standard-wallet-adapter-base': 1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)
-      '@solana/wallet-standard-wallet-adapter-react': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(react@19.2.7)
+      '@solana/wallet-standard-wallet-adapter-base': 1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)
+      '@solana/wallet-standard-wallet-adapter-react': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)(react@19.2.7)
     transitivePeerDependencies:
       - '@solana/wallet-adapter-base'
       - '@solana/web3.js'
       - bs58
       - react
 
-  '@solana/wallet-standard-wallet-adapter@1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(react@19.2.3)':
+  '@solana/wallet-standard-wallet-adapter@1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(react@19.2.7)':
     dependencies:
-      '@solana/wallet-standard-wallet-adapter-base': 1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))
-      '@solana/wallet-standard-wallet-adapter-react': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      '@solana/wallet-standard-wallet-adapter-base': 1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)
+      '@solana/wallet-standard-wallet-adapter-react': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(react@19.2.7)
     transitivePeerDependencies:
       - '@solana/wallet-adapter-base'
       - '@solana/web3.js'
       - bs58
       - react
 
-  '@solana/wallet-standard@1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(react@19.2.7)':
+  '@solana/wallet-standard-wallet-adapter@1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(react@19.2.3)':
+    dependencies:
+      '@solana/wallet-standard-wallet-adapter-base': 1.1.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))
+      '@solana/wallet-standard-wallet-adapter-react': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(react@19.2.3)
+    transitivePeerDependencies:
+      - '@solana/wallet-adapter-base'
+      - '@solana/web3.js'
+      - bs58
+      - react
+
+  '@solana/wallet-standard@1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)(react@19.2.7)':
     dependencies:
       '@solana/wallet-standard-core': 1.1.3
-      '@solana/wallet-standard-wallet-adapter': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(bs58@6.0.0)(react@19.2.7)
+      '@solana/wallet-standard-wallet-adapter': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(bs58@6.0.0)(react@19.2.7)
     transitivePeerDependencies:
       - '@solana/wallet-adapter-base'
       - '@solana/web3.js'
       - bs58
       - react
 
-  '@solana/wallet-standard@1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(react@19.2.3)':
+  '@solana/wallet-standard@1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(react@19.2.7)':
     dependencies:
       '@solana/wallet-standard-core': 1.1.3
-      '@solana/wallet-standard-wallet-adapter': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      '@solana/wallet-standard-wallet-adapter': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(react@19.2.7)
     transitivePeerDependencies:
       - '@solana/wallet-adapter-base'
       - '@solana/web3.js'
       - bs58
       - react
 
-  '@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)':
+  '@solana/wallet-standard@1.1.4(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(react@19.2.3)':
+    dependencies:
+      '@solana/wallet-standard-core': 1.1.3
+      '@solana/wallet-standard-wallet-adapter': 1.1.5(@solana/wallet-adapter-base@0.9.27(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)))(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3))(react@19.2.3)
+    transitivePeerDependencies:
+      - '@solana/wallet-adapter-base'
+      - '@solana/web3.js'
+      - bs58
+      - react
+
+  '@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
       '@babel/runtime': 7.28.2
       '@noble/curves': 1.9.7
@@ -18638,7 +19027,7 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)':
+  '@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)':
     dependencies:
       '@babel/runtime': 7.28.2
       '@noble/curves': 1.9.7
@@ -19666,6 +20055,13 @@ snapshots:
       '@ai-sdk/provider-utils': 5.0.6(zod@3.25.76)
       zod: 3.25.76
 
+  ai@7.0.90(zod@3.25.76):
+    dependencies:
+      '@ai-sdk/gateway': 4.0.72(zod@3.25.76)
+      '@ai-sdk/provider': 4.0.10
+      '@ai-sdk/provider-utils': 5.0.36(zod@3.25.76)
+      zod: 3.25.76
+
   ajv-formats@2.1.1(ajv@8.20.0):
     optionalDependencies:
       ajv: 8.20.0
@@ -19931,7 +20327,7 @@ snapshots:
       react-refresh: 0.14.2
     optionalDependencies:
       '@babel/runtime': 7.28.2
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
     transitivePeerDependencies:
       - '@babel/core'
       - supports-color
@@ -21374,90 +21770,90 @@ snapshots:
 
   expo-application@57.0.2(expo@57.0.12):
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
 
-  expo-asset@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3):
+  expo-asset@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3):
     dependencies:
       '@expo/image-utils': 0.11.4(typescript@6.0.3)
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
-      expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+      expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
     transitivePeerDependencies:
       - supports-color
       - typescript
 
-  expo-auth-session@57.0.6(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3):
+  expo-auth-session@57.0.6(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3):
     dependencies:
       expo-application: 57.0.2(expo@57.0.12)
-      expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
+      expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
       expo-crypto: 57.0.1(expo@57.0.12)
-      expo-linking: 57.0.5(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
-      expo-web-browser: 57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
+      expo-linking: 57.0.5(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
+      expo-web-browser: 57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
       invariant: 2.2.4
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
     transitivePeerDependencies:
       - expo
       - supports-color
 
-  expo-blur@57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3):
+  expo-blur@57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3):
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
-  expo-clipboard@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3):
+  expo-clipboard@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3):
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
-  expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)):
+  expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)):
     dependencies:
       '@expo/env': 2.4.2
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
     transitivePeerDependencies:
       - supports-color
 
   expo-crypto@57.0.1(expo@57.0.12):
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
 
-  expo-file-system@57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)):
+  expo-file-system@57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)):
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
-  expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3):
+  expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3):
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       fontfaceobserver: 2.3.0
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
-  expo-glass-effect@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3):
+  expo-glass-effect@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3):
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
   expo-haptics@57.0.1(expo@57.0.12):
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
 
   expo-keep-awake@57.0.1(expo@57.0.12)(react@19.2.3):
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       react: 19.2.3
 
-  expo-linking@57.0.5(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3):
+  expo-linking@57.0.5(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3):
     dependencies:
-      expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
+      expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
       invariant: 2.2.4
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
     transitivePeerDependencies:
       - expo
       - supports-color
@@ -21472,32 +21868,32 @@ snapshots:
       - supports-color
       - typescript
 
-  expo-modules-core@57.0.10(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3):
+  expo-modules-core@57.0.10(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3):
     dependencies:
       '@expo/expo-modules-macros-plugin': 0.6.1
-      expo-modules-jsi: 57.0.4(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
+      expo-modules-jsi: 57.0.4(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
       invariant: 2.2.4
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
-  expo-modules-jsi@57.0.4(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)):
+  expo-modules-jsi@57.0.4(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)):
     dependencies:
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
   expo-secure-store@57.0.1(expo@57.0.12):
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
 
   expo-server@57.0.2: {}
 
-  expo-share-intent@8.0.1(expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)))(expo-linking@57.0.5(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3):
+  expo-share-intent@8.0.1(expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)))(expo-linking@57.0.5(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3):
     dependencies:
       '@expo/config-plugins': 57.0.3(typescript@6.0.3)
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
-      expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
-      expo-linking: 57.0.5(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+      expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
+      expo-linking: 57.0.5(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
     transitivePeerDependencies:
       - supports-color
       - typescript
@@ -21506,60 +21902,60 @@ snapshots:
     dependencies:
       '@expo/config-plugins': 57.0.7(typescript@6.0.3)
       '@expo/image-utils': 0.11.4(typescript@6.0.3)
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       xml2js: 0.6.0
     transitivePeerDependencies:
       - supports-color
       - typescript
 
-  expo-status-bar@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3):
+  expo-status-bar@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3):
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
-  expo-symbols@57.0.2(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3):
+  expo-symbols@57.0.2(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3):
     dependencies:
       '@expo-google-fonts/material-symbols': 0.4.38
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
-      expo-font: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+      expo-font: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
       sf-symbols-typescript: 2.2.0
 
-  expo-web-browser@57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)):
+  expo-web-browser@57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)):
     dependencies:
-      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      expo: 57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
-  expo@57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6):
+  expo@57.0.12(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3):
     dependencies:
       '@babel/runtime': 7.28.2
-      '@expo/cli': 57.0.14(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)))(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(expo@57.0.12)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@expo/cli': 57.0.14(@expo/dom-webview@57.0.0)(bufferutil@4.1.0)(expo-constants@57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)))(expo-font@57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(expo@57.0.12)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       '@expo/config': 57.0.7(typescript@6.0.3)
       '@expo/config-plugins': 57.0.7(typescript@6.0.3)
-      '@expo/devtools': 57.0.1(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      '@expo/devtools': 57.0.1(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       '@expo/fingerprint': 0.20.7
       '@expo/local-build-cache-provider': 57.0.6(typescript@6.0.3)
-      '@expo/log-box': 57.0.2(@expo/dom-webview@57.0.0)(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
-      '@expo/metro': 56.0.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
-      '@expo/metro-config': 57.0.8(bufferutil@4.1.0)(expo@57.0.12)(typescript@6.0.3)(utf-8-validate@6.0.6)
+      '@expo/log-box': 57.0.2(@expo/dom-webview@57.0.0)(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
+      '@expo/metro': 56.0.0(bufferutil@4.1.0)
+      '@expo/metro-config': 57.0.8(bufferutil@4.1.0)(expo@57.0.12)(typescript@6.0.3)
       '@ungap/structured-clone': 1.3.2
       babel-preset-expo: 57.0.6(@babel/core@7.29.7)(@babel/runtime@7.28.2)(expo@57.0.12)(react-refresh@0.14.2)
-      expo-asset: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)
-      expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
-      expo-file-system: 57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))
-      expo-font: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      expo-asset: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
+      expo-constants: 57.0.10(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
+      expo-file-system: 57.0.2(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))
+      expo-font: 57.0.1(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       expo-keep-awake: 57.0.1(expo@57.0.12)(react@19.2.3)
       expo-modules-autolinking: 57.0.9(typescript@6.0.3)
-      expo-modules-core: 57.0.10(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      expo-modules-core: 57.0.10(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       pretty-format: 29.7.0
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
       react-refresh: 0.14.2
       whatwg-url-minimum: 0.1.2
     optionalDependencies:
-      '@expo/dom-webview': 57.0.0(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      '@expo/dom-webview': 57.0.0(expo@57.0.12)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       react-dom: 19.2.3(react@19.2.3)
     transitivePeerDependencies:
       - '@babel/core'
@@ -23139,21 +23535,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  metro-config@0.84.4(bufferutil@4.1.0):
-    dependencies:
-      connect: 3.7.0
-      flow-enums-runtime: 0.0.6
-      jest-validate: 29.7.0
-      metro: 0.84.4(bufferutil@4.1.0)
-      metro-cache: 0.84.4
-      metro-core: 0.84.4
-      metro-runtime: 0.84.4
-      yaml: 2.9.0
-    transitivePeerDependencies:
-      - bufferutil
-      - supports-color
-      - utf-8-validate
-
   metro-config@0.84.4(bufferutil@4.1.0)(utf-8-validate@6.0.6):
     dependencies:
       connect: 3.7.0
@@ -23239,6 +23620,26 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  metro-transform-worker@0.84.4(bufferutil@4.1.0):
+    dependencies:
+      '@babel/core': 7.29.7
+      '@babel/generator': 7.29.7
+      '@babel/parser': 7.29.7
+      '@babel/types': 7.29.7
+      flow-enums-runtime: 0.0.6
+      metro: 0.84.4(bufferutil@4.1.0)
+      metro-babel-transformer: 0.84.4
+      metro-cache: 0.84.4
+      metro-cache-key: 0.84.4
+      metro-minify-terser: 0.84.4
+      metro-source-map: 0.84.4
+      metro-transform-plugins: 0.84.4
+      nullthrows: 1.1.1
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
   metro-transform-worker@0.84.4(bufferutil@4.1.0)(utf-8-validate@6.0.6):
     dependencies:
       '@babel/core': 7.29.7
@@ -23284,7 +23685,7 @@ snapshots:
       metro-babel-transformer: 0.84.4
       metro-cache: 0.84.4
       metro-cache-key: 0.84.4
-      metro-config: 0.84.4(bufferutil@4.1.0)
+      metro-config: 0.84.4(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       metro-core: 0.84.4
       metro-file-map: 0.84.4
       metro-resolver: 0.84.4
@@ -23292,7 +23693,7 @@ snapshots:
       metro-source-map: 0.84.4
       metro-symbolicate: 0.84.4
       metro-transform-plugins: 0.84.4
-      metro-transform-worker: 0.84.4(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      metro-transform-worker: 0.84.4(bufferutil@4.1.0)
       mime-types: 3.0.2
       nullthrows: 1.1.1
       serialize-error: 2.1.0
@@ -23804,7 +24205,7 @@ snapshots:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
 
-  next@15.5.20(@babel/core@7.29.7)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+  next@15.5.20(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:
       '@next/env': 15.5.20
       '@swc/helpers': 0.5.15
@@ -23822,6 +24223,7 @@ snapshots:
       '@next/swc-linux-x64-musl': 15.5.20
       '@next/swc-win32-arm64-msvc': 15.5.20
       '@next/swc-win32-x64-msvc': 15.5.20
+      '@opentelemetry/api': 1.9.1
       babel-plugin-react-compiler: 1.0.0
       sharp: 0.34.5
     transitivePeerDependencies:
@@ -25036,27 +25438,27 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  react-native-safe-area-context@5.7.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3):
+  react-native-safe-area-context@5.7.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3):
     dependencies:
       react: 19.2.3
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
 
   react-native-sse@1.2.1: {}
 
-  react-native-url-polyfill@2.0.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)):
+  react-native-url-polyfill@2.0.0(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)):
     dependencies:
-      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
       whatwg-url-without-unicode: 8.0.0-3
 
-  react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6):
+  react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3):
     dependencies:
       '@react-native/assets-registry': 0.86.2
       '@react-native/codegen': 0.86.2(@babel/core@7.29.7)
-      '@react-native/community-cli-plugin': 0.86.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      '@react-native/community-cli-plugin': 0.86.2(bufferutil@4.1.0)
       '@react-native/gradle-plugin': 0.86.2
       '@react-native/js-polyfills': 0.86.2
       '@react-native/normalize-colors': 0.86.2
-      '@react-native/virtualized-lists': 0.86.2(@types/react@19.2.17)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      '@react-native/virtualized-lists': 0.86.2(@types/react@19.2.17)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)
       abort-controller: 3.0.0
       anser: 1.4.10
       ansi-regex: 5.0.1
@@ -25093,15 +25495,15 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7):
+  react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6):
     dependencies:
       '@react-native/assets-registry': 0.86.2
       '@react-native/codegen': 0.86.2(@babel/core@7.29.7)
-      '@react-native/community-cli-plugin': 0.86.2(bufferutil@4.1.0)
+      '@react-native/community-cli-plugin': 0.86.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       '@react-native/gradle-plugin': 0.86.2
       '@react-native/js-polyfills': 0.86.2
       '@react-native/normalize-colors': 0.86.2
-      '@react-native/virtualized-lists': 0.86.2(@types/react@19.2.17)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7))(react@19.2.7)
+      '@react-native/virtualized-lists': 0.86.2(@types/react@19.2.17)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(react@19.2.7)
       abort-controller: 3.0.0
       anser: 1.4.10
       ansi-regex: 5.0.1
@@ -26325,6 +26727,8 @@ snapshots:
 
   undici@7.28.0: {}
 
+  undici@7.29.0: {}
+
   unicode-canonical-property-names-ecmascript@2.0.1: {}
 
   unicode-emoji-modifier-base@1.0.0: {}
@@ -26568,7 +26972,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  viem@2.55.0(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(zod@3.25.76):
+  viem@2.55.0(bufferutil@4.1.0)(typescript@6.0.3)(zod@3.25.76):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0

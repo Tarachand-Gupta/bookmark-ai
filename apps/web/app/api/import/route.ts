@@ -1,6 +1,8 @@
 import { after, NextResponse, type NextRequest } from "next/server";
+import { propagateAttributes } from "@langfuse/tracing";
 import { embedPending, importUserData } from "@bookmark-ai/engine";
 import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
+import { flushObservability } from "@/lib/server/observability/flush";
 
 // Authed, mutating, per-user — never statically cache.
 export const dynamic = "force-dynamic";
@@ -71,9 +73,15 @@ export async function POST(req: NextRequest) {
   // effort — the cron backfills whatever a single sweep doesn't reach.
   if (gemini && imported.bookmarks > 0) {
     after(async () => {
-      await embedPending(gemini, db, 20).catch((err: unknown) => {
-        console.warn(`[embed] post-import sweep failed: ${(err as Error).message}`);
-      });
+      await propagateAttributes(
+        { userId: userId ?? undefined, metadata: { route: "/api/import" } },
+        async () => {
+          await embedPending(gemini, db, 20).catch((err: unknown) => {
+            console.warn(`[embed] post-import sweep failed: ${(err as Error).message}`);
+          });
+        },
+      );
+      await flushObservability();
     });
   }
 

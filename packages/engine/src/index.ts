@@ -1,4 +1,12 @@
 export { GeminiClient, parseGroundedSearch, type GroundedSearch } from "./gemini";
+export {
+  setTracingGate,
+  isSurfaceTraced,
+  traced,
+  childObservation,
+  type TraceSurface,
+  type TracedOptions,
+} from "./tracing";
 export { scrapeOpenGraph, type ScrapeResult } from "./og";
 export {
   categorize,

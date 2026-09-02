@@ -1,8 +1,10 @@
 import { after, NextResponse, type NextRequest } from "next/server";
+import { propagateAttributes } from "@langfuse/tracing";
 import { createBookmarkSchema, listBookmarksQuerySchema } from "@bookmark-ai/types";
 import { listBookmarks } from "@bookmark-ai/db";
 import { embedPending, enrichBookmark, saveBookmarkFast } from "@bookmark-ai/engine";
 import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
+import { flushObservability } from "@/lib/server/observability/flush";
 
 export async function GET(req: NextRequest) {
   const ctx = await getRequestApiContext();
@@ -43,18 +45,25 @@ export async function POST(req: NextRequest) {
   // the response is sent (fluid compute keeps the instance alive for it).
   const bookmark = await saveBookmarkFast(db, parsed.data);
   after(async () => {
-    try {
-      await enrichBookmark(db, gemini, bookmark.id, parsed.data);
-    } catch (err) {
-      console.warn(`[enrich] ${bookmark.id}: ${(err as Error).message} — keeping instant-save data`);
-    }
-    // Embed either way: enrichment cleared the embedding, and even a failed
-    // enrichment leaves heuristic text worth embedding.
-    if (gemini) {
-      await embedPending(gemini, db, 5).catch((err: unknown) => {
-        console.warn(`[embed] post-save sweep failed: ${(err as Error).message}`);
-      });
-    }
+    // Traces (categorize + embed, when those surfaces are on) carry the saver.
+    await propagateAttributes(
+      { userId: userId ?? undefined, metadata: { route: "/api/bookmarks" } },
+      async () => {
+        try {
+          await enrichBookmark(db, gemini, bookmark.id, parsed.data);
+        } catch (err) {
+          console.warn(`[enrich] ${bookmark.id}: ${(err as Error).message} — keeping instant-save data`);
+        }
+        // Embed either way: enrichment cleared the embedding, and even a failed
+        // enrichment leaves heuristic text worth embedding.
+        if (gemini) {
+          await embedPending(gemini, db, 5).catch((err: unknown) => {
+            console.warn(`[embed] post-save sweep failed: ${(err as Error).message}`);
+          });
+        }
+      },
+    );
+    await flushObservability();
   });
   return NextResponse.json({ bookmark }, { status: 201 });
 }
