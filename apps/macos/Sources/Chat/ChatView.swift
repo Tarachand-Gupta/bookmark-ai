@@ -107,9 +107,15 @@ struct ChatView: View {
 
     // MARK: - Transcript
 
+    // NOT lazy, deliberately. A bottom-anchored LazyVStack whose items change
+    // height on every streaming delta (markdown blocks appear/merge as text
+    // arrives) thrashes the lazy placement cache — a captured sample showed the
+    // main thread pinned at 99% inside LazySubviewPlacements/LazyHVStack with
+    // RSS >1GB (the "give me sample markdown" hang). A chat transcript is small;
+    // eager layout is cheap and immune.
     private var transcript: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 16) {
                 ForEach(appEnvironment.chat.messages) { message in
                     ChatMessageView(message: message)
                 }
@@ -262,7 +268,7 @@ struct ChatComposerBox: View {
         .padding(.vertical, 9)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.quinary)
+                .fill(.cardFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)

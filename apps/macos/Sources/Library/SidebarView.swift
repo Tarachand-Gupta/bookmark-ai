@@ -76,6 +76,10 @@ struct SidebarView: View {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .frame(width: 26, height: 26)
+                // The iconset ships FULL-BLEED (macOS 26 backplates any icon
+                // with transparent margins — the "old icon" Dock complaint),
+                // so the squircle is cut here for the in-app rendition.
+                .clipShape(RoundedRectangle(cornerRadius: 6.5, style: .continuous))
             Text("Bookmark AI")
                 .font(.system(size: 14, weight: .semibold))
             Spacer(minLength: 0)
@@ -176,7 +180,7 @@ private struct SidebarFooterRow: View {
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isHovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
+                    .fill(isHovering ? .hoverFill : AnyShapeStyle(.clear))
             )
             .contentShape(Rectangle())
         }

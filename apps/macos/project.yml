@@ -34,6 +34,11 @@ targets:
     sources:
       - path: Sources
       - path: Resources/Assets.xcassets
+      # macOS 26 Liquid Glass icon (Icon Composer format). Without it, Tahoe
+      # stamps its automatic glass rim/backplate on the legacy iconset — the
+      # "white border" Tara rejected. The appiconset remains the pre-26
+      # fallback.
+      - path: Resources/AppIcon.icon
       - path: Resources/Info.plist
         buildPhase: none
       - path: Resources/BookmarkAI.entitlements

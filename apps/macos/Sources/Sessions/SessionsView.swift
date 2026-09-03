@@ -26,6 +26,15 @@ struct SessionsView: View {
         .navigationTitle("Sessions")
         .navigationSubtitle(subtitle)
         .searchable(text: $model.query, placement: .toolbar, prompt: "Search sessions and tabs")
+        // Debounce: `.task(id:)` restarts on every keystroke, so the filter only
+        // runs once typing pauses — same pattern as the library search.
+        .task(id: model.query) {
+            if !model.query.isEmpty {
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled else { return }
+            }
+            appEnvironment.sessions.commitSearch()
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -85,8 +94,8 @@ struct SessionsView: View {
                 ProgressView()
                     .controlSize(.large)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if !model.query.isEmpty {
-                ContentUnavailableView.search(text: model.query)
+            } else if model.isSearching {
+                ContentUnavailableView.search(text: model.appliedQuery)
             } else {
                 ContentUnavailableView(
                     "No Saved Sessions",
@@ -112,12 +121,20 @@ private struct SessionCard: View {
 
     @State private var isExpanded = false
     @State private var isHoveringCard = false
-    @State private var isHoveringHeader = false
     @State private var isRenaming = false
     @State private var renameDraft = ""
 
+    /// While a search is active, the MATCHING tabs surface (all of them) with
+    /// "Show all N tabs" to unfold the rest — the same behavior as Live Tabs
+    /// (Tara: a Netflix tab buried at position 20 must be visible, not the
+    /// first-3 preview). A session matched only by name/summary keeps its
+    /// normal preview.
     private var visibleTabs: [IdentifiedTab] {
-        isExpanded ? identifiedTabs : Array(identifiedTabs.prefix(Self.previewTabCount))
+        if !isExpanded, appEnvironment.sessions.isSearching {
+            let matched = identifiedTabs.filter { appEnvironment.sessions.matches($0.tab) }
+            if !matched.isEmpty { return matched }
+        }
+        return isExpanded ? identifiedTabs : Array(identifiedTabs.prefix(Self.previewTabCount))
     }
 
     var body: some View {
@@ -254,23 +271,11 @@ private struct SessionCard: View {
                 .rotationEffect(.degrees(isExpanded ? 90 : 0))
         }
         .padding(12)
-        // FLUSH with the card outline — an inset highlight leaves a visible gap
-        // between the card border and the hover fill (Tara flagged it). The
-        // bottom corners square off whenever tab rows render below (which,
-        // with the preview, is any session that has tabs at all).
-        .background(
-            UnevenRoundedRectangle(
-                topLeadingRadius: 12,
-                bottomLeadingRadius: session.tabs.isEmpty ? 12 : 0,
-                bottomTrailingRadius: session.tabs.isEmpty ? 12 : 0,
-                topTrailingRadius: 12,
-                style: .continuous
-            )
-            .fill(isHoveringHeader ? AnyShapeStyle(.quaternary.opacity(0.6)) : AnyShapeStyle(.clear))
-        )
+        // No header-specific hover fill: stacked on the card's own hover it
+        // read "way too dark" (Tara) — the expand cursor and chevron carry
+        // the affordance now.
         .contentShape(Rectangle())
-        .onHover { isHoveringHeader = $0 }
-        .pointingHandCursor()
+        .verticalExpandCursor()
         .onTapGesture { withAnimation(.easeOut(duration: 0.16)) { isExpanded.toggle() } }
         .help(isExpanded ? "Fold back to a preview" : "Show every tab in this session")
     }

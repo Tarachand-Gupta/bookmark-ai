@@ -71,7 +71,11 @@ struct AiCreditsCard: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(dim ? AnyShapeStyle(.quinary) : AnyShapeStyle(.tint.opacity(0.06)))
+                .fill(dim ? AnyShapeStyle(.clear) : AnyShapeStyle(.tint.opacity(0.06)))
+        )
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.cardFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)

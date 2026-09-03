@@ -146,6 +146,26 @@ final class ApiClient {
     }
 
     /// `PATCH /api/sessions/:id` — rename; the embedding re-runs server-side.
+    /// `POST /api/sessions` — persist a tab snapshot as a saved session (the
+    /// "keep these live tabs" action). Synthesized `Encodable` omits nil
+    /// optionals, matching the Zod schema's `.optional()` fields.
+    func createSession(
+        name: String, tabs: [SessionTab], browser: String?, device: String?
+    ) async throws -> Session {
+        struct Body: Encodable {
+            let name: String
+            let tabs: [SessionTab]
+            let browser: String?
+            let device: String?
+        }
+        let payload = Body(name: name, tabs: tabs, browser: browser, device: device)
+        let data = try await send(
+            path: "/api/sessions", method: "POST", query: [],
+            body: try JSONEncoder().encode(payload), allowRetry: true
+        )
+        return try Self.decoder.decode(SessionEnvelope.self, from: data).session
+    }
+
     func renameSession(id: String, name: String) async throws -> Session {
         let path = "/api/sessions/\(id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id)"
         struct Body: Encodable { let name: String }

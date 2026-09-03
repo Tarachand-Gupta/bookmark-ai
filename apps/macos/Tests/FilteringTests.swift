@@ -19,6 +19,56 @@ final class FilteringTests: XCTestCase {
         XCTAssertTrue(TermFilter.matches("anything", query: "   "))
     }
 
+    // MARK: - Sessions filtering (SessionsModel.filter is pure for exactly this)
+
+    private func session(_ id: String, name: String, tabs: [SessionTab]) -> Session {
+        Session(
+            id: id, name: name, tabs: tabs, tabCount: tabs.count, description: nil,
+            browser: "chrome", device: "laptop", os: nil,
+            savedAt: "2026-08-25T00:00:00.000Z", createdAt: "2026-08-25T00:00:00.000Z"
+        )
+    }
+
+    func testSessionMatchesByBuriedTabUrl() {
+        let sessions = [
+            session("a", name: "Research", tabs: [
+                SessionTab(url: "https://www.gladia.io", title: "Gladia"),
+                SessionTab(url: "https://www.netflix.com", title: "Netflix"),
+            ]),
+            session("b", name: "Chip design", tabs: [
+                SessionTab(url: "https://www.google.com", title: "Google"),
+            ]),
+        ]
+        let visible = SessionsModel.filter(sessions, query: "netflix", sort: .newestFirst)
+        XCTAssertEqual(visible.map(\.id), ["a"])
+        XCTAssertEqual(SessionsModel.filter(sessions, query: "", sort: .mostTabs).map(\.id), ["a", "b"])
+    }
+
+    // MARK: - Save-live-as-session payload
+
+    /// The `POST /api/sessions` body must match the Zod schema: nil optionals
+    /// OMITTED (`.optional()` rejects null), tabs carrying their window id.
+    func testCreateSessionBodyOmitsNilOptionals() throws {
+        struct Body: Encodable {
+            let name: String
+            let tabs: [SessionTab]
+            let browser: String?
+            let device: String?
+        }
+        let body = Body(
+            name: "MacBook — Window 1",
+            tabs: [SessionTab(url: "https://a.example", title: nil, favIconUrl: nil, windowId: 7)],
+            browser: "chrome", device: nil
+        )
+        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(body)) as! [String: Any]
+        XCTAssertEqual(json["name"] as? String, "MacBook — Window 1")
+        XCTAssertEqual(json["browser"] as? String, "chrome")
+        XCTAssertNil(json["device"], "nil optionals must be omitted, not null")
+        let tab = (json["tabs"] as! [[String: Any]])[0]
+        XCTAssertEqual(tab["windowId"] as? Int, 7)
+        XCTAssertNil(tab["title"], "nil optionals must be omitted, not null")
+    }
+
     // MARK: - Device folding
 
     func testInactiveThresholdIsFifteenMinutes() {

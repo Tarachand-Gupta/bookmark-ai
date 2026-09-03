@@ -1,5 +1,32 @@
+import AppKit
 import Foundation
 import Observation
+
+/// Light / Dark / System, applied app-wide via `NSApp.appearance`.
+enum AppearanceMode: String, CaseIterable, Identifiable, Sendable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    /// nil = follow the system setting.
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+}
 
 /// How the detail column lays bookmarks out. Grid is the default — it's the
 /// browsing view; the list is the scanning view.
@@ -36,6 +63,7 @@ final class Preferences {
     private enum Key {
         static let serverTarget = "serverTarget"
         static let libraryLayout = "libraryLayout"
+        static let appearance = "appearanceMode"
     }
 
     var serverTarget: ServerTarget {
@@ -52,6 +80,19 @@ final class Preferences {
         }
     }
 
+    var appearance: AppearanceMode {
+        didSet {
+            guard appearance != oldValue else { return }
+            defaults.set(appearance.rawValue, forKey: Key.appearance)
+            applyAppearance()
+        }
+    }
+
+    /// Pushes the chosen mode onto the whole app. Also called once at launch.
+    func applyAppearance() {
+        NSApp.appearance = appearance.nsAppearance
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -60,5 +101,7 @@ final class Preferences {
         self.serverTarget = storedTarget.flatMap(ServerTarget.init(rawValue:)) ?? .local
         let storedLayout = defaults.string(forKey: Key.libraryLayout)
         self.libraryLayout = storedLayout.flatMap(LibraryLayout.init(rawValue:)) ?? .grid
+        let storedAppearance = defaults.string(forKey: Key.appearance)
+        self.appearance = storedAppearance.flatMap(AppearanceMode.init(rawValue:)) ?? .system
     }
 }

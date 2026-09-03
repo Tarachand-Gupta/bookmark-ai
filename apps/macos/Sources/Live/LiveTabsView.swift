@@ -59,6 +59,7 @@ struct LiveTabsView: View {
         }
         .background(VisualEffectBackground().ignoresSafeArea())
         .overlay { statusOverlay }
+        .overlay(alignment: .bottom) { saveToast }
         .safeAreaInset(edge: .top, spacing: 0) { errorBanner }
         .navigationTitle("Live Tabs")
         .navigationSubtitle(subtitle)
@@ -102,6 +103,12 @@ struct LiveTabsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 LiveDeviceHeader(device: device)
                     .padding(.horizontal, 2)
+                    .contextMenu {
+                        Button("Save All Tabs as Session") {
+                            Task { await model.saveAsSession(device: device) }
+                        }
+                        .disabled(device.windows.allSatisfy(\.tabs.isEmpty))
+                    }
 
                 ForEach(Array(windows.enumerated()), id: \.element.windowId) { index, window in
                     LiveWindowCard(
@@ -179,6 +186,27 @@ struct LiveTabsView: View {
         guard model.loaded, model.enabled else { return "" }
         let count = model.devices.count
         return "\(count) device\(count == 1 ? "" : "s") sharing"
+    }
+
+    /// Transient confirmation after "Save … as Session" (auto-clears in the model).
+    @ViewBuilder
+    private var saveToast: some View {
+        if let notice = appEnvironment.live.saveNotice {
+            HStack(spacing: 7) {
+                Image(systemName: notice.isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .foregroundStyle(notice.isError ? AnyShapeStyle(.orange) : AnyShapeStyle(.green))
+                Text(notice.text)
+                    .font(.callout)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(.cardFill, in: Capsule())
+            .overlay(Capsule().strokeBorder(.separator, lineWidth: 1))
+            .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+            .padding(.bottom, 18)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .animation(.easeOut(duration: 0.2), value: appEnvironment.live.saveNotice)
+        }
     }
 
     // MARK: - Status
@@ -287,7 +315,6 @@ private struct LiveWindowCard: View {
     let model: LiveModel
 
     @State private var isHoveringCard = false
-    @State private var isHoveringHeader = false
 
     private var key: String { "\(device.deviceId):\(window.windowId)" }
     private var isExpanded: Bool { model.expandedWindows.contains(key) }
@@ -308,8 +335,10 @@ private struct LiveWindowCard: View {
                 Divider().padding(.horizontal, 12)
                 VStack(spacing: 1) {
                     ForEach(Array(tabs.enumerated()), id: \.offset) { offset, tab in
-                        LiveTabRow(tab: tab, dimmed: !device.isActive)
-                            .id("\(key):\(offset)")
+                        LiveTabRow(tab: tab, dimmed: !device.isActive) {
+                            Task { await model.saveAsSession(device: device, window: window) }
+                        }
+                        .id("\(key):\(offset)")
                     }
 
                     if !model.isSearching, !isExpanded, window.tabs.count > tabs.count {
@@ -341,12 +370,73 @@ private struct LiveWindowCard: View {
         }
         .surfaceCard(radius: 11, hovering: isHoveringCard)
         .onHover { isHoveringCard = $0 }
+        // Live tabs are ephemeral — right-click is the "keep these" path
+        // (same entries as the header's hover Save menu; they can't drift).
+        .contextMenu { saveMenuEntries }
+    }
+
+    @ViewBuilder
+    private var saveMenuEntries: some View {
+        Button("Save Window as Session") {
+            Task { await model.saveAsSession(device: device, window: window) }
+        }
+        .disabled(window.tabs.isEmpty)
+        Button("Save All Tabs on \(device.label) as Session") {
+            Task { await model.saveAsSession(device: device) }
+        }
     }
 
     private var header: some View {
         let showingTabs = !visibleTabs.isEmpty
 
-        return Button {
+        // Not a Button (see SessionsView's header): the hover Save menu lives
+        // INSIDE this row, and a wrapping Button would swallow its clicks.
+        return HStack(spacing: 8) {
+            Image(systemName: "macwindow")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.callout)
+                .fontWeight(.medium)
+            if window.focused == true {
+                Text("focused")
+                    .font(.caption2)
+                    .foregroundStyle(.tint)
+            }
+            Spacer(minLength: 8)
+
+            // The visible face of the context-menu save actions. Hover-only,
+            // but its SPACE is always reserved — visibility is an opacity
+            // swap, never a layout change, so the row can't "fluctuate"
+            // (Tara flagged the width shifting). Text-only: just the
+            // dropdown chevron, no save glyph.
+            Menu {
+                saveMenuEntries
+            } label: {
+                Text("Save")
+            }
+            .menuStyle(.button)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .fixedSize()
+            .opacity(isHoveringCard ? 1 : 0)
+            .allowsHitTesting(isHoveringCard)
+            .animation(.easeOut(duration: 0.12), value: isHoveringCard)
+            .pointingHandCursor()
+            .help("Save these tabs as a session")
+
+            Text("\(window.tabs.count) tab\(window.tabs.count == 1 ? "" : "s")")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(isExpanded || model.isSearching ? 90 : 0))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .contentShape(Rectangle())
+        .onTapGesture {
             guard !model.isSearching else { return }
             withAnimation(.easeOut(duration: 0.16)) {
                 if isExpanded {
@@ -355,46 +445,9 @@ private struct LiveWindowCard: View {
                     _ = model.expandedWindows.insert(key)
                 }
             }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "macwindow")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Text(title)
-                    .font(.callout)
-                    .fontWeight(.medium)
-                if window.focused == true {
-                    Text("focused")
-                        .font(.caption2)
-                        .foregroundStyle(.tint)
-                }
-                Spacer(minLength: 8)
-                Text("\(window.tabs.count) tab\(window.tabs.count == 1 ? "" : "s")")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .rotationEffect(.degrees(isExpanded || model.isSearching ? 90 : 0))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        // Flush with the card outline — no inset gap (see SessionsView).
-        .background(
-            UnevenRoundedRectangle(
-                topLeadingRadius: 11,
-                bottomLeadingRadius: showingTabs ? 0 : 11,
-                bottomTrailingRadius: showingTabs ? 0 : 11,
-                topTrailingRadius: 11,
-                style: .continuous
-            )
-            .fill(isHoveringHeader ? AnyShapeStyle(.quaternary.opacity(0.6)) : AnyShapeStyle(.clear))
-        )
-        .onHover { isHoveringHeader = $0 }
-        .pointingHandCursor()
+        // No header-specific hover fill (stacked darkness — see SessionsView).
+        .verticalExpandCursor()
         .help(isExpanded ? "Collapse this window" : "Show every tab in this window")
     }
 }
@@ -406,6 +459,9 @@ private struct LiveTabRow: View {
 
     let tab: LiveTab
     let dimmed: Bool
+    /// Saves this row's WINDOW as a session (rows are the common right-click
+    /// target, so the action rides along here too).
+    var onSaveWindow: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 9) {
@@ -460,6 +516,10 @@ private struct LiveTabRow: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(tab.url, forType: .string)
                 }
+            }
+            if let onSaveWindow {
+                Divider()
+                Button("Save Window as Session") { onSaveWindow() }
             }
         }
         .help(tab.url)

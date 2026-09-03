@@ -11,6 +11,9 @@ struct BookmarkAIApp: App {
             ContentView()
                 .environment(appEnvironment)
                 .frame(minWidth: 760, minHeight: 480)
+                // NSApp isn't up during App.init, so the persisted Light/Dark/
+                // System choice lands here, before first paint.
+                .onAppear { appEnvironment.preferences.applyAppearance() }
                 .task { await appEnvironment.start() }
         }
         .defaultSize(width: 1120, height: 760)

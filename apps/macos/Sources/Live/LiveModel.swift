@@ -222,6 +222,57 @@ final class LiveModel {
     }
 
     /// Delete one device's mirrored tabs (it re-registers on its next push).
+    // MARK: - Save live tabs as a session
+
+    /// Transient toast state after a save attempt; auto-clears.
+    private(set) var saveNotice: SaveNotice?
+    struct SaveNotice: Equatable {
+        var text: String
+        var isError: Bool
+    }
+    private var saveNoticeTask: Task<Void, Never>?
+
+    /// Persist one window (or, with `window` nil, the whole device) as a saved
+    /// session via `POST /api/sessions` — live tabs are ephemeral, this is the
+    /// "keep these" action.
+    func saveAsSession(device: LiveDevice, window: LiveWindow? = nil) async {
+        let windows = window.map { [$0] } ?? device.windows
+        let tabs = windows.flatMap { w in
+            w.tabs.map {
+                SessionTab(url: $0.url, title: $0.title, favIconUrl: $0.favIconUrl, windowId: w.windowId)
+            }
+        }
+        guard !tabs.isEmpty else { return }
+
+        let name: String
+        if let window {
+            let index = device.windows.firstIndex { $0.windowId == window.windowId } ?? 0
+            name = "\(device.label) — \(window.displayName(at: index))"
+        } else {
+            name = "\(device.label) — all tabs"
+        }
+
+        do {
+            let session = try await api.createSession(
+                name: name, tabs: tabs, browser: device.browser, device: device.device
+            )
+            showSaveNotice("Saved “\(session.name)” to Sessions", isError: false)
+        } catch {
+            let message = (error as? ApiError)?.errorDescription ?? error.localizedDescription
+            showSaveNotice("Couldn't save session — \(message)", isError: true)
+        }
+    }
+
+    private func showSaveNotice(_ text: String, isError: Bool) {
+        saveNoticeTask?.cancel()
+        saveNotice = SaveNotice(text: text, isError: isError)
+        saveNoticeTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(isError ? 5 : 2.5))
+            guard !Task.isCancelled else { return }
+            self.saveNotice = nil
+        }
+    }
+
     func forgetDevice(deviceId: String) async {
         await admin(path: "live/\(deviceId)", method: "DELETE", body: Optional<Int>.none)
     }

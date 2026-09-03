@@ -27,15 +27,50 @@ enum SessionsSort: String, CaseIterable, Identifiable, Sendable {
 @Observable
 final class SessionsModel {
 
-    private(set) var sessions: [Session] = []
+    private(set) var sessions: [Session] = [] {
+        didSet { applyFilter() }
+    }
 
-    /// Bound by the view's `.searchable`; filters on device (name, AI summary,
-    /// tab titles + URLs — the same match targets the server's session search
-    /// uses).
+    /// The searchable field's LIVE draft. Filtering runs against `appliedQuery`
+    /// only — the view debounces keystrokes into `commitSearch()`, so typing
+    /// never re-filters (and never re-renders the whole card list) per key.
     var query = ""
-    var sort: SessionsSort = .newestFirst
 
-    var visibleSessions: [Session] {
+    /// The query the visible list was actually built from.
+    private(set) var appliedQuery = ""
+
+    var sort: SessionsSort = .newestFirst {
+        didSet { applyFilter() }
+    }
+
+    /// Stored, not computed: recomputed only when its inputs change, instead of
+    /// on every view pass — the computed version made typing visibly lag.
+    private(set) var visibleSessions: [Session] = []
+
+    var isSearching: Bool {
+        !appliedQuery.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Debounced landing point for the searchable draft.
+    func commitSearch() {
+        guard appliedQuery != query else { return }
+        appliedQuery = query
+        applyFilter()
+    }
+
+    /// Whether one tab matches the applied query — the cards use this to
+    /// surface matching tabs (same rule Live Tabs applies).
+    func matches(_ tab: SessionTab) -> Bool {
+        TermFilter.matches("\(tab.title ?? "") \(tab.url)", query: appliedQuery)
+    }
+
+    private func applyFilter() {
+        visibleSessions = Self.filter(sessions, query: appliedQuery, sort: sort)
+    }
+
+    /// Pure so the tests can pin it: term-match over name + AI summary + tab
+    /// titles/URLs (the server's session-search targets), then client sort.
+    nonisolated static func filter(_ sessions: [Session], query: String, sort: SessionsSort) -> [Session] {
         let filtered = query.trimmingCharacters(in: .whitespaces).isEmpty
             ? sessions
             : sessions.filter { session in
@@ -133,9 +168,10 @@ final class SessionsModel {
 
     func reset() {
         loadTask?.cancel()
-        sessions = []
         query = ""
+        appliedQuery = ""
         sort = .newestFirst
+        sessions = []
         loaded = false
         isLoading = false
         errorMessage = nil

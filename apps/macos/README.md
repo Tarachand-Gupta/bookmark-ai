@@ -177,7 +177,7 @@ apps/macos/
 │   │   ├── AccountFooter.swift
 │   │   ├── LibraryBrowserView.swift grid/list host + empty/error states + banner
 │   │   ├── BookmarkGridView.swift  adaptive card grid (default), hover, click-opens
-│   │   ├── BookmarkListView.swift  spacious List: selection, arrows, Delete key
+│   │   ├── BookmarkListView.swift  card rows in a ScrollView: selection, arrows, ⏎, ⌫ via onKeyPress (NOT a List — its context-menu focus halo can't be disabled)
 │   │   ├── BookmarkRow.swift       favicon tile, OG data, trailing thumbnail
 │   │   ├── BookmarkChrome.swift    FaviconTile, CategoryBadge, shared context menu
 │   │   ├── LibraryModel.swift      @Observable store: filter, search, delete
@@ -255,6 +255,10 @@ grid/list browse layouts, behind-window vibrancy.
    `JSONValue`, never re-typed.
 2. **Sessions** (`GET/DELETE /api/sessions`) — disclosure rows with the AI
    summary; Open All (http/https only — browser-internal URLs render as text).
+   Search is debounced through `commitSearch()` into a STORED `visibleSessions`
+   (a computed property re-filtering per keystroke made typing lag), and while
+   a query is active each card surfaces its MATCHING tabs + "Show all N tabs"
+   — same rule as Live Tabs.
 3. **Live Tabs** — the dedicated live server over SSE (`/live` snapshot +
    `/live/stream` `state` frames), `settings.liveServerUrl` override honoured,
    auto-reconnect with last-known-data-kept error policy. NB: `AsyncLineSequence`
@@ -275,9 +279,13 @@ sibling groups — a bare `enumerated().offset` id makes window 2 render window
    list just needs infinite scroll (cap `offset + limit` ≤ 200).
 3. **Chat attachments + paste pills** — coordinate with the product-wide chat
    upgrade (skills, MCP, CSV/JSON/MD/PDF/image attachments).
-4. **Block markdown in chat** — tables/fenced code render as literal text today
-   (inline-only `AttributedString` parsing; list markers are pre-swapped to
-   bullets).
+4. ~~Block markdown in chat~~ — SHIPPED: `MarkdownBlock.parse` (pure,
+   fixture-tested) splits messages into tables/fenced code/headings/lists/
+   quotes/rules; only inline spans go through `AttributedString`. Tables are a
+   `Grid` that wraps cells (no sideways scroll); code blocks get a language tag
+   + hover copy button. Visual review harness: `RenderPreviewTests`
+   (`RENDER_PREVIEWS=1`, prints `PREVIEW-> <png>`; `ImageRenderer` can't draw
+   ScrollView content, so it captures a real `NSHostingView`).
 5. **Swift 6 language mode** and `@SceneStorage` for column visibility, once
    multi-window is wanted.
 6. **ClerkKit swap** — only if the Native API toggle gets enabled; contained

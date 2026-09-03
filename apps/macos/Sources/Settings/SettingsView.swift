@@ -64,7 +64,22 @@ struct GeneralSettingsTab: View {
     @Environment(AppEnvironment.self) private var appEnvironment
 
     var body: some View {
+        @Bindable var preferences = appEnvironment.preferences
+
         Form {
+            Section {
+                Picker("Appearance", selection: $preferences.appearance) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+            } footer: {
+                Text("System follows the Mac's appearance setting.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section {
                 Picker("Server", selection: targetBinding) {
                     ForEach(ServerTarget.allCases) { target in
