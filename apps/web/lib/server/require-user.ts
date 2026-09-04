@@ -57,11 +57,14 @@ function warnAuthMisconfig(): void {
  *    route to a tenant DB (they use the shared/local DB). `via` records how the
  *    caller authenticated ("clerk" session vs. a long-lived "device" token); it's
  *    absent for the open modes and used by /api/device-token to enforce the
- *    renewal-chain cap.
+ *    renewal-chain cap. `sessionId` is the Clerk session id from the SAME
+ *    `auth()` call (null for device tokens and the open modes) — routes that
+ *    need it (the chat agent mints the caller's live-server token from it) read
+ *    it here instead of paying for a second `auth()`.
  */
 export type Gate =
   | { ok: false; response: NextResponse }
-  | { ok: true; userId: string | null; via?: "clerk" | "device" };
+  | { ok: true; userId: string | null; via?: "clerk" | "device"; sessionId: string | null };
 
 /**
  * The ONLY routes a device token may call — the extension's save/live/native-sync
@@ -127,13 +130,13 @@ export async function requireUser(): Promise<Gate> {
       };
     }
     warnOpenMode("CLERK_SECRET_KEY unset");
-    return { ok: true, userId: null };
+    return { ok: true, userId: null, sessionId: null };
   }
   if (process.env.DEV_OPEN_API === "1" && process.env.NODE_ENV !== "production") {
     // Lets the Zig desktop app (which can't attach auth headers) talk to a
     // local dev server that DOES have Clerk keys configured.
     warnOpenMode("DEV_OPEN_API=1");
-    return { ok: true, userId: null };
+    return { ok: true, userId: null, sessionId: null };
   }
 
   // Long-lived device token (Safari extension header-auth — see device-token.ts).
@@ -179,10 +182,10 @@ export async function requireUser(): Promise<Gate> {
         ),
       };
     }
-    return { ok: true, userId: verified.userId, via: "device" };
+    return { ok: true, userId: verified.userId, via: "device", sessionId: null };
   }
 
-  const { userId, sessionClaims } = await auth();
+  const { userId, sessionClaims, sessionId } = await auth();
   if (!userId) {
     return {
       ok: false,
@@ -211,5 +214,5 @@ export async function requireUser(): Promise<Gate> {
       ),
     };
   }
-  return { ok: true, userId, via: "clerk" };
+  return { ok: true, userId, via: "clerk", sessionId: sessionId ?? null };
 }

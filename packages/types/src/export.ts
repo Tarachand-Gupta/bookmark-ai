@@ -17,8 +17,11 @@ import { storedChatMessageSchema } from "./chat";
  *  - v4: adds the saved-session `description` column (the AI's read of the
  *    window of tabs — tenant migration v12). User data on an exported table, so
  *    this bumps + adds a v3→v4 upgrader.
+ *  - v5: adds `skills` (the user's reusable Ask AI instructions — tenant
+ *    migration v14's `skills` table). New user-data table, so this bumps + adds
+ *    a v4→v5 upgrader (`skills: []`); import upserts them by name.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * A single bookmark, flattened to mirror its real DB columns (see
@@ -85,6 +88,22 @@ export const exportedConversationSchema = z.object({
 });
 export type ExportedConversation = z.infer<typeof exportedConversationSchema>;
 
+/**
+ * A skill, mirroring the `skills` table minus the per-DB id (import upserts by
+ * name, case-insensitively, and mints a fresh id). Field caps mirror
+ * `createSkillSchema` so an oversized bundle can't smuggle a 10 MB instruction
+ * blob past the API's own limits.
+ */
+export const exportedSkillSchema = z.object({
+  name: z.string().min(1).max(60),
+  description: z.string().max(200),
+  instructions: z.string().max(32_000),
+  enabled: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ExportedSkill = z.infer<typeof exportedSkillSchema>;
+
 /** The full, versioned, lossless export of a user's data. */
 export const exportBundleSchema = z.object({
   schemaVersion: z.number(),
@@ -96,6 +115,8 @@ export const exportBundleSchema = z.object({
     // Optional so a v1 bundle upgraded in place (conversations defaulted to [])
     // still validates without the caller having to synthesize a count.
     conversations: z.number().optional(),
+    // v5. Optional for the same reason.
+    skills: z.number().optional(),
   }),
   // SECURITY: bound the bundle so a malicious/oversized import can't exhaust
   // memory during validation. Caps are generous (well above any real personal
@@ -104,6 +125,8 @@ export const exportBundleSchema = z.object({
   sessions: z.array(exportedSessionSchema).max(1_000),
   // Defaulted so a v1→v2-upgraded bundle (no `conversations` key) parses cleanly.
   conversations: z.array(exportedConversationSchema).max(5_000).default([]),
+  // v5. Defaulted so an upgraded pre-v5 bundle (no `skills` key) parses cleanly.
+  skills: z.array(exportedSkillSchema).max(1_000).default([]),
 });
 export type ExportBundle = z.infer<typeof exportBundleSchema>;
 
@@ -173,6 +196,21 @@ export function migrateExportBundle(raw: unknown): ExportBundle {
           schemaVersion: 4,
         };
         version = 4;
+        break;
+      case 4:
+        // v4 → v5: skills were added. A v4 bundle simply had none; stamp an
+        // empty list (schemaVersion + count updated to match). `skills` defaults
+        // to [] in the schema too — belt-and-suspenders like the v1→v2 step.
+        data = {
+          ...(data as Record<string, unknown>),
+          schemaVersion: 5,
+          skills: [],
+          counts: {
+            ...(((data as Record<string, unknown>).counts as Record<string, unknown>) ?? {}),
+            skills: 0,
+          },
+        };
+        version = 5;
         break;
       default:
         throw new Error(`No upgrade path from export schemaVersion ${version}`);

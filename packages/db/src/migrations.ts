@@ -417,4 +417,42 @@ export const TENANT_MIGRATIONS: Migration[] = [
       },
     ],
   },
+  // Two additive changes shipped together (2026-09-03):
+  //
+  // `skills` — the user's reusable Ask AI instruction bundles (name, one-line
+  // description the agent matches against, the instructions, an enabled flag).
+  // Name uniqueness is enforced case-insensitively in the engine (409); the
+  // plain UNIQUE index is the DB-level backstop. Skills ARE user data and DO
+  // round-trip through the export bundle, so SCHEMA_VERSION bumps 4→5 with a
+  // v4→v5 upgrader (see packages/types/src/export.ts).
+  //
+  // `user_settings.ai_mode` — the EXPLICIT "included free AI" vs "your own key"
+  // choice. Until now the mode was derived from whether a key was stored, which
+  // made "switch to free AI" delete the key; NULL keeps that legacy derivation
+  // (key stored → 'own', else 'included') so no backfill is needed. Tolerant so
+  // a retry after a partial apply ("duplicate column name: ai_mode") records the
+  // version instead of wedging the runner. user_settings is not exported.
+  //
+  // v14 because 13 is the highest version ever recorded in prod (verified
+  // against schema_migrations on 2026-09-03): numbers are burned forever, and a
+  // migration numbered at or below one prod already has is SILENTLY SKIPPED.
+  {
+    version: 14,
+    name: "skills-and-ai-mode",
+    statements: [
+      `
+        CREATE TABLE IF NOT EXISTS skills (
+          id           TEXT PRIMARY KEY,
+          name         TEXT NOT NULL,
+          description  TEXT NOT NULL,
+          instructions TEXT NOT NULL,
+          enabled      INTEGER NOT NULL DEFAULT 1,
+          created_at   TEXT NOT NULL,
+          updated_at   TEXT NOT NULL
+        )
+      `,
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_name ON skills(name)",
+      { sql: "ALTER TABLE user_settings ADD COLUMN ai_mode TEXT", tolerant: true },
+    ],
+  },
 ];

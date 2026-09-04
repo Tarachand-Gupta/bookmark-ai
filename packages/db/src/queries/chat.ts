@@ -126,6 +126,21 @@ export async function insertMessage(db: Db, m: InsertChatMessage): Promise<void>
   });
 }
 
+/**
+ * The conversation a message id currently belongs to, or null if unknown. The
+ * engine's append path uses this to keep a client-supplied id SCOPED to its
+ * conversation: `insertMessage` replaces by primary key, so an id re-used across
+ * conversations would otherwise relocate the old row (see appendChatMessage).
+ */
+export async function getMessageConversationId(db: Db, id: string): Promise<string | null> {
+  const rs = await db.execute({
+    sql: "SELECT conversation_id FROM chat_messages WHERE id = ?",
+    args: [id],
+  });
+  const row = rs.rows[0];
+  return row ? String(row.conversation_id) : null;
+}
+
 /** All messages in a conversation, oldest first. */
 export async function listMessages(db: Db, conversationId: string): Promise<ChatMessageRow[]> {
   const rs = await db.execute({

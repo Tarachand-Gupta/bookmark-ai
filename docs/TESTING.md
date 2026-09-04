@@ -40,6 +40,42 @@ curl -s "http://localhost:3000/api/search?q=native&mode=ai"             # no key
 curl -s http://localhost:3000/api/meta                                   # facet counts consistent
 ```
 
+Settings AI mode, skills, account plan (all against the open dev server):
+
+```bash
+curl -s http://localhost:3000/api/account                                   # {"plan":"free"}
+curl -s http://localhost:3000/api/settings | jq '.settings|{aiMode,ownKeyReady}'   # "included" / false (no key)
+curl -s -X PUT http://localhost:3000/api/settings -H 'content-type: application/json' -d '{"aiMode":"own"}'
+# → 400 {"error":"Add an API key before switching to your own key"}   (no key stored)
+curl -s -X PUT http://localhost:3000/api/settings -H 'content-type: application/json' -d '{"apiKey":"sk-test-1234"}' | jq '.settings|{aiMode,apiKeySet,apiKeyLast4}'
+# → own / true / "1234"; then {"aiMode":"included"} keeps the key, {"provider":"openai"} keeps key+model,
+#   {"apiKey":""} clears the key AND sets included. (Needs AI_KEY_ENCRYPTION_SECRET in root .env.)
+
+curl -s -X POST http://localhost:3000/api/skills -H 'content-type: application/json' \
+  -d '{"name":"Link triage","description":"Sort new links into keep / skim / drop","instructions":"…"}'
+# → 201 {skill}; repeating with "LINK TRIAGE" → 409; "bad/name" → 400
+curl -s http://localhost:3000/api/skills                                    # {"skills":[…]} newest first
+curl -s -X PUT http://localhost:3000/api/skills/<id> -H 'content-type: application/json' -d '{"enabled":false}'
+curl -s -i -X DELETE http://localhost:3000/api/skills/<id>                  # 204; again → 404
+```
+
+Chat protocol + attachments (needs `GEMINI_API_KEY`). The stream is SSE `data:` lines of UI chunks:
+
+```bash
+# First turn: full messages array → X-Conversation-Id + X-Ai-Source headers, reasoning-* + tool-* chunks
+curl -s -i -X POST http://localhost:3000/api/chat -H 'content-type: application/json' \
+  -d '{"messages":[{"id":"u1","role":"user","parts":[{"type":"text","text":"What am I working on?"}]}],"timezone":"Asia/Kolkata"}' \
+  | grep -iE '^x-(conversation-id|ai-source)|"type":"(reasoning-start|tool-input-available)"' | head
+# Follow-up: ONLY the new message + conversationId — the server supplies the history
+curl -s -X POST http://localhost:3000/api/chat -H 'content-type: application/json' \
+  -d '{"message":{"id":"u2","role":"user","parts":[{"type":"text","text":"Summarise that in one sentence."}]},"conversationId":"<id>"}'
+# Attachment rules are re-enforced server-side BEFORE the model call:
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:3000/api/chat -H 'content-type: application/json' \
+  -d '{"messages":[{"id":"u1","role":"user","parts":[{"type":"file","filename":"app.ts","mediaType":"text/plain","url":"data:text/plain;base64,eA=="}]}]}'   # 415
+# A PNG/JPEG/WebP/GIF ≤2 MB, .md/.txt/.csv/.json/.html ≤1 MB or .pdf ≤3 MB file part is accepted (≤5 files, ≤4 MB total → else 413).
+curl -s http://localhost:3000/api/chat/conversations/<id>   # persisted transcript: user parts keep the file part; assistant parts include reasoning + tool-* parts
+```
+
 Deployed API (no local server needed — hits the live Vercel deployment):
 
 ```bash
@@ -100,12 +136,43 @@ Checklist:
 ## 3. Extension (WXT)
 
 ```bash
+# PROD target (bookmark-ai.cloud + prod Clerk) — what users get:
 pnpm --filter @bookmark-ai/extension build           # .output/chrome-mv3
 pnpm --filter @bookmark-ai/extension build:firefox   # .output/firefox-mv2
-pnpm --filter @bookmark-ai/extension build:safari    # .output/safari-mv3
+pnpm --filter @bookmark-ai/extension build:safari    # .output/safari-mv3   (the dir the Xcode wrapper embeds)
+# LOCAL target (localhost:3000 + dev Clerk, red "(Local)" icon) — what you load to test against the dev server:
+pnpm --filter @bookmark-ai/extension build:local          # .output/chrome-mv3-dev
+pnpm --filter @bookmark-ai/extension build:firefox:local  # .output/firefox-mv2-dev
+pnpm --filter @bookmark-ai/extension build:safari:local   # .output/safari-mv3-dev
 ```
 
-All three must succeed. Live test (needs a real browser via computer use / chrome MCP):
+A PROD build only ever signs in against `bookmark-ai.cloud`; load the `-dev` output whenever the
+test plan says "localhost:3000" — a `firefox-mv2` popup pointed at the local dev server can never
+reach the signed-in state. The Safari wrapper project references `.output/safari-mv3` by path, so
+to try the LOCAL target in Safari: `rm -rf .output/safari-mv3 && ditto .output/safari-mv3-dev
+.output/safari-mv3`, run steps 2–4 below, then `pnpm build:safari` again to put the prod bundle
+back before the next wrapper build (not exercised as of 2026-09-03 — only the prod bundle has
+been embedded and registered).
+
+All three must succeed. Also compare the three `.output/*/manifest.json` side by side — every
+difference must be one of the intentional ones: MV2 vs MV3 shape (`browser_action`/`background.scripts`
+vs `action`/`background.service_worker`, `_execute_browser_action` vs `_execute_action`, MV2 host
+patterns folded into `permissions`), Chrome-only `key` + `externally_connectable` + `tabGroups`/
+`readingList`, Chrome/Firefox-only `bookmarks`, Safari-only `scripting` + `bridge.js`, Firefox-only
+`browser_specific_settings`, and the `marker.js` content script on Firefox + Safari only.
+
+Live test — scripted (Chrome for Testing + puppeteer-core; branded Chrome ≥137 can't load unpacked
+extensions from the command line): launch the CfT binary from `~/.cache/puppeteer` with
+`--load-extension=.output/chrome-mv3-dev` (the LOCAL target, `pnpm build:local`), open
+`chrome-extension://joillpelifndeefomeimoomlgoimbkei/popup.html` in a BACKGROUND tab while an article
+tab is active, and drive it with DOM `.click()` + `waitForFunction(…, {polling:"mutation"})`. With the
+dev server in `DEV_OPEN_API=1` mode, seeding `chrome.storage.local.set({deviceToken:{token:"bkd_…",
+exp:Date.now()+80*864e5}})` from the popup page promotes the gate to the signed-in UI (open mode
+accepts any bearer; `/api/me` answers `{signedIn:true}`) so save/session flows run against the real
+API. Expect `perf: api post {path:"/api/bookmarks",status:201}` / `/api/sessions` 201 in
+`.dev-extension-log.ndjson`; delete what you created by id afterwards.
+
+Live test — by hand (needs a real browser via computer use / chrome MCP):
 1. Chrome → `chrome://extensions` → Developer mode → Load unpacked → `apps/extension/.output/chrome-mv3`.
 2. Open any article page → click the Bookmark AI toolbar icon → popup shows tab favicon/title/url.
 3. "Save bookmark" → success card shows the AI category + tags returned by the server;
@@ -125,8 +192,36 @@ All three must succeed. Live test (needs a real browser via computer use / chrom
      mirrored by that same install).
    - Turning the master toggle off in Settings → Sync stops new mirrors within ≤6h (the
      extension's settings refresh runs at boot + on the 6h auth alarm).
-- Firefox: `about:debugging` → Load Temporary Add-on → `.output/firefox-mv2/manifest.json`
-  (native-sync bookmark mirror works there too; Firefox has no reading list).
+   - Importing bookmarks (Chrome/Firefox Library → Import, Firefox's migration wizard, a
+     bookmarks.html restore) must NOT mirror them: Chrome is bracketed by onImportBegan/Ended,
+     and every browser skips nodes whose `dateAdded` is >60s old at notification time — expect
+     `nativeSync: add skipped (backfilled node)` lines in `.dev-extension-log.ndjson`, no saves.
+- Firefox (verified 2026-09-03 with Firefox 151 + `web-ext` 10.6): two ways to load the MV2 build.
+  Use `firefox-mv2-dev` (`build:firefox:local`) for anything involving localhost:3000; `firefox-mv2`
+  is the prod target.
+  1. By hand: `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** → pick
+     `apps/extension/.output/firefox-mv2-dev/manifest.json` (or `firefox-mv2/` for prod). The add-on lives until Firefox quits —
+     **temporary add-ons never survive a restart**; only an AMO-signed XPI does (`web-ext sign`
+     needs `WEB_EXT_API_KEY`/`WEB_EXT_API_SECRET`, which are NOT in this repo or its env — until
+     an AMO account exists, reload the temporary add-on each session). Firefox Developer Edition /
+     Nightly can also install an UNSIGNED XPI persistently with
+     `xpinstall.signatures.required=false` in `about:config` (release Firefox ignores that pref).
+  2. Scripted (throwaway profile, add-on preloaded, no clicking):
+     ```bash
+     UUID=5f3a9d2e-7c1b-4e6f-9a8d-0b1c2d3e4f50   # any UUID — pins the moz-extension:// origin
+     pnpm dlx web-ext run --source-dir apps/extension/.output/firefox-mv2-dev \
+       --pref "extensions.webextensions.uuids={\"bookmark-ai@purecode.ai\":\"$UUID\"}" \
+       --start-url http://localhost:3000/app --no-reload --no-input
+     ```
+     The `uuids` pref makes the popup reachable as a normal tab at
+     `moz-extension://$UUID/popup.html` (open it AFTER web-ext logs "Installed … as a temporary
+     add-on" — a start-url tab loads before the install and stays blank); Alt+Shift+S opens the
+     real toolbar popup. Diag breadcrumbs from the Firefox background/popup land in
+     `.dev-extension-log.ndjson` like every other target (`"browser":"firefox"`).
+  - Expect the same popup as Chrome: sign-in gate when signed out, `bg: clerk manifest shim
+    {outcome:"patched"}` in the diag log, and NO `sdk failed … Missing host_permissions` line
+    (that was the 2026-09-03 Firefox regression — see `apps/extension/CLAUDE.md` → Auth).
+  - Native-sync bookmark mirror works there too; Firefox has no reading list.
 - Safari (verified recipe — needs full Xcode; note: native-sync is a compile-time no-op in
   Safari — Apple exposes no bookmarks/Reading List API to extensions):
   1. `cd apps/extension && xcrun safari-web-extension-converter .output/safari-mv3 --app-name "Bookmark AI" --bundle-identifier ai.bookmark.safari --project-location safari-xcode --macos-only --no-open --no-prompt --force`
@@ -157,7 +252,13 @@ All three must succeed. Live test (needs a real browser via computer use / chrom
      `ditto "$DD_APP" "/Applications/Bookmark AI.app" && pluginkit -r "$DD_APP/Contents/PlugIns/Bookmark AI Extension.appex"; rm -rf "$DD_APP"; open "/Applications/Bookmark AI.app"`
      (where `DD_APP=~/Library/Developer/Xcode/DerivedData/Bookmark_AI-*/Build/Products/Debug/"Bookmark AI.app"`).
      Running the app once registers the extension; verify a single registration with
-     `pluginkit -mAvvv | grep -A1 ai.bookmark`.
+     `pluginkit -mAvvv -p com.apple.Safari.web-extension | grep -A4 ai.bookmark` (expect ONE
+     `ai.bookmark.safari.Extension` row whose Path is under `/Applications/Bookmark AI.app`).
+     First launch shows the setup window plus a one-time "Run Bookmark AI in the background?"
+     prompt (`Start at Login` = SMAppService login item); later launches are menu-bar only.
+     The JS/manifest inside the installed appex is whatever `.output/safari-mv3` held at
+     xcodebuild time — after any `pnpm build:safari`, repeat steps 3–4 (quit the running app
+     first: `osascript -e 'quit app "Bookmark AI"'`).
   5. In Safari: Settings → Advanced → "Show features for web developers", then Develop →
      "Allow Unsigned Extensions" (re-arm after each Safari restart), then Settings →
      Extensions → enable Bookmark AI. `safari-xcode/` is gitignored (generated).

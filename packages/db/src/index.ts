@@ -83,6 +83,7 @@ export {
   touchConversation,
   deleteConversation,
   insertMessage,
+  getMessageConversationId,
   listMessages,
   getWeeklyTokens,
   addWeeklyTokens,
@@ -100,6 +101,18 @@ export {
   bumpMcpUsage,
   type McpTokenRow,
 } from "./queries/mcp";
+export {
+  insertSkill,
+  getSkill,
+  getSkillByName,
+  listSkills,
+  listEnabledSkills,
+  updateSkill,
+  deleteSkill,
+  type SkillRow,
+  type InsertSkill,
+  type SkillPatch,
+} from "./queries/skills";
 export {
   upsertDeviceSnapshot,
   listDevices,

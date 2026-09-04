@@ -1,6 +1,25 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import type { AccountResponse } from "@bookmark-ai/types";
+import { resolveAccountPlan } from "@/lib/server/plan";
 import { requireUser } from "@/lib/server/require-user";
+
+// Authed, per-user — never statically cache.
+export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/account → { plan }. The caller's plan from the master `tenants.plan`
+ * column; `"free"` (the only plan) in single-tenant/open mode. The feature copy
+ * for a plan is `PLAN_FEATURES[plan]` in @bookmark-ai/types — clients render
+ * from that, not from this response, so it can't drift between surfaces.
+ */
+export async function GET() {
+  const gate = await requireUser();
+  if (!gate.ok) return gate.response;
+
+  const body: AccountResponse = { plan: await resolveAccountPlan(gate.userId) };
+  return NextResponse.json(body);
+}
 
 /**
  * Account deletion — the Apple-required primitive (mobile/web UI wires this up

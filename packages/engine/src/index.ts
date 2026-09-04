@@ -119,6 +119,10 @@ export {
 } from "./metering";
 export {
   messageText,
+  messageTitleText,
+  hasMeaningfulParts,
+  pruneEmptyAssistantMessages,
+  mergeConversationMessages,
   deriveConversationTitle,
   createConversationRecord,
   getConversationRecord,
@@ -128,3 +132,21 @@ export {
   appendChatMessage,
   type IncomingChatMessage,
 } from "./chat-store";
+export {
+  listSkills,
+  getSkillRecord,
+  createSkill,
+  updateSkill,
+  deleteSkill,
+  resolveSkillIndex,
+  useSkillByName,
+  toSkill,
+  fetchSkillMarkdown,
+  createSkillForAgent,
+  installSkillForAgent,
+  SKILL_FETCH_MAX_BYTES,
+  SkillNameConflictError,
+  SkillNotFoundError,
+  type AgentSkillResult,
+  type InstallSkillOptions,
+} from "./skills";

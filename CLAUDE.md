@@ -94,10 +94,37 @@ mobile via Clerk Expo. The route handlers delegate to `packages/engine` — chan
 - `GET /api/health` → `{ok, ai}` · `DELETE /api/bookmarks/:id` → 204
 - `POST /api/sessions` — body `{name?, tabs:[{url,title?,favIconUrl?,windowId?}], browser?, device?, savedAt?}` → `201 {session}` (a saved browser-tab snapshot). `GET /api/sessions` → `{sessions}` · `DELETE /api/sessions/:id` → 204
 - `POST /api/chat` — the one route that's a full agent, not a thin engine adapter: AI SDK v7
-  agent chat. Body `{messages: UIMessage[]}`; streams UI messages; tools `searchFullText`/`searchSemantic`/
-  `listSessions` call `packages/engine` directly (no HTTP hop). Import existing browser
+  agent chat. Body `{messages: UIMessage[], conversationId?, timezone?}` (first turn / legacy full
+  history) or `{message: UIMessage, conversationId, timezone?}` (later turns — the server loads the
+  stored history and appends; see `docs/features/skills.md`). Streams UI messages incl.
+  `reasoning-*` chunks (Gemini `includeThoughts`); tools `searchBookmarks`/`queryDatabase`/
+  `listSessions`/`listLiveTabs`/`useSkill`/`createSkill`/`installSkill`/`webSearch`/`fetchUrl` call `packages/engine` directly
+  (no HTTP hop). Response headers `X-Conversation-Id` + `X-Ai-Source: included|own|own-fallback`
+  (own-fallback = free credits exhausted, stored own key took over) + optional
+  `X-Ai-Note: own-key-incomplete` (mode is `own` but the key config can't run — e.g. OpenAI key, no
+  model — so the included AI answered). Attachments = AI SDK `file`
+  parts with `data:` URLs on the user message; rules in `CHAT_ATTACHMENT_RULES`/`classifyAttachment`
+  (`packages/types/src/chat.ts`) — server answers `415 attachment-type-not-allowed`,
+  `413 attachments-too-large`, `400 too-many-attachments` before any model call. System prompt =
+  `apps/web/lib/server/chat-prompt.ts` (pure, tested). Message ids are scoped per conversation (a
+  client id re-used across conversations is re-minted, never relocated); an attachment-only first
+  message titles the thread after the file. Import existing browser
   bookmarks against a dev server started with `DEV_OPEN_API=1` (or set `BOOKMARK_API_TOKEN` to
   import against prod): `cd apps/web && pnpm tsx scripts/import-browser-bookmarks.ts [--apply]`.
+- `GET|PUT /api/settings` — `{settings}` incl. `aiMode: "included"|"own"` (explicit, persisted;
+  NULL column derives key-stored→own) and `ownKeyReady` (own config complete: provider + key, plus a
+  model for openai/anthropic/custom — Google defaults to `gemini-2.5-flash`). PUT: `{aiMode}` switches WITHOUT touching the key (`own`
+  needs a stored key, else 400); `{apiKey:"sk…"}` stores + sets `own`; `{apiKey:""}` removes + sets
+  `included`; `{provider}` never clears model/key (`model:""` clears the model).
+- `GET|POST /api/skills` → `{skills}` / `201 {skill}` (409 duplicate name, case-insensitive);
+  `GET|PUT|DELETE /api/skills/:id` → `{skill}` / `{skill}` / 204. Body `createSkillSchema`
+  (`packages/types/src/skills.ts`). `POST /api/skills/import {markdown, enabled?}` → 201 from a
+  SKILL.md (`parseSkillMarkdown`: YAML frontmatter name/description + body, or `# Heading` +
+  paragraph fallback; 400 `{error}` readable, 409 conflict). Enabled skills are indexed in the chat
+  prompt + loadable via the `useSkill` tool; the chat can also `createSkill` (drafted or pasted
+  SKILL.md) and `installSkill(url)` (net-guarded fetch, 64 KB, user-typed URLs only).
+- `GET /api/account` → `{plan:"free"}` (master `tenants.plan`; features from `PLAN_FEATURES`).
+  `DELETE /api/account` → 202 (deletes the Clerk user; the webhook tears down the tenant).
 
 ## Hard-won gotchas (do not rediscover these)
 

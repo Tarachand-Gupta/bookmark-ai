@@ -31,6 +31,9 @@ export type RequestApiContext =
   | { response: NextResponse }
   | {
       userId: string | null;
+      /** Clerk session id from the gate's single `auth()` call; null for device
+       * tokens and the open modes. */
+      sessionId: string | null;
       db: Db;
       gemini: GeminiClient | null;
       ready: Promise<void>;
@@ -60,12 +63,12 @@ export async function getRequestApiContext(): Promise<RequestApiContext> {
   // Open mode: no Clerk user, so no tenant — always the shared/local DB.
   if (gate.userId === null) {
     const { db, ready } = getApiContext();
-    return { userId: null, db, gemini, ready };
+    return { userId: null, sessionId: gate.sessionId, db, gemini, ready };
   }
 
   try {
     const { db, ready } = await getTenantDb(gate.userId);
-    return { userId: gate.userId, db, gemini, ready };
+    return { userId: gate.userId, sessionId: gate.sessionId, db, gemini, ready };
   } catch (err) {
     if (err instanceof TenantNotProvisionedError) {
       return { response: provisioningResponse() };

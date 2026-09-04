@@ -9,6 +9,19 @@ export const aiProviderSchema = z.enum(["google", "openai", "anthropic", "custom
 export type AiProvider = z.infer<typeof aiProviderSchema>;
 
 /**
+ * Which key Ask AI runs on — an EXPLICIT, persisted choice (tenant migration v14,
+ * `user_settings.ai_mode`), no longer derived from whether a key happens to be
+ * stored. `included` = the shared server Gemini key, metered against the weekly
+ * free credits (and, when those run out and a key IS stored, chat silently falls
+ * back to the user's key — `X-Ai-Source: own-fallback`). `own` = the user's own
+ * provider key, never metered. Switching modes NEVER touches the stored key;
+ * only an explicit `apiKey: ""` removes it. A NULL column reads back as the
+ * legacy derivation: key stored → `own`, else `included`.
+ */
+export const aiModeSchema = z.enum(["included", "own"]);
+export type AiMode = z.infer<typeof aiModeSchema>;
+
+/**
  * The caller's free-tier AI meter, as the UI needs it. Raw TOKENS on the wire
  * (that's what the server meters and what the 402 wall reports); the client
  * normalizes them to "credits" for display — see apps/web/lib/ai-credits.ts.
@@ -39,6 +52,17 @@ export const userSettingsSchema = z.object({
   model: z.string().nullable(),
   apiKeySet: z.boolean(),
   apiKeyLast4: z.string().nullable(),
+  /** ALWAYS present: the stored mode, or the legacy derivation (key stored →
+   * `own`, else `included`) when the column is NULL. Independent of `apiKeySet`
+   * — `included` with a saved key is the "fall back to my key when the free
+   * credits run out" state. */
+  aiMode: aiModeSchema,
+  /** True when the own-key config is COMPLETE enough to run: provider + stored
+   * key, plus a model for openai/anthropic/custom (and a base URL for custom).
+   * Google needs no model — a NULL model runs `gemini-2.5-flash`. `apiKeySet`
+   * with `ownKeyReady: false` = "you saved a key but still need to pick a
+   * model"; chat then answers on the included AI with `X-Ai-Note: own-key-incomplete`. */
+  ownKeyReady: z.boolean(),
   /** Per-user override for the dedicated live server's base URL. Null = use the
    * app's `NEXT_PUBLIC_LIVE_API_URL` default (or, if that's empty too, live off). */
   liveServerUrl: z.string().nullable(),
@@ -68,8 +92,15 @@ export type UserSettingsResponse = z.infer<typeof userSettingsResponseSchema>;
 
 /**
  * PUT /api/settings body. `apiKey` semantics: absent/undefined = KEEP the
- * existing key, "" (empty string) = CLEAR it, any other string = set it.
- * `baseUrl` must be a http(s) URL and is required only when provider = custom.
+ * existing key, "" (empty string) = CLEAR it (and set `aiMode` to `included`),
+ * any other string = set it (and, unless `aiMode` is sent too, set `aiMode` to
+ * `own`). `baseUrl` must be a http(s) URL and is required only when provider =
+ * custom. `model`: absent = keep, "" = clear, else set — changing `provider`
+ * alone never clears the model.
+ *
+ * `aiMode`: absent = keep; `included`/`own` = set the mode WITHOUT touching the
+ * stored key, provider or model. `own` is refused (400) when no key is stored
+ * and none arrives in the same request.
  *
  * `provider` is optional so a caller can PATCH a single unrelated field (e.g.
  * `{ onboarded: true }`) WITHOUT resubmitting — and thereby overwriting — the AI
@@ -81,6 +112,7 @@ export const updateUserSettingsSchema = z
     apiKey: z.string().optional(),
     baseUrl: z.string().url().optional(),
     model: z.string().optional(),
+    aiMode: aiModeSchema.optional(),
     // Live server base URL. Same keep/clear semantics as apiKey: absent = keep,
     // "" or null = clear (fall back to the env default). A set value must be a
     // http(s) URL, capped at 200 chars.

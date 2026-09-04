@@ -101,6 +101,9 @@ export async function provisionTenant({
       dbAuthToken: token,
       status: "active",
       createdAt: new Date().toISOString(),
+      // Everyone starts on Free (the only plan); the column DEFAULT writes it —
+      // insertTenant never sends the value.
+      plan: "free",
     });
   } catch (err) {
     // A concurrent provisioner (the webhook vs. this request path) may have

@@ -10,6 +10,11 @@ export interface Tenant {
   dbAuthToken: string;
   status: string;
   createdAt: string;
+  /** Plan id (master migration v3; `'free'` for every row today, and the read
+   * fallback when the column is absent). `insertTenant` never writes it — the
+   * column DEFAULT applies — so a DB where the tolerant ALTER was skipped still
+   * inserts cleanly. */
+  plan: string;
 }
 
 /** Per-day usage counters a tenant is metered against. */
@@ -68,6 +73,26 @@ export const MASTER_MIGRATIONS: Migration[] = [
       `,
     ],
   },
+  // Per-tenant plan. Everyone is on 'free' today (the only plan that exists —
+  // see packages/types/src/plan.ts), but persisting it makes a paid tier later a
+  // data change. Additive ADD COLUMN with a constant DEFAULT so existing rows
+  // backfill; tolerant so a retry after a partial apply ("duplicate column name:
+  // plan") records the version instead of wedging the runner. Not user data →
+  // no export-format impact.
+  //
+  // v4, NOT v3: master `schema_migrations` already records `3:usage-newtab-
+  // templates` from the REVERTED newtab feature (seen on the local master DB
+  // 2026-09-03; the same build shipped tenant `9:newtab-canvas` to prod, so prod's
+  // master carries it too). A revert never frees a number — a migration numbered
+  // at or below one the DB already has is SILENTLY SKIPPED — so this takes the
+  // next number after the highest EVER recorded, not the highest in this file.
+  {
+    version: 4,
+    name: "tenant-plan",
+    statements: [
+      { sql: "ALTER TABLE tenants ADD COLUMN plan TEXT NOT NULL DEFAULT 'free'", tolerant: true },
+    ],
+  },
 ];
 
 /** Read a single platform_config value by key, or null if unset. */
@@ -103,6 +128,9 @@ function rowToTenant(row: Row): Tenant {
     dbAuthToken: String(row.db_auth_token),
     status: String(row.status),
     createdAt: String(row.created_at),
+    // Every read is `SELECT *`, so the v3 column arrives with no query change —
+    // and reads back undefined→'free' on a DB where the tolerant ALTER was skipped.
+    plan: row.plan == null ? "free" : String(row.plan),
   };
 }
 

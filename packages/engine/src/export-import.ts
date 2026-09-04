@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
 import {
   createSession,
+  getSkillByName,
   insertBookmark,
   insertConversation,
   insertMessage,
+  insertSkill,
   listConversations,
   listMessages,
+  listSkills,
+  updateSkill,
   type Db,
 } from "@bookmark-ai/db";
 import {
@@ -17,6 +21,7 @@ import {
   type ExportedBookmark,
   type ExportedConversation,
   type ExportedSession,
+  type ExportedSkill,
   type OpenGraph,
   type SessionTab,
 } from "@bookmark-ai/types";
@@ -96,6 +101,16 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
     }),
   );
 
+  // Skills (v5): the user's reusable Ask AI instructions, minus the per-DB id.
+  const skills: ExportedSkill[] = (await listSkills(db)).map((s) => ({
+    name: s.name,
+    description: s.description,
+    instructions: s.instructions,
+    enabled: s.enabled,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  }));
+
   return {
     schemaVersion: SCHEMA_VERSION,
     exportedAt,
@@ -103,10 +118,12 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
       bookmarks: bookmarks.length,
       sessions: sessions.length,
       conversations: conversations.length,
+      skills: skills.length,
     },
     bookmarks,
     sessions,
     conversations,
+    skills,
   };
 }
 
@@ -125,7 +142,7 @@ export async function importUserData(
   db: Db,
   bundle: unknown,
   _opts?: ImportUserDataOptions,
-): Promise<{ bookmarks: number; sessions: number; conversations: number }> {
+): Promise<{ bookmarks: number; sessions: number; conversations: number; skills: number }> {
   const migrated = migrateExportBundle(bundle);
 
   let bookmarks = 0;
@@ -202,7 +219,36 @@ export async function importUserData(
     conversations++;
   }
 
-  return { bookmarks, sessions, conversations };
+  // Skills (v5): upsert by name, case-insensitively — the same uniqueness rule
+  // the API enforces — so re-importing the same bundle is idempotent and an
+  // export from another account merges onto matching names instead of 409ing.
+  // Timestamps are preserved on insert; an update keeps the row's own created_at
+  // and stamps the bundle's updated_at.
+  let skills = 0;
+  for (const s of migrated.skills) {
+    const existing = await getSkillByName(db, s.name);
+    if (existing) {
+      await updateSkill(
+        db,
+        existing.id,
+        { name: s.name, description: s.description, instructions: s.instructions, enabled: s.enabled },
+        s.updatedAt,
+      );
+    } else {
+      await insertSkill(db, {
+        id: randomUUID(),
+        name: s.name,
+        description: s.description,
+        instructions: s.instructions,
+        enabled: s.enabled,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+      });
+    }
+    skills++;
+  }
+
+  return { bookmarks, sessions, conversations, skills };
 }
 
 function parseStringArray(raw: unknown): string[] {

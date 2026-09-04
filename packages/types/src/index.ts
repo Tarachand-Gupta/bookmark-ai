@@ -7,3 +7,5 @@ export * from "./dashboard";
 export * from "./mcp";
 export * from "./export";
 export * from "./observability";
+export * from "./plan";
+export * from "./skills";

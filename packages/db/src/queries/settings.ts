@@ -21,6 +21,9 @@ export interface UserSettingsRow {
   /** JSON array of the MCP tool names this user has enabled (migration v9).
    * null = the column was never written → ALL tools enabled (default-on). */
   mcpToolsJson: string | null;
+  /** Explicit AI mode (migration v14): "included" | "own", or null when never
+   * set — the API layer derives the legacy value (key stored → own) for null. */
+  aiMode: string | null;
   updatedAt: string;
 }
 
@@ -38,6 +41,7 @@ export interface UserSettingsPatch {
   nativeSyncEnabled?: boolean;
   nativeSyncFull?: boolean;
   mcpToolsJson?: string | null;
+  aiMode?: string | null;
 }
 
 /** Column name for each patch field, in a stable order. */
@@ -51,6 +55,7 @@ const PATCH_COLUMNS: [keyof UserSettingsPatch, string][] = [
   ["nativeSyncEnabled", "native_sync_enabled"],
   ["nativeSyncFull", "native_sync_full"],
   ["mcpToolsJson", "mcp_tools_json"],
+  ["aiMode", "ai_mode"],
 ];
 
 export async function getUserSettings(db: Db, userId: string): Promise<UserSettingsRow | null> {
@@ -118,6 +123,9 @@ function rowToSettings(row: Record<string, unknown>): UserSettingsRow {
       row.native_sync_enabled == null ? true : Boolean(Number(row.native_sync_enabled)),
     nativeSyncFull: row.native_sync_full == null ? false : Boolean(Number(row.native_sync_full)),
     mcpToolsJson: str(row.mcp_tools_json),
+    // `SELECT *` → the v14 column arrives with no query change, and reads back
+    // undefined→null on a DB where the tolerant ALTER was skipped.
+    aiMode: str(row.ai_mode),
     updatedAt: String(row.updated_at),
   };
 }

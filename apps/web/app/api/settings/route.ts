@@ -11,6 +11,9 @@ import { getRequestApiContext } from "@/lib/server/api-context";
 import { getFreeAiWeeklyLimit } from "@/lib/server/ai-limit";
 import { nextWeeklyResetUtc } from "@/lib/ai-credits";
 import { decryptApiKey, encryptApiKey } from "@/lib/server/ai-key-crypto";
+import { deriveAiMode } from "@/lib/server/ai-mode";
+import { isOwnKeyReady } from "@/lib/server/ai-model";
+import { buildSettingsPatch } from "@/lib/server/settings-patch";
 
 /**
  * Settings key. `getRequestApiContext` resolves `userId` to null in the open/
@@ -56,6 +59,12 @@ function toApiSettings(row: UserSettingsRow | null, aiUsage: AiUsage | null): Us
     model: row?.aiModel ?? null,
     apiKeySet: !!key,
     apiKeyLast4: key ? key.slice(-4) : null,
+    // The explicit mode (v14), or the legacy derivation for a NULL column — the
+    // SAME rule the chat model resolver applies, so the badge matches reality.
+    aiMode: deriveAiMode(row?.aiMode, !!key),
+    // The SAME completeness rule the chat resolver applies (google needs no
+    // model; the others do) — so "ready" here means chat WILL run on the key.
+    ownKeyReady: isOwnKeyReady(row, !!key),
     liveServerUrl: row?.liveServerUrl ?? null,
     onboardedAt: row?.onboardedAt ?? null,
     // Defaults (sync on / full sync off) come from the row mapper for existing
@@ -94,14 +103,15 @@ export async function PUT(req: NextRequest) {
       { status: 400 },
     );
   }
-  const { provider, apiKey, baseUrl, model, liveServerUrl, onboarded, nativeSyncEnabled, nativeSyncFull, mcpTools } = parsed.data;
+  const { provider, baseUrl } = parsed.data;
 
   // SECURITY (SSRF): a custom provider's base URL is user-supplied and later used
-  // by resolveChatModel to build an outbound AI request. Validate it HERE at write
-  // time against the same net-guard policy the models test route uses (scheme/port
-  // check + DNS resolution rejecting loopback/private/link-local/metadata hosts),
-  // so a hostile base URL never reaches the stored settings. `assertSafeUrl` is
-  // async (it resolves DNS) and throws on a malformed or blocked URL.
+  // by the chat model resolver to build an outbound AI request. Validate it HERE
+  // at write time against the same net-guard policy the models test route uses
+  // (scheme/port check + DNS resolution rejecting loopback/private/link-local/
+  // metadata hosts), so a hostile base URL never reaches the stored settings.
+  // `assertSafeUrl` is async (it resolves DNS) and throws on a malformed or
+  // blocked URL.
   if (provider === "custom" && baseUrl) {
     try {
       await assertSafeUrl(baseUrl);
@@ -113,50 +123,23 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  const patch: Parameters<typeof upsertUserSettings>[2] = {};
-  // The Settings form always sends provider/baseUrl/model, so those overwrite
-  // together. A single-field PATCH (e.g. mark-onboarded) omits provider and must
-  // NOT touch the AI config. A base URL only makes sense for a custom provider —
-  // clear it otherwise.
-  if (provider !== undefined) {
-    patch.aiProvider = provider;
-    patch.aiBaseUrl = provider === "custom" ? (baseUrl ?? null) : null;
-    patch.aiModel = model ?? null;
+  // The field semantics (absent = keep; apiKey "" = remove + included; a new key
+  // = own; aiMode never touches the key; provider never nulls the model) live in
+  // the pure, unit-tested builder. `aiMode: "own"` needs a stored key — read the
+  // existing row so the check sees what is ACTUALLY there. encryptApiKey fails
+  // closed (throws) rather than storing plaintext; the builder turns that into a
+  // clean 500 instead of an uncaught crash / leaked stack.
+  const existing = await getUserSettings(db, settingsKey(userId));
+  const built = buildSettingsPatch(parsed.data, {
+    hasStoredKey: !!decryptApiKey(existing?.aiApiKey ?? null),
+    encrypt: encryptApiKey,
+  });
+  if (!built.ok) {
+    if (built.status === 500) console.warn("[settings] ai key encryption failed");
+    return NextResponse.json({ error: built.error }, { status: built.status });
   }
-  // apiKey: absent → keep (omit from patch); "" → clear (store null); else
-  // encrypt-at-rest before storing (AES-256-GCM `enc:v1:` envelope). Writing here
-  // is also the lazy re-encryption path for any legacy plaintext row.
-  // encryptApiKey now fails closed (throws) rather than storing plaintext — turn
-  // that into a clean 500 instead of an uncaught crash / leaked stack.
-  if (apiKey !== undefined) {
-    if (apiKey === "") {
-      patch.aiApiKey = null;
-    } else {
-      try {
-        patch.aiApiKey = encryptApiKey(apiKey);
-      } catch (err) {
-        console.warn("[settings] ai key encryption failed:", (err as Error).message);
-        return NextResponse.json(
-          { error: "Encryption is not configured on the server" },
-          { status: 500 },
-        );
-      }
-    }
-  }
-  // liveServerUrl: absent → keep (omit); "" or null → clear (store null); else set.
-  if (liveServerUrl !== undefined) patch.liveServerUrl = liveServerUrl ? liveServerUrl : null;
-  // onboarded: true → stamp onboarded_at to now (marks the tour seen for this
-  // account). Absent/false → leave the marker untouched (never un-set it).
-  if (onboarded) patch.onboardedAt = new Date().toISOString();
-  // Native-sync toggles: absent → keep; the Sync section PATCHes exactly one.
-  if (nativeSyncEnabled !== undefined) patch.nativeSyncEnabled = nativeSyncEnabled;
-  if (nativeSyncFull !== undefined) patch.nativeSyncFull = nativeSyncFull;
-  // mcpTools: absent → keep; null → reset to the default (all tools enabled);
-  // an array (including []) → store that exact allowlist. The enum already
-  // rejected unknown names, so the stored JSON is always a valid subset.
-  if (mcpTools !== undefined) patch.mcpToolsJson = mcpTools === null ? null : JSON.stringify(mcpTools);
 
-  const row = await upsertUserSettings(db, settingsKey(userId), patch);
+  const row = await upsertUserSettings(db, settingsKey(userId), built.patch);
   // PUT returns the meter too, so a client that re-renders straight from the save
   // response (the setup card does) keeps a live meter instead of blanking it.
   return NextResponse.json({ settings: toApiSettings(row, await readAiUsage(db)) });
