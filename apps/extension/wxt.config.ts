@@ -1,5 +1,3 @@
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "wxt";
 import { APP_PAGE_MATCHES } from "./lib/app-origins";
@@ -51,8 +49,10 @@ function iconsFor(mode: string): Record<string, string> {
 }
 
 /**
- * Hosts the extension needs to reach. Shared between the manifest function's
- * `host_permissions` and the MV2 re-add hook below so the two never drift.
+ * Hosts the extension needs to reach — the manifest's `host_permissions`.
+ * On the MV2 (Firefox) target WXT folds these into `permissions`, which is
+ * where Firefox expects host patterns in MV2; `lib/manifest-shim.ts` re-derives
+ * a `host_permissions` view from there at runtime for the Clerk SDK.
  * A static SUPERSET so ONE manifest shape covers all three build targets.
  * - `http://localhost/*` — match patterns ignore ports, so this covers the web
  *   dev server at localhost:3000 (both Clerk syncHost and the local /api base) —
@@ -156,36 +156,16 @@ export default defineConfig({
       },
     },
   }),
-  hooks: {
-    // @clerk/chrome-extension validateManifest requires a top-level
-    // host_permissions key even on MV2 (when syncHost is set); without it the
-    // SDK throws inside ClerkProvider's effect and React blanks the popup on
-    // Firefox/Safari. MV2 has no native host_permissions, so WXT folds those
-    // hosts into `permissions` and DELETES the top-level key. Crucially, that
-    // fold (generateManifest -> moveHostPermissionsToPermissions) runs AFTER
-    // the build:manifestGenerated hook, so re-adding the key there never
-    // survives — verified empirically. We instead patch the written manifest in
-    // build:done, which fires after writeManifest. Firefox/Safari treat the
-    // unknown MV2 key as a harmless warning, and the SDK only checks that the
-    // key exists (its contents are never read). MV3 already keeps the key, so
-    // this is scoped to MV2.
-    // MV2-ONLY patch. Safari is now built as MV3 (see build:safari --mv3), which
-    // keeps its top-level host_permissions natively, so this only fires for the
-    // Firefox MV2 output. (Modern Safari — 26.x — deprecated MV2 and never even
-    // starts an MV2 background page: the popup's sendMessage found no receiver.
-    // MV3's service worker is the supported path there.)
-    "build:done": (wxt) => {
-      if (wxt.config.manifestVersion !== 2) return;
-      const manifestPath = resolve(wxt.config.outDir, "manifest.json");
-      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-      if (manifest.host_permissions) return;
-      manifest.host_permissions = [...HOST_PERMISSIONS];
-      // Match WXT's own writer: minified in production, pretty otherwise.
-      const json =
-        wxt.config.mode === "production"
-          ? JSON.stringify(manifest)
-          : JSON.stringify(manifest, null, 2);
-      writeFileSync(manifestPath, json);
-    },
-  },
+  // NO MV2 `host_permissions` re-add hook — it used to patch the written
+  // firefox-mv2/manifest.json with a top-level `host_permissions` key so that
+  // @clerk/chrome-extension's validateManifest (which demands the key when
+  // syncHost is set) would pass. It never could: Firefox's
+  // `runtime.getManifest()` returns the NORMALIZED manifest, and normalization
+  // drops keys the manifest version doesn't support, so the SDK still threw
+  // "Missing host_permissions" on Firefox (verified 2026-09-03 via the
+  // background diag with the key present in the file). The runtime fix lives
+  // in lib/manifest-shim.ts (background.ts, firefox target only); the popup no
+  // longer mounts a Clerk client at all (entrypoints/popup/main.tsx). Safari is
+  // built as MV3 (`build:safari --mv3` — Safari 26 no longer starts MV2
+  // background pages) and keeps the key natively.
 });

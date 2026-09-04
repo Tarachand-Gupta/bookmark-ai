@@ -1,6 +1,6 @@
 # @bookmark-ai/extension — the browser extension
 
-One WXT + React codebase compiled to **Chrome (MV3)**, **Firefox (MV2)**, and **Safari**.
+One WXT + React codebase compiled to **Chrome (MV3)**, **Firefox (MV2)**, and **Safari (MV3)**.
 The fastest way to save: click the toolbar icon → the popup shows the current page
 pre-filled → Save. It can also snapshot **every open tab as a session**, and restores
 sessions into a new window or (Chrome) a tab group.
@@ -34,12 +34,17 @@ Tailwind (`assets/tailwind.css`) mirroring the tokens in `packages/ui/src/theme.
 pnpm --filter @bookmark-ai/extension dev              # live-reload Chrome dev build
 pnpm --filter @bookmark-ai/extension build            # → .output/chrome-mv3
 pnpm --filter @bookmark-ai/extension build:firefox    # → .output/firefox-mv2
-pnpm --filter @bookmark-ai/extension build:safari     # → .output/safari-mv2
+pnpm --filter @bookmark-ai/extension build:safari     # → .output/safari-mv3
 ```
 
 - **Chrome / Edge / Arc**: `chrome://extensions` → Developer mode → Load unpacked → `.output/chrome-mv3`
-- **Firefox**: `about:debugging` → This Firefox → Load Temporary Add-on → `.output/firefox-mv2/manifest.json`
-- **Safari**: `xcrun safari-web-extension-converter .output/safari-mv2 --app-name "Bookmark AI"` and run the Xcode project
+- **Firefox**: `about:debugging#/runtime/this-firefox` → Load Temporary Add-on → `.output/firefox-mv2/manifest.json`
+  (temporary add-ons are gone after a Firefox restart; only an AMO-signed XPI persists). For a
+  throwaway session: `pnpm dlx web-ext run --source-dir .output/firefox-mv2 --start-url http://localhost:3000/app`
+  launches a fresh Firefox profile with the add-on preloaded (recipe in `docs/TESTING.md` §3).
+- **Safari**: the wrapper app is generated once with `xcrun safari-web-extension-converter .output/safari-mv3 …`
+  (full command + signed `xcodebuild` recipe in `docs/TESTING.md` §3; the project references
+  `.output/safari-mv3` directly, so JS changes only need `build:safari` + a `clean build`)
 
 Store-submission steps live in [`docs/PRODUCTION.md`](../../docs/PRODUCTION.md).
 See `CLAUDE.md` in this folder for agent-facing details (messaging contracts, testing

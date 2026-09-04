@@ -1,12 +1,20 @@
 import { storage } from "#imports";
+import { fetchWithTimeout } from "./net";
 
 /**
  * Self-readable diagnostics for the auth handoff (esp. Safari, which we can't
  * step through). `diag(scope, msg, data?)` keeps a small in-memory ring, mirrors
- * it to `storage.local` ("local:diagLog"), and fire-and-forget POSTs batches to
- * the LOCAL dev web server — Safari runs on the same Mac as the repo, and the
- * extension already holds `http://localhost/*` host permission, so the logs land
- * in `.dev-extension-log.ndjson` at the repo root with zero manual copy/paste.
+ * it to `storage.local` ("local:diagLog"), and — in NON-PRODUCTION builds only —
+ * fire-and-forget POSTs batches to the LOCAL dev web server: Safari runs on the
+ * same Mac as the repo, and the extension already holds `http://localhost/*`
+ * host permission, so the logs land in `.dev-extension-log.ndjson` at the repo
+ * root with zero manual copy/paste.
+ *
+ * The network sink is gated on the BUILD MODE (`development` = local target,
+ * `dev-remote` = dev target). A production build (`chrome-mv3`, `firefox-mv2`,
+ * `safari-mv3`) must never fire requests at whatever a user happens to run on
+ * localhost:3000 — Vite inlines `import.meta.env.MODE`, so in production the
+ * endpoint folds to `null` and the URL literal is gone from the bundle entirely.
  *
  * Every sink is best-effort: no dev server → the POST just fails and is dropped.
  * NEVER pass token/cookie VALUES here — log presence/length/status/error only.
@@ -23,9 +31,15 @@ const RING_MAX = 300;
 const FLUSH_DEBOUNCE_MS = 1000;
 
 /** Hardcoded to the LOCAL dev server (NOT the configurable API base): the point
- * is to collect logs on the developer's machine even when the extension itself
- * is pointed at production for auth. A no-op when nothing listens there. */
-const DEV_LOG_ENDPOINT = "http://localhost:3000/api/dev/extension-log";
+ * is to collect logs on the developer's machine even when a dev-target build is
+ * pointed at a remote deployment for auth. `null` in every other mode — the
+ * comparison is against the inlined build mode on purpose (no helper function),
+ * so a production bundle contains neither the branch nor the URL. Exported for
+ * the unit test that pins that contract. */
+export const DEV_LOG_ENDPOINT: string | null =
+  import.meta.env.MODE === "development" || import.meta.env.MODE === "dev-remote"
+    ? "http://localhost:3000/api/dev/extension-log"
+    : null;
 
 const ring: DiagEntry[] = [];
 let pending: DiagEntry[] = [];
@@ -49,6 +63,8 @@ export function diag(scope: string, msg: string, data?: unknown): void {
   }
   // Storage mirror — survives a popup close / background restart.
   void diagLogItem.setValue(ring.slice()).catch(() => {});
+  // Production builds: ring + storage only, no network — don't even queue.
+  if (!DEV_LOG_ENDPOINT) return;
   // The background may be an EVENT page (Safari) that gets torn down within
   // milliseconds of answering a message — a debounced flush would lose every
   // entry. Flush bg-scope entries immediately; everything else can batch.
@@ -72,11 +88,14 @@ function scheduleFlush(): void {
 }
 
 async function flush(): Promise<void> {
-  if (pending.length === 0) return;
+  if (!DEV_LOG_ENDPOINT || pending.length === 0) return;
   const batch = pending;
   pending = [];
   try {
-    await fetch(DEV_LOG_ENDPOINT, {
+    // Bounded like every other fetch in the extension — nothing awaits this, but
+    // an unbounded stall still pins the batch and its promise for the lifetime of
+    // the (persistent, on Firefox) background context.
+    await fetchWithTimeout(DEV_LOG_ENDPOINT, {
       method: "POST",
       // text/plain is CORS-safelisted → a "simple request" with NO preflight
       // (the dev route reads the body as JSON regardless of content-type). This

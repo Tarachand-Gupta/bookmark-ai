@@ -26,7 +26,10 @@ APP_SRC_DIR="$APP_PROJECT_DIR/Bookmark AI"                   # generated app tar
 PBXPROJ="$APP_PROJECT_DIR/Bookmark AI.xcodeproj/project.pbxproj"
 APP_INFO_PLIST="$APP_SRC_DIR/Info.plist"
 
-CONVERTER_CMD='cd apps/extension && xcrun safari-web-extension-converter .output/safari-mv2 --app-name "Bookmark AI" --bundle-identifier ai.bookmark.safari --project-location safari-xcode --macos-only --no-open --no-prompt --force'
+# `build:safari` is an MV3 build (`wxt build -b safari --mv3`) → `.output/safari-mv3`. The
+# generated Xcode project references that directory directly, so JS/manifest-only changes
+# need no reconversion — just `pnpm build:safari` + an xcodebuild `clean build`.
+CONVERTER_CMD='cd apps/extension && xcrun safari-web-extension-converter .output/safari-mv3 --app-name "Bookmark AI" --bundle-identifier ai.bookmark.safari --project-location safari-xcode --macos-only --no-open --no-prompt --force'
 
 # --- Guard: generated project must exist ----------------------------------------------
 if [[ ! -d "$APP_SRC_DIR" || ! -f "$PBXPROJ" ]]; then

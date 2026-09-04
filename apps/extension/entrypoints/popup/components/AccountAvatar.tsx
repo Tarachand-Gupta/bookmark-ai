@@ -15,6 +15,12 @@ import { EyeOffIcon } from "./ui/icons";
  *
  * With no email on the account the chip is inert (a plain span titled with the
  * display name) rather than a button that reveals nothing.
+ *
+ * Layout note: the bubble is absolutely positioned inside the 22px chip, so its
+ * containing block is 22px wide — without `w-max` an absolute box shrink-wraps to
+ * THAT width and the email wraps one character per line down over the bento. `w-max`
+ * sizes it to its content, `max-w-[240px]` caps it, and the address truncates
+ * inside instead of wrapping.
  */
 export function AccountAvatar({ name, email }: { name: string | null; email: string | null }) {
   const [revealed, setRevealed] = useState(false);
@@ -47,13 +53,15 @@ export function AccountAvatar({ name, email }: { name: string | null; email: str
       {revealed && (
         <span
           role="status"
-          className="absolute right-0 top-full z-10 mt-1.5 flex max-w-[240px] items-center gap-1.5 rounded-md border border-border bg-popover px-2 py-1.5 text-[11px] leading-tight text-popover-foreground shadow-md"
+          className="absolute right-0 top-full z-10 mt-1.5 flex w-max max-w-[240px] items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1.5 text-[11px] leading-tight text-popover-foreground shadow-md"
         >
-          <span className="min-w-0 break-all">{email}</span>
+          <span className="min-w-0 truncate" title={email}>
+            {email}
+          </span>
           <IconButton
             onClick={() => setRevealed(false)}
             aria-label="Hide account email"
-            className="size-4"
+            className="size-4 shrink-0"
           >
             <EyeOffIcon className="size-3" />
           </IconButton>

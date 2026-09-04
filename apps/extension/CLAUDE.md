@@ -7,10 +7,26 @@ pnpm --filter @bookmark-ai/extension dev            # LOCAL target, chrome dev w
 pnpm --filter @bookmark-ai/extension build           # PROD  → .output/chrome-mv3          (turbo's `build`)
 pnpm --filter @bookmark-ai/extension build:dev       # DEV   → .output/chrome-mv3-dev-remote
 pnpm --filter @bookmark-ai/extension build:local     # LOCAL → .output/chrome-mv3-dev
-pnpm --filter @bookmark-ai/extension build:firefox   # .output/firefox-mv2
-pnpm --filter @bookmark-ai/extension build:safari    # .output/safari-mv2
+pnpm --filter @bookmark-ai/extension build:firefox   # PROD  → .output/firefox-mv2
+pnpm --filter @bookmark-ai/extension build:firefox:local  # LOCAL → .output/firefox-mv2-dev
+pnpm --filter @bookmark-ai/extension build:safari    # PROD  → .output/safari-mv3 (MV3 — Safari 26 no longer starts MV2 background pages)
+pnpm --filter @bookmark-ai/extension build:safari:local   # LOCAL → .output/safari-mv3-dev
 pnpm --filter @bookmark-ai/extension check-types
 ```
+
+Output dir per browser × target (WXT: `<browser>-mv<N>` for production, `-dev` suffix for
+`development`, `-dev-remote` for `dev-remote`):
+
+| Browser | PROD (`.env.production`, bookmark-ai.cloud) | LOCAL (`.env.development`, localhost:3000) | DEV (`.env.dev-remote`) |
+| --- | --- | --- | --- |
+| Chrome | `build` → `chrome-mv3` | `build:local` → `chrome-mv3-dev` | `build:dev` → `chrome-mv3-dev-remote` |
+| Firefox | `build:firefox` → `firefox-mv2` | `build:firefox:local` → `firefox-mv2-dev` | (add `-m dev-remote` to the firefox build if ever needed) |
+| Safari | `build:safari` → `safari-mv3` — the ONLY dir the Xcode wrapper embeds | `build:safari:local` → `safari-mv3-dev` (see TESTING.md §3 for embedding it) | — |
+
+The target (name/icon colour/app origin/Clerk instance) is the MODE, not the browser — a
+`firefox-mv2-dev` build is "Bookmark AI (Local)" pointed at localhost:3000 exactly like
+`chrome-mv3-dev` (only the Chrome build carries the per-target CRX `key`; Firefox's id is the
+fixed `browser_specific_settings.gecko.id`, Safari's is the appex bundle id).
 
 ## Build targets — THREE side-by-side installs (prod / dev / local)
 
@@ -84,7 +100,9 @@ Layout (keep multi-file — the user explicitly banned monolith files):
   bookmarks/Reading List API, so the module no-ops and the manifest omits the permissions there).
   `registerNativeSync()` (called synchronously in `defineBackground`) hooks
   `bookmarks.onCreated`/`onRemoved` (+ `chrome.readingList.onEntryAdded/Removed`, Chrome 120+;
-  Chrome's import flood is suppressed via onImportBegan/Ended). Additions save with
+  Chrome's import flood is suppressed via onImportBegan/Ended, and on EVERY browser a node whose
+  `dateAdded` is >60s old at notification time — imports, restores, Firefox Sync backfill; Firefox
+  has NO import events — is skipped by `lib/native-sync-import.ts`). Additions save with
   `detectSource()` metadata; reading-list entries carry the `reading`+`article` tags (the server
   merges caller-supplied `tags` from `CreateBookmarkInput` into the AI tags). Removals only
   propagate under "full sync" (off by default) via a local capped `local:nativeSyncIds` url→id
@@ -92,20 +110,40 @@ Layout (keep multi-file — the user explicitly banned monolith files):
   (`local:nativeSyncEnabled` default ON, `local:nativeSyncFull` default OFF) are cached copies of
   the ACCOUNT-level `user_settings` columns (migration v8), refreshed from `GET /api/settings`
   at boot + on the 6h auth alarm; the UI lives in the web app Settings → "Sync" section.
-- `entrypoints/popup/` — `App.tsx` (auth gate: loading → `SignInGate` → full UI) + `components/`
-  (SignInGate, SignOutButton, SaveCard, SavedResult, ErrorNote, LiveTabsToggle, SettingsRow, Spinner)
+- `entrypoints/popup/` — `main.tsx` (theme sync + `PopupErrorBoundary`/`PopupFallback`; NO Clerk
+  client — see Auth), `App.tsx` (auth gate: loading → `SignInGate` → full UI; save state machine),
+  hooks `use-auth.ts` (background `GET_USER` poll) / `use-live.ts`, `nav.ts` (every "leave the
+  popup" URL), `components/` (Header, HeroSaveCard, BentoGrid, LivePanel, CompactStrip,
+  ConfirmationCard, DeviceFooter, SignInGate, SignOutButton, AccountAvatar, ErrorNote, Spinner,
+  PopupShell, `ui/` primitives)
 - `lib/messages.ts` — typed popup↔background contract (incl. `GET_USER`/`UserInfo`/`requestUser`)
   · `lib/api.ts` — fetch helper (API base from `local:apiUrl` storage; default is the build-target
   origin via `WXT_APP_URL`. Web/sign-in links share the API origin — `getWebBaseUrl` === API base,
   no separate web-URL setting) · `lib/detect.ts` — browser via `import.meta.env.BROWSER` build
-  constant (+ UA brands for Edge/Arc), device/os heuristics
+  constant (+ UA brands for Edge/Arc), device/os heuristics · `lib/diag.ts` — breadcrumb ring +
+  `local:diagLog` mirror on every build; the POST sink to `localhost:3000/api/dev/extension-log`
+  exists ONLY in `development`/`dev-remote` builds (production bundles don't even contain the
+  URL — `diag.test.ts` pins it)
 - `assets/tailwind.css` — mirrors `packages/ui/src/theme.css` tokens (sync manually on retheme)
 - `scripts/generate-icons.mjs` — dependency-free PNG icon generator (`pnpm icons`)
 
 Auth (Clerk, syncHost pattern):
-- The popup does NOT host sign-in UI (OAuth is unsupported in extension popups). Instead
-  `ClerkProvider` in `entrypoints/popup/main.tsx` gets `syncHost` → the extension mirrors the
-  session the user creates on the **web app** (the build-target origin; see Build targets).
+- The popup does NOT host sign-in UI (OAuth is unsupported in extension popups) and mounts **NO
+  Clerk client at all** — the BACKGROUND is the only `@clerk/chrome-extension` consumer
+  (`createClerkClient` + `syncHost` in `entrypoints/background.ts`), mirroring the session the
+  user creates on the **web app** (the build-target origin; see Build targets). The popup's old
+  `<ClerkProvider syncHost>` was vestigial (nothing consumed it; the gate runs on `GET_USER`,
+  sign-out on `SIGN_OUT`) and it THREW on Firefox — see the Firefox gotcha below — which is why
+  every Firefox user got "Sign-in is unavailable in this browser build" until 2026-09-03.
+- **Firefox MV2 gotcha — `runtime.getManifest()` is the NORMALIZED manifest.** Firefox drops
+  keys the manifest version doesn't support, so the MV3-only `host_permissions` key is absent at
+  runtime no matter what the built `manifest.json` says (a `build:done` hook that re-added it to
+  the file never worked). `@clerk/chrome-extension`'s `validateManifest` demands that key when
+  `syncHost` is set, so `createClerkClient` threw on Firefox and the SDK rung (Path A — the one
+  that carries dev-instance sessions) was dead there. `lib/manifest-shim.ts` (`patchGetManifest`,
+  unit-tested) wraps `browser.runtime.getManifest` on the firefox target at background boot,
+  deriving `host_permissions` from the host patterns WXT folded into `permissions`; the outcome
+  is logged as `bg: clerk manifest shim`. Chrome/Safari (MV3) keep the key natively.
 - **PROD needs `lib/native-session.ts`** — on a production instance with a custom domain the
   client token is an HttpOnly `__client` cookie on the FAPI domain (`clerk.bookmark-ai.cloud`),
   NOT on the syncHost, so `@clerk/chrome-extension`'s syncHost flow never finds it. The
@@ -164,8 +202,9 @@ Auth (Clerk, syncHost pattern):
   the background `GET_USER` message (createClerkClient reads the mirrored session), NOT the popup
   hooks — so it's independent and pollable. App re-checks on popup open, on `visibilitychange`,
   and (only while the gate is up) on a 2s interval, so returning from the sign-in tab promotes the
-  popup without a reinstall/reopen. Signed in → the user's name (from `UserInfo`, email fallback)
-  shows on the LEFT of the header, with `SignOutButton` (`useClerk().signOut()`) on the right.
+  popup without a reinstall/reopen. Signed in → the account chip (`AccountAvatar`, initial from
+  name/email) and `SignOutButton` (background `SIGN_OUT` message; Safari/device paths hand off to
+  the web app via `openWeb`) sit on the right of the header.
 - `lib/clerk.ts` — publishable key + sync host (public values), env-driven per build target with
   **production** fallbacks (`clerk.bookmark-ai.cloud` + `https://bookmark-ai.cloud` syncHost; both
   Clerk frontend APIs are `host_permissions` entries). Per-target values live in `.env.<mode>`; a
@@ -185,6 +224,16 @@ Auth (Clerk, syncHost pattern):
   send the full set, never a partial.
 
 Gotchas:
+- **Every network call is bounded** (`lib/net.ts` `fetchWithTimeout`, 20s, on ALL targets): a
+  fetch stalled by a mid-request network switch never settles, and the single-flight guards
+  (`auth-refresh.ts`, the live checkpoint's `flushing`) wedge behind it for the worker's lifetime
+  (the 2026-09-02 all-day silent live outage). Never call bare `fetch` in `entrypoints/` or
+  `lib/` — that includes the Safari bridge content script (its page-context fetch is awaited by
+  the background through `tabs.sendMessage`) and the Safari no-token live path.
+- **Firefox live-test recipe**: `pnpm dlx web-ext run --source-dir .output/firefox-mv2 …` launches a
+  throwaway profile with the add-on preloaded (full command incl. the fixed-UUID pref trick in
+  `docs/TESTING.md` §3). Temporary add-ons vanish on Firefox restart; only an AMO-signed XPI
+  persists, and there are NO AMO credentials in this repo/env (`WEB_EXT_API_KEY`/`_SECRET`).
 - Types come from `@bookmark-ai/types` (workspace). tsconfig extends `.wxt/tsconfig.json`
   (generated by `wxt prepare` on postinstall — run `pnpm install` if it's missing).
 - Changing the API URL to a non-localhost origin needs a matching `host_permissions` entry.

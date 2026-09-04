@@ -23,9 +23,10 @@ import { ExternalLinkIcon } from "./components/ui/icons";
 
 /** A confirmation the user never touches dismisses itself, as it always has. */
 const AUTO_CLOSE_MS = 1200;
-/** A session save that takes longer than this says so, instead of leaving the user
- * staring at a spinner wondering whether the click registered. Long enough that a
- * normal save (well under a second) never shows it. */
+/** A save (bookmark or session) that takes longer than this says so, instead of
+ * leaving the user staring at a spinner wondering whether the click registered.
+ * Long enough that a normal save (well under a second) never shows it; a stalled
+ * request is bounded at 20s (lib/net.ts), so this is the only feedback in between. */
 const SLOW_SAVE_MS = 1500;
 
 const DEGRADED_NOTE =
@@ -99,7 +100,12 @@ export default function App() {
     if (!tab || status === "saving") return;
     setStatus("saving");
     setError(null);
+    // Same escalation as a session save: past SLOW_SAVE_MS the hero's "Saving…"
+    // gets a status line, so a slow scrape/AI pass never looks like a dead click.
+    const slowTimer = window.setTimeout(() => setSlowSave(true), SLOW_SAVE_MS);
     const result = await requestSaveBookmark(tab.url, tab.title);
+    window.clearTimeout(slowTimer);
+    setSlowSave(false);
     if (result.ok) {
       setBookmark(result.bookmark);
       setStatus("saved");
@@ -260,9 +266,11 @@ export default function App() {
           save, never before. */}
       {slowSave && (
         <p className="text-[11px] leading-snug text-muted-foreground" role="status">
-          {status === "savingSession"
-            ? `Saving ${tabLabel}… your tabs stay open until the save is confirmed.`
-            : `Saving ${tabLabel}… hang on.`}
+          {status === "saving"
+            ? "Still saving… hang on."
+            : status === "savingSession"
+              ? `Saving ${tabLabel}… your tabs stay open until the save is confirmed.`
+              : `Saving ${tabLabel}… hang on.`}
         </p>
       )}
 

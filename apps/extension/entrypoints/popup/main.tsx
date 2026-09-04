@@ -1,25 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { browser } from "wxt/browser";
-import { ClerkProvider } from "@clerk/chrome-extension";
-import { CLERK_PUBLISHABLE_KEY, CLERK_SYNC_HOST } from "@/lib/clerk";
 import App from "./App";
-import { ClerkBoundary } from "./components/ClerkBoundary";
-import { ClerkUnavailable } from "./components/ClerkUnavailable";
+import { PopupErrorBoundary } from "./components/PopupErrorBoundary";
+import { PopupFallback } from "./components/PopupFallback";
 import "@/assets/tailwind.css";
-
-// Clerk always warns when running on development keys, and Chrome surfaces
-// every popup console.warn/error on the extension's Errors page — which reads
-// as a bug when it's just the (intentional) dev instance. Drop that one known
-// message; a production Clerk instance removes it for real.
-const CLERK_DEV_KEYS_WARNING = "Clerk has been loaded with development keys";
-for (const level of ["warn", "error"] as const) {
-  const original = console[level].bind(console);
-  console[level] = (...args: unknown[]) => {
-    if (typeof args[0] === "string" && args[0].includes(CLERK_DEV_KEYS_WARNING)) return;
-    original(...args);
-  };
-}
 
 /**
  * Dark mode. `assets/tailwind.css` declares `@custom-variant dark (&:is(.dark *))`,
@@ -45,20 +29,28 @@ function syncTheme(): void {
 }
 syncTheme();
 
-const EXTENSION_URL = browser.runtime.getURL("/");
-
+/*
+ * NO Clerk client in the popup — on purpose.
+ *
+ * The popup used to mount `@clerk/chrome-extension`'s `<ClerkProvider syncHost>`,
+ * a leftover from before auth moved into the background. Nothing here consumed
+ * it: the sign-in gate is driven by the background's `GET_USER` reply
+ * (`use-auth.ts`), sign-out goes through the `SIGN_OUT` message, and the popup
+ * hosts no sign-in UI (OAuth can't run in an extension popup). What the provider
+ * DID do was (a) ship ~1 MB of clerk-js into the popup bundle on every browser
+ * and (b) throw on Firefox: `createClerkClient` validates
+ * `runtime.getManifest()` and demands `host_permissions`, an MV3 key that
+ * Firefox strips from the normalized MV2 manifest — so every Firefox user saw
+ * "Sign-in is unavailable in this browser build" instead of the gate (verified
+ * 2026-09-03). The background is now the ONLY `@clerk/chrome-extension`
+ * consumer; see `lib/manifest-shim.ts` for how it survives the same check on
+ * Firefox. The error boundary stays as a generic guard so a render crash can
+ * never blank the popup.
+ */
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ClerkBoundary fallback={<ClerkUnavailable />}>
-      <ClerkProvider
-        publishableKey={CLERK_PUBLISHABLE_KEY}
-        syncHost={CLERK_SYNC_HOST}
-        afterSignOutUrl={`${EXTENSION_URL}popup.html`}
-        signInFallbackRedirectUrl={`${EXTENSION_URL}popup.html`}
-        signUpFallbackRedirectUrl={`${EXTENSION_URL}popup.html`}
-      >
-        <App />
-      </ClerkProvider>
-    </ClerkBoundary>
+    <PopupErrorBoundary fallback={<PopupFallback />}>
+      <App />
+    </PopupErrorBoundary>
   </React.StrictMode>,
 );

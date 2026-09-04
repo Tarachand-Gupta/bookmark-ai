@@ -1,6 +1,7 @@
 import { defineContentScript } from "#imports";
 import { browser } from "wxt/browser";
 import { isAllowedBridgePath } from "@/lib/bridge-guard";
+import { fetchWithTimeout } from "@/lib/net";
 import {
   isBridgeFetchMessage,
   isBridgeMeMessage,
@@ -22,9 +23,18 @@ import {
 
 const NULL_BODY: BridgeMeResult = { ok: false, signedIn: false, name: null, email: null };
 
+/*
+ * Both bridge fetches are BOUNDED (lib/net.ts). The background awaits
+ * `tabs.sendMessage` for the reply; a page-context fetch that never settles
+ * would leave that message unanswered, and `bridgeGetUser`/`bridgeFetch` — and
+ * with them Safari's popup gate and every bridged write — hang behind it. The
+ * same network-switch stall that wedged the Chrome worker (2026-09-02) applies
+ * to this context unchanged; the timeout here is what keeps Safari at parity.
+ */
+
 async function handleMe(): Promise<BridgeMeResult> {
   try {
-    const res = await fetch("/api/me", {
+    const res = await fetchWithTimeout("/api/me", {
       credentials: "include",
       headers: { accept: "application/json" },
     });
@@ -51,7 +61,7 @@ async function handleFetch(message: BridgeFetchMessage): Promise<BridgeFetchResu
       headers["content-type"] = "application/json";
       init.body = message.bodyJson;
     }
-    const res = await fetch(message.path, init);
+    const res = await fetchWithTimeout(message.path, init);
     const text = await res.text();
     return { ok: res.ok, status: res.status, bodyJson: text || undefined };
   } catch {

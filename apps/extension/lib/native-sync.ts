@@ -3,6 +3,7 @@ import { browser } from "wxt/browser";
 import { createBookmark, deleteBookmark, fetchSyncSettings } from "@/lib/api";
 import { detectSource } from "@/lib/detect";
 import { diag } from "@/lib/diag";
+import { isBackfilledNode } from "@/lib/native-sync-import";
 import { drainMirrorQueue, enqueueMirrorAdd } from "@/lib/native-sync-queue";
 
 /**
@@ -20,9 +21,12 @@ import { drainMirrorQueue, enqueueMirrorAdd } from "@/lib/native-sync-queue";
  * untrustworthy (the same privacy argument as live-storage.ts, §4.5).
  *
  * Known shape limits (can't be worked around in the extension APIs):
- *  - Bookmark imports (Chrome fires onCreated for EVERY imported node) are
- *    ignored via onImportBegan/onImportEnded so an import doesn't hammer the
- *    saves quota.
+ *  - Bookmark imports (both browsers fire onCreated for EVERY imported node) are
+ *    ignored so an import doesn't hammer the saves quota — on Chrome via the
+ *    onImportBegan/onImportEnded bracket, and on EVERY browser via the node's
+ *    `dateAdded` (lib/native-sync-import.ts): Firefox has no import events at
+ *    all, and importers/restores/Sync preserve the original creation time, so a
+ *    node older than a minute when we hear about it is backfill, not a live add.
  *  - Removing a whole folder fires ONE onRemoved for the folder; children
  *    don't report, so their mirrors stay. Documented in the settings copy.
  */
@@ -207,6 +211,15 @@ export function registerNativeSync(): void {
   if (BROWSER === "safari") return;
 
   browser.bookmarks.onCreated.addListener((_id, node) => {
+    // Backfill gate (imports/restores/Sync): the cross-browser twin of the
+    // onImportBegan/onImportEnded bracket below — Firefox never implemented
+    // those events, so without this an import mirrored every node.
+    if (isBackfilledNode(node.dateAdded)) {
+      diag("nativeSync", "add skipped (backfilled node)", {
+        ageMs: Date.now() - (node.dateAdded ?? Date.now()),
+      });
+      return;
+    }
     void mirrorAdd(node.url, node.title);
   });
   browser.bookmarks.onRemoved.addListener((_id, info) => {

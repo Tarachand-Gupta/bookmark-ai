@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { diag } from "@/lib/diag";
 
 interface Props {
   fallback: ReactNode;
@@ -10,15 +11,19 @@ interface State {
 }
 
 /**
- * Catches a synchronous throw from the ClerkProvider subtree — most importantly
- * `@clerk/chrome-extension`'s `createClerkClient()`, whose `validateManifest()`
- * throws inside ClerkProvider's effect on any manifest that lacks a top-level
- * `host_permissions` key while syncHost is set (MV2 = Firefox/Safari). React
- * unmounts the whole root on an uncaught render/effect error, which is what
- * blanked the popup; this boundary renders `fallback` instead so a Clerk init
- * failure can never blank the popup again.
+ * Last line of defense for the popup: React unmounts the WHOLE root on an
+ * uncaught render/effect error, which blanks the popup with no explanation.
+ * This boundary renders `fallback` instead, so whatever throws, the user still
+ * gets a working link into the web app.
+ *
+ * History: this used to exist specifically for `@clerk/chrome-extension`'s
+ * `<ClerkProvider>`, whose `validateManifest()` threw inside its effect on
+ * Firefox (MV2 normalization strips `host_permissions` from
+ * `runtime.getManifest()`). The popup no longer mounts a Clerk client at all
+ * (see main.tsx), so today this is a generic guard — kept because "a crash
+ * blanks the popup" is a failure mode worth ruling out permanently.
  */
-export class ClerkBoundary extends Component<Props, State> {
+export class PopupErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false };
 
   static getDerivedStateFromError(): State {
@@ -26,7 +31,15 @@ export class ClerkBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error("[Bookmark AI] Clerk failed to initialize; showing fallback popup.", error, info);
+    console.error("[Bookmark AI] popup crashed; showing fallback.", error, info);
+    // Breadcrumb in the dev log too: a Firefox/Safari popup has no inspectable
+    // console in the normal test loop, and a fallback on screen tells nobody
+    // WHAT threw. Name + message only — never a token/cookie.
+    diag("popup", "render error caught", {
+      name: error?.name ?? "Error",
+      message: String(error?.message ?? error).slice(0, 300),
+      browser: import.meta.env.BROWSER,
+    });
   }
 
   render(): ReactNode {

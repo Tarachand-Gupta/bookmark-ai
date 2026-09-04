@@ -7,13 +7,12 @@ import { Button } from "./ui/button";
 import { ExternalLinkIcon } from "./ui/icons";
 
 /**
- * Fallback rendered by ClerkBoundary when `@clerk/chrome-extension` fails to
- * initialize (e.g. its `validateManifest` throws on a browser build). Uses no
- * Clerk hooks — the whole ClerkProvider subtree is gone at this point — and
- * keeps the popup useful with a one-tap link into the web app, where sign-in
- * and saving still work.
+ * Rendered by PopupErrorBoundary when the popup tree throws. Uses nothing from
+ * the crashed subtree — just the shared shell/header and a one-tap link into
+ * the web app, where saving and browsing still work. Same shape as the sign-in
+ * gate, so even the failure state doesn't reshape the popup.
  */
-export function ClerkUnavailable() {
+export function PopupFallback() {
   const [webUrl, setWebUrl] = useState<string>(DEFAULT_WEB_URL);
 
   useEffect(() => {
@@ -25,8 +24,8 @@ export function ClerkUnavailable() {
       <Header />
 
       <p className="text-[11px] leading-snug text-muted-foreground">
-        Sign-in is unavailable in this browser build. Open the web app to save and browse your
-        bookmarks.
+        The popup ran into a problem. Open the web app to save and browse your bookmarks — then
+        reopen this popup.
       </p>
 
       <Button variant="primary" onClick={() => openApp(webUrl)}>

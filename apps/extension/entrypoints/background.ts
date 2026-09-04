@@ -25,8 +25,10 @@ import {
 } from "@/lib/device-token";
 import { diag } from "@/lib/diag";
 import { fullName } from "@/lib/identity";
+import { patchGetManifest } from "@/lib/manifest-shim";
 import { MintGate } from "@/lib/mint-gate";
 import { getNativeSession, getNativeSessionToken, nativeSignOut } from "@/lib/native-session";
+import { fetchWithTimeout } from "@/lib/net";
 import { PerfTrace } from "@/lib/perf";
 import {
   drainNativeSyncQueue,
@@ -473,7 +475,11 @@ async function mintDeviceToken(options: { force?: boolean } = {}): Promise<boole
   }
   const base = await getApiBaseUrl();
   try {
-    const res = await fetch(`${base}/api/device-token`, {
+    // Bounded (lib/net.ts): this mint is awaited inside `remintDeviceToken`, i.e.
+    // inside auth-refresh's SINGLE-FLIGHT promise — an unbounded fetch that
+    // stalled on a network switch would wedge every 401 retry on every target
+    // for the worker's lifetime (the 2026-09-02 outage class).
+    const res = await fetchWithTimeout(`${base}/api/device-token`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: "{}",
@@ -531,7 +537,9 @@ type DeviceProbe =
 async function probeDeviceToken(token: string, scope: string): Promise<DeviceProbe | null> {
   const base = await getApiBaseUrl();
   try {
-    const res = await fetch(`${base}/api/me`, {
+    // Bounded: the popup blocks its whole UI on `handleGetUser`, which awaits
+    // this probe — a hung fetch here is a popup that spins to its boot timeout.
+    const res = await fetchWithTimeout(`${base}/api/me`, {
       headers: { accept: "application/json", authorization: `Bearer ${token}` },
     });
     diag(scope, "device /api/me", { status: res.status });
@@ -923,6 +931,18 @@ async function authTick(reason: "boot" | "alarm"): Promise<void> {
 
 export default defineBackground(() => {
   diag("bg", "boot", { browser: import.meta.env.BROWSER, syncHost: CLERK_SYNC_HOST });
+  // FIREFOX (MV2) ONLY, and BEFORE the first `createClerkClient`: Firefox's
+  // `runtime.getManifest()` returns the normalized manifest, which drops the
+  // MV3-only `host_permissions` key — and the Clerk SDK's `validateManifest`
+  // then throws "Missing host_permissions", killing the SDK rung (Path A) on
+  // Firefox while Chrome sails through. The shim hands the SDK the host
+  // patterns WXT folded into `permissions` (see lib/manifest-shim.ts). Inlined
+  // by Vite: the whole block is dead code in the Chrome/Safari bundles.
+  if (import.meta.env.BROWSER === "firefox") {
+    const runtime = (globalThis as { browser?: { runtime?: Parameters<typeof patchGetManifest>[0] } })
+      .browser?.runtime;
+    diag("bg", "clerk manifest shim", { outcome: patchGetManifest(runtime) });
+  }
   setAuthTokenProvider(getSessionToken);
   // The fresh-mint rung of the 401 recovery ladder (lib/auth-refresh.ts). Every
   // authFetch 401 on every target now routes through here, which is what removes
@@ -967,8 +987,11 @@ export default defineBackground(() => {
           return bridged;
         }
       } else if (appOrigin && target.origin !== appOrigin) {
+        // Bounded like every other live-server call: this is the Safari leg of
+        // the live push, and an unbounded stall here is exactly what wedged the
+        // checkpoint's flushing guard on Chrome.
         const withBearer = (t: string): Promise<Response> =>
-          fetch(url, {
+          fetchWithTimeout(url, {
             ...init,
             headers: {
               ...(init.headers as Record<string, string> | undefined),
@@ -986,7 +1009,7 @@ export default defineBackground(() => {
         }
         diag("live", "live call unauthed", { path: target.pathname });
       }
-      return fetch(url, { ...init, credentials: "include" });
+      return fetchWithTimeout(url, { ...init, credentials: "include" });
     });
   }
 
