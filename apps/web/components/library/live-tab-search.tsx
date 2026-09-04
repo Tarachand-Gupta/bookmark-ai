@@ -45,7 +45,7 @@ export function LiveTabSearch({
             type="button"
             onClick={() => onChange("")}
             aria-label="Clear tab filter"
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="cursor-pointer absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <X className="size-4" aria-hidden />
           </button>

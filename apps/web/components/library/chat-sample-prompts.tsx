@@ -59,7 +59,7 @@ export interface ChatSamplePromptsProps {
  *    stretched edge-to-edge across the ~1000px expanded panel the tiles were
  *    mostly empty space (owner feedback).
  *  - Clicking a card SENDS. Auto-send on an explicit click is right — the user
- *    picked a complete question. Real <button>s: tab-reachable, labelled.
+ *    picked a complete question. Real <button className="cursor-pointer">s: tab-reachable, labelled.
  */
 export function ChatSamplePrompts({ onPick, className }: ChatSamplePromptsProps) {
   // SSR-stable order first; shuffled once after mount (see doc comment).
@@ -174,7 +174,7 @@ function PromptGrid({
             type="button"
             onClick={() => onPick(prompt.text)}
             className={cn(
-              "group flex items-center gap-2 rounded-lg border bg-background px-2.5 py-2 text-left text-xs leading-snug transition-colors",
+              "cursor-pointer group flex items-center gap-2 rounded-lg border bg-background px-2.5 py-2 text-left text-xs leading-snug transition-colors",
               "hover:border-primary/40 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               // Wide: a tile with the icon and question grouped together (a
               // justify-between here left a void in the card's middle — owner

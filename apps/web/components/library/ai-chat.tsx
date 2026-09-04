@@ -4,27 +4,28 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type ToolUIPart, type UIMessage } from "ai";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import type { AiUsage } from "@bookmark-ai/types";
 import {
-  Check,
+  DefaultChatTransport,
+  isFileUIPart,
+  isToolUIPart,
+  type ChatStatus,
+  type FileUIPart,
+  type UIMessage,
+  type UIMessagePart,
+  type UIDataTypes,
+  type UITools,
+} from "ai";
+import { AI_SOURCE_HEADER, CONVERSATION_ID_HEADER, type AiUsage } from "@bookmark-ai/types";
+import { skillsCreatedIn } from "@/lib/chat-tools";
+import { notifySkillsChanged } from "@/lib/skills";
+import {
+  AlertTriangle,
   ChevronDown,
-  Copy,
-  Database,
-  ExternalLink,
-  FileText,
-  Folder,
-  Globe,
-  Layers,
-  Link2,
+  Ellipsis,
   Maximize2,
   Minimize2,
   Plus,
-  Radio,
   RotateCw,
-  Search,
   Sparkles,
   X,
 } from "lucide-react";
@@ -33,21 +34,26 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { Loader } from "@/components/ai-elements/loader";
-import { safeHref } from "@/lib/safe-href";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputBody,
   PromptInputFooter,
+  PromptInputProvider,
   PromptInputSubmit,
   PromptInputTextarea,
+  usePromptInputController,
+  type PromptInputError,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { deviceFreshness, formatDeviceAge } from "@/lib/live-format";
 import {
   authHeaders,
   deleteChatConversation,
@@ -57,79 +63,21 @@ import {
   type ChatConversationSummary,
   type LibraryFilters,
 } from "@/lib/api";
+import { AI_MODE_COPY, AI_NOTE_HEADER, describeAiNote, resolveAiMode } from "@/lib/ai-mode";
+import { attachmentAcceptAttribute, describeAttachmentServerError } from "@/lib/chat-attachments";
+import { prepareAttachments } from "@/lib/chat-attachments-browser";
 import { AiCreditsCallout } from "./ai-credits-meter";
 import { AiSetupCard } from "./ai-setup-card";
-import { ChatSamplePrompts } from "./chat-sample-prompts";
+import { AttachButton, ChatDropZone, ComposerAttachments, MessageFiles } from "./chat-attachments";
 import { ConversationHistory } from "./chat-conversation-history";
 import { ChatLimitCard, type ChatLimitInfo } from "./chat-limit-card";
+import { Markdown } from "./chat-markdown";
+import { ReasoningPart } from "./chat-reasoning";
+import { ChatSamplePrompts } from "./chat-sample-prompts";
 import { ChatThreadSkeleton } from "./chat-thread-skeleton";
-
-interface BookmarkHit {
-  id: string;
-  title: string;
-  url: string;
-  category: string;
-  tags: string[];
-  day: string;
-  score: number;
-}
-
-interface SearchToolOutput {
-  mode: string;
-  fallback: boolean;
-  results: BookmarkHit[];
-}
-
-interface SqlToolOutput {
-  columns?: string[];
-  rows?: unknown[][];
-  rowCount?: number;
-  truncated?: boolean;
-  error?: string;
-}
-
-interface WebSearchOutput {
-  results: { title: string; url: string; snippet: string }[];
-}
-
-interface FetchUrlOutput {
-  url?: string;
-  title?: string | null;
-  text?: string;
-  truncated?: boolean;
-  error?: string;
-}
-
-interface SessionHit {
-  id: string;
-  name: string;
-  tabCount: number;
-  browser: string;
-  savedAt: string;
-  tabs: { title: string; url: string }[];
-}
-
-interface SessionsToolOutput {
-  total: number;
-  sessions: SessionHit[];
-}
-
-interface LiveDeviceHit {
-  label: string;
-  browser: string;
-  lastSeenAgeSeconds: number;
-  tabCount: number;
-  hiddenTabCount: number;
-  windows: { tabs: { title: string; url: string }[] }[];
-}
-
-/** listLiveTabs output: `{enabled:false}` = sharing off, `{error}` = unavailable,
- * else the compacted live devices. Discriminated by which field is present. */
-interface LiveTabsToolOutput {
-  enabled?: boolean;
-  error?: string;
-  devices?: LiveDeviceHit[];
-}
+import { ThinkingIndicator } from "./chat-thinking";
+import { ToolCallCard } from "./chat-tool-card";
+import { SkillsDialog, SkillsIcon } from "./skills-settings";
 
 export interface AiChatProps {
   onClose: () => void;
@@ -143,10 +91,43 @@ export interface AiChatProps {
  * this greeting replaced, so anyone who already dismissed that stays dismissed. */
 const GREETING_DISMISSED = "bmk:ai-key-banner-dismissed";
 
+/** The hidden file input's filter: every allowed extension + MIME (CONTRACT §4). */
+const ATTACHMENT_ACCEPT = attachmentAcceptAttribute();
+
+/** The `X-Ai-Source` header value that earns a note under the reply (CONTRACT §1). */
+const OWN_FALLBACK_SOURCE = "own-fallback";
+
+type AnyPart = UIMessagePart<UIDataTypes, UITools>;
+
+/** IANA zone for the body's `timezone` field — the prompt uses it for "today". */
+function clientTimezone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Does this message already put SOMETHING on screen? Decides whether the
+ * "Thinking" placeholder is still needed for the in-flight assistant turn: an
+ * empty text part or a bare `step-start` is nothing; a streaming reasoning part
+ * (even before its first delta) renders its own "Thinking…" row and counts.
+ */
+function hasVisibleContent(message: UIMessage): boolean {
+  return message.parts.some((part) => {
+    if (part.type === "text") return part.text.trim().length > 0;
+    if (part.type === "reasoning") return part.state === "streaming" || part.text.trim().length > 0;
+    if (part.type === "file" || part.type === "dynamic-tool") return true;
+    return isToolUIPart(part);
+  });
+}
+
 /**
  * Conversational search over the library. The agent (see app/api/chat/route.ts)
- * decides between the full-text and semantic search tools; every tool call
- * renders as a status header + always-visible bookmark result cards.
+ * picks its tools; every part type it can stream — text, reasoning, tool calls
+ * in all four states, files — renders here (CONTRACT §6), plus attachments in
+ * the composer (§4) and the `{ message, conversationId }` protocol (§5).
  */
 export function AiChat({ onClose, onFilter }: AiChatProps) {
   // The adopted conversation id — a ref so the transport reads the CURRENT value
@@ -155,45 +136,105 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [limitInfo, setLimitInfo] = useState<ChatLimitInfo | null>(null);
 
+  // `X-Ai-Source` per reply: the in-flight value (state, for the message being
+  // streamed) and, once a turn finishes, a message-id → source map so the note
+  // stays under the right reply as the thread grows.
+  const [liveAiSource, setLiveAiSource] = useState<string | null>(null);
+  const liveAiSourceRef = useRef<string | null>(null);
+  const aiSourceByMessage = useRef(new Map<string, string>());
+  // `X-Ai-Note` (BYOK rule): "own-key-incomplete" earns a sentence + a link to
+  // Settings under the reply. Same live/per-message bookkeeping as the source.
+  const [liveAiNote, setLiveAiNote] = useState<string | null>(null);
+  const liveAiNoteRef = useRef<string | null>(null);
+  const aiNoteByMessage = useRef(new Map<string, string>());
+
+  // ── Attachments: rejections surface as one line under the composer ──────────
+  // Both the client-side pipeline (prepareAttachments) and the server's typed
+  // 400/413/415 bodies land here. A server rejection also flags the turn so the
+  // generic "Something went wrong" box stays hidden and the un-sent user message
+  // is lifted back out of the transcript (see the effect below).
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const attachErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showAttachError = useCallback((message: string, ms = 8000) => {
+    setAttachError(message);
+    if (attachErrorTimer.current) clearTimeout(attachErrorTimer.current);
+    attachErrorTimer.current = setTimeout(() => setAttachError(null), ms);
+  }, []);
+  useEffect(
+    () => () => {
+      if (attachErrorTimer.current) clearTimeout(attachErrorTimer.current);
+    },
+    [],
+  );
+  const [attachmentRejected, setAttachmentRejected] = useState(false);
+
   // Custom fetch = the persistence + budget hook. It attaches auth (matching the
   // rest of lib/api), adopts the server-minted conversation id from the
-  // X-Conversation-Id response header, and detects the 402 free-limit body
-  // before the SDK turns it into an opaque stream error.
-  const chatFetch = useCallback<typeof fetch>(async (input, init) => {
-    const headers = {
-      ...(init?.headers as Record<string, string> | undefined),
-      ...(await authHeaders()),
-    };
-    const res = await fetch(input, { ...init, headers });
-    const cid = res.headers.get("X-Conversation-Id");
-    if (cid && conversationIdRef.current !== cid) {
-      conversationIdRef.current = cid;
-      setActiveId(cid);
-    }
-    if (res.status === 402) {
-      const body = (await res
-        .clone()
-        .json()
-        .catch(() => null)) as
-        | { error?: string; usedTokens?: number; limitTokens?: number }
-        | null;
-      if (body?.error === "free-limit-exceeded") {
-        setLimitInfo({ usedTokens: body.usedTokens, limitTokens: body.limitTokens });
+  // X-Conversation-Id response header, reads X-Ai-Source / X-Ai-Note, and
+  // detects the 402 free-limit body and the typed attachment rejections before
+  // the SDK turns them into an opaque stream error.
+  const chatFetch = useCallback<typeof fetch>(
+    async (input, init) => {
+      const headers = {
+        ...(init?.headers as Record<string, string> | undefined),
+        ...(await authHeaders()),
+      };
+      const res = await fetch(input, { ...init, headers });
+      const cid = res.headers.get(CONVERSATION_ID_HEADER);
+      if (cid && conversationIdRef.current !== cid) {
+        conversationIdRef.current = cid;
+        setActiveId(cid);
       }
-    }
-    return res;
-  }, []);
+      const source = res.headers.get(AI_SOURCE_HEADER);
+      liveAiSourceRef.current = source;
+      setLiveAiSource(source);
+      const note = res.headers.get(AI_NOTE_HEADER);
+      liveAiNoteRef.current = note;
+      setLiveAiNote(note);
+      if (res.status === 402) {
+        const body = (await res
+          .clone()
+          .json()
+          .catch(() => null)) as
+          | { error?: string; usedTokens?: number; limitTokens?: number }
+          | null;
+        if (body?.error === "free-limit-exceeded") {
+          setLimitInfo({ usedTokens: body.usedTokens, limitTokens: body.limitTokens });
+        }
+      } else if (!res.ok) {
+        const body: unknown = await res
+          .clone()
+          .json()
+          .catch(() => null);
+        const copy = describeAttachmentServerError(res.status, body);
+        if (copy) {
+          setAttachmentRejected(true);
+          showAttachError(copy, 12000);
+        }
+      }
+      return res;
+    },
+    [showAttachError],
+  );
 
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
         api: "/api/chat",
         fetch: chatFetch,
-        // Pin the wire format: full history + the (optional) conversation id so
-        // the server appends to an existing thread or mints a new one.
-        prepareSendMessagesRequest: ({ messages }) => ({
-          body: { messages, conversationId: conversationIdRef.current ?? undefined },
-        }),
+        // Wire format (CONTRACT §5): history lives on the server, so once a
+        // conversation exists only the NEW user message travels, with the id.
+        // The first turn (no id yet) and a regenerate (the server must replace
+        // its stored tail, not append) send the full array — the legacy shape
+        // the route still accepts. `timezone` rides along for the prompt's "today".
+        prepareSendMessagesRequest: ({ messages, trigger }) => {
+          const conversationId = conversationIdRef.current ?? undefined;
+          const timezone = clientTimezone();
+          if (conversationId && trigger === "submit-message") {
+            return { body: { message: messages.at(-1), conversationId, timezone } };
+          }
+          return { body: { messages, conversationId, timezone } };
+        },
       }),
     [chatFetch],
   );
@@ -203,6 +244,7 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
   // Title for a just-loaded thread until the list refresh carries its own.
   const [pendingTitle, setPendingTitle] = useState<string | null>(null);
   // Loading a stored conversation: the GET + setMessages can take a few seconds,
@@ -223,29 +265,43 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
     }
   }, []);
 
-  const { messages, sendMessage, setMessages, regenerate, clearError, status, error } = useChat({
-    transport,
-    // A finished turn may have created the conversation (or renamed it) — pull
-    // the fresh list so the header title + history reflect it. It also SPENT
-    // credits: refresh the usage too, so a "New conversation" greeting shows
-    // this session's spend instead of the mount-time snapshot (QA finding).
-    onFinish: () => {
-      void refreshConversations();
-      void refreshAiSettings();
-    },
-  });
+  const { messages, sendMessage, setMessages, regenerate, clearError, status, error, stop } =
+    useChat({
+      transport,
+      // A finished turn may have created the conversation (or renamed it) — pull
+      // the fresh list so the header title + history reflect it. It also SPENT
+      // credits: refresh the usage too, so a "New conversation" greeting shows
+      // this session's spend instead of the mount-time snapshot (QA finding).
+      onFinish: ({ message }) => {
+        if (liveAiSourceRef.current) {
+          aiSourceByMessage.current.set(message.id, liveAiSourceRef.current);
+        }
+        if (liveAiNoteRef.current) {
+          aiNoteByMessage.current.set(message.id, liveAiNoteRef.current);
+        }
+        void refreshConversations();
+        void refreshAiSettings();
+        // createSkill / installSkill added rows: an open Skills manager refreshes.
+        if (skillsCreatedIn(message.parts) > 0) notifySkillsChanged();
+      },
+    });
 
-  // FREE CREDITS, FIRST OPEN. A user who has never set a key is running on the
-  // shared AI, which is free and metered weekly — so the first thing an empty
-  // conversation shows is what they've got (credit meter) and, secondarily, that
-  // their own key is an option. This REPLACED a one-line "Using the shared AI"
-  // banner pinned above the composer: the line was too quiet to answer "is this
-  // going to cost me anything?", and the full setup card in that slot was 565px
-  // of chrome above a ~150px conversation. Living in the EMPTY STATE costs the
-  // conversation nothing — it's gone the moment a message exists.
-  //
-  // "No user key" = apiKeySet false; the meter itself comes from settings.aiUsage.
-  const [noUserKey, setNoUserKey] = useState(false);
+  // A server-side attachment rejection means the message never left: take the
+  // optimistic user bubble back out of the thread (the composer line says why)
+  // and clear the SDK's error so the retry box doesn't offer to resend it.
+  useEffect(() => {
+    if (status !== "error" || !attachmentRejected) return;
+    setMessages((prev) => (prev.at(-1)?.role === "user" ? prev.slice(0, -1) : prev));
+    clearError();
+  }, [status, attachmentRejected, setMessages, clearError]);
+
+  // FREE CREDITS, FIRST OPEN. A user on the included free AI is metered weekly —
+  // so the first thing an empty conversation shows is what they've got (credit
+  // meter) and, secondarily, that their own key is an option. Living in the
+  // EMPTY STATE costs the conversation nothing — it's gone the moment a message
+  // exists. "On the free AI" = the explicit `aiMode` (CONTRACT §1), derived
+  // from `apiKeySet` for a server that predates the field.
+  const [includedMode, setIncludedMode] = useState(false);
   const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [greetingDismissed, setGreetingDismissed] = useState(false);
@@ -265,7 +321,7 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
     try {
       const { settings } = await getSettings();
       if (!settingsFetchAlive.current) return;
-      setNoUserKey(!settings.apiKeySet);
+      setIncludedMode(resolveAiMode(settings) === "included");
       setAiUsage(settings.aiUsage);
     } catch {
       // Leave the greeting as-is if settings can't load — don't block the chat.
@@ -299,20 +355,33 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
     void refreshConversations();
   }, [refreshConversations]);
 
+  const onAttachError = useCallback(
+    (err: PromptInputError) => showAttachError(err.message),
+    [showAttachError],
+  );
+
   /** The single send path (composer submit and sample-prompt click both use it).
-   * A new send clears any stale limit card; a fresh 402 re-raises it. */
+   * A new send clears any stale limit card; a fresh 402 re-raises it. Files
+   * arrive as data-URL `file` parts already classified and downscaled. */
   const send = useCallback(
-    (text: string) => {
+    (text: string, files: FileUIPart[] = []) => {
       const trimmed = text.trim();
-      if (!trimmed) return;
+      if (!trimmed && files.length === 0) return;
       setLimitInfo(null);
-      void sendMessage({ text: trimmed });
+      setAttachError(null);
+      setAttachmentRejected(false);
+      liveAiSourceRef.current = null;
+      setLiveAiSource(null);
+      liveAiNoteRef.current = null;
+      setLiveAiNote(null);
+      if (trimmed) void sendMessage({ text: trimmed, files });
+      else void sendMessage({ files });
     },
     [sendMessage],
   );
 
   const handleSubmit = (message: PromptInputMessage) => {
-    send(message.text ?? "");
+    send(message.text ?? "", message.files ?? []);
   };
 
   // ── Thread lifecycle: new / load / delete ─────────────────────────────────────
@@ -358,8 +427,10 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
         conversationIdRef.current = conversation.id;
         setActiveId(conversation.id);
         setPendingTitle(conversation.title);
-        // Stored messages are UIMessage-compatible ({id, role, parts}); the
-        // structural cast is the seam until packages/types/chat.ts is wired in.
+        // Stored messages are UIMessage-compatible ({id, role, parts}) with the
+        // parts kept verbatim — file, reasoning and tool parts render exactly
+        // like the live ones. The structural cast is the seam until
+        // packages/types/chat.ts types the parts.
         setMessages(loaded as unknown as UIMessage[]);
       } catch {
         conversationIdRef.current = prev.conversationId;
@@ -393,16 +464,18 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
   );
 
   // After the user saves their own key from the limit card, retry the send —
-  // their key is unmetered, so the same last message now succeeds.
+  // their key is unmetered, so the same last message now succeeds. The card
+  // also calls this on a mode switch / key removal, so re-read the mode rather
+  // than assuming.
   const handleKeySaved = useCallback(() => {
-    setNoUserKey(false);
+    void refreshAiSettings();
     setKeyFormOpen(false);
     if (limitInfo) {
       setLimitInfo(null);
       clearError();
       void regenerate();
     }
-  }, [limitInfo, clearError, regenerate]);
+  }, [limitInfo, clearError, regenerate, refreshAiSettings]);
 
   const headerTitle =
     conversations.find((c) => c.id === activeId)?.title ?? pendingTitle ?? "New conversation";
@@ -419,14 +492,39 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
     />
   );
 
-  // Header: title+chevron history popover on the left, new/expand/close on the right.
+  // Header: ⋯ menu (the home for Skills and future items) + title/chevron history
+  // popover on the left; new/expand/close on the right.
   const header = (
     <div className="flex shrink-0 items-center gap-1 border-b px-2 py-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label="More options"
+            title="More"
+          >
+            <Ellipsis className="size-4" aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" sideOffset={6} className="w-48">
+          <DropdownMenuItem onSelect={() => setSkillsOpen(true)}>
+            <SkillsIcon aria-hidden />
+            Skills…
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={openAiSettings}>
+            <Sparkles aria-hidden />
+            AI settings…
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
       <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted"
+            className="cursor-pointer flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted"
             aria-label="Conversation history"
           >
             <Sparkles className="size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -491,7 +589,49 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
   // waiting for the fetch popped the card in ~3s late and shifted the layout
   // (QA finding). Own-key users get a brief skeleton→unmount instead, which is
   // the rarer and gentler wrong.
-  const showGreeting = (settingsLoading || noUserKey) && !greetingDismissed;
+  const showGreeting = (settingsLoading || includedMode) && !greetingDismissed;
+
+  // INSTANT PLACEHOLDER (CONTRACT §6): the moment a message is sent, an
+  // assistant turn appears with a shimmering "Thinking" — until the real turn
+  // has something of its own to show.
+  const busy = status === "submitted" || status === "streaming";
+  const lastMessage = messages.at(-1);
+  const showThinking =
+    busy &&
+    !loadingConversation &&
+    (!lastMessage || lastMessage.role !== "assistant" || !hasVisibleContent(lastMessage));
+
+  const renderPart = (message: UIMessage, part: AnyPart, index: number, live: boolean) => {
+    const key = `${message.id}-${index}`;
+    switch (part.type) {
+      case "text":
+        // Assistant answers are markdown (incl. GFM tables); user messages stay
+        // verbatim plain text.
+        return message.role === "assistant" ? (
+          <Markdown key={key}>{part.text}</Markdown>
+        ) : (
+          <span key={key} className="whitespace-pre-wrap">
+            {part.text}
+          </span>
+        );
+      case "reasoning":
+        return <ReasoningPart key={key} part={part} live={live} />;
+      case "dynamic-tool":
+        return <ToolCallCard key={part.toolCallId} part={part} onFilter={onFilter} />;
+      // Files render together above the text (MessageFiles); the rest are
+      // bookkeeping the user never needs to see.
+      case "file":
+      case "step-start":
+      case "source-url":
+      case "source-document":
+        return null;
+      default:
+        if (isToolUIPart(part)) {
+          return <ToolCallCard key={part.toolCallId} part={part} onFilter={onFilter} />;
+        }
+        return null;
+    }
+  };
 
   const thread = (
     <Conversation className="flex-1">
@@ -509,7 +649,7 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
               type="button"
               onClick={() => setLoadError(null)}
               aria-label="Dismiss"
-              className="shrink-0 rounded p-1 transition-colors hover:bg-destructive/10"
+              className="cursor-pointer shrink-0 rounded p-1 transition-colors hover:bg-destructive/10"
             >
               <X className="size-3.5" aria-hidden />
             </button>
@@ -520,133 +660,135 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
           <ChatThreadSkeleton />
         ) : (
           <>
-        {messages.length === 0 && (
-          // THREE stacked blocks, not `ConversationEmptyState` — that primitive
-          // assumes it owns the whole pane (size-full, centered), and the empty
-          // state now carries a free-credits greeting on top and rotating sample
-          // prompts underneath the icon/heading. flex-1 fills the min-h-full
-          // column above; the min-h floor keeps everything intact (scrolling
-          // instead of clipping) in a short panel, and p-4 rather than p-8 —
-          // at the dock's 340px floor the extra padding squeezed the description
-          // to four words a line.
-          <div className="not-prose flex min-h-[13rem] flex-1 flex-col gap-4 p-4">
-            {showGreeting && (
-              <AiCreditsCallout
-                usage={aiUsage}
-                loading={settingsLoading}
-                onDismiss={dismissGreeting}
-                className="shrink-0"
-                action={
-                  <button
-                    type="button"
-                    onClick={openAiSettings}
-                    className="font-medium underline-offset-2 transition-opacity hover:underline hover:opacity-80"
-                  >
-                    or use your own key →
-                  </button>
-                }
+            {messages.length === 0 && (
+              // THREE stacked blocks, not `ConversationEmptyState` — that primitive
+              // assumes it owns the whole pane (size-full, centered), and the empty
+              // state now carries a free-credits greeting on top and rotating sample
+              // prompts underneath the icon/heading. flex-1 fills the min-h-full
+              // column above; the min-h floor keeps everything intact (scrolling
+              // instead of clipping) in a short panel, and p-4 rather than p-8 —
+              // at the dock's 340px floor the extra padding squeezed the description
+              // to four words a line.
+              <div className="not-prose flex min-h-[13rem] flex-1 flex-col gap-4 p-4">
+                {showGreeting && (
+                  <AiCreditsCallout
+                    usage={aiUsage}
+                    loading={settingsLoading}
+                    onDismiss={dismissGreeting}
+                    className="shrink-0"
+                    action={
+                      <button
+                        type="button"
+                        onClick={openAiSettings}
+                        className="cursor-pointer font-medium underline-offset-2 transition-opacity hover:underline hover:opacity-80"
+                      >
+                        or use your own key →
+                      </button>
+                    }
+                  />
+                )}
+                {/* The original icon + heading, unchanged in wording — centered in
+                    whatever height is left between the greeting and the prompts. */}
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                  <Sparkles className="size-8 text-muted-foreground" aria-hidden />
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-medium">Ask anything about your bookmarks</h3>
+                    <p className="text-sm text-muted-foreground">
+                      The agent searches your library, runs SQL for counts and trends, and can
+                      search the web — then answers with citations. Attach an image or a document
+                      to ask about it.
+                    </p>
+                  </div>
+                </div>
+                {/* Rotation lives entirely in this component and unmounts with the
+                    empty state, so it stops the instant a message exists. */}
+                <ChatSamplePrompts onPick={send} className="shrink-0" />
+              </div>
+            )}
+            {messages.map((message, mi) => {
+              const isLast = mi === messages.length - 1;
+              const live = isLast && busy;
+              const files = message.parts.filter(isFileUIPart);
+              const source =
+                aiSourceByMessage.current.get(message.id) ?? (live ? liveAiSource : null);
+              const noteCopy = describeAiNote(
+                aiNoteByMessage.current.get(message.id) ?? (live ? liveAiNote : null),
+              );
+              return (
+                <Message from={message.role} key={message.id}>
+                  {/* w-full (not w-fit) so wide tool cards truncate instead of
+                      propagating their intrinsic width and stretching the page. */}
+                  <MessageContent className={message.role === "assistant" ? "w-full" : undefined}>
+                    {files.length > 0 && <MessageFiles files={files} />}
+                    {message.parts.map((part, i) => renderPart(message, part, i, live))}
+                    {message.role === "assistant" && source === OWN_FALLBACK_SOURCE && (
+                      <p className="not-prose text-[11px] leading-relaxed text-muted-foreground">
+                        {AI_MODE_COPY.ownFallback}
+                      </p>
+                    )}
+                    {message.role === "assistant" && noteCopy && (
+                      <p className="not-prose flex flex-wrap items-center gap-x-1.5 text-[11px] leading-relaxed text-amber-700 dark:text-amber-500">
+                        <AlertTriangle className="size-3 shrink-0" aria-hidden />
+                        <span>{noteCopy}</span>
+                        <button
+                          type="button"
+                          onClick={openAiSettings}
+                          className="cursor-pointer font-medium underline-offset-2 hover:underline"
+                        >
+                          Open AI settings →
+                        </button>
+                      </p>
+                    )}
+                  </MessageContent>
+                </Message>
+              );
+            })}
+            {showThinking && (
+              <Message from="assistant">
+                <MessageContent className="w-full">
+                  <ThinkingIndicator />
+                </MessageContent>
+              </Message>
+            )}
+            {/* Free-budget wall: the inline card replaces the opaque stream error. */}
+            {limitInfo && (
+              <ChatLimitCard info={limitInfo} onConfigure={() => setKeyFormOpen(true)} />
+            )}
+            {/* The one place the full form still appears in the chat — INSIDE the
+                scroller, so it can't shrink the conversation, and only once the user
+                asked for it from a wall that has already stopped the conversation. */}
+            {keyFormOpen && (
+              <AiSetupCard
+                className="not-prose mt-2 w-full"
+                // The wall only appears once the free credits are gone, so the
+                // secondary path is the ONLY path left — open it, don't hide the form
+                // behind a chevron the user has to discover.
+                defaultProviderOpen
+                onSaved={handleKeySaved}
+                onDismiss={() => setKeyFormOpen(false)}
               />
             )}
-            {/* The original icon + heading, unchanged in wording — centered in
-                whatever height is left between the greeting and the prompts. */}
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-              <Sparkles className="size-8 text-muted-foreground" aria-hidden />
-              <div className="space-y-1">
-                <h3 className="text-sm font-medium">Ask anything about your bookmarks</h3>
-                <p className="text-sm text-muted-foreground">
-                  The agent searches your library, runs SQL for counts and trends, and can search
-                  the web — then answers with citations.
-                </p>
+            {/* Non-limit failures get a small retry affordance (the limit has its
+                own card; an attachment rejection its own composer line). */}
+            {error && !limitInfo && !attachmentRejected && (
+              <div className="not-prose flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.05] px-3 py-2 text-xs text-destructive">
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                  Something went wrong. Try again.
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 shrink-0"
+                  onClick={() => {
+                    clearError();
+                    void regenerate();
+                  }}
+                >
+                  <RotateCw className="size-3.5" aria-hidden />
+                  Retry
+                </Button>
               </div>
-            </div>
-            {/* Rotation lives entirely in this component and unmounts with the
-                empty state, so it stops the instant a message exists. */}
-            <ChatSamplePrompts onPick={send} className="shrink-0" />
-          </div>
-        )}
-        {messages.map((message) => (
-          <Message from={message.role} key={message.id}>
-            {/* w-full (not w-fit) so wide tool cards truncate instead of
-                propagating their intrinsic width and stretching the page. */}
-            <MessageContent className={message.role === "assistant" ? "w-full" : undefined}>
-              {message.parts.map((part, i) => {
-                if (part.type === "text") {
-                  // Assistant answers are markdown (incl. GFM tables); user
-                  // messages stay verbatim plain text.
-                  return message.role === "assistant" ? (
-                    <Markdown key={`${message.id}-${i}`}>{part.text}</Markdown>
-                  ) : (
-                    <span key={`${message.id}-${i}`} className="whitespace-pre-wrap">
-                      {part.text}
-                    </span>
-                  );
-                }
-                if (part.type === "tool-searchBookmarks") {
-                  const tool = part as ToolUIPart;
-                  return <SearchToolCall key={tool.toolCallId} part={tool} onFilter={onFilter} />;
-                }
-                if (part.type === "tool-queryDatabase") {
-                  const tool = part as ToolUIPart;
-                  return <SqlToolCall key={tool.toolCallId} part={tool} />;
-                }
-                if (part.type === "tool-webSearch") {
-                  const tool = part as ToolUIPart;
-                  return <WebSearchToolCall key={tool.toolCallId} part={tool} />;
-                }
-                if (part.type === "tool-fetchUrl") {
-                  const tool = part as ToolUIPart;
-                  return <FetchUrlToolCall key={tool.toolCallId} part={tool} />;
-                }
-                if (part.type === "tool-listSessions") {
-                  const tool = part as ToolUIPart;
-                  return <SessionsToolCall key={tool.toolCallId} part={tool} />;
-                }
-                if (part.type === "tool-listLiveTabs") {
-                  const tool = part as ToolUIPart;
-                  return <LiveTabsToolCall key={tool.toolCallId} part={tool} />;
-                }
-                return null;
-              })}
-            </MessageContent>
-          </Message>
-        ))}
-        {/* Free-budget wall: the inline card replaces the opaque stream error. */}
-        {limitInfo && <ChatLimitCard info={limitInfo} onConfigure={() => setKeyFormOpen(true)} />}
-        {/* The one place the full form still appears in the chat — INSIDE the
-            scroller, so it can't shrink the conversation, and only once the user
-            asked for it from a wall that has already stopped the conversation. */}
-        {keyFormOpen && (
-          <AiSetupCard
-            className="not-prose mt-2 w-full"
-            // The wall only appears once the free credits are gone, so the
-            // secondary path is the ONLY path left — open it, don't hide the form
-            // behind a chevron the user has to discover.
-            defaultProviderOpen
-            onSaved={handleKeySaved}
-            onDismiss={() => setKeyFormOpen(false)}
-          />
-        )}
-        {/* Non-limit failures get a small retry affordance (limit has its own card). */}
-        {error && !limitInfo && (
-          <div className="not-prose flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.05] px-3 py-2 text-xs text-destructive">
-            <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-              Something went wrong. Try again.
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 shrink-0"
-              onClick={() => {
-                clearError();
-                void regenerate();
-              }}
-            >
-              <RotateCw className="size-3.5" aria-hidden />
-              Retry
-            </Button>
-          </div>
-        )}
-        {status === "submitted" && <Loader />}
+            )}
           </>
         )}
       </ConversationContent>
@@ -656,8 +798,9 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
 
   const composer = (
     <div className="shrink-0 border-t p-2">
-      <PromptInput onSubmit={handleSubmit}>
+      <PromptInput onSubmit={handleSubmit} accept={ATTACHMENT_ACCEPT} multiple>
         <PromptInputBody>
+          <ComposerAttachments />
           {/* "Ask a follow-up" is a lie on an empty thread — there's nothing to
               follow up on, and it was the only prompt the empty state offered. */}
           <PromptInputTextarea
@@ -668,19 +811,33 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
             }
           />
         </PromptInputBody>
+        {/* Its own row, not squeezed between the paperclip and Send — the
+            rejection copy is a full sentence and needs the width. */}
+        {attachError && (
+          <p
+            role="alert"
+            className="flex items-start gap-1.5 px-3 pb-1.5 text-xs leading-snug text-destructive [overflow-wrap:anywhere]"
+          >
+            <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0">{attachError}</span>
+          </p>
+        )}
         <PromptInputFooter>
-          <PromptInputSubmit status={status} className="ml-auto" />
+          <AttachButton />
+          <ComposerSubmit status={status} onStop={stop} className="ml-auto" />
         </PromptInputFooter>
       </PromptInput>
     </div>
   );
 
+  // The drop zone wraps the WHOLE column: dragging a file anywhere over the chat
+  // raises the target, not just over the composer.
   const chatColumn = (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card">
+    <ChatDropZone className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card">
       {header}
       {thread}
       {composer}
-    </div>
+    </ChatDropZone>
   );
 
   // Expanded: a floating near-fullscreen panel with a small margin. On ≥640px a
@@ -691,14 +848,14 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
   // the docked shell lives inside the sidebar layout whose ancestors form
   // stacking contexts, which would trap this `fixed` overlay underneath the
   // sidebar and top bar.
-  if (expanded) {
-    return createPortal(
+  const shell = expanded ? (
+    createPortal(
       <div className="fixed inset-0 z-[60] flex" role="dialog" aria-modal="true">
         <button
           type="button"
           aria-label="Collapse chat"
           onClick={() => setExpanded(false)}
-          className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
+          className="cursor-pointer absolute inset-0 bg-black/40 backdrop-blur-[1px]"
         />
         <div className="relative m-auto flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-hidden rounded-xl border bg-card shadow-2xl sm:h-[calc(100dvh-3rem)] sm:w-[calc(100vw-3rem)]">
           <aside className="hidden w-64 shrink-0 flex-col border-r sm:flex">
@@ -708,752 +865,54 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
         </div>
       </div>,
       document.body,
-    );
-  }
+    )
+  ) : (
+    // Docked: fills whatever shell ChatPanel provides (side / overlay / full).
+    chatColumn
+  );
 
-  // Docked: fills whatever shell ChatPanel provides (side / overlay / full).
-  return chatColumn;
+  // The attachments provider sits OUTSIDE the docked/expanded switch so a file
+  // pinned in the composer survives toggling the layout (context flows through
+  // the portal). Every incoming file — picker, drop, paste — runs through
+  // prepareAttachments: classify, size-check, downscale, re-encode (§4).
+  return (
+    <PromptInputProvider prepareFiles={prepareAttachments} onError={onAttachError}>
+      {shell}
+      <SkillsDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
+    </PromptInputProvider>
+  );
 }
 
 /**
- * One search-tool invocation: a compact status strip (which tool, the query it
- * ran, live progress / hit count) over the matched bookmarks as rich cards.
+ * The send/stop button. Disabled while there's nothing to send; while a reply
+ * is in flight the same button STOPS it (the square glyph the primitive already
+ * shows for `streaming` finally does what it looks like it does).
  */
-function SearchToolCall({
-  part,
-  onFilter,
+function ComposerSubmit({
+  status,
+  onStop,
+  className,
 }: {
-  part: ToolUIPart;
-  onFilter?: (filters: LibraryFilters) => void;
+  status: ChatStatus;
+  onStop: () => void;
+  className?: string;
 }) {
-  const input = part.input as { query?: string; mode?: string } | undefined;
-  const output = part.output as SearchToolOutput | undefined;
-  const mode = output?.mode ?? input?.mode ?? "hybrid";
-  const semantic = mode === "ai" || mode === "semantic";
-  const label = semantic
-    ? "Semantic search"
-    : mode === "text"
-      ? "Full-text search"
-      : "Bookmark search";
-  const running = part.state === "input-streaming" || part.state === "input-available";
-  const failed = part.state === "output-error";
-  const hits = output?.results.length ?? 0;
-
+  const { textInput, attachments } = usePromptInputController();
+  const empty = textInput.value.trim().length === 0 && attachments.files.length === 0;
+  const busy = status === "submitted" || status === "streaming";
   return (
-    <div className="not-prose mb-1 w-full overflow-hidden rounded-lg border bg-background">
-      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs">
-        {semantic ? (
-          <Sparkles className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        ) : (
-          <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        )}
-        <span className="shrink-0 font-medium">{label}</span>
-        {input?.query && (
-          <span className="line-clamp-1 min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
-            “{input.query}”
-          </span>
-        )}
-        <span className="ml-auto shrink-0 text-muted-foreground">
-          {running ? (
-            <span className="flex items-center gap-1.5">
-              <Loader size={12} />
-              Searching…
-            </span>
-          ) : failed ? (
-            <span className="text-destructive">failed</span>
-          ) : (
-            `${hits} ${hits === 1 ? "match" : "matches"}${output?.fallback ? " · text fallback" : ""}`
-          )}
-        </span>
-      </div>
-      {failed && <p className="px-3 py-2 text-xs text-destructive">{part.errorText}</p>}
-      {output && (
-        <BookmarkHits hits={output.results} showScore={output.mode === "ai"} onFilter={onFilter} />
-      )}
-    </div>
-  );
-}
-
-/** One queryDatabase invocation: the SQL, then a scrollable result table (or error). */
-function SqlToolCall({ part }: { part: ToolUIPart }) {
-  const input = part.input as { sql?: string; purpose?: string } | undefined;
-  const output = part.output as SqlToolOutput | undefined;
-  const running = part.state === "input-streaming" || part.state === "input-available";
-  const failed = part.state === "output-error" || !!output?.error;
-  const rowCount = output?.rowCount ?? output?.rows?.length ?? 0;
-
-  return (
-    <div className="not-prose mb-1 w-full overflow-hidden rounded-lg border bg-background">
-      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs">
-        <Database className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="shrink-0 font-medium">SQL query</span>
-        {input?.purpose && (
-          <span className="line-clamp-1 min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
-            {input.purpose}
-          </span>
-        )}
-        <span className="ml-auto shrink-0 text-muted-foreground">
-          {running ? (
-            <span className="flex items-center gap-1.5">
-              <Loader size={12} />
-              Running…
-            </span>
-          ) : failed ? (
-            <span className="text-destructive">error</span>
-          ) : (
-            `${rowCount} row${rowCount === 1 ? "" : "s"}${output?.truncated ? " · capped" : ""}`
-          )}
-        </span>
-      </div>
-      {input?.sql && (
-        <pre className="overflow-x-auto border-b bg-muted/30 px-3 py-2 text-[11px] leading-relaxed">
-          <code>{input.sql}</code>
-        </pre>
-      )}
-      {(output?.error || (failed && part.errorText)) && (
-        <p className="px-3 py-2 text-xs text-destructive [overflow-wrap:anywhere]">
-          {output?.error ?? part.errorText}
-        </p>
-      )}
-      {output?.columns && output?.rows && (
-        <SqlResultTable columns={output.columns} rows={output.rows} />
-      )}
-    </div>
-  );
-}
-
-/** Compact, horizontally scrollable table for queryDatabase results (first 50 rows). */
-function SqlResultTable({ columns, rows }: { columns: string[]; rows: unknown[][] }) {
-  if (!rows.length) {
-    return <p className="px-3 py-2 text-xs text-muted-foreground">No rows.</p>;
-  }
-  const shown = rows.slice(0, 50);
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-xs">
-        <thead>
-          <tr className="border-b bg-muted/30">
-            {columns.map((c) => (
-              <th key={c} className="px-2 py-1 text-left font-medium [overflow-wrap:anywhere]">
-                {c}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {shown.map((row, ri) => (
-            <tr key={ri} className="border-b last:border-0">
-              {columns.map((_, ci) => (
-                <td key={ci} className="px-2 py-1 align-top [overflow-wrap:anywhere]">
-                  {formatCell(row[ci])}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {rows.length > shown.length && (
-        <p className="px-2 py-1 text-[10px] text-muted-foreground">
-          +{rows.length - shown.length} more row{rows.length - shown.length === 1 ? "" : "s"}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function formatCell(v: unknown): string {
-  if (v === null || v === undefined) return "";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
-/** One webSearch invocation: the query + result links with snippets. */
-function WebSearchToolCall({ part }: { part: ToolUIPart }) {
-  const input = part.input as { query?: string } | undefined;
-  const output = part.output as WebSearchOutput | undefined;
-  const running = part.state === "input-streaming" || part.state === "input-available";
-  const failed = part.state === "output-error";
-  const count = output?.results.length ?? 0;
-
-  return (
-    <div className="not-prose mb-1 w-full overflow-hidden rounded-lg border bg-background">
-      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs">
-        <Globe className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="shrink-0 font-medium">Web search</span>
-        {input?.query && (
-          <span className="line-clamp-1 min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
-            “{input.query}”
-          </span>
-        )}
-        <span className="ml-auto shrink-0 text-muted-foreground">
-          {running ? (
-            <span className="flex items-center gap-1.5">
-              <Loader size={12} />
-              Searching…
-            </span>
-          ) : failed ? (
-            <span className="text-destructive">failed</span>
-          ) : (
-            `${count} result${count === 1 ? "" : "s"}`
-          )}
-        </span>
-      </div>
-      {output &&
-        (count === 0 ? (
-          <p className="px-3 py-2 text-xs text-muted-foreground">No web results.</p>
-        ) : (
-          <ul className="divide-y">
-            {output.results.map((r, i) => {
-              const href = safeHref(r.url);
-              return (
-              <li key={`${r.url}-${i}`} className="px-3 py-2">
-                {href ? (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="line-clamp-1 text-sm font-medium hover:underline [overflow-wrap:anywhere]"
-                  >
-                    {r.title}
-                  </a>
-                ) : (
-                  <span className="line-clamp-1 text-sm font-medium [overflow-wrap:anywhere]">
-                    {r.title}
-                  </span>
-                )}
-                <p className="line-clamp-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                  {hostOf(r.url)}
-                </p>
-                {r.snippet && (
-                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                    {r.snippet}
-                  </p>
-                )}
-              </li>
-              );
-            })}
-          </ul>
-        ))}
-    </div>
-  );
-}
-
-/** One fetchUrl invocation: the page title/URL + a short text preview (or error). */
-function FetchUrlToolCall({ part }: { part: ToolUIPart }) {
-  const input = part.input as { url?: string } | undefined;
-  const output = part.output as FetchUrlOutput | undefined;
-  const running = part.state === "input-streaming" || part.state === "input-available";
-  const failed = part.state === "output-error" || !!output?.error;
-  const shownUrl = output?.url ?? input?.url;
-
-  return (
-    <div className="not-prose mb-1 w-full overflow-hidden rounded-lg border bg-background">
-      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs">
-        <FileText className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="shrink-0 font-medium">Fetched page</span>
-        {shownUrl &&
-          (safeHref(shownUrl) ? (
-            <a
-              href={safeHref(shownUrl)}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="line-clamp-1 min-w-0 text-muted-foreground hover:underline [overflow-wrap:anywhere]"
-            >
-              {hostOf(shownUrl)}
-            </a>
-          ) : (
-            <span className="line-clamp-1 min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
-              {hostOf(shownUrl)}
-            </span>
-          ))}
-        <span className="ml-auto shrink-0 text-muted-foreground">
-          {running ? (
-            <span className="flex items-center gap-1.5">
-              <Loader size={12} />
-              Reading…
-            </span>
-          ) : failed ? (
-            <span className="text-destructive">error</span>
-          ) : (
-            <Link2 className="size-3.5" aria-hidden />
-          )}
-        </span>
-      </div>
-      {(output?.error || (failed && part.errorText)) && (
-        <p className="px-3 py-2 text-xs text-destructive [overflow-wrap:anywhere]">
-          {output?.error ?? part.errorText}
-        </p>
-      )}
-      {output && !output.error && (
-        <div className="px-3 py-2">
-          {output.title && <p className="text-sm font-medium [overflow-wrap:anywhere]">{output.title}</p>}
-          {output.text && (
-            <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-              {output.text.slice(0, 300)}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** hostname without a leading www., falling back to the raw string. */
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-}
-
-/**
- * Guard a data-derived URL before it becomes an `href`. Returns the url only
- * when it parses to http(s); anything else (`javascript:`, `data:`, `chrome:`,
- * garbage) yields undefined so the caller renders plain text instead of a live
- * link. Saved *tab* URLs are stored permissively — this render guard, not input
- * validation, is what keeps a hostile scheme out of the DOM.
- */
-/**
- * One listSessions invocation: status strip + the saved sessions with their
- * first tabs, visually distinct (Layers icon) from bookmark results.
- */
-function SessionsToolCall({ part }: { part: ToolUIPart }) {
-  const input = part.input as { query?: string } | undefined;
-  const output = part.output as SessionsToolOutput | undefined;
-  const running = part.state === "input-streaming" || part.state === "input-available";
-  const failed = part.state === "output-error";
-  const count = output?.sessions.length ?? 0;
-
-  return (
-    <div className="not-prose mb-1 w-full overflow-hidden rounded-lg border bg-background">
-      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs">
-        <Layers className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="shrink-0 font-medium">Saved sessions</span>
-        {input?.query && (
-          <span className="line-clamp-1 min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
-            “{input.query}”
-          </span>
-        )}
-        <span className="ml-auto shrink-0 text-muted-foreground">
-          {running ? (
-            <span className="flex items-center gap-1.5">
-              <Loader size={12} />
-              Loading…
-            </span>
-          ) : failed ? (
-            <span className="text-destructive">failed</span>
-          ) : (
-            `${count} session${count === 1 ? "" : "s"}`
-          )}
-        </span>
-      </div>
-      {failed && <p className="px-3 py-2 text-xs text-destructive">{part.errorText}</p>}
-      {output &&
-        (count === 0 ? (
-          <p className="px-3 py-2 text-xs text-muted-foreground">No saved sessions found.</p>
-        ) : (
-          <ul className="divide-y">
-            {output.sessions.map((s) => (
-              <li key={s.id} className="px-3 py-2.5">
-                <div className="flex items-baseline gap-2">
-                  <span className="line-clamp-1 min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
-                    {s.name}
-                  </span>
-                  <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                    {s.tabCount} tab{s.tabCount === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <ul className="mt-1 space-y-0.5">
-                  {s.tabs.slice(0, 5).map((t, i) => {
-                    const href = safeHref(t.url);
-                    return (
-                    <li key={`${t.url}-${i}`}>
-                      {href ? (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          className="line-clamp-1 text-xs text-muted-foreground hover:text-foreground hover:underline [overflow-wrap:anywhere]"
-                        >
-                          {t.title || t.url}
-                        </a>
-                      ) : (
-                        <span className="line-clamp-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                          {t.title || t.url}
-                        </span>
-                      )}
-                    </li>
-                    );
-                  })}
-                  {s.tabs.length > 5 && (
-                    <li className="text-[10px] text-muted-foreground">
-                      +{s.tabCount - 5} more tab{s.tabCount - 5 === 1 ? "" : "s"}
-                    </li>
-                  )}
-                </ul>
-              </li>
-            ))}
-          </ul>
-        ))}
-    </div>
-  );
-}
-
-/** Small favicon-substitute: the host's first letter in a muted dot. The live
- * tool ships no favicon urls (compacted for the model), so we derive one. */
-function LetterDot({ text }: { text: string }) {
-  const letter = (text.trim()[0] ?? "•").toUpperCase();
-  return (
-    <span
-      aria-hidden
-      className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-medium text-muted-foreground"
-    >
-      {letter}
-    </span>
-  );
-}
-
-/**
- * One listLiveTabs invocation: the user's CURRENTLY-OPEN tabs across devices.
- * Distinct from saved sessions — a Radio icon + a live freshness dot per device
- * (emerald = recently seen) with "as of …" age. Handles the three terminal
- * shapes (error / sharing-off / devices) purely off the stored output, so a
- * rehydrated `output-available` part renders identically to the live one.
- */
-function LiveTabsToolCall({ part }: { part: ToolUIPart }) {
-  const output = part.output as LiveTabsToolOutput | undefined;
-  const running = part.state === "input-streaming" || part.state === "input-available";
-  const failed = part.state === "output-error" || !!output?.error;
-  const enabled = output?.enabled ?? false;
-  const devices = output?.devices ?? [];
-  const count = devices.length;
-
-  return (
-    <div className="not-prose mb-1 w-full overflow-hidden rounded-lg border bg-background">
-      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs">
-        <Radio className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="shrink-0 font-medium">Live tabs</span>
-        <span className="ml-auto shrink-0 text-muted-foreground">
-          {running ? (
-            <span className="flex items-center gap-1.5">
-              <Loader size={12} />
-              Checking…
-            </span>
-          ) : failed ? (
-            <span className="text-destructive">unavailable</span>
-          ) : !enabled ? (
-            "sharing off"
-          ) : (
-            `${count} device${count === 1 ? "" : "s"}`
-          )}
-        </span>
-      </div>
-      {failed && (
-        <p className="px-3 py-2 text-xs text-muted-foreground">
-          Live tabs are unavailable right now.
-        </p>
-      )}
-      {output && !failed && !enabled && (
-        <p className="px-3 py-2 text-xs text-muted-foreground">
-          Live sharing is off — turn on “Live sessions” sharing to let the assistant see your
-          current tabs.
-        </p>
-      )}
-      {output &&
-        !failed &&
-        enabled &&
-        (count === 0 ? (
-          <p className="px-3 py-2 text-xs text-muted-foreground">
-            No devices are sharing live tabs right now.
-          </p>
-        ) : (
-          <ul className="divide-y">
-            {devices.map((d, di) => {
-              const { filled } = deviceFreshness(d.lastSeenAgeSeconds);
-              const tabs = d.windows.flatMap((w) => w.tabs);
-              return (
-                <li key={`${d.label}-${di}`} className="px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "size-2 shrink-0 rounded-full",
-                        filled ? "bg-emerald-500" : "border border-muted-foreground/50",
-                      )}
-                    />
-                    <span className="line-clamp-1 min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
-                      {d.label || "Unnamed device"}
-                    </span>
-                    <span className="shrink-0 text-xs capitalize text-muted-foreground">
-                      {d.browser}
-                    </span>
-                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                      {formatDeviceAge(d.lastSeenAgeSeconds)}
-                    </span>
-                  </div>
-                  {tabs.length === 0 ? (
-                    <p className="mt-1 pl-4 text-[11px] text-muted-foreground">No open tabs.</p>
-                  ) : (
-                    <ul className="mt-1.5 space-y-1">
-                      {tabs.slice(0, 8).map((t, ti) => {
-                        const href = safeHref(t.url);
-                        return (
-                          <li key={`${t.url}-${ti}`} className="flex items-start gap-2">
-                            <LetterDot text={hostOf(t.url)} />
-                            <div className="min-w-0 flex-1">
-                              {href ? (
-                                <a
-                                  href={href}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                  className="line-clamp-1 text-xs font-medium hover:underline [overflow-wrap:anywhere]"
-                                >
-                                  {t.title || t.url}
-                                </a>
-                              ) : (
-                                <span className="line-clamp-1 text-xs font-medium [overflow-wrap:anywhere]">
-                                  {t.title || t.url}
-                                </span>
-                              )}
-                              <p className="line-clamp-1 text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
-                                {hostOf(t.url)}
-                              </p>
-                            </div>
-                          </li>
-                        );
-                      })}
-                      {tabs.length > 8 && (
-                        <li className="pl-6 text-[10px] text-muted-foreground">
-                          +{tabs.length - 8} more tab{tabs.length - 8 === 1 ? "" : "s"}
-                        </li>
-                      )}
-                      {d.hiddenTabCount > 0 && (
-                        <li className="pl-6 text-[10px] text-muted-foreground">
-                          +{d.hiddenTabCount} hidden
-                        </li>
-                      )}
-                    </ul>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        ))}
-    </div>
-  );
-}
-
-/** Cited bookmarks as actionable cards: open, copy link, filter by category/tag. */
-function BookmarkHits({
-  hits,
-  showScore,
-  onFilter,
-}: {
-  hits: BookmarkHit[];
-  showScore: boolean;
-  onFilter?: (filters: LibraryFilters) => void;
-}) {
-  if (!hits.length) {
-    return <p className="px-3 py-2 text-xs text-muted-foreground">No matches in the library.</p>;
-  }
-  return (
-    <ul className="divide-y">
-      {hits.map((r) => {
-        const href = safeHref(r.url);
-        return (
-        <li
-          key={r.id}
-          className="flex items-start gap-2.5 px-3 py-2.5 transition-colors hover:bg-muted/50"
-        >
-          <Globe className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-baseline gap-2">
-              {/* line-clamp-1 (not truncate): nowrap text would set the row's
-                  intrinsic min-content width and stretch the page sideways. */}
-              {href ? (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="line-clamp-1 min-w-0 text-sm font-medium hover:underline [overflow-wrap:anywhere]"
-                >
-                  {r.title}
-                </a>
-              ) : (
-                <span className="line-clamp-1 min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
-                  {r.title}
-                </span>
-              )}
-              {showScore && (
-                <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                  {Math.round(r.score * 100)}% match
-                </span>
-              )}
-            </div>
-            <p className="line-clamp-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-              {hostOf(r.url)}
-              {r.day ? ` · ${r.day}` : ""}
-            </p>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1">
-              <button
-                type="button"
-                onClick={() => onFilter?.({ category: r.category })}
-                title={`Category: ${r.category} — click to filter`}
-                className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground transition-opacity hover:opacity-85"
-              >
-                <Folder className="size-2.5" aria-hidden />
-                {r.category}
-              </button>
-              {r.tags.slice(0, 4).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => onFilter?.({ tag: t })}
-                  title={`Show #${t} bookmarks`}
-                  className="rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  #{t}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-0.5">
-            <CopyLinkButton url={r.url} />
-            {href && (
-              <Button variant="ghost" size="icon" className="size-7" asChild>
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  aria-label={`Open ${r.title}`}
-                  title="Open in new tab"
-                >
-                  <ExternalLink className="size-3.5" aria-hidden />
-                </a>
-              </Button>
-            )}
-          </div>
-        </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function CopyLinkButton({ url }: { url: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    let ok = false;
-    try {
-      await navigator.clipboard.writeText(url);
-      ok = true;
-    } catch {
-      // Clipboard API can be permission-denied (embedded webviews, focus
-      // rules) — the selection-based path only needs the click gesture.
-      const ta = document.createElement("textarea");
-      ta.value = url;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      ok = document.execCommand("copy");
-      ta.remove();
-    }
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    }
-  };
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="size-7"
-      aria-label={copied ? "Link copied" : "Copy link"}
-      title="Copy link"
-      onClick={() => void copy()}
-    >
-      {copied ? (
-        <Check className="size-3.5 text-green-600" aria-hidden />
-      ) : (
-        <Copy className="size-3.5" aria-hidden />
-      )}
-    </Button>
-  );
-}
-
-/**
- * Assistant answers rendered as GitHub-flavored markdown (links, lists, code,
- * and — the reason for remark-gfm — tables). Styling is applied via the
- * `components` map with Tailwind classes so it matches the app; wide tables and
- * code blocks scroll inside their own container instead of stretching the bubble.
- */
-function Markdown({ children }: { children: string }) {
-  return (
-    <div className="text-sm leading-relaxed [overflow-wrap:anywhere]">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          a: ({ node, ...props }) => (
-            <a
-              {...props}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="font-medium underline underline-offset-2 hover:opacity-80"
-            />
-          ),
-          p: ({ node, ...props }) => <p {...props} className="my-1.5 first:mt-0 last:mb-0" />,
-          ul: ({ node, ...props }) => (
-            <ul {...props} className="my-1.5 list-disc space-y-0.5 pl-5" />
-          ),
-          ol: ({ node, ...props }) => (
-            <ol {...props} className="my-1.5 list-decimal space-y-0.5 pl-5" />
-          ),
-          h1: ({ node, ...props }) => <h1 {...props} className="mt-3 mb-1 text-base font-semibold" />,
-          h2: ({ node, ...props }) => <h2 {...props} className="mt-3 mb-1 text-sm font-semibold" />,
-          h3: ({ node, ...props }) => <h3 {...props} className="mt-2 mb-1 text-sm font-semibold" />,
-          blockquote: ({ node, ...props }) => (
-            <blockquote {...props} className="my-1.5 border-l-2 pl-3 text-muted-foreground" />
-          ),
-          hr: ({ node, ...props }) => <hr {...props} className="my-2 border-border" />,
-          pre: ({ node, ...props }) => (
-            <pre
-              {...props}
-              className="my-2 overflow-x-auto rounded-md bg-muted p-3 text-xs leading-relaxed"
-            />
-          ),
-          code: ({ node, className, children, ...props }) => {
-            const block = /language-/.test(className ?? "");
-            return block ? (
-              <code {...props} className={className}>
-                {children}
-              </code>
-            ) : (
-              <code
-                {...props}
-                className={cn("rounded bg-muted px-1 py-0.5 text-[0.85em]", className)}
-              >
-                {children}
-              </code>
-            );
-          },
-          table: ({ node, ...props }) => (
-            <div className="my-2 overflow-x-auto">
-              <table {...props} className="w-full border-collapse text-xs" />
-            </div>
-          ),
-          thead: ({ node, ...props }) => <thead {...props} className="bg-muted/40" />,
-          th: ({ node, ...props }) => (
-            <th {...props} className="border border-border px-2 py-1 text-left font-medium" />
-          ),
-          td: ({ node, ...props }) => (
-            <td {...props} className="border border-border px-2 py-1 align-top" />
-          ),
-        }}
-      >
-        {children}
-      </ReactMarkdown>
-    </div>
+    <PromptInputSubmit
+      status={status}
+      className={className}
+      disabled={!busy && empty}
+      aria-label={busy ? "Stop generating" : "Send message"}
+      title={busy ? "Stop" : "Send (Enter)"}
+      onClick={(e) => {
+        if (busy) {
+          e.preventDefault();
+          onStop();
+        }
+      }}
+    />
   );
 }

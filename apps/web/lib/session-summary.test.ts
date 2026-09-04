@@ -187,13 +187,16 @@ function v3Bundle() {
 }
 
 describe("export bundle v3 → v4 (session description)", () => {
-  it("SCHEMA_VERSION is 4", () => {
-    expect(SCHEMA_VERSION).toBe(4);
+  // v5 (skills) landed on top of v4 — see lib/server/export-bundle.test.ts for
+  // the v4→v5 step; these assertions only care that the v3→v4 step still runs
+  // inside the full chain.
+  it("SCHEMA_VERSION is at least 5", () => {
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(5);
   });
 
   it("upgrades a v3 bundle losslessly, defaulting description to null", () => {
     const upgraded = migrateExportBundle(v3Bundle());
-    expect(upgraded.schemaVersion).toBe(4);
+    expect(upgraded.schemaVersion).toBe(SCHEMA_VERSION);
     const [session] = upgraded.sessions;
     expect(session.description).toBeNull();
     // Everything else survives verbatim.
@@ -217,7 +220,7 @@ describe("export bundle v3 → v4 (session description)", () => {
       sessions: [{ ...bundle.sessions[0], description: "Two AI papers and a billing console." }],
     };
     const out = migrateExportBundle(v4);
-    expect(out.schemaVersion).toBe(4);
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
     expect(out.sessions[0].description).toBe("Two AI papers and a billing console.");
     // Re-running the upgrade on its own output is a no-op (idempotent).
     expect(migrateExportBundle(out)).toEqual(out);
@@ -227,13 +230,13 @@ describe("export bundle v3 → v4 (session description)", () => {
     const v1 = { ...v3Bundle(), schemaVersion: 1, conversations: undefined };
     delete (v1 as Record<string, unknown>).conversations;
     const out = migrateExportBundle(v1);
-    expect(out.schemaVersion).toBe(4);
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
     expect(out.conversations).toEqual([]);
     expect(out.sessions[0].description).toBeNull();
   });
 
   it("refuses a bundle newer than this build", () => {
-    expect(() => migrateExportBundle({ ...v3Bundle(), schemaVersion: 5 })).toThrow(
+    expect(() => migrateExportBundle({ ...v3Bundle(), schemaVersion: SCHEMA_VERSION + 1 })).toThrow(
       /newer than supported/,
     );
   });

@@ -853,7 +853,7 @@ function ActionNotice({
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss"
-        className="shrink-0 rounded p-0.5 transition-colors hover:bg-foreground/10"
+        className="cursor-pointer shrink-0 rounded p-0.5 transition-colors hover:bg-foreground/10"
       >
         <X className="size-3.5" aria-hidden />
       </button>

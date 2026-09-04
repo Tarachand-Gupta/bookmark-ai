@@ -1,9 +1,11 @@
 import type {
+  AccountResponse,
   AiProvider,
   Bookmark,
   CreateBookmarkInput,
   CreateMcpTokenResponse,
   CreateSessionInput,
+  CreateSkillInput,
   DashboardResponse,
   ExportBundle,
   HealthResponse,
@@ -12,16 +14,20 @@ import type {
   ListMcpTokensResponse,
   ListModelsResponse,
   ListSessionsResponse,
+  ListSkillsResponse,
   MetaResponse,
   ObservabilityResponse,
   SearchMode,
   SearchResponse,
   Session,
+  SkillResponse,
   SummarizeSessionResponse,
   UpdateObservabilityInput,
+  UpdateSkillInput,
   UpdateUserSettingsInput,
   UserSettingsResponse,
 } from "@bookmark-ai/types";
+import { DEFAULT_PLAN, toPlanId } from "@/lib/plan";
 
 /** Same-origin by default — the API lives in this Next.js app's /api routes.
  * Set NEXT_PUBLIC_API_URL only to point at a separately hosted API. */
@@ -386,7 +392,10 @@ export function getSettings(signal?: AbortSignal): Promise<UserSettingsResponse>
 }
 
 /** Persist settings. Include `apiKey` only when the user typed a new one
- * (absent = keep the stored key, "" = clear it). */
+ * (absent = keep the stored key, "" = clear it — the ONLY thing that removes
+ * a key). Sending `{ aiMode }` alone (CONTRACT §1) switches between the
+ * included free AI and the user's own key WITHOUT touching the stored key,
+ * provider or model. */
 export function updateSettings(input: UpdateUserSettingsInput): Promise<UserSettingsResponse> {
   return request<UserSettingsResponse>("/api/settings", {
     method: "PUT",
@@ -472,6 +481,22 @@ export function importData(
 
 // ── Account ───────────────────────────────────────────────────────────────────
 
+/**
+ * GET /api/account → the caller's plan (CONTRACT §2). Everyone is on Free
+ * today, so a server that predates the field — or a failed read — reports
+ * Free rather than nothing: the badge is a statement of what the account has,
+ * and Free is always true. Aborts still propagate.
+ */
+export async function getAccount(signal?: AbortSignal): Promise<AccountResponse> {
+  try {
+    const body = await request<Partial<AccountResponse>>("/api/account", { signal });
+    return { plan: toPlanId(body?.plan) };
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw e;
+    return { plan: DEFAULT_PLAN };
+  }
+}
+
 /** Permanently delete the signed-in account (and, via the Clerk user.deleted
  * webhook, its tenant DB). Resolves on 202; throws a friendly message in local/
  * open mode (400, no Clerk user to delete) or on any other failure. Raw fetch
@@ -522,5 +547,40 @@ export async function deleteChatConversation(id: string): Promise<void> {
     `${API_URL}/api/chat/conversations/${encodeURIComponent(id)}`,
     { method: "DELETE", headers: await authHeaders() },
   );
+  if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
+}
+
+// ── Skills (CONTRACT §3) ──────────────────────────────────────────────────────
+// The contract is the Zod schema in @bookmark-ai/types (packages/types/src/skills.ts).
+
+/** Every skill, newest-updated first. */
+export function listSkills(signal?: AbortSignal): Promise<ListSkillsResponse> {
+  return request<ListSkillsResponse>("/api/skills", { signal });
+}
+
+/** Create a skill → 201 `{skill}`. A 409 ("A skill with this name already
+ * exists" — names are unique, case-insensitively) surfaces as the thrown
+ * Error's message so the editor can show it inline. */
+export function createSkill(input: CreateSkillInput): Promise<SkillResponse> {
+  return request<SkillResponse>("/api/skills", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** Partial update (rename, edit, toggle `enabled`) → `{skill}`. */
+export function updateSkill(id: string, patch: UpdateSkillInput): Promise<SkillResponse> {
+  return request<SkillResponse>(`/api/skills/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
+/** Delete a skill. Idempotent (204 or 404 both resolve). */
+export async function deleteSkill(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/skills/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
   if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
 }

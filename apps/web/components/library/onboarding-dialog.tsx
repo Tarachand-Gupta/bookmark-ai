@@ -218,7 +218,7 @@ export function OnboardingDialog({ open, onOpenChange }: OnboardingDialogProps) 
                       onClick={() => setIndex(i)}
                       aria-current={isActive ? "step" : undefined}
                       className={cn(
-                        "flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm transition-colors",
+                        "cursor-pointer flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm transition-colors",
                         // Same active treatment as the Settings dialog's rail
                         // (bg-primary/text-primary-foreground) — this rail is a
                         // copy of that one, and `bg-accent` was too close to the

@@ -157,7 +157,7 @@ export function AppSidebar({
               onClick={onAdd}
               aria-label="Add bookmark"
               title="Add bookmark"
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background shadow-sm transition-colors hover:bg-muted"
+              className="cursor-pointer flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background shadow-sm transition-colors hover:bg-muted"
             >
               <Plus className="size-4" aria-hidden />
             </button>

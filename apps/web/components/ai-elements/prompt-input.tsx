@@ -133,8 +133,36 @@ export const useProviderAttachments = () => {
 const useOptionalProviderAttachments = () =>
   useContext(ProviderAttachmentsContext);
 
+/**
+ * Optional pre-processing hook for incoming files (picker, drop, paste). When
+ * set, it REPLACES the default "wrap the File in a blob URL" behaviour: the
+ * returned parts are attached as-is (a data URL for something already
+ * downscaled and re-encoded, say), and each string in `errors` is reported
+ * through `onError` with code "rejected". `existing` is what's already
+ * attached, so a caller can enforce per-message caps.
+ */
+export type PrepareFiles = (
+  files: File[],
+  existing: FileUIPart[]
+) => Promise<{ files: FileUIPart[]; errors: string[] }>;
+
+export type PromptInputError = {
+  code: "max_files" | "max_file_size" | "accept" | "rejected" | "prepare";
+  message: string;
+};
+
+/** Only blob: URLs are ours to release — revoking anything else is a no-op at
+ * best and a thrown TypeError in some engines. */
+const revokeIfBlob = (url: string | undefined) => {
+  if (url?.startsWith("blob:")) {
+    URL.revokeObjectURL(url);
+  }
+};
+
 export type PromptInputProviderProps = PropsWithChildren<{
   initialInput?: string;
+  prepareFiles?: PrepareFiles;
+  onError?: (err: PromptInputError) => void;
 }>;
 
 /**
@@ -143,6 +171,8 @@ export type PromptInputProviderProps = PropsWithChildren<{
  */
 export function PromptInputProvider({
   initialInput: initialTextInput = "",
+  prepareFiles,
+  onError,
   children,
 }: PromptInputProviderProps) {
   // ----- textInput state
@@ -156,31 +186,61 @@ export function PromptInputProvider({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openRef = useRef<() => void>(() => {});
 
+  // Keep a ref to attachments for cleanup on unmount (avoids stale closure) and
+  // so `add` can hand the current list to prepareFiles without re-creating
+  // itself on every change.
+  const attachmentsRef = useRef(attachmentFiles);
+  attachmentsRef.current = attachmentFiles;
+  const prepareRef = useRef(prepareFiles);
+  prepareRef.current = prepareFiles;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+
   const add = useCallback((files: File[] | FileList) => {
     const incoming = Array.from(files);
     if (incoming.length === 0) {
       return;
     }
 
-    setAttachmentFiles((prev) =>
-      prev.concat(
-        incoming.map((file) => ({
-          id: nanoid(),
-          type: "file" as const,
-          url: URL.createObjectURL(file),
-          mediaType: file.type,
-          filename: file.name,
-        }))
-      )
-    );
+    const prepare = prepareRef.current;
+    if (!prepare) {
+      setAttachmentFiles((prev) =>
+        prev.concat(
+          incoming.map((file) => ({
+            id: nanoid(),
+            type: "file" as const,
+            url: URL.createObjectURL(file),
+            mediaType: file.type,
+            filename: file.name,
+          }))
+        )
+      );
+      return;
+    }
+
+    prepare(incoming, attachmentsRef.current)
+      .then(({ files: prepared, errors }) => {
+        if (prepared.length > 0) {
+          setAttachmentFiles((prev) =>
+            prev.concat(prepared.map((part) => ({ ...part, id: nanoid() })))
+          );
+        }
+        for (const message of errors) {
+          onErrorRef.current?.({ code: "rejected", message });
+        }
+      })
+      .catch((err: unknown) => {
+        onErrorRef.current?.({
+          code: "prepare",
+          message: err instanceof Error ? err.message : "Couldn't attach that file.",
+        });
+      });
   }, []);
 
   const remove = useCallback((id: string) => {
     setAttachmentFiles((prev) => {
       const found = prev.find((f) => f.id === id);
-      if (found?.url) {
-        URL.revokeObjectURL(found.url);
-      }
+      revokeIfBlob(found?.url);
       return prev.filter((f) => f.id !== id);
     });
   }, []);
@@ -188,25 +248,17 @@ export function PromptInputProvider({
   const clear = useCallback(() => {
     setAttachmentFiles((prev) => {
       for (const f of prev) {
-        if (f.url) {
-          URL.revokeObjectURL(f.url);
-        }
+        revokeIfBlob(f.url);
       }
       return [];
     });
   }, []);
 
-  // Keep a ref to attachments for cleanup on unmount (avoids stale closure)
-  const attachmentsRef = useRef(attachmentFiles);
-  attachmentsRef.current = attachmentFiles;
-
   // Cleanup blob URLs on unmount to prevent memory leaks
   useEffect(() => {
     return () => {
       for (const f of attachmentsRef.current) {
-        if (f.url) {
-          URL.revokeObjectURL(f.url);
-        }
+        revokeIfBlob(f.url);
       }
     };
   }, []);
@@ -445,10 +497,10 @@ export type PromptInputProps = Omit<
   // Minimal constraints
   maxFiles?: number;
   maxFileSize?: number; // bytes
-  onError?: (err: {
-    code: "max_files" | "max_file_size" | "accept";
-    message: string;
-  }) => void;
+  // Pre-process incoming files (see PrepareFiles). Local mode only; when a
+  // PromptInputProvider is present, pass it there instead.
+  prepareFiles?: PrepareFiles;
+  onError?: (err: PromptInputError) => void;
   onSubmit: (
     message: PromptInputMessage,
     event: FormEvent<HTMLFormElement>
@@ -463,6 +515,7 @@ export const PromptInput = ({
   syncHiddenInput,
   maxFiles,
   maxFileSize,
+  prepareFiles,
   onError,
   onSubmit,
   children,
@@ -510,9 +563,37 @@ export const PromptInput = ({
     [accept]
   );
 
+  const prepareRef = useRef(prepareFiles);
+  prepareRef.current = prepareFiles;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+
   const addLocal = useCallback(
     (fileList: File[] | FileList) => {
       const incoming = Array.from(fileList);
+      const prepare = prepareRef.current;
+      if (prepare) {
+        if (incoming.length === 0) return;
+        prepare(incoming, filesRef.current)
+          .then(({ files: prepared, errors }) => {
+            if (prepared.length > 0) {
+              setItems((prev) =>
+                prev.concat(prepared.map((part) => ({ ...part, id: nanoid() })))
+              );
+            }
+            for (const message of errors) {
+              onErrorRef.current?.({ code: "rejected", message });
+            }
+          })
+          .catch((err: unknown) => {
+            onErrorRef.current?.({
+              code: "prepare",
+              message:
+                err instanceof Error ? err.message : "Couldn't attach that file.",
+            });
+          });
+        return;
+      }
       const accepted = incoming.filter((f) => matchesAccept(f));
       if (incoming.length && accepted.length === 0) {
         onError?.({
@@ -565,9 +646,7 @@ export const PromptInput = ({
     (id: string) =>
       setItems((prev) => {
         const found = prev.find((file) => file.id === id);
-        if (found?.url) {
-          URL.revokeObjectURL(found.url);
-        }
+        revokeIfBlob(found?.url);
         return prev.filter((file) => file.id !== id);
       }),
     []
@@ -577,9 +656,7 @@ export const PromptInput = ({
     () =>
       setItems((prev) => {
         for (const file of prev) {
-          if (file.url) {
-            URL.revokeObjectURL(file.url);
-          }
+          revokeIfBlob(file.url);
         }
         return [];
       }),
@@ -662,7 +739,7 @@ export const PromptInput = ({
     () => () => {
       if (!usingProvider) {
         for (const f of filesRef.current) {
-          if (f.url) URL.revokeObjectURL(f.url);
+          revokeIfBlob(f.url);
         }
       }
     },

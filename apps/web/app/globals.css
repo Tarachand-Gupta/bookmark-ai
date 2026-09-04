@@ -159,3 +159,108 @@
     transform: translate3d(5rem, -2.5rem, 0) scale(1.2);
   }
 }
+
+/* -------------------------------------------------------------------------
+ * Pricing card — the dormant "Pro" half (components/marketing/pricing.tsx).
+ * A faint dot grid (graph paper with nothing written on it yet) fading out
+ * towards the edges, plus a slow sheen that crosses once every ~7s and rests.
+ * Both derive from --foreground so they hold up on either theme; the sheen is
+ * motion-gated, the dots are static.
+ * ---------------------------------------------------------------------- */
+.pricing-dots {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--foreground) 16%, transparent) 1px,
+    transparent 1.5px
+  );
+  background-size: 18px 18px;
+  background-position: 9px 9px;
+  mask-image: radial-gradient(ellipse at center, black 35%, transparent 90%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 35%, transparent 90%);
+}
+
+.pricing-sheen {
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    color-mix(in oklch, var(--foreground) 6%, transparent) 50%,
+    transparent 100%
+  );
+  transform: translateX(-120%) skewX(-12deg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pricing-sheen {
+    animation: pricing-sheen 7s ease-in-out infinite;
+  }
+}
+
+@keyframes pricing-sheen {
+  0% {
+    transform: translateX(-120%) skewX(-12deg);
+  }
+  40%,
+  100% {
+    transform: translateX(420%) skewX(-12deg);
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * Ask AI — streaming indicators (components/library/chat-*.tsx).
+ * `text-shimmer` sweeps a highlight through the text of a label while the
+ * model is thinking or a tool is running; `thinking-dot` is the three-dot
+ * pulse next to the placeholder label. Reduced motion: a plain muted label
+ * and three still dots — nothing disappears, nothing moves.
+ * ---------------------------------------------------------------------- */
+.text-shimmer {
+  color: var(--muted-foreground);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .text-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      var(--muted-foreground) 0%,
+      var(--muted-foreground) 35%,
+      var(--foreground) 50%,
+      var(--muted-foreground) 65%,
+      var(--muted-foreground) 100%
+    );
+    background-size: 250% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    animation: text-shimmer 2s linear infinite;
+  }
+  .thinking-dot {
+    animation: thinking-dot 1.2s ease-in-out infinite;
+  }
+  .thinking-dot:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .thinking-dot:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+}
+
+@keyframes text-shimmer {
+  from {
+    background-position: 125% 0;
+  }
+  to {
+    background-position: -125% 0;
+  }
+}
+
+@keyframes thinking-dot {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}

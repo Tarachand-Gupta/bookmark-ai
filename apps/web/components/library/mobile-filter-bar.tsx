@@ -245,7 +245,7 @@ export function MobileFilterBar({
               type="button"
               onClick={() => clearOne(chip.keys)}
               className={cn(
-                "inline-flex max-w-full items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 text-xs font-medium",
+                "cursor-pointer inline-flex max-w-full items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 text-xs font-medium",
                 CHIP_TOUCH,
               )}
             >
@@ -487,7 +487,7 @@ function FilterDrawer({
                 type="button"
                 onClick={() => onClearOne(chip.keys)}
                 className={cn(
-                  "inline-flex max-w-full items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 text-xs font-medium",
+                  "cursor-pointer inline-flex max-w-full items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 text-xs font-medium",
                   CHIP_TOUCH,
                 )}
               >
@@ -546,7 +546,7 @@ function FacetChip({
       // h-9: a 28px chip is under every touch-target guideline, and these are the
       // primary controls on this breakpoint.
       className={cn(
-        "inline-flex h-9 max-w-full items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors",
+        "cursor-pointer inline-flex h-9 max-w-full items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors",
         active
           ? "border-transparent bg-primary text-primary-foreground"
           : "bg-background text-foreground",

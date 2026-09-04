@@ -25,6 +25,15 @@ export function Nav() {
             Platforms
           </a>
           <a
+            href="#pricing"
+            className={cn(
+              mono,
+              "hidden rounded-md px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground md:inline-flex",
+            )}
+          >
+            Pricing
+          </a>
+          <a
             href={DOCS_URL}
             target="_blank"
             rel="noreferrer noopener"

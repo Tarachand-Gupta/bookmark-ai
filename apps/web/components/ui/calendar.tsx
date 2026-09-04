@@ -221,7 +221,7 @@ function NavButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="flex size-7 shrink-0 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+      className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>

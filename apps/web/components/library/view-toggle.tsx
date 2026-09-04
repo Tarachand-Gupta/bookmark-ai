@@ -44,7 +44,7 @@ export function ViewToggle({
           title={label}
           onClick={() => onChange(key)}
           className={cn(
-            "flex size-7 items-center justify-center rounded-md transition-colors",
+            "cursor-pointer flex size-7 items-center justify-center rounded-md transition-colors",
             view === key
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:text-foreground",

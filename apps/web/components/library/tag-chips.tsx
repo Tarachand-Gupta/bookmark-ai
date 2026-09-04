@@ -104,7 +104,7 @@ export function TagChips({
         aria-pressed={isActive}
         onClick={() => onPick(isActive ? undefined : t.name)}
         className={cn(
-          "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
+          "cursor-pointer inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
           isActive
             ? "border-transparent bg-primary text-primary-foreground"
             : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -157,7 +157,7 @@ export function TagChips({
           aria-expanded={expanded}
           aria-label={expanded ? "Collapse tags" : "Show all tags"}
           title={expanded ? "Collapse tags" : "Show all tags"}
-          className="flex size-7 shrink-0 items-center justify-center rounded-full border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="cursor-pointer flex size-7 shrink-0 items-center justify-center rounded-full border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           {expanded ? (
             <ChevronUp className="size-4" aria-hidden />

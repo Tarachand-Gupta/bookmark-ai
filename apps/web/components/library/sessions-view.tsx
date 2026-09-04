@@ -292,7 +292,7 @@ export function SessionCard({
                   onClick={startEdit}
                   aria-label={`Rename ${name}`}
                   title="Rename"
-                  className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
                   <Pencil className="size-3.5" aria-hidden />
                 </button>
@@ -302,7 +302,7 @@ export function SessionCard({
                   disabled={aiBusy}
                   aria-label={`Summarize ${name} with AI`}
                   title="Summarize with AI — retitles this session and refreshes its description"
-                  className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+                  className="cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
                 >
                   {aiBusy ? (
                     <Loader2 className="size-3.5 animate-spin" aria-hidden />
@@ -355,7 +355,7 @@ export function SessionCard({
             type="button"
             onClick={() => onDelete(session.id)}
             aria-label={`Delete ${name}`}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            className="cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
           >
             <Trash2 className="size-4" aria-hidden />
           </button>
@@ -386,7 +386,7 @@ export function SessionCard({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center gap-1.5 border-t px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        className="cursor-pointer flex w-full items-center gap-1.5 border-t px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
         <ChevronDown
           className={`size-4 transition-transform ${open ? "rotate-180" : ""}`}
@@ -497,7 +497,7 @@ function TabList({
             <button
               type="button"
               onClick={() => setRevealed((prev) => new Set(prev).add(row.start))}
-              className="flex w-full items-center justify-center gap-2 bg-muted/30 px-4 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+              className="cursor-pointer flex w-full items-center justify-center gap-2 bg-muted/30 px-4 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
             >
               <span aria-hidden>⋯</span>
               {row.tabs.length} more tab{row.tabs.length === 1 ? "" : "s"}

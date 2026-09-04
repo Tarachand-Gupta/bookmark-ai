@@ -458,7 +458,7 @@ function WindowCard({
               onClick={startEdit}
               aria-label={`Rename ${label}`}
               title="Rename window"
-              className="shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+              className="cursor-pointer shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
             >
               <Pencil className="size-3.5" aria-hidden />
             </button>

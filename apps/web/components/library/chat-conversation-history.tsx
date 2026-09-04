@@ -76,7 +76,7 @@ export function ConversationHistory({
               type="button"
               onClick={() => setSearch("")}
               aria-label="Clear search"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="cursor-pointer absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <X className="size-3.5" aria-hidden />
             </button>
@@ -162,7 +162,7 @@ function ConversationRow({
       <button
         type="button"
         onClick={onSelect}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        className="cursor-pointer flex min-w-0 flex-1 items-center gap-2 text-left"
       >
         <MessageSquare className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         <span className="min-w-0 flex-1">
@@ -183,7 +183,7 @@ function ConversationRow({
             onClick={onConfirm}
             aria-label="Confirm delete conversation"
             title="Delete"
-            className="flex size-6 items-center justify-center rounded text-destructive transition-colors hover:bg-destructive/10"
+            className="cursor-pointer flex size-6 items-center justify-center rounded text-destructive transition-colors hover:bg-destructive/10"
           >
             <Check className="size-3.5" aria-hidden />
           </button>
@@ -192,7 +192,7 @@ function ConversationRow({
             onClick={onCancel}
             aria-label="Cancel delete"
             title="Cancel"
-            className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted"
+            className="cursor-pointer flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted"
           >
             <X className="size-3.5" aria-hidden />
           </button>
@@ -205,7 +205,7 @@ function ConversationRow({
           onClick={onArm}
           aria-label="Delete conversation"
           title="Delete conversation"
-          className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100 max-[640px]:opacity-100"
+          className="cursor-pointer flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100 max-[640px]:opacity-100"
         >
           <Trash2 className="size-3.5" aria-hidden />
         </button>

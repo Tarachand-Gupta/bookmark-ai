@@ -126,7 +126,7 @@ export function DateRangeFilter({ from, to, onChange, className }: DateRangeFilt
         aria-haspopup="dialog"
         aria-expanded={open}
         className={cn(
-          "inline-flex h-9 max-w-full items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium transition-colors",
+          "cursor-pointer inline-flex h-9 max-w-full items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium transition-colors",
           active
             ? "border-primary/40 bg-primary/10 text-foreground"
             : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -204,7 +204,7 @@ export function DateRangeFilter({ from, to, onChange, className }: DateRangeFilt
                   onClick={() => applyPreset(p)}
                   aria-pressed={applied}
                   className={cn(
-                    "shrink-0 rounded-md px-2 py-1.5 text-left text-xs font-medium transition-colors",
+                    "cursor-pointer shrink-0 rounded-md px-2 py-1.5 text-left text-xs font-medium transition-colors",
                     applied
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground",

@@ -8,6 +8,7 @@ import { Hero } from "@/components/marketing/hero";
 import { Features } from "@/components/marketing/features";
 import { HowItWorks } from "@/components/marketing/how-it-works";
 import { Platforms } from "@/components/marketing/platforms";
+import { Pricing } from "@/components/marketing/pricing";
 import { OpenSource } from "@/components/marketing/open-source";
 import { Footer } from "@/components/marketing/footer";
 
@@ -74,6 +75,7 @@ export default async function MarketingPage({
           <Features />
           <HowItWorks />
           <Platforms />
+          <Pricing />
           <OpenSource />
         </main>
         <Footer />

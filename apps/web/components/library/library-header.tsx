@@ -65,7 +65,7 @@ export function LibraryHeader({
           <button
             type="button"
             onClick={onRootClick}
-            className="shrink-0 truncate text-sm text-muted-foreground transition-colors hover:text-foreground sm:text-base"
+            className="cursor-pointer shrink-0 truncate text-sm text-muted-foreground transition-colors hover:text-foreground sm:text-base"
           >
             {title}
           </button>
@@ -104,7 +104,7 @@ export function LibraryHeader({
                 type="button"
                 onClick={() => onQueryChange("")}
                 aria-label="Clear search"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="cursor-pointer absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 <X className="size-4" aria-hidden />
               </button>

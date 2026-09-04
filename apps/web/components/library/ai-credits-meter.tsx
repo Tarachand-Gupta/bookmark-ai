@@ -147,7 +147,7 @@ export function AiCreditsCallout({
             type="button"
             onClick={onDismiss}
             aria-label="Dismiss"
-            className="-mr-1 -mt-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted"
+            className="cursor-pointer -mr-1 -mt-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted"
           >
             <X className="size-3.5" aria-hidden />
           </button>

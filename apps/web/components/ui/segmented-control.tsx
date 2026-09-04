@@ -10,9 +10,14 @@ export interface SegmentedOption<T extends string> {
 }
 
 /**
- * A minimal text segmented control (Saved / Ongoing). Hand-rolled rather than a
- * shadcn Tabs/ToggleGroup — neither is installed, and the CLI that would add one
- * appends duplicate theme tokens. Mirrors the pill-track idiom of view-toggle.
+ * A minimal text segmented control (Saved / Ongoing, Included AI / Own key).
+ * Hand-rolled rather than a shadcn Tabs/ToggleGroup — neither is installed, and
+ * the CLI that would add one appends duplicate theme tokens. Mirrors the
+ * pill-track idiom of view-toggle.
+ *
+ * `fullWidth` stretches the track and splits it evenly between the options (a
+ * form control, not a toolbar chip); `disabled` greys the whole track while a
+ * selection is being persisted, so a second click can't race the first.
  */
 export function SegmentedControl<T extends string>({
   value,
@@ -20,19 +25,26 @@ export function SegmentedControl<T extends string>({
   onChange,
   ariaLabel,
   className,
+  fullWidth,
+  disabled,
 }: {
   value: T;
   options: SegmentedOption<T>[];
   onChange: (value: T) => void;
   ariaLabel: string;
   className?: string;
+  fullWidth?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <div
       role="tablist"
       aria-label={ariaLabel}
+      aria-disabled={disabled || undefined}
       className={cn(
         "inline-flex shrink-0 items-center gap-0.5 rounded-lg border bg-muted/40 p-0.5",
+        fullWidth && "flex w-full",
+        disabled && "opacity-60",
         className,
       )}
     >
@@ -44,9 +56,11 @@ export function SegmentedControl<T extends string>({
             type="button"
             role="tab"
             aria-selected={active}
+            disabled={disabled}
             onClick={() => onChange(o.value)}
             className={cn(
-              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              "flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:cursor-not-allowed",
+              fullWidth && "flex-1 justify-center",
               active
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",

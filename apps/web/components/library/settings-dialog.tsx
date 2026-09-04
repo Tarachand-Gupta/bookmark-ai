@@ -5,6 +5,7 @@ import { useClerk } from "@clerk/nextjs";
 import {
   Activity,
   AlertTriangle,
+  Check,
   Database,
   Download,
   Loader2,
@@ -14,6 +15,7 @@ import {
   Upload,
   UserRound,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,8 +24,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { ObservabilityResponse } from "@bookmark-ai/types";
-import { deleteAccount, exportData, getObservability, importData } from "@/lib/api";
+import { deleteAccount, exportData, getAccount, getObservability, importData } from "@/lib/api";
+import { DEFAULT_PLAN, PLAN_FEATURES, type PlanId } from "@/lib/plan";
 import { cn } from "@/lib/utils";
 import { AiSetupCard } from "./ai-setup-card";
 import { DevicesSection } from "./devices-settings";
@@ -31,6 +35,7 @@ import { FEATURE_ICONS } from "./feature-icons";
 import { McpSection } from "./mcp-settings";
 import { ObservabilitySection } from "./observability-settings";
 import { SettingsGroup, SettingsSection } from "./settings-section";
+import { SkillsIcon, SkillsSection } from "./skills-settings";
 import { SyncSection } from "./sync-settings";
 
 export interface SettingsDialogProps {
@@ -45,6 +50,7 @@ export interface SettingsDialogProps {
  * succeeds (see the fetch in SettingsDialog). */
 const SECTIONS = [
   { id: "ai", label: "AI", icon: Sparkles },
+  { id: "skills", label: "Skills", icon: SkillsIcon },
   { id: "data", label: "Data", icon: Database },
   { id: "sync", label: "Sync", icon: FEATURE_ICONS.bookmarks },
   { id: "devices", label: "Live sessions", icon: FEATURE_ICONS.live },
@@ -174,7 +180,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
                       onClick={() => setSection(s.id)}
                       aria-current={section === s.id ? "page" : undefined}
                       className={cn(
-                        "flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-1.5 text-sm transition-colors",
+                        "cursor-pointer flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-1.5 text-sm transition-colors",
                         // ACTIVE = the app's standard selected-chip treatment
                         // (`bg-primary`/`text-primary-foreground`, same as the tag
                         // rail, the mobile filter chips and the date-range presets).
@@ -215,6 +221,8 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
                 <AiSetupCard />
               </SettingsSection>
             )}
+
+            {section === "skills" && <SkillsSection />}
 
             {section === "data" && <DataSection />}
 
@@ -418,8 +426,10 @@ function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
     <SettingsSection
       title="Account"
       icon={UserRound}
-      description="Manage your Bookmark AI account."
+      description="Your plan, and everything account-shaped."
     >
+      <PlanGroup />
+
       {/* Clerk's account manager, opened as ITS OWN modal rather than embedded in
           this pane. MEASURED (2026-08-11, dev Chrome, 1440x940):
           <UserProfile routing="hash"> inline renders a FIXED 880px card (228px
@@ -434,6 +444,7 @@ function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
           then let Clerk's modal own the viewport — where it is neither clipped nor
           made inert by Radix's focus trap. */}
       <SettingsGroup
+        divided
         title="Profile & security"
         description="Your name and avatar, email addresses, connected accounts, password, two-factor authentication and active devices — all managed by Clerk, themed to match the app."
       >
@@ -514,5 +525,58 @@ function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
         </div>
       </SettingsGroup>
     </SettingsSection>
+  );
+}
+
+/**
+ * The plan block (CONTRACT §2): a "Free plan" badge and the plan's feature
+ * lines, from the SAME `PLAN_FEATURES` the marketing pricing card renders, so
+ * the two can't drift. `getAccount()` supplies the plan id and already falls
+ * back to Free for a server that predates the field — everyone is on Free.
+ */
+function PlanGroup() {
+  const [plan, setPlan] = useState<PlanId | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getAccount(controller.signal)
+      .then((account) => setPlan(account.plan))
+      .catch(() => setPlan(DEFAULT_PLAN));
+    return () => controller.abort();
+  }, []);
+
+  const info = PLAN_FEATURES[plan ?? DEFAULT_PLAN];
+
+  return (
+    <SettingsGroup title="Plan" description="What your account includes today.">
+      <div className="rounded-lg border bg-card p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          {plan === null ? (
+            <Skeleton className="h-5 w-20 rounded-full" />
+          ) : (
+            <Badge>{info.name} plan</Badge>
+          )}
+          <span className="text-xs text-muted-foreground">
+            ${info.price} · everything, today
+          </span>
+        </div>
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+          {info.features.map((f) => (
+            <li key={f.key} className="flex items-start gap-2 text-sm">
+              <span
+                aria-hidden
+                className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-foreground/[0.07] dark:bg-foreground/[0.1]"
+              >
+                <Check className="size-2.5" strokeWidth={2.5} />
+              </span>
+              <span className="leading-5">{f.label}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          Fair-use limits apply · Your data lives in your own database
+        </p>
+      </div>
+    </SettingsGroup>
   );
 }
