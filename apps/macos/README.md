@@ -24,7 +24,12 @@ xcodegen generate                # writes BookmarkAI.xcodeproj
 xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
            -configuration Debug -derivedDataPath build build
 
-# Test (25 unit tests: URL construction, error mapping, response decoding)
+# Test (97 unit tests: URL construction, error mapping, response decoding,
+# chat stream assembly, attachment classification/downscaling, skills/MCP
+# contracts, the SKILL.md import parser, history grouping, the empty-reply
+# guard; the 7 RenderPreviewTests are skipped unless
+# TEST_RUNNER_RENDER_PREVIEWS=1 — a plain env var is NOT forwarded to the
+# test host)
 xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
            -configuration Debug -derivedDataPath build test
 
@@ -58,7 +63,7 @@ Both paths are verified working.
 | Deployment target | **macOS 14.0** | The floor that gives `@Observable`, `ContentUnavailableView`, and `.alternatingRowBackgrounds()` without gating. Everything newer (`.toolbar(removing:)`, `SearchToolbarBehavior`, `Tab`-based `TabView`) is deliberately avoided so the app runs on Sonoma, not just this machine's macOS 26. |
 | Swift language mode | 5 (`SWIFT_STRICT_CONCURRENCY: minimal`) | All model/UI types are `@MainActor`-isolated by design; Swift 6 mode is a clean follow-up, not a Phase 1 prerequisite. |
 | Bundle id | `ai.purecode.bookmarkai.macos` | |
-| Sandbox | `app-sandbox` + `network.client` only | The entire capability surface is outbound HTTP. No file access, no server sockets. |
+| Sandbox | `app-sandbox` + `network.client` + `files.user-selected.read-write` | Outbound HTTP, plus read access to files the user explicitly picks, drops, or pastes as chat attachments (security-scoped, released after encoding). No server sockets. |
 | Accent colour | **none defined** | With no `AccentColor` asset the app adopts the *user's system accent*, which is what a Mac-native app should do. Every other colour is semantic (`.secondary`, `.tint`, `.quaternary`, `.bar`), so light/dark is automatic with zero hardcoded values. |
 | App icon | generated from `apps/desktop/assets/icon.png` (1024²) | Same brand mark as the other clients, resampled into a proper 10-slot macOS `AppIcon.appiconset`. |
 
@@ -156,15 +161,32 @@ apps/macos/
 │   │   └── AppEnvironment.swift    composition root; wires api ↔ auth ↔ library
 │   ├── Models/
 │   │   ├── Bookmark.swift          Bookmark, OpenGraph, BookmarkSource, ISO8601
-│   │   ├── ApiResponses.swift      List/Meta/Search/Health/Account/Settings
+│   │   ├── ApiResponses.swift      List/Meta/Search/Health/Account/Settings (+ AiMode, ownKeyReady)
 │   │   ├── Session.swift           Session + SessionTab (openable-URL rules)
 │   │   ├── Live.swift              LiveDevice/Window/Tab + freshness helpers
-│   │   └── Chat.swift              JSONValue passthrough, ChatMessage, part views
-│   ├── Chat/                       ChatModel (stream assembly), ChatView, bubbles
+│   │   ├── Chat.swift              JSONValue passthrough, ChatMessage, ChatToolCall/ChatFilePart projections, per-tool copy
+│   │   ├── ChatHistoryGrouping.swift  Today/Yesterday/Earlier buckets + relative-time copy for the History popover
+│   │   ├── Skills.swift            Skill, SkillDraft, SkillValidation, the 3 starter templates
+│   │   ├── SkillMarkdown.swift     SKILL.md parse/serialize (frontmatter → heading/paragraph fallback) + file import gate
+│   │   ├── McpToken.swift          McpToken list/create shapes + Claude Code / JSON config snippets
+│   │   └── Plan.swift              PlanInfo (free), AccountResponse
+│   ├── Chat/
+│   │   ├── ChatModel.swift         stream assembly (text/reasoning/tool/file parts), attachments, reply notes, re-sync
+│   │   ├── ChatView.swift          transcript, ⋯ menu (Skills…), History button, Thinking placeholder
+│   │   ├── ChatHistoryPopover.swift  History popover: search, day groups, row ⋯/context menus, keyboard, confirmed delete
+│   │   ├── ChatTurnFailureView.swift  "The AI returned no reply." + Retry under an empty turn
+│   │   ├── ChatMessageView.swift   user bubble + attachments row, assistant parts in stream order
+│   │   ├── ChatPartViews.swift     ReasoningDisclosure, ChatToolRow (4 states + soft `{error}`), thumbnails/pills, reply notes
+│   │   ├── ChatComposer.swift      NSTextView composer (grows to 6 lines), pills, paperclip/drop/⌘V, drag tint
+│   │   ├── ChatAttachments.swift   attachment rules + classifier, ImageIO downscale (1568 px), pasteboard payloads
+│   │   ├── MarkdownBlocks.swift    block markdown parser (tables, code, lists…)
+│   │   ├── SkillsModel.swift       /api/skills CRUD + enable toggles
+│   │   └── SkillsSheet.swift       master/detail Skills sheet (templates, Import…/drop, editor, delete confirm)
 │   ├── Sessions/                   SessionsModel + SessionsView
 │   ├── Live/                       LiveModel (SSE + reconnect) + LiveTabsView
 │   ├── Networking/
-│   │   ├── ApiClient.swift         async URLSession, bearer injection, 401 retry
+│   │   ├── ApiClient.swift         async URLSession, bearer injection, 401 retry, skills/MCP/account calls
+│   │   ├── ChatStream.swift        ChatStreamChunk (SSE parser), ChatTurnBody, reply-note headers, chat error copy
 │   │   ├── ApiError.swift          typed errors + status→error mapping
 │   │   └── ServerTarget.swift      local/cloud base URLs
 │   ├── Auth/
@@ -183,18 +205,37 @@ apps/macos/
 │   │   ├── LibraryModel.swift      @Observable store: filter, search, delete
 │   │   └── SidebarItem.swift       selection enum + PlannedFeature rows
 │   ├── Settings/
-│   │   ├── SettingsView.swift      ⌘, — General/AI/Live/Data/Account (web parity)
-│   │   └── SettingsModel.swift     GET/PUT /api/settings + status
+│   │   ├── SettingsView.swift      ⌘, — General/AI/MCP/Sync/Live/Data/Account (web parity)
+│   │   ├── SettingsModel.swift     GET/PUT /api/settings, aiMode switch, removeKey, plan
+│   │   ├── AiSettingsTab.swift     Included ⇄ Own key, saved-key summary, provider/model, Remove key…
+│   │   ├── McpSettingsTab.swift    endpoint + client setup snippets, tool toggles, token mint/reveal/revoke
+│   │   ├── McpTokensModel.swift    /api/mcp/tokens list/create/revoke
+│   │   └── AccountSettingsTab.swift  plan badge + features, sign-in / local sections
 │   └── Support/
 │       ├── Preferences.swift       UserDefaults-backed server target + layout
 │       ├── Interaction.swift       pointingHandCursor, SurfaceCard, HoverHighlight
 │       ├── AiCreditsCard.swift     the free-credits meter (chat + Settings ▸ AI)
+│       ├── CopyButton.swift        "Copy" → "Copied" button, wrapping code block
+│       ├── Shimmer.swift           shimmer modifier + ThinkingIndicator
+│       ├── TermFilter.swift        shared search-term matching
+│       ├── TourSheet.swift         first-run tour
 │       ├── VisualEffectBackground.swift  behind-window vibrancy
 │       └── RemoteImage.swift       NSCache image loader with request coalescing
 └── Tests/
     ├── ApiClientTests.swift        13 tests — URLs, limits, error mapping
     ├── DecodingTests.swift         12 tests — real payload shapes
-    └── PreferencesTests.swift      2 tests — layout default + persistence
+    ├── Phase2DecodingTests.swift   6 tests — chat SSE fixtures, tool projection
+    ├── Phase3DecodingTests.swift   19 tests — reasoning/tool/file chunks, turn body, chat errors,
+    │                               reply notes, aiMode, plan, MCP tokens, skills, soft tool errors
+    ├── AttachmentTests.swift       12 tests — classifier, downscale/re-encode, caps, paste naming
+    ├── SkillMarkdownTests.swift    8 tests — SKILL.md parser + round trip, import type gate, createSkill/installSkill copy
+    ├── ChatHistoryTests.swift      4 tests — day buckets, relative-time copy, title filter, seed hook
+    ├── TranscriptLayoutTests.swift 2 tests — empty-stream failure row + Retry, server `error` chunk on an empty turn (fixture streams via `turnStarter`)
+    ├── MarkdownBlockTests.swift    6 tests — block parser fixtures
+    ├── FilteringTests.swift        5 tests — sessions/live search matching
+    ├── StreamingLayoutTests.swift  1 test — streaming layout
+    ├── PreferencesTests.swift      2 tests — layout default + persistence
+    └── RenderPreviewTests.swift    7 previews — light+dark PNGs (TEST_RUNNER_RENDER_PREVIEWS=1)
 ```
 
 ---
@@ -219,10 +260,11 @@ apps/macos/
   row background (`.listRowBackground(Color.clear)`) so the two treatments
   never stack.
 - **Chat composer docks to the BOTTOM, always** — a real input container
-  (rounded, bordered, focus tint, send button inside). The empty state above it
-  carries the title, three example prompts, and the `AiCreditsCard` ("N of
-  1,000 credits used this week · resets Monday" — tokens÷1000, WEEKLY, never
-  say monthly). Sessions get the full action set: Open All, Copy All Links,
+  (rounded, bordered, focus tint, send button inside) around an `NSTextView`
+  that grows to 6 lines (⏎ / ⌘⏎ send, ⇧⏎ newline), with attachment pills
+  above the text. The empty state above it carries the title, three example
+  prompts, and the `AiCreditsCard` ("N of 1,000 credits used this week ·
+  resets Monday" — tokens÷1000, WEEKLY, never say monthly). Sessions get the full action set: Open All, Copy All Links,
   Rename… (alert), Summarize with AI, Delete — one `actionEntries` builder
   feeds both the hover ellipsis menu and the context menu.
 - Context menu per card/row: **Open in Browser**, **Copy Link**, **Delete** —
@@ -272,21 +314,92 @@ rows are FLATTENED into their `List` section, so row ids must be unique across
 sibling groups — a bare `enumerated().offset` id makes window 2 render window
 1's rows. Use composite ids (`device:window:offset`, `session:offset`).
 
-**Phase 3 candidates:**
+**Phase 3 (shipped 2026-09)** — the product-wide chat upgrade, at parity with
+the web app:
+1. **Skills** — `⋯` toolbar menu ▸ *Skills…* opens `SkillsSheet` over
+   `/api/skills`: list with enable toggles, add/edit/delete, three starter
+   templates (Weekly reading digest, Research brief, Link triage), validation
+   mirroring the server schema, 409 name conflicts inline. A server without
+   the route gets "This server doesn't offer skills yet". **Import…**
+   (`NSOpenPanel`, `.md`/`.txt`) or a SKILL.md dropped onto the list is parsed
+   client-side (`SkillMarkdown`: YAML frontmatter `name:`/`description:`, else
+   the first `# Heading` + first paragraph) and opens the editor PREFILLED for
+   review — Create then posts as usual. Ask AI can do it too (the tip under
+   the list says so): `createSkill` / `installSkill` tool rows read "Creating
+   skill “x”" → "Created skill “x”" and "Installing skill from host" →
+   "Installed skill “x”", the disclosure shows the skill's name + description,
+   `{error}` outputs render red, and the Skills list reloads on success.
+2. **Chat protocol** — the FIRST turn posts `{messages:[user], timezone}`; every
+   later turn posts `{message, conversationId, timezone}` and the server loads
+   its own transcript (`ChatTurnBody`). The reply's `x-conversation-id`,
+   `x-ai-source` (`own-fallback` → "Free credits are used up this week…") and
+   `x-ai-note` (`own-key-incomplete` → "Your key needs a model…") headers become
+   one-line notes under that reply, keyed by the persisted message id.
+3. **Reasoning + tool rows** — an instant shimmering *Thinking* placeholder,
+   then `reasoning-*` chunks as a collapsible disclosure (auto-open while
+   streaming, "Thought for N s" after; persisted thoughts reopen as
+   "Thoughts"). Tool calls render as rows in stream order with the four AI SDK
+   states (spinner / check / red) and per-tool copy ("Searching bookmarks for
+   “q”" → "Found n bookmarks", …, "Loading skill “x”" → "Using skill “x”").
+   NB: the server never emits `tool-output-error` — failures arrive as
+   `tool-output-available` with `{error: "…"}`, which renders as the same red
+   state (`ChatToolCall.isFailure`). Interactive rows carry `zIndex(1)` so a
+   table/code sibling can never take their clicks (the chat-turn preview
+   renders that mix; verified live by clicking). A turn that streams
+   nothing renderable (a 200 with an empty stream) drops the hollow assistant
+   message and shows a failure row under the prompt — the server's `error`
+   chunk wording if it sent one, else "The AI returned no reply." — with
+   Retry (`ChatModel.failedTurn`; Retry re-sends the same parts as a fresh
+   message).
+4. **Attachments** — paperclip (`NSOpenPanel` restricted to images / PDF /
+   text-like documents), drag-and-drop onto the composer, ⌘V of an image or a
+   file. Images are downscaled to ≤1568 px via ImageIO and re-encoded (JPEG
+   0.85, PNG when translucent, GIF passthrough) and renamed to match what was
+   encoded (a pasted PNG that became JPEG is "Pasted image.jpg"); 5 files /
+   4 MB base64 per message. Sent as `file` parts with `data:` URLs, shown as pills in the
+   composer and as QuickLook-able thumbnails / document pills in the
+   transcript. Server rejections (400/413/415 vocabulary) map to readable
+   banners. Paste/drop diagnostics: `log stream --level debug --predicate
+   'subsystem == "ai.purecode.bookmarkai"'`.
+5. **Settings ▸ AI** — segmented *Included free AI* ⇄ *Your own key* (PUTs
+   `{aiMode}` alone), saved-key summary with a confirmed *Remove key…* (the ONLY
+   sender of `apiKey: ""`), provider/model picker fed by "Verify Key & List
+   Models". Google is complete without a model; OpenAI / Anthropic / custom
+   need a chosen model before Save, and `ownKeyReady == false` shows the
+   inline warning.
+6. **Settings ▸ MCP** — endpoint + copyable Claude Code command / JSON config
+   (seeded with a freshly minted token, else `<YOUR_TOKEN>`), tool toggles,
+   token generation with one-time reveal, list rows (hint · created · last
+   used · revoked) with inline revoke confirmation. Local mode without a
+   session gets a clear 401/403 explanation.
+7. **Settings ▸ Account** — the *Free plan* badge with the plan's feature lines
+   (`GET /api/account`, default `free`).
+8. **History** — the toolbar's clock button opens a 360×460 popover
+   (`ChatHistoryPopover`), not a menu: a search field (title match on every
+   term, debounced 150 ms into the STORED `visibleConversations`), then the
+   conversations grouped Today / Yesterday / Earlier (`ChatHistoryGrouping`,
+   unit-tested against a fixed clock + locale) with title + relative time
+   ("2 min ago", "Yesterday 14:03", "24 Aug, 14:03"); the open conversation
+   sits on a tint. Click opens and closes the popover; hover shows a ⋯ menu
+   and right-click the same Open / Delete… items; ↑/↓ move, ↩ opens, ⌫ asks
+   to delete, Esc closes. Delete ALWAYS confirms ("This conversation and its
+   messages will be removed. This can't be undone.") and deleting the open
+   conversation starts a fresh chat. Loading, empty ("No conversations yet")
+   and no-match states; the list refreshes after every turn and deletion.
+
+**Phase 4 candidates:**
 1. **Saving from the Mac app** (`POST /api/bookmarks`) — a share extension and/or
    a global hotkey; `CreateBookmarkInput` with `device: "laptop"`.
 2. **Search paging** — `offset`/`hasMore` are already in `SearchResponse`; the
    list just needs infinite scroll (cap `offset + limit` ≤ 200).
-3. **Chat attachments + paste pills** — coordinate with the product-wide chat
-   upgrade (skills, MCP, CSV/JSON/MD/PDF/image attachments).
-4. ~~Block markdown in chat~~ — SHIPPED: `MarkdownBlock.parse` (pure,
+3. ~~Block markdown in chat~~ — SHIPPED: `MarkdownBlock.parse` (pure,
    fixture-tested) splits messages into tables/fenced code/headings/lists/
    quotes/rules; only inline spans go through `AttributedString`. Tables are a
    `Grid` that wraps cells (no sideways scroll); code blocks get a language tag
    + hover copy button. Visual review harness: `RenderPreviewTests`
-   (`RENDER_PREVIEWS=1`, prints `PREVIEW-> <png>`; `ImageRenderer` can't draw
-   ScrollView content, so it captures a real `NSHostingView`).
-5. **Swift 6 language mode** and `@SceneStorage` for column visibility, once
+   (`TEST_RUNNER_RENDER_PREVIEWS=1`, prints `PREVIEW-> <png>`; `ImageRenderer`
+   can't draw ScrollView content, so it captures a real `NSHostingView`).
+4. **Swift 6 language mode** and `@SceneStorage` for column visibility, once
    multi-window is wanted.
-6. **ClerkKit swap** — only if the Native API toggle gets enabled; contained
+5. **ClerkKit swap** — only if the Native API toggle gets enabled; contained
    behind `AuthController`.

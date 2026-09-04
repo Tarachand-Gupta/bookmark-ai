@@ -203,6 +203,72 @@ final class ApiClient {
         return try Self.decoder.decode(ListModelsResponse.self, from: data).models
     }
 
+    /// `GET /api/account` — the account's plan (`"free"` for everyone today,
+    /// and the literal in single-tenant/open mode). Decoded leniently: only the
+    /// fields this app reads, all optional, so the route can grow freely.
+    func account() async throws -> AccountResponse {
+        try await get("/api/account")
+    }
+
+    // MARK: Skills (`/api/skills`)
+
+    /// `GET /api/skills` — every skill, newest updated first.
+    func listSkills() async throws -> ListSkillsResponse {
+        try await get("/api/skills")
+    }
+
+    /// `POST /api/skills` → `201 {skill}`. 409 when the name (case-insensitively)
+    /// exists — surfaced as `.server(409, …)` with the server's message.
+    func createSkill(_ draft: SkillDraft) async throws -> Skill {
+        let data = try await send(
+            path: "/api/skills", method: "POST", query: [],
+            body: try JSONEncoder().encode(draft), allowRetry: true
+        )
+        return try decode(SkillResponse.self, from: data).skill
+    }
+
+    /// `PUT /api/skills/:id` → `{skill}` — partial body, absent fields keep.
+    func updateSkill(id: String, _ draft: SkillDraft) async throws -> Skill {
+        let data = try await send(
+            path: "/api/skills/\(Self.pathComponent(id))", method: "PUT", query: [],
+            body: try JSONEncoder().encode(draft), allowRetry: true
+        )
+        return try decode(SkillResponse.self, from: data).skill
+    }
+
+    /// `DELETE /api/skills/:id` → 204.
+    func deleteSkill(id: String) async throws {
+        _ = try await send(path: "/api/skills/\(Self.pathComponent(id))", method: "DELETE", query: [], allowRetry: true)
+    }
+
+    // MARK: MCP tokens (`/api/mcp/tokens`, Clerk session only)
+
+    /// `GET /api/mcp/tokens` — the caller's tokens, revoked ones included.
+    func listMcpTokens() async throws -> ListMcpTokensResponse {
+        try await get("/api/mcp/tokens")
+    }
+
+    /// `POST /api/mcp/tokens` → `201 {token, id, name, createdAt}`. The returned
+    /// `token` is shown to the user ONCE and is not recoverable — never persist it.
+    func createMcpToken(name: String) async throws -> CreateMcpTokenResponse {
+        struct Body: Encodable { let name: String }
+        let data = try await send(
+            path: "/api/mcp/tokens", method: "POST", query: [],
+            body: try JSONEncoder().encode(Body(name: name)), allowRetry: true
+        )
+        return try decode(CreateMcpTokenResponse.self, from: data)
+    }
+
+    /// `DELETE /api/mcp/tokens/:id` → 204. A 404 is tolerated: the token is
+    /// gone either way, which is the caller's intended end state.
+    func revokeMcpToken(id: String) async throws {
+        do {
+            _ = try await send(path: "/api/mcp/tokens/\(Self.pathComponent(id))", method: "DELETE", query: [], allowRetry: true)
+        } catch ApiError.server(status: 404, _) {
+            return
+        }
+    }
+
     /// `GET /api/export` — the full lossless bundle, returned raw so the caller
     /// can write it to the file the user picked without a decode/re-encode trip.
     func exportData() async throws -> Data {
@@ -226,11 +292,22 @@ final class ApiClient {
 
     private func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
         let data = try await send(path: path, method: "GET", query: query, allowRetry: true)
+        return try decode(T.self, from: data)
+    }
+
+    /// Decode a response body, mapping failures onto `.decoding` so the UI shows
+    /// one consistent message instead of a raw `DecodingError`.
+    private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         do {
             return try Self.decoder.decode(T.self, from: data)
         } catch {
             throw ApiError.decoding(String(describing: error))
         }
+    }
+
+    /// Percent-encode an id for interpolation into a path.
+    nonisolated static func pathComponent(_ id: String) -> String {
+        id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
     }
 
     /// Performs the request, injecting auth for cloud. On a 401 it force-refreshes

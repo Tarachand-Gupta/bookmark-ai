@@ -6,9 +6,10 @@ import SwiftUI
 /// a conversation fills it with the transcript.
 struct ChatView: View {
     @Environment(AppEnvironment.self) private var appEnvironment
+    @State private var isPresentingHistory = false
 
     var body: some View {
-        let model = appEnvironment.chat
+        @Bindable var model = appEnvironment.chat
 
         VStack(spacing: 0) {
             if model.messages.isEmpty {
@@ -31,7 +32,9 @@ struct ChatView: View {
         .navigationTitle("Ask AI")
         .navigationSubtitle("")
         .toolbar {
-            ToolbarItem(placement: .primaryAction) { historyMenu }
+            // Order = left to right: ⋯ (the home for chat-wide items), History, New.
+            ToolbarItem(placement: .primaryAction) { moreMenu }
+            ToolbarItem(placement: .primaryAction) { historyButton }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     appEnvironment.chat.newConversation()
@@ -40,6 +43,10 @@ struct ChatView: View {
                 }
                 .help("Start a new conversation")
             }
+        }
+        .sheet(isPresented: $model.isPresentingSkills) {
+            SkillsSheet()
+                .environment(appEnvironment)
         }
         .task {
             await appEnvironment.chat.refreshConversations()
@@ -114,19 +121,25 @@ struct ChatView: View {
     // RSS >1GB (the "give me sample markdown" hang). A chat transcript is small;
     // eager layout is cheap and immune.
     private var transcript: some View {
-        ScrollView {
+        let chat = appEnvironment.chat
+        return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                ForEach(appEnvironment.chat.messages) { message in
-                    ChatMessageView(message: message)
-                }
-                if appEnvironment.chat.isStreaming, streamHasNoVisibleReply {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("Thinking…")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                ForEach(chat.messages) { message in
+                    ChatMessageView(
+                        message: message,
+                        reasoningDurations: chat.reasoningDurations[message.id] ?? [:],
+                        notes: chat.replyNotes[message.id] ?? []
+                    )
+                    // The turn that came back empty: say so, right under it.
+                    if let failed = chat.failedTurn, failed.userMessageId == message.id {
+                        ChatTurnFailureView(message: failed.message) { chat.retryFailedTurn() }
                     }
-                    .padding(.horizontal, 4)
+                }
+                // The instant placeholder: from the moment the user sends until
+                // the first renderable chunk lands.
+                if chat.isStreaming, streamHasNoVisibleReply {
+                    ThinkingIndicator()
+                        .padding(.horizontal, 4)
                 }
             }
             .padding(ContentColumn.padding)
@@ -137,38 +150,45 @@ struct ChatView: View {
     }
 
     /// True until the streaming assistant message has anything renderable —
-    /// the window where "Thinking…" is the only honest thing to show.
+    /// the window where the Thinking placeholder is the only honest thing to show.
     private var streamHasNoVisibleReply: Bool {
         guard let last = appEnvironment.chat.messages.last else { return true }
         if last.role != "assistant" { return true }
-        return last.partViews.isEmpty
+        return !last.hasVisibleContent
     }
 
-    private var historyMenu: some View {
+    /// Chat-wide items that aren't about the current transcript. Kept a real
+    /// menu (not a lone button) — it is the home for whatever comes next.
+    private var moreMenu: some View {
         Menu {
-            let conversations = appEnvironment.chat.conversations
-            if conversations.isEmpty {
-                Text("No conversations yet")
+            Button {
+                appEnvironment.chat.isPresentingSkills = true
+            } label: {
+                Label("Skills…", systemImage: "sparkles.rectangle.stack")
             }
-            ForEach(conversations) { conversation in
-                Button(conversation.title) {
-                    Task { await appEnvironment.chat.open(conversation) }
-                }
-            }
-            if !conversations.isEmpty {
-                Divider()
-                Menu("Delete") {
-                    ForEach(conversations) { conversation in
-                        Button(conversation.title, role: .destructive) {
-                            Task { await appEnvironment.chat.deleteConversation(conversation) }
-                        }
-                    }
-                }
-            }
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Skills and more")
+    }
+
+    /// History: a popover hanging under the button — search, day groups, row
+    /// actions, keyboard (see `ChatHistoryPopover`). Not a menu: a flat menu
+    /// of titles with a Delete submenu was rejected.
+    private var historyButton: some View {
+        Button {
+            isPresentingHistory.toggle()
         } label: {
             Label("History", systemImage: "clock.arrow.circlepath")
         }
         .help("Previous conversations")
+        .popover(isPresented: $isPresentingHistory, arrowEdge: .bottom) {
+            ChatHistoryPopover(isPresented: $isPresentingHistory)
+                .environment(appEnvironment)
+        }
     }
 
     private func errorBar(_ message: String) -> some View {
@@ -213,71 +233,3 @@ private struct SuggestionPill: View {
     }
 }
 
-/// The composer: a REAL input container — rounded surface, hairline border,
-/// focus tint — with the send/stop button living inside it. ⏎ sends; while
-/// streaming the same spot is Stop.
-struct ChatComposerBox: View {
-    @Environment(AppEnvironment.self) private var appEnvironment
-    @FocusState private var isFocused: Bool
-
-    var body: some View {
-        @Bindable var model = appEnvironment.chat
-
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField(
-                appEnvironment.chat.messages.isEmpty
-                    ? "Ask about your bookmarks, sessions, or live tabs…"
-                    : "Ask a follow-up…",
-                text: $model.draft,
-                axis: .vertical
-            )
-            .textFieldStyle(.plain)
-            .font(.body)
-            .lineLimit(1...6)
-            .focused($isFocused)
-            .onSubmit { appEnvironment.chat.send() }
-            .disabled(appEnvironment.chat.isStreaming)
-            .padding(.vertical, 3)
-
-            if appEnvironment.chat.isStreaming {
-                Button {
-                    appEnvironment.chat.stop()
-                } label: {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 22))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tint)
-                .pointingHandCursor()
-                .help("Stop generating")
-            } else {
-                Button {
-                    appEnvironment.chat.send()
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 22))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(appEnvironment.chat.canSend ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
-                .disabled(!appEnvironment.chat.canSend)
-                .pointingHandCursor()
-                .help("Send (⏎)")
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.cardFill)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(
-                    isFocused ? AnyShapeStyle(.tint.opacity(0.6)) : AnyShapeStyle(.separator),
-                    lineWidth: 1
-                )
-        )
-        .shadow(color: .black.opacity(0.10), radius: 4, y: 1)
-        .onAppear { isFocused = true }
-    }
-}

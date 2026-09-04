@@ -1,10 +1,11 @@
 import Foundation
 import Observation
 
-/// The server-side user settings (`GET/PUT /api/settings`): AI provider config,
-/// the free-credits meter, and the live-server override. One instance in
-/// `AppEnvironment` feeds both the Settings window and the chat's credits card,
-/// so the numbers can't drift between surfaces.
+/// The server-side user settings (`GET/PUT /api/settings`): AI mode + provider
+/// config, the free-credits meter, and the live-server override — plus the
+/// account's plan (`GET /api/account`). One instance in `AppEnvironment` feeds
+/// both the Settings window and the chat's credits card, so the numbers can't
+/// drift between surfaces.
 @MainActor
 @Observable
 final class SettingsModel {
@@ -16,6 +17,11 @@ final class SettingsModel {
     private(set) var statusMessage: String?
     private(set) var statusIsError = false
 
+    /// Everyone is on Free today; resolved from `GET /api/account` once per
+    /// session and defaulted to Free when the route isn't there.
+    private(set) var plan: PlanInfo = .free
+    private var planLoaded = false
+
     private let api: ApiClient
 
     init(api: ApiClient) {
@@ -24,11 +30,17 @@ final class SettingsModel {
 
     var aiUsage: AiUsage? { settings?.aiUsage }
     var hasOwnKey: Bool { settings?.apiKeySet ?? false }
+    /// The persisted mode (or the legacy derivation on an older server).
+    var aiMode: AiMode { settings?.resolvedAiMode ?? .included }
 
     func load() async {
         isLoading = true
         defer { isLoading = false }
         settings = try? await api.settings().settings
+        if !planLoaded, let account = try? await api.account() {
+            plan = PlanInfo.resolve(account.plan)
+            planLoaded = true
+        }
     }
 
     /// PUT and adopt the server's echo. Returns success so callers can chain
@@ -50,14 +62,41 @@ final class SettingsModel {
         }
     }
 
+    /// The Included ⇄ Own switch: PUTs `{aiMode}` ALONE, so the stored key,
+    /// provider, and model are untouched. The server refuses `own` without a
+    /// stored key (400) — the message is surfaced as the status line.
+    @discardableResult
+    func setAiMode(_ mode: AiMode) async -> Bool {
+        guard mode != aiMode else { return true }
+        return await save(UpdateSettingsBody(aiMode: mode))
+    }
+
+    /// The ONLY path that sends `apiKey: ""`. The server clears the key and
+    /// switches the mode back to Included in the same write.
+    @discardableResult
+    func removeKey() async -> Bool {
+        await save(UpdateSettingsBody(apiKey: ""))
+    }
+
     func clearStatus() {
         statusMessage = nil
         statusIsError = false
     }
 
+    #if DEBUG
+    /// Previews/tests: settings as if `GET /api/settings` had answered.
+    func seed(_ settings: UserSettings, plan: PlanInfo = .free) {
+        self.settings = settings
+        self.plan = plan
+        planLoaded = true
+    }
+    #endif
+
     func reset() {
         settings = nil
         statusMessage = nil
         statusIsError = false
+        plan = .free
+        planLoaded = false
     }
 }

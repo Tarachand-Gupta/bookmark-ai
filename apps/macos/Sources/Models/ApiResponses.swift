@@ -117,12 +117,45 @@ struct UserSettings: Codable, Sendable {
     var model: String?
     var apiKeySet: Bool
     var apiKeyLast4: String?
+    /// `aiModeSchema` — which AI powers chat: `"included"` (shared model,
+    /// metered) or `"own"` (the stored key, unmetered). Optional on the wire so
+    /// an older server still decodes; read it through `resolvedAiMode`.
+    var aiMode: String?
+    /// False when the stored own key still needs a model (every provider but
+    /// Google requires an explicit one). Optional on the wire; absent = ready.
+    var ownKeyReady: Bool?
     var liveServerUrl: String?
     var nativeSyncEnabled: Bool?
     var nativeSyncFull: Bool?
     /// null = never configured = every tool enabled (see `McpTool`).
     var mcpTools: [String]?
     var aiUsage: AiUsage?
+
+    /// The persisted mode, or the legacy derivation (key stored ⇒ own) when the
+    /// server predates the `ai_mode` column — the same rule the server applies
+    /// to a NULL column, so both sides agree.
+    var resolvedAiMode: AiMode {
+        if let aiMode, let mode = AiMode(rawValue: aiMode) { return mode }
+        return apiKeySet ? .own : .included
+    }
+
+    var isOwnKeyReady: Bool { ownKeyReady ?? true }
+}
+
+/// Which AI powers the account — an explicit, persisted choice. A mode switch
+/// NEVER touches the stored key; only the separate "Remove key…" action does.
+enum AiMode: String, CaseIterable, Identifiable, Codable, Sendable {
+    case included
+    case own
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .included: "Included free AI"
+        case .own: "Your own key"
+        }
+    }
 }
 
 struct SettingsResponse: Codable, Sendable {
@@ -133,12 +166,14 @@ struct SettingsResponse: Codable, Sendable {
 /// is EXACTLY the server's contract: absent = keep, `""` = clear (apiKey and
 /// liveServerUrl), any other string = set. `mcpTools` is always sent as a full
 /// array when present (an all-names array behaves like the server's null =
-/// "all tools", so explicit-null encoding is never needed).
+/// "all tools", so explicit-null encoding is never needed). `aiMode` alone
+/// switches the mode without touching the key/provider/model.
 struct UpdateSettingsBody: Codable, Sendable {
     var provider: String?
     var apiKey: String?
     var baseUrl: String?
     var model: String?
+    var aiMode: AiMode?
     var liveServerUrl: String?
     var nativeSyncEnabled: Bool?
     var nativeSyncFull: Bool?

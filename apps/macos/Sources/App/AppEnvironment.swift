@@ -16,6 +16,8 @@ final class AppEnvironment {
     let sessions: SessionsModel
     let live: LiveModel
     let settings: SettingsModel
+    let skills: SkillsModel
+    let mcpTokens: McpTokensModel
 
     /// `GET /api/health` for the Settings diagnostics row.
     private(set) var health: HealthResponse?
@@ -40,11 +42,17 @@ final class AppEnvironment {
         self.sessions = SessionsModel(api: api)
         self.live = LiveModel(api: api)
         self.settings = SettingsModel(api: api)
+        self.skills = SkillsModel(api: api)
+        self.mcpTokens = McpTokensModel(api: api)
 
         // ApiClient asks AuthController for a bearer token on every cloud request.
         api.tokenProvider = { [weak auth] forceRefresh in
             await auth?.token(forceRefresh: forceRefresh)
         }
+
+        // A chat tool that creates/installs a skill refreshes the Skills sheet.
+        let skills = self.skills
+        self.chat.onSkillsChanged = { Task { await skills.load() } }
     }
 
     /// First run of the app: restore any persisted session, then load the library.
@@ -65,6 +73,8 @@ final class AppEnvironment {
         sessions.reset()
         live.reset()
         settings.reset()
+        skills.reset()
+        mcpTokens.reset()
         health = nil
 
         // Auth always points at the CLOUD origin — that is the only Clerk-backed
@@ -94,6 +104,8 @@ final class AppEnvironment {
         sessions.reset()
         live.reset()
         settings.reset()
+        skills.reset()
+        mcpTokens.reset()
         await loadEverything()
     }
 }

@@ -1,36 +1,91 @@
 import SwiftUI
 
-/// One transcript entry. User turns are trailing-aligned tinted bubbles;
-/// assistant turns render leading-aligned as a sequence of parts — markdown
-/// text blocks interleaved with tool-activity chips, in the order they happened.
+/// One transcript entry. User turns are trailing-aligned tinted bubbles (with
+/// their attachments above the text); assistant turns render leading-aligned
+/// as a sequence of parts — reasoning disclosures, tool rows, and markdown
+/// text blocks, in the order they happened.
 struct ChatMessageView: View {
     let message: ChatMessage
+    /// Seconds per reasoning part (by ordinal), known for turns streamed here.
+    var reasoningDurations: [Int: TimeInterval] = [:]
+    /// Server advisories for this reply (own-key fallback, key without a model).
+    var notes: [ChatReplyNote] = []
 
     var body: some View {
         if message.role == "user" {
-            HStack {
-                Spacer(minLength: 60)
-                Text(message.plainText)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
+            userBubble
         } else {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(message.partViews.enumerated()), id: \.offset) { _, part in
-                    switch part {
-                    case .text(let text):
-                        if !text.isEmpty {
-                            MarkdownText(text: text)
-                        }
-                    case .tool(let name, let running):
-                        ChatToolChip(name: name, running: running)
-                    }
+            assistantParts
+        }
+    }
+
+    private var userBubble: some View {
+        let files = message.fileParts
+        let text = message.plainText
+        return HStack {
+            Spacer(minLength: 60)
+            VStack(alignment: .trailing, spacing: 8) {
+                if !files.isEmpty {
+                    ChatAttachmentsRow(files: files, alignment: .trailing)
+                }
+                if !text.isEmpty {
+                    Text(text)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private struct IndexedPart: Identifiable {
+        let id: Int
+        let view: ChatPartView
+        /// Position among this message's reasoning parts (durations key).
+        let reasoningOrdinal: Int?
+    }
+
+    private var indexedParts: [IndexedPart] {
+        var ordinal = 0
+        return message.partViews.enumerated().map { offset, view in
+            if case .reasoning = view {
+                defer { ordinal += 1 }
+                return IndexedPart(id: offset, view: view, reasoningOrdinal: ordinal)
+            }
+            return IndexedPart(id: offset, view: view, reasoningOrdinal: nil)
+        }
+    }
+
+    private var assistantParts: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(indexedParts) { part in
+                switch part.view {
+                case .text(let text):
+                    if !text.isEmpty {
+                        MarkdownText(text: text)
+                    }
+                case .reasoning(let text, let streaming):
+                    ReasoningDisclosure(
+                        text: text,
+                        streaming: streaming,
+                        durationSeconds: part.reasoningOrdinal.flatMap { reasoningDurations[$0] }
+                    )
+                    .zIndex(1)
+                case .tool(let call):
+                    // Interactive rows sit above the text blocks for hit-testing
+                    // — a table/code block sibling must never take their clicks.
+                    ChatToolRow(call: call)
+                        .zIndex(1)
+                case .file(let file):
+                    ChatAttachmentsRow(files: [file])
+                }
+            }
+            ForEach(notes, id: \.self) { note in
+                ChatReplyNoteView(note: note)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -237,29 +292,3 @@ private struct MarkdownTable: View {
     }
 }
 
-/// The agent's visible working: one capsule per tool call, spinner while the
-/// output hasn't landed. Reads as activity, not as content.
-struct ChatToolChip: View {
-    let name: String
-    let running: Bool
-
-    var body: some View {
-        HStack(spacing: 6) {
-            if running {
-                ProgressView()
-                    .controlSize(.mini)
-            } else {
-                Image(systemName: ChatToolCopy.symbol(for: name))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-            Text(ChatToolCopy.label(for: name, running: running))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background(.cardFill, in: Capsule())
-        .overlay(Capsule().strokeBorder(.separator.opacity(0.6), lineWidth: 1))
-    }
-}

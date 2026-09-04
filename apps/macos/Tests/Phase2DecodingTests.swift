@@ -81,10 +81,17 @@ final class Phase2DecodingTests: XCTestCase {
         XCTAssertEqual(detail.messages.count, 2)
 
         let assistant = detail.messages[1]
-        XCTAssertEqual(assistant.partViews, [
-            .tool(name: "queryDatabase", running: false),
-            .text("You have 4 bookmarks."),
-        ])
+        XCTAssertEqual(assistant.partViews.count, 2, "step-start separators must not render")
+        guard case .tool(let call) = assistant.partViews[0] else {
+            return XCTFail("first visible part should be the tool call")
+        }
+        XCTAssertEqual(call.name, "queryDatabase")
+        XCTAssertEqual(call.callId, "call1")
+        XCTAssertEqual(call.state, .outputAvailable)
+        XCTAssertFalse(call.isRunning)
+        XCTAssertEqual(call.output?["rowCount"], .int(1))
+        XCTAssertEqual(ChatToolCopy.label(for: call), "1 row")
+        XCTAssertEqual(assistant.partViews[1], .text("You have 4 bookmarks."))
 
         // Lossless re-encode: the provider metadata and integer rows survive,
         // because the next turn re-sends these parts verbatim.
@@ -132,8 +139,12 @@ final class Phase2DecodingTests: XCTestCase {
         XCTAssertNil(ChatStreamChunk.parse(line: ""))
         XCTAssertNil(ChatStreamChunk.parse(line: ": keepalive"))
         XCTAssertEqual(
-            ChatStreamChunk.parse(line: #"data: {"type":"reasoning-delta","id":"1","delta":"…"}"#),
-            .other(type: "reasoning-delta")
+            ChatStreamChunk.parse(line: #"data: {"type":"start-step"}"#),
+            .other(type: "start-step")
+        )
+        XCTAssertEqual(
+            ChatStreamChunk.parse(line: #"data: {"type":"source-url","sourceId":"s1","url":"https://example.com"}"#),
+            .other(type: "source-url")
         )
     }
 
