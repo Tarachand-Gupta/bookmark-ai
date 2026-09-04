@@ -60,6 +60,14 @@
     "plugins": [
       "expo-secure-store",
       "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Bookmark AI lets you attach photos from your library to Ask AI questions.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
       "./plugins/withAndroidShareLabel",
       [
         "expo-share-intent",

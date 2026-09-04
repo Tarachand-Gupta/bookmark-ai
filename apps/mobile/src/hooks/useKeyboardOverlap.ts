@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Dimensions, Keyboard, Platform, type KeyboardEvent } from "react-native";
 
-/** The keyboard's current coverage of the window bottom, from iOS's own metrics. */
+/** The keyboard's current coverage of the window bottom, from the OS's own metrics. */
 function currentOverlap(): number {
-  if (Platform.OS !== "ios" || !Keyboard.isVisible()) return 0;
+  if (!Keyboard.isVisible()) return 0;
   const metrics = Keyboard.metrics();
   if (metrics === undefined) return 0;
-  return overlapFor(metrics.screenY);
+  return Platform.OS === "ios" ? overlapFor(metrics.screenY) : metrics.height;
 }
 
 /**
@@ -37,9 +37,11 @@ function overlapFor(keyboardScreenY: number): number {
  * such constant to get wrong.
  *
  * The consumer applies the result at the bottom of a container that reaches the
- * window bottom, and must NOT also add the bottom safe-area inset on top of it:
- * once the keyboard is up, the keyboard frame already spans the home-indicator
- * area, so `max(overlap, insets.bottom)` is the correct pad, not the sum.
+ * window bottom. How it combines with the bottom safe-area inset differs per
+ * platform: on iOS the keyboard frame already spans the home-indicator area, so
+ * `max(overlap, insets.bottom)` is the pad; on Android the reported height is
+ * the IME MINUS the system-bar inset (ReactRootView subtracts it), so in an
+ * edge-to-edge window the two ADD — see ChatThread.
  */
 export function useKeyboardOverlap(): number {
   // Seeded, not zero: the keyboard can already be up when this mounts (a modal
@@ -47,9 +49,23 @@ export function useKeyboardOverlap(): number {
   const [overlap, setOverlap] = useState(currentOverlap);
 
   useEffect(() => {
-    // Android resizes the window itself (windowSoftInputMode=adjustResize), so
-    // padding for the keyboard there would double-count it.
-    if (Platform.OS !== "ios") return;
+    if (Platform.OS === "android") {
+      // Edge-to-edge (SDK 57 / target 35) leaves a full-screen native Modal's
+      // window alone when the keyboard opens — `adjustResize` no longer resizes
+      // it — so the keyboard's own height is exactly how much of the bottom it
+      // covers. Android has no "will" phase; the did-events land with the frame.
+      const subscriptions = [
+        Keyboard.addListener("keyboardDidShow", (event) => {
+          setOverlap(event.endCoordinates.height);
+        }),
+        Keyboard.addListener("keyboardDidHide", () => {
+          setOverlap(0);
+        }),
+      ];
+      return () => {
+        for (const subscription of subscriptions) subscription.remove();
+      };
+    }
 
     const settle = (event: KeyboardEvent, next: number) => {
       // Ride the keyboard's own duration/easing rather than snapping — this is

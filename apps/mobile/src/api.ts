@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import type {
+  AccountResponse,
   Bookmark,
   ChatConversationDetailResponse,
   ChatConversationsResponse,
@@ -14,6 +15,7 @@ import type {
   SearchMode,
   SearchResponse,
   Session,
+  UpdateUserSettingsInput,
   UserSettingsResponse,
 } from "@bookmark-ai/types";
 
@@ -184,7 +186,7 @@ export async function authHeaders(): Promise<Record<string, string>> {
 }
 
 interface RequestOptions {
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;
 }
@@ -391,6 +393,27 @@ export function getChatConversation(
 /** Delete a conversation and its messages (204). */
 export function deleteChatConversation(id: string): Promise<void> {
   return request<void>(`/api/chat/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** GET /api/account → the caller's plan (`"free"` for everyone today; literal
+ * `"free"` in single-tenant/open mode). Feature copy for a plan is
+ * `PLAN_FEATURES[plan]` in @bookmark-ai/types — render from that, not from here. */
+export function getAccount(signal?: AbortSignal): Promise<AccountResponse> {
+  return request<AccountResponse>("/api/account", { signal });
+}
+
+/** GET /api/settings — AI mode, saved-key summary (never the key), weekly meter. */
+export function getSettings(signal?: AbortSignal): Promise<UserSettingsResponse> {
+  return request<UserSettingsResponse>("/api/settings", { signal });
+}
+
+/**
+ * PUT /api/settings — absent = keep for every field. Mobile only ever sends
+ * `{ aiMode }`: switching between the included free AI and a saved key NEVER
+ * touches the key itself (only an explicit `apiKey: ""`, a web-app action, does).
+ */
+export function updateSettings(patch: UpdateUserSettingsInput): Promise<UserSettingsResponse> {
+  return request<UserSettingsResponse>("/api/settings", { method: "PUT", body: patch });
 }
 
 /** GET /live on the dedicated live server — the tabs every armed device is

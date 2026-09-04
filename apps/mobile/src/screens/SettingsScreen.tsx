@@ -1,24 +1,18 @@
 import { useState } from "react";
-import {
-  Alert,
-  Image,
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Alert, Image, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useClerk, useUser } from "@clerk/clerk-expo";
-import type { SymbolViewProps } from "expo-symbols";
 import { getApiUrl, SERVER_TARGET } from "../api";
 import { DeleteAccountSheet } from "../components/DeleteAccountSheet";
+import { AiSettingsGroup } from "../components/settings/AiSettingsGroup";
+import { PlanBadge, PlanCard } from "../components/settings/PlanCard";
+import { Group, GroupFootnote, GroupLabel, GroupRow } from "../components/settings/SettingsGroup";
 import { Symbol } from "../components/Symbol";
 import {
   useAppTheme,
   usePreferences,
   type ThemePreference,
 } from "../context/PreferencesContext";
+import { useAiPlan } from "../hooks/useAiPlan";
 
 const WEB_URL = "https://bookmark-ai.cloud";
 
@@ -32,7 +26,8 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
 // build time (dev run → local, release → production); there is no in-app switch.
 const SERVER_HOST = getApiUrl().replace(/^https?:\/\//, "");
 
-/** Settings: signed-in account card, appearance override, links — iOS
+/** Settings: signed-in account card with its plan badge, the Plan and Ask AI
+ * groups (`/api/account` + `/api/settings`), appearance override, links — iOS
  * inset-grouped lists. The server is fixed by the build, so it's shown as a
  * read-only info row rather than a toggle. No longer a tab and no longer its own
  * large title: SettingsPresentation (src/navigation) presents it full-screen
@@ -44,6 +39,8 @@ export function SettingsScreen() {
   const { signOut } = useClerk();
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
+  // Loads when the presentation opens (the Modal mounts this screen on show).
+  const ai = useAiPlan();
 
   // user is null only in the dev auth-bypass session (EXPO_PUBLIC_SKIP_AUTH);
   // a real session always has a user by the time the Shell renders.
@@ -115,7 +112,12 @@ export function SettingsScreen() {
           {email.length > 0 && (
             <Text style={[styles.profileMeta, { color: colors.mutedForeground }]}>{email}</Text>
           )}
+          <PlanBadge plan={ai.plan} />
         </View>
+
+        <PlanCard plan={ai.plan} />
+
+        <AiSettingsGroup state={ai} />
 
         <GroupLabel>Appearance</GroupLabel>
         <Group>
@@ -177,16 +179,16 @@ export function SettingsScreen() {
           )}
         </Group>
         {signedIn && (
-          <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
+          <GroupFootnote>
             Deleting your account permanently removes your bookmarks, sessions, and sign-in. This
             cannot be undone.
-          </Text>
+          </GroupFootnote>
         )}
         {!signedIn && (
-          <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
+          <GroupFootnote>
             This build was started with the sign-in gate bypassed (EXPO_PUBLIC_SKIP_AUTH — dev
             only). Restart the dev server without the flag to use the real sign-in flow.
-          </Text>
+          </GroupFootnote>
         )}
       </ScrollView>
       {/* Step 2 of deletion: the typed-confirmation sheet. A sibling of the
@@ -198,81 +200,6 @@ export function SettingsScreen() {
         onDeleted={finishDelete}
       />
     </>
-  );
-}
-
-function GroupLabel({ children }: { children: string }) {
-  const { colors } = useAppTheme();
-  return (
-    <Text style={[styles.groupLabel, { color: colors.mutedForeground }]}>
-      {children.toUpperCase()}
-    </Text>
-  );
-}
-
-function Group({ children }: { children: React.ReactNode }) {
-  const { colors, radius } = useAppTheme();
-  return (
-    <View
-      style={[
-        styles.group,
-        { backgroundColor: colors.card, borderColor: colors.border, borderRadius: radius.lg },
-      ]}
-    >
-      {children}
-    </View>
-  );
-}
-
-function GroupRow({
-  label,
-  detail,
-  symbol,
-  trailing,
-  chevron,
-  first,
-  destructive,
-  onPress,
-}: {
-  label: string;
-  detail?: string;
-  symbol?: SymbolViewProps["name"];
-  trailing?: React.ReactNode;
-  chevron?: boolean;
-  first?: boolean;
-  destructive?: boolean;
-  onPress?: () => void;
-}) {
-  const { colors } = useAppTheme();
-  const labelColor = destructive ? colors.destructive : colors.foreground;
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={!onPress}
-      accessibilityRole={onPress ? "button" : undefined}
-      style={({ pressed }) => [
-        styles.row,
-        !first && { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth },
-        pressed && onPress ? { backgroundColor: colors.muted } : null,
-      ]}
-    >
-      {symbol && (
-        <Symbol
-          name={symbol}
-          size={20}
-          color={destructive ? colors.destructive : colors.mutedForeground}
-          fallback="•"
-        />
-      )}
-      <Text style={[styles.rowLabel, { color: labelColor }]}>{label}</Text>
-      {detail && (
-        <Text numberOfLines={1} style={[styles.rowDetail, { color: colors.mutedForeground }]}>
-          {detail}
-        </Text>
-      )}
-      {trailing}
-      {chevron && <Symbol name="chevron.right" size={14} color={colors.mutedForeground} fallback="›" />}
-    </Pressable>
   );
 }
 
@@ -292,23 +219,4 @@ const styles = StyleSheet.create({
   avatarImage: { width: 64, height: 64, borderRadius: 32, marginBottom: 6 },
   profileName: { fontSize: 20, fontWeight: "600" },
   profileMeta: { fontSize: 13 },
-  groupLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    letterSpacing: 0.4,
-    marginTop: 24,
-    marginBottom: 8,
-    marginLeft: 4,
-  },
-  group: { borderWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-  },
-  rowLabel: { flex: 1, fontSize: 17 },
-  rowDetail: { fontSize: 15, maxWidth: "50%" },
-  footnote: { fontSize: 13, lineHeight: 18, marginTop: 10, marginHorizontal: 4 },
 });

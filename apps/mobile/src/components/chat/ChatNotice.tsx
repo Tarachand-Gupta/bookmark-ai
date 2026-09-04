@@ -1,23 +1,27 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppTheme } from "../../context/PreferencesContext";
 import type { FreeLimitInfo } from "../../hooks/useAiChat";
+import { tokensToCredits } from "../../lib/aiCredits";
 import { Symbol } from "../Symbol";
 
 /**
- * The three ways a turn can end without an answer, as inline cards in the
- * transcript (never an alert — the thread has to keep its context):
+ * The ways a turn can end without an answer, as inline cards in the transcript
+ * (never an alert — the thread has to keep its context):
  *
- *  - 402 `free-limit-exceeded`: the shared AI's WEEKLY token budget is spent.
- *    Configuring a personal API key is a web-app flow (Settings → AI), so mobile
- *    explains and points there instead of pretending it can fix it here.
+ *  - 402 `free-limit-exceeded`: the shared AI's WEEKLY credits are spent AND no
+ *    personal key is saved — with a key, the server switches to it by itself
+ *    (`X-Ai-Source: own-fallback`, see ChatSourceNote) and this card never
+ *    appears. Adding a key is a web-app flow (Settings → AI), so mobile explains
+ *    the switch and points there.
  *  - 429: the per-account DAILY chat quota. Nothing to do but wait.
+ *  - 413/415: the server refused the attachments (its own re-check of the
+ *    allowlist/caps the client already applies).
  *  - anything else (network drop, stream error, 5xx): retryable, and the retry
  *    re-runs the same turn via `regenerate()`.
  */
 export function ChatLimitNotice({ info }: { info: FreeLimitInfo }) {
   const { colors, radius } = useAppTheme();
-  const used = info.usedTokens;
-  const cap = info.limitTokens;
+  const cap = info.limitTokens !== undefined ? tokensToCredits(info.limitTokens) : null;
   return (
     <View
       style={[
@@ -28,13 +32,15 @@ export function ChatLimitNotice({ info }: { info: FreeLimitInfo }) {
       <View style={styles.titleRow}>
         <Symbol name="sparkles" size={16} color={colors.foreground} fallback="✦" />
         <Text style={[styles.title, { color: colors.foreground }]}>
-          Weekly free AI limit reached
+          Free credits used up for this week
         </Text>
       </View>
       <Text style={[styles.body, { color: colors.mutedForeground }]}>
-        {used !== undefined && cap !== undefined
-          ? `You've used all ${formatTokens(cap)} of this week's shared AI tokens (${formatTokens(used)} spent). The budget resets weekly — or add your own API key in the web app under Settings → AI for unmetered chat.`
-          : "This week's shared AI budget is used up. It resets weekly — or add your own API key in the web app under Settings → AI for unmetered chat."}
+        {cap !== null
+          ? `You've used all ${cap.toLocaleString()} of this week's free AI credits. They reset Monday.`
+          : "This week's free AI credits are used up. They reset Monday."}{" "}
+        Add your own API key in the web app under Settings → AI and chat switches to it
+        automatically whenever the free credits run out — unmetered, on your provider.
       </Text>
     </View>
   );
@@ -68,6 +74,24 @@ export function ChatQuotaNotice({ message }: { message: string }) {
   );
 }
 
+export function ChatRejectedNotice({ message }: { message: string }) {
+  const { colors, radius } = useAppTheme();
+  return (
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: colors.muted, borderColor: colors.border, borderRadius: radius.lg },
+      ]}
+    >
+      <View style={styles.titleRow}>
+        <Symbol name="paperclip" size={16} color={colors.foreground} fallback="⊕" />
+        <Text style={[styles.title, { color: colors.foreground }]}>Attachments not sent</Text>
+      </View>
+      <Text style={[styles.body, { color: colors.mutedForeground }]}>{message}</Text>
+    </View>
+  );
+}
+
 export function ChatErrorNotice({ onRetry }: { onRetry: () => void }) {
   const { colors, radius } = useAppTheme();
   return (
@@ -86,20 +110,17 @@ export function ChatErrorNotice({ onRetry }: { onRetry: () => void }) {
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel="Retry"
-        style={[styles.retry, { borderColor: colors.border, borderRadius: radius.md }]}
+        style={({ pressed }) => [
+          styles.retry,
+          { borderColor: colors.border, borderRadius: radius.md },
+          pressed && { backgroundColor: colors.muted },
+        ]}
       >
         <Symbol name="arrow.clockwise" size={14} color={colors.foreground} fallback="↻" />
         <Text style={[styles.retryLabel, { color: colors.foreground }]}>Retry</Text>
       </Pressable>
     </View>
   );
-}
-
-/** 1_250_000 → "1.3M", 40_000 → "40K" — a budget reads as a size, not a number. */
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${Math.round((n / 1_000_000) * 10) / 10}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
-  return String(n);
 }
 
 const styles = StyleSheet.create({

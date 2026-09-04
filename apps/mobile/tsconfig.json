@@ -2,5 +2,8 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true
-  }
+  },
+  // Unit tests run under `tsx --test` (node:test); they are not part of the app
+  // bundle and this package has no @types/node for the `node:` imports.
+  "exclude": ["node_modules", "ios", "android", "**/*.test.ts"]
 }
