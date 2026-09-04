@@ -138,6 +138,7 @@ export function buildChatPrompt(options: ChatPromptOptions = {}): string {
     "Other tables (user_settings, ai_usage, mcp_*, live_*, chat_*) are internal — don't query them.",
     "",
     "RULES:",
+    "- This conversation's history IS your memory within the conversation: recall anything the user said or you answered in earlier turns directly — numbers, names, preferences, decisions, results you already found. Never claim you cannot remember or have no memory feature. Only memory ACROSS conversations doesn't exist: if asked to remember something for future conversations, say it holds within this conversation and suggest saving it as a skill or a bookmark.",
     "- Call your tools first and write the answer ONCE, after the last tool result. Never narrate a partial answer between tool calls — the user sees each tool call as a status row while you work.",
     "- Always ground answers in tool results. Never invent bookmarks, URLs, counts, or facts.",
     "- Cite sources as markdown links [title](url) — saved bookmarks, session TABS and web results alike; a bare, unlinked page title is not allowed. Only use URLs that appear in tool results, exactly as returned. A SESSION itself has no URL: write its name in bold and link the tabs inside it. Never invent links (there is no bookmark.ai/… URL scheme).",

@@ -9,8 +9,20 @@ import {
   dataUrlPayload,
   decodedByteLength,
   normalizeAttachmentsForModel,
+  resolveAttachment,
+  sniffMediaType,
   validateChatAttachments,
 } from "./chat-attachments";
+
+/** Real signatures: JPEG (FF D8 FF E0), PNG, GIF89a, PDF, WEBP (RIFF….WEBP). */
+const SIG = {
+  jpeg: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]),
+  png: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]),
+  gif: Buffer.from("GIF89a\0\0\0\0", "latin1"),
+  pdf: Buffer.from("%PDF-1.7\n%", "latin1"),
+  webp: Buffer.concat([Buffer.from("RIFF"), Buffer.from([0, 0, 0, 0]), Buffer.from("WEBPVP8 ")]),
+};
+const withBytes = (mediaType: string, bytes: Buffer) => `data:${mediaType};base64,${bytes.toString("base64")}`;
 
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
 const dataUrl = (mediaType: string, bytes: number | string) =>
@@ -64,6 +76,58 @@ describe("classifyAttachment", () => {
   it("treats a path as its basename and ignores dotfiles' leading dot", () => {
     expect(classifyAttachment("/tmp/x/notes.md", null).kind).toBe("document");
     expect(classifyAttachment(".env", "text/plain").kind).toBe("rejected");
+  });
+});
+
+describe("sniffMediaType", () => {
+  it("recognises the binary formats and nothing else", () => {
+    expect(sniffMediaType(SIG.jpeg.toString("base64"))).toBe("image/jpeg");
+    expect(sniffMediaType(SIG.png.toString("base64"))).toBe("image/png");
+    expect(sniffMediaType(SIG.gif.toString("base64"))).toBe("image/gif");
+    expect(sniffMediaType(SIG.pdf.toString("base64"))).toBe("application/pdf");
+    expect(sniffMediaType(SIG.webp.toString("base64"))).toBe("image/webp");
+    expect(sniffMediaType(Buffer.from("# just markdown\n").toString("base64"))).toBeNull();
+    expect(sniffMediaType("")).toBeNull();
+  });
+});
+
+describe("resolveAttachment — the bytes win, then the data URL's type, then the filename", () => {
+  it("a pasted JPEG saved as 'Pasted image.png' reaches the model as image/jpeg — even when the data URL also says png", () => {
+    const part = { type: "file" as const, filename: "Pasted image.png", mediaType: "image/png", url: withBytes("image/png", SIG.jpeg) };
+    expect(resolveAttachment(part)).toEqual({ kind: "image", mediaType: "image/jpeg" });
+    const out = normalizeAttachmentsForModel([userMessage([{ type: "text", text: "what is this" }, part])]);
+    expect(out[0].parts[1]).toMatchObject({ type: "file", mediaType: "image/jpeg", filename: "Pasted image.png" });
+    expect(validateChatAttachments([userMessage([part])])).toEqual({ ok: true });
+  });
+
+  it("without a recognisable signature the data URL's allowed type wins over the filename", () => {
+    const part = { type: "file" as const, filename: "Pasted image.png", mediaType: "image/png", url: dataUrl("image/jpeg", 32) };
+    expect(resolveAttachment(part)).toEqual({ kind: "image", mediaType: "image/jpeg" });
+  });
+
+  it("falls back to the filename when the data URL type is missing or not allowed", () => {
+    expect(resolveAttachment({ type: "file", filename: "notes.md", mediaType: "text/plain", url: "data:application/octet-stream;base64,aGk=" })).toEqual({ kind: "document", mediaType: "text/markdown" });
+    expect(resolveAttachment({ type: "file", filename: "paper.pdf", mediaType: "", url: "data:;base64,aGk=" })).toEqual({ kind: "pdf", mediaType: "application/pdf" });
+  });
+
+  it("for text documents the extension beats an OS-reported data URL type (.md is not text/plain)", () => {
+    expect(resolveAttachment({ type: "file", filename: "notes.md", mediaType: "text/plain", url: dataUrl("text/plain", "# hi") })).toEqual({ kind: "document", mediaType: "text/markdown" });
+    expect(resolveAttachment({ type: "file", filename: "data.csv", mediaType: "text/plain", url: dataUrl("text/plain", "a,b") })).toEqual({ kind: "document", mediaType: "text/csv" });
+    // A nameless text blob still takes the data URL's type.
+    expect(resolveAttachment({ type: "file", filename: "", mediaType: "", url: dataUrl("text/markdown", "# hi") })).toEqual({ kind: "document", mediaType: "text/markdown" });
+  });
+
+  it("a nameless clipboard blob is accepted by its data URL type; a disallowed extension stays rejected", () => {
+    expect(resolveAttachment({ type: "file", filename: "", mediaType: "", url: dataUrl("image/webp", 8) })).toEqual({ kind: "image", mediaType: "image/webp" });
+    expect(resolveAttachment({ type: "file", filename: "app.ts", mediaType: "text/plain", url: dataUrl("text/plain", "x") }).kind).toBe("rejected");
+    expect(resolveAttachment({ type: "file", filename: "clip.mp4", mediaType: "video/mp4", url: dataUrl("image/png", 8) }).kind).toBe("rejected");
+    expect(resolveAttachment({ type: "file", filename: "", mediaType: "", url: dataUrl("video/mp4", 8) }).kind).toBe("rejected");
+  });
+
+  it("byte limits follow the resolved kind (a JPEG named .txt is an image, 2 MB)", () => {
+    const big = { type: "file" as const, filename: "photo.txt", mediaType: "text/plain", url: dataUrl("image/jpeg", 1.5 * 1024 * 1024) };
+    // 1.5 MB is over the 1 MB document cap but under the 2 MB image cap.
+    expect(validateChatAttachments([userMessage([big])])).toEqual({ ok: true });
   });
 });
 

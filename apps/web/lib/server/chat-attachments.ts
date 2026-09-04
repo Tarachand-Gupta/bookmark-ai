@@ -1,9 +1,12 @@
 import type { UIMessage } from "ai";
 import {
+  ATTACHMENT_REJECTED_MESSAGE,
   attachmentByteLimit,
+  attachmentKindForMediaType,
   CHAT_ATTACHMENT_RULES,
   classifyAttachment,
   type ChatAttachmentKind,
+  type ClassifiedAttachment,
 } from "@bookmark-ai/types";
 
 /**
@@ -57,6 +60,63 @@ export function dataUrlPayload(url: string): { mediaType: string | null; base64:
   return { mediaType: mediaType ? mediaType.trim().toLowerCase() : null, base64: url.slice(comma + 1) };
 }
 
+/**
+ * Binary signature → media type, for the formats that have one. Text documents
+ * have no signature and are never sniffed. Only the first bytes of the base64
+ * payload are decoded.
+ */
+export function sniffMediaType(base64: string): string | null {
+  let head: Buffer;
+  try {
+    head = Buffer.from(base64.slice(0, 24), "base64");
+  } catch {
+    return null;
+  }
+  if (head.length < 4) return null;
+  const hex = head.subarray(0, 4).toString("hex");
+  if (hex === "89504e47") return "image/png";
+  if (hex.startsWith("ffd8ff")) return "image/jpeg";
+  if (hex === "47494638") return "image/gif";
+  if (hex === "25504446") return "application/pdf";
+  if (hex === "52494646" && head.length >= 12 && head.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  return null;
+}
+
+/**
+ * The media type the MODEL should get for a file part. What the bytes ARE wins:
+ * the binary signature first (a pasted JPEG saved as "Pasted image.png" —
+ * whatever the client wrote in the filename or data URL — reaches the model as
+ * image/jpeg), then the data URL's own type when it is an allowed BINARY type
+ * (image/pdf: the client encoded it and knows), then the filename's extension
+ * (for text documents the extension is the precise signal — `.md` beats an
+ * OS-reported `text/plain` data URL), then the data URL / reported MIME for a
+ * nameless clipboard blob. A known-disallowed EXTENSION still rejects the file
+ * (`app.ts` sent as text/plain is refused either way), so the code/media ban
+ * holds.
+ */
+export function resolveAttachment(part: FilePartLike): ClassifiedAttachment {
+  const filename = typeof part.filename === "string" ? part.filename : "";
+  const byName = classifyAttachment(filename, part.mediaType ?? null);
+  const payload = dataUrlPayload(typeof part.url === "string" ? part.url : "");
+  const sniffed = payload ? sniffMediaType(payload.base64) : null;
+  const declared = payload?.mediaType ?? null;
+  const fromBytes = sniffed && attachmentKindForMediaType(sniffed) ? sniffed : null;
+  const declaredKind = declared ? attachmentKindForMediaType(declared) : null;
+  const fromDataUrl = declared && declaredKind ? declared : null;
+  const hasExtension = /\.[^./\\]+$/.test(filename.trim().split(/[\\/]/).pop() ?? "");
+
+  if (byName.kind === "rejected" && hasExtension) {
+    return { kind: "rejected", reason: ATTACHMENT_REJECTED_MESSAGE };
+  }
+  const mediaType =
+    fromBytes ??
+    (fromDataUrl && declaredKind !== "document" ? fromDataUrl : null) ??
+    (byName.kind === "rejected" ? null : byName.mediaType) ??
+    fromDataUrl;
+  const kind = mediaType ? attachmentKindForMediaType(mediaType) : null;
+  return mediaType && kind ? { kind, mediaType } : { kind: "rejected", reason: ATTACHMENT_REJECTED_MESSAGE };
+}
+
 /** Decoded byte length of a base64 string, without decoding it. */
 export function decodedByteLength(base64: string): number {
   const clean = base64.replace(/\s+/g, "");
@@ -82,7 +142,7 @@ export function validateChatAttachments(messages: UIMessage[]): AttachmentValida
     for (const file of files) {
       const filename = typeof file.filename === "string" ? file.filename : "";
       const reported = typeof file.mediaType === "string" ? file.mediaType : "";
-      const classified = classifyAttachment(filename, reported || null);
+      const classified = resolveAttachment(file);
       if (classified.kind === "rejected") {
         return {
           ok: false,
@@ -153,7 +213,7 @@ export function normalizeAttachmentsForModel(messages: UIMessage[]): UIMessage[]
         continue;
       }
       const filename = typeof part.filename === "string" ? part.filename : "";
-      const classified = classifyAttachment(filename, part.mediaType ?? null);
+      const classified = resolveAttachment(part);
       if (classified.kind === "rejected") continue; // validation already refused; drop defensively
       const kind: ChatAttachmentKind = classified.kind;
       if (kind === "document") {

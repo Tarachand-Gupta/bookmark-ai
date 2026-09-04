@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
-import { convertToModelMessages, stepCountIs, streamText, tool, type UIMessage } from "ai";
+import {
+  convertToModelMessages,
+  createUIMessageStreamResponse,
+  stepCountIs,
+  streamText,
+  tool,
+  type UIMessage,
+} from "ai";
 import { z } from "zod";
 import { listSessions, type Db } from "@bookmark-ai/db";
 import {
@@ -38,6 +45,7 @@ import { getFreeAiWeeklyLimit } from "@/lib/server/ai-limit";
 import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
 import { normalizeAttachmentsForModel, validateChatAttachments } from "@/lib/server/chat-attachments";
 import { describeChatError } from "@/lib/server/chat-errors";
+import { emptyTurnGuard } from "@/lib/server/chat-stream-guard";
 import { buildChatPrompt, DEFAULT_TIMEZONE, isValidTimeZone } from "@/lib/server/chat-prompt";
 import { mintLiveSessionToken, resolveLiveBaseUrl } from "@/lib/server/live-token";
 import { isSurfaceEnabled } from "@/lib/server/observability/config";
@@ -615,10 +623,23 @@ export async function POST(req: Request) {
           }),
         },
         stopWhen: stepCountIs(8),
+        // DIAGNOSTICS: a turn that ends with nothing (or not on "stop") is logged
+        // with everything the provider told us — finish reason, usage, warnings,
+        // provider metadata (safety/blocked reasons live there) — so an empty
+        // reply is diagnosable from the log instead of being a mystery.
+        onFinish: (event) => {
+          const { finishReason, text, reasoningText, toolCalls, warnings, providerMetadata, steps } = event;
+          const empty = !text?.trim() && !reasoningText?.trim() && !(toolCalls?.length > 0);
+          if (empty || finishReason !== "stop") {
+            const usage = (event as { totalUsage?: unknown }).totalUsage ?? event.usage;
+            console.warn(
+              `[chat] turn finished reason=${finishReason} empty=${empty} steps=${steps?.length ?? 0} usage=${JSON.stringify(usage ?? null)} warnings=${JSON.stringify(warnings ?? [])} providerMetadata=${JSON.stringify(providerMetadata ?? null)}`.slice(0, 2000),
+            );
+          }
+        },
       });
 
-      return result.toUIMessageStreamResponse({
-        headers: responseHeaders,
+      const uiStream = result.toUIMessageStream({
         originalMessages: messages,
         // MUST set this. Without it, when the last original message is a USER message
         // (our normal case) the SDK leaves responseMessage.id = "" for EVERY turn — so
@@ -638,7 +659,7 @@ export async function POST(req: Request) {
           console.warn("[chat] stream error:", (error as Error)?.message ?? error);
           return describeChatError(error, resolved.source);
         },
-        onFinish: async ({ responseMessage }) => {
+        onEnd: async ({ responseMessage }) => {
           // The user turn was written off the critical path — wait for it so the
           // assistant turn always lands after it, then persist the assistant turn
           // (full parts incl. reasoning + tool calls/results) and, for a metered
@@ -670,6 +691,16 @@ export async function POST(req: Request) {
             }
           }
         },
+      });
+
+      // GUARANTEE a readable failure: if the turn ends with nothing meaningful
+      // and no error was thrown (a safety/recitation stop, an exhausted output
+      // budget, an input the model silently refused), the guard writes an
+      // `error` chunk before `finish` so the client never drops the turn
+      // silently. The empty turn itself is still not persisted (onEnd above).
+      return createUIMessageStreamResponse({
+        headers: responseHeaders,
+        stream: uiStream.pipeThrough(emptyTurnGuard(() => result.finishReason)),
       });
     },
   );

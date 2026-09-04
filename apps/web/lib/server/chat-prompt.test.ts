@@ -58,6 +58,13 @@ describe("buildChatPrompt", () => {
     expect(p).toContain("Never expose tool names or internals to the user");
   });
 
+  it("treats the conversation history as memory and never denies remembering", () => {
+    const p = buildChatPrompt({ now: NOW });
+    expect(p).toContain("This conversation's history IS your memory within the conversation");
+    expect(p).toContain("Never claim you cannot remember or have no memory feature");
+    expect(p).toContain("Only memory ACROSS conversations doesn't exist");
+  });
+
   it("links the TITLE, never the bare domain", () => {
     const p = buildChatPrompt({ now: NOW });
     expect(p).toContain("The link TEXT is the item's TITLE");
