@@ -7,8 +7,9 @@ import { clientKey } from "@/lib/server/require-user";
 // cache at build time; the CDN/browser cache below is the intended cache.
 export const dynamic = "force-dynamic";
 
-/** Five minutes: a fresh release reaches every polling client within one interval. */
-export const RELEASES_CACHE_CONTROL = "public, max-age=300";
+// Five minutes: a fresh release reaches every polling client within one interval.
+// Not exported — Next's route-module type check only allows handler/config exports.
+const RELEASES_CACHE_CONTROL = "public, max-age=300";
 
 /**
  * GET /api/app/releases → { releases: { macos?, ios?, android? } }.
