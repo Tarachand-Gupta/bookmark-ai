@@ -31,7 +31,7 @@ describe("buildChatPrompt", () => {
     expect(p).toContain("installSkill ONLY with a URL the user typed in this conversation");
   });
 
-  it("carries the 'what am I working on' playbook in tool order", () => {
+  it("carries the 'what am I working on' playbook in tool order, completed inside one turn", () => {
     const p = buildChatPrompt({ now: NOW });
     const live = p.indexOf("listLiveTabs FIRST");
     const sessions = p.indexOf("then listSessions");
@@ -39,7 +39,18 @@ describe("buildChatPrompt", () => {
     expect(live).toBeGreaterThan(-1);
     expect(sessions).toBeGreaterThan(live);
     expect(recent).toBeGreaterThan(sessions);
+    expect(p).toContain("run ALL THREE lookups in THIS turn before writing anything");
+    expect(p).toContain("Never stop after the live tabs and promise the rest");
+    // The live-off notice is part of the single final reply, not narration between tool calls.
+    expect(p).toContain("never write that line between tool calls, and never write it twice");
     expect(p).toContain("extension popup → Live");
+  });
+
+  it("forbids closing lines that promise lookups it has not done", () => {
+    const p = buildChatPrompt({ now: NOW });
+    expect(p).toContain("Finish the job inside this turn");
+    expect(p).toContain('no "Next, I will…", "Let me also check…"');
+    expect(p).toContain("call the tool NOW and answer once you have it");
   });
 
   it("states that attached images/PDFs are visible (with tools present Gemini otherwise denies vision)", () => {
