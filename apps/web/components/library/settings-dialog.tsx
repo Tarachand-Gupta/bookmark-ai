@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useClerk } from "@clerk/nextjs";
+import { useClerk, useUser } from "@clerk/nextjs";
 import {
   Activity,
   AlertTriangle,
@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ObservabilityResponse } from "@bookmark-ai/types";
-import { deleteAccount, exportData, getAccount, getObservability, importData } from "@/lib/api";
+import { deleteAccount, exportData, getAccount, getMe, getObservability, importData } from "@/lib/api";
 import { DEFAULT_PLAN, PLAN_FEATURES, type PlanId } from "@/lib/plan";
 import { cn } from "@/lib/utils";
 import { AiSetupCard } from "./ai-setup-card";
@@ -34,6 +34,7 @@ import { DevicesSection } from "./devices-settings";
 import { FEATURE_ICONS } from "./feature-icons";
 import { McpSection } from "./mcp-settings";
 import { ObservabilitySection } from "./observability-settings";
+import { ReleasesIcon, ReleasesSection } from "./releases-settings";
 import { SettingsGroup, SettingsSection } from "./settings-section";
 import { SkillsIcon, SkillsSection } from "./skills-settings";
 import { SyncSection } from "./sync-settings";
@@ -56,6 +57,8 @@ const SECTIONS = [
   { id: "devices", label: "Live sessions", icon: FEATURE_ICONS.live },
   { id: "mcp", label: "MCP", icon: Plug },
   { id: "observability", label: "Observability", icon: Activity },
+  // Same admin gate as Observability (CONTRACT §12).
+  { id: "releases", label: "Releases", icon: ReleasesIcon },
   { id: "account", label: "Account", icon: UserRound },
 ] as const;
 export type SectionId = (typeof SECTIONS)[number]["id"];
@@ -171,7 +174,9 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
               ref={railRef}
               className="-mb-2 flex scroll-smooth gap-1 overflow-x-auto pb-2 [contain:inline-size] sm:mb-0 sm:flex-col sm:overflow-x-visible sm:pb-0 sm:[contain:none]"
             >
-              {SECTIONS.filter((s) => s.id !== "observability" || observability !== null).map((s) => {
+              {SECTIONS.filter(
+                (s) => (s.id !== "observability" && s.id !== "releases") || observability !== null,
+              ).map((s) => {
                 const Icon = s.icon;
                 return (
                   <li key={s.id} className="shrink-0">
@@ -235,6 +240,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             {/* Renders only when the admin probe succeeded, so a non-admin
                 deep link shows nothing. Remounts per open (the dialog unmounts
                 its content when closed), so `initial` is always this open's. */}
+            {section === "releases" && observability && <ReleasesSection />}
             {section === "observability" && observability && (
               <ObservabilitySection initial={observability} />
             )}
@@ -429,6 +435,7 @@ function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
       description="Your plan, and everything account-shaped."
     >
       <PlanGroup />
+      <IdentityGroup />
 
       {/* Clerk's account manager, opened as ITS OWN modal rather than embedded in
           this pane. MEASURED (2026-08-11, dev Chrome, 1440x940):
@@ -579,4 +586,110 @@ function PlanGroup() {
       </div>
     </SettingsGroup>
   );
+}
+
+type Identity = { name: string | null; email: string | null; imageUrl: string | null };
+
+/**
+ * Who is signed in — avatar, display name, email (parity with the Mac app's
+ * Settings). Name/email come from `GET /api/me` (the server's view of the
+ * session); Clerk's client user fills any gap (open dev modes return nulls) and
+ * supplies the avatar image, which the API doesn't carry. Read-only on purpose:
+ * changing any of it is Clerk's "Manage profile & security" flow below.
+ * Skeleton while loading; renders nothing when signed out.
+ */
+function IdentityGroup() {
+  const { isLoaded, isSignedIn, user } = useUser();
+  // undefined = loading · null = signed out · object = show it
+  const [me, setMe] = useState<Identity | null | undefined>(undefined);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getMe(controller.signal)
+      .then((res) => {
+        if (!res.signedIn) {
+          setMe(null);
+          return;
+        }
+        setMe({ name: res.name, email: res.email, imageUrl: null });
+      })
+      .catch((e: unknown) => {
+        if ((e as Error).name === "AbortError") return;
+        // A 401 ("Unauthorized" body, or the bare status) means signed out;
+        // anything else, fall back to the client session.
+        setMe(
+          /unauthorized|\b401\b/i.test((e as Error).message)
+            ? null
+            : { name: null, email: null, imageUrl: null },
+        );
+      });
+    return () => controller.abort();
+  }, []);
+
+  if (me === null) return null;
+  if (isLoaded && !isSignedIn && me !== undefined && !me.name && !me.email) return null;
+
+  const name = me?.name ?? (user?.fullName || user?.username) ?? null;
+  const email = me?.email ?? user?.primaryEmailAddress?.emailAddress ?? null;
+  const imageUrl = user?.hasImage ? user.imageUrl : null;
+  const loading = me === undefined || (!isLoaded && !name && !email);
+  const initials = initialsFor(name, email);
+
+  return (
+    <SettingsGroup title="Signed in as" description="The account this library belongs to.">
+      <div
+        data-identity-row={loading ? "loading" : "ready"}
+        className="flex items-center gap-3 rounded-lg border bg-card p-3"
+      >
+        {loading ? (
+          <>
+            <Skeleton className="size-10 shrink-0 rounded-full" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <Skeleton className="h-3.5 w-32" />
+              <Skeleton className="h-3 w-48" />
+            </div>
+          </>
+        ) : (
+          <>
+            {imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- Clerk-hosted avatar, already sized
+              <img
+                src={imageUrl}
+                alt=""
+                width={40}
+                height={40}
+                className="size-10 shrink-0 rounded-full border bg-muted object-cover"
+              />
+            ) : (
+              <span
+                aria-hidden
+                className="flex size-10 shrink-0 select-none items-center justify-center rounded-full border bg-muted text-sm font-semibold text-muted-foreground"
+              >
+                {initials}
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium" title={name ?? undefined}>
+                {name ?? email ?? "Signed in"}
+              </p>
+              {name && email && (
+                <p className="truncate text-xs text-muted-foreground" title={email}>
+                  {email}
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </SettingsGroup>
+  );
+}
+
+/** "Tara Gupta" → "TG"; "tara" → "T"; else the email's first letter; else "?". */
+function initialsFor(name: string | null, email: string | null): string {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  const e = (email ?? "").trim();
+  return e ? e[0].toUpperCase() : "?";
 }

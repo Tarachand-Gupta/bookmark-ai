@@ -145,6 +145,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+import type { AppPlatform, AppRelease, AppReleasesResponse, UpsertAppReleaseInput } from "@/lib/releases";
+
+/** GET /api/me — who the session belongs to. Open modes (keyless / dev bypass)
+ * return `signedIn: true` with null name/email; a signed-out caller gets a 401
+ * (surfaced by `request` as an error). */
+export interface MeResponse {
+  signedIn: boolean;
+  name: string | null;
+  email: string | null;
+}
+
+export function getMe(signal?: AbortSignal): Promise<MeResponse> {
+  return request<MeResponse>("/api/me", { signal });
+}
+
 export function getMeta(signal?: AbortSignal): Promise<MetaResponse> {
   return request<MetaResponse>("/api/meta", { signal });
 }
@@ -404,6 +419,36 @@ export function updateSettings(input: UpdateUserSettingsInput): Promise<UserSett
 }
 
 // ── Admin: observability (Langfuse tracing) ─────────────────────────────────
+
+// ── App releases (CONTRACT §12) ───────────────────────────────────────────────
+
+/** PUBLIC: latest release per platform (empty object without a master DB). */
+export function getAppReleases(signal?: AbortSignal): Promise<AppReleasesResponse> {
+  return request<AppReleasesResponse>("/api/app/releases", { signal });
+}
+
+/** Admin-only. Creates or replaces the platform's record. */
+export function upsertAppRelease(
+  platform: AppPlatform,
+  input: UpsertAppReleaseInput,
+): Promise<{ release: AppRelease }> {
+  return request<{ release: AppRelease }>(`/api/admin/releases/${platform}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+/** Admin-only. Removes the platform's record (204; a missing record is fine). */
+export async function deleteAppRelease(platform: AppPlatform): Promise<void> {
+  const res = await fetch(`${API_URL}/api/admin/releases/${platform}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
+  if (!res.ok && res.status !== 404) {
+    const body = await res.json().catch(() => null);
+    throw errorFromBody(res.status, body as { error?: string; code?: string } | null);
+  }
+}
 
 /** Admin-only. Throws ForbiddenError for non-admin accounts (the Settings
  * dialog uses that to hide the Observability section entirely). */
