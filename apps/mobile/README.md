@@ -67,6 +67,29 @@ sign-in.
 Both native folders are generated, so after touching any of this: `npx expo prebuild
 --clean` and rebuild both apps.
 
+## Update banner
+
+On launch (and again on foreground / every 6 h) Home fetches the public
+`GET /api/app/releases` and compares this build's `expo-application`
+`nativeApplicationVersion` + `nativeBuildVersion` (`app.json` `version` / `ios.buildNumber` /
+`android.versionCode`; SDK 57's expo-constants no longer exposes them) with the `ios` /
+`android` record. A newer record shows
+"Bookmark AI {version} is available" under the Home header with **Update** (opens the
+store URL) and **Later** (24 h snooze per release, persisted in AsyncStorage per server
+target); a record whose `minSupportedVersion` is above this build shows the blocking,
+non-dismissible variant. No record, a failed request (5 s timeout) or an equal/older
+record ⇒ no banner. Logic is pure and tested in `src/lib/appUpdate.ts`; I/O lives in
+`src/hooks/useAppUpdate.ts`; the card is `src/components/UpdateBanner.tsx`.
+
+To see it against the local server (the dev user is the default admin):
+
+```bash
+curl -X PUT localhost:3000/api/admin/releases/ios -H 'content-type: application/json' \
+  -d '{"version":"9.9.9","build":"99","downloadUrl":"https://apps.apple.com/app/id123","releaseNotes":"Faster search"}'
+# add "minSupportedVersion":"9.0.0" for the blocking variant; relaunch the app
+curl -X DELETE localhost:3000/api/admin/releases/ios   # clean up
+```
+
 ## Layout
 
 | Path | What |

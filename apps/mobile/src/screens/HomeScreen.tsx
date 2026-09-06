@@ -7,9 +7,12 @@ import { HomeContinueCard } from "../components/HomeContinueCard";
 import { HomeLiveStrip } from "../components/HomeLiveStrip";
 import { HomeSection } from "../components/HomeSection";
 import { Symbol } from "../components/Symbol";
+import { UpdateBanner } from "../components/UpdateBanner";
 import { useAppTheme } from "../context/PreferencesContext";
+import { useAppUpdate } from "../hooks/useAppUpdate";
 import { useDashboard } from "../hooks/useDashboard";
 import { useLiveDevices } from "../hooks/useLiveDevices";
+import { releaseKey } from "../lib/appUpdate";
 import { pickContinueTarget } from "../lib/continueTarget";
 import type { NavTarget } from "../navigation/intents";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
@@ -56,6 +59,10 @@ export function HomeScreen({
   const tabBarClearance = useTabBarClearance();
   const onScroll = useTabBarScroll();
   const dash = useDashboard(active);
+  // A newer build published for this platform (§12) — Home is the landing tab
+  // and always mounted, so this IS the launch check; the hook also re-checks on
+  // foreground and every 6 h.
+  const update = useAppUpdate();
 
   // Same stream the Sessions tab's Live segment uses; it holds the
   // connection only while Home is the foreground tab and the app is active. Any
@@ -148,6 +155,19 @@ export function HomeScreen({
           </Text>
         </Pressable>
       </View>
+
+      {update.banner !== null && (
+        // Directly under the header, above everything else on the tab: an update
+        // is the one thing worth seeing before "where was I". Keyed by release so
+        // a new version re-runs the entrance instead of morphing in place.
+        <View style={styles.update}>
+          <UpdateBanner
+            key={releaseKey(update.banner.release)}
+            banner={update.banner}
+            onSnooze={update.snooze}
+          />
+        </View>
+      )}
 
       {continueTarget !== null && (
         <View style={styles.hero}>
@@ -307,6 +327,9 @@ const styles = StyleSheet.create({
   // Mirrors SearchScreen's `input` metrics exactly (17pt, 11pt vertical) so the
   // two fields are the same object to the eye.
   fieldText: { flex: 1, fontSize: 17, paddingVertical: 11, letterSpacing: 0 },
+  // 8 above (→ 16 from the search field, with the header's own 8) and 8 below,
+  // so the hero's paddingTop makes the banner-to-card gap the same 16.
+  update: { paddingTop: 8, paddingBottom: 8 },
   hero: { paddingTop: 8 },
   activity: { paddingTop: 22 },
   skeletons: { gap: 12, paddingHorizontal: 20, paddingTop: 20 },

@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { parseReleasesResponse, type AppReleasesResponse } from "./lib/appUpdate";
 import type {
   AccountResponse,
   Bookmark,
@@ -310,6 +311,25 @@ export function listBookmarks(
 
 export function getMeta(signal?: AbortSignal): Promise<MetaResponse> {
   return request<MetaResponse>("/api/meta", { signal });
+}
+
+/**
+ * `GET /api/app/releases` — the latest published build per platform (CONTRACT
+ * §12). PUBLIC like /api/health, so a bare fetch rather than `request()`: no
+ * Bearer (the banner must work before a session exists), and none of the
+ * provisioning/forbidden mapping applies. The body is shape-checked, never
+ * trusted — a rate-limit `{error}` or a proxy page is a thrown error, which the
+ * caller (useAppUpdate) treats as "no banner".
+ */
+export async function getAppReleases(signal?: AbortSignal): Promise<AppReleasesResponse> {
+  const res = await fetch(`${getApiUrl()}/api/app/releases`, {
+    signal,
+    headers: { accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  const parsed = parseReleasesResponse(await res.json());
+  if (parsed === null) throw new Error("Unexpected /api/app/releases response");
+  return parsed;
 }
 
 export function searchBookmarks(
