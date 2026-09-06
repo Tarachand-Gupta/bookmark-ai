@@ -93,7 +93,9 @@ final class Preferences {
         NSApp.appearance = appearance.nsAppearance
     }
 
-    private let defaults: UserDefaults
+    /// Internal so the other UserDefaults-backed models (`AppUpdateModel`'s
+    /// snooze) share the same store — the app's, or a test's throwaway suite.
+    let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

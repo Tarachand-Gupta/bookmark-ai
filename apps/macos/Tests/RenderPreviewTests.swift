@@ -313,6 +313,60 @@ final class RenderPreviewTests: XCTestCase {
         }
     }
 
+    // MARK: - Update banner (sidebar, above the account footer)
+
+    @MainActor
+    func testRenderUpdateBannerPreviews() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RENDER_PREVIEWS"] == "1",
+            "visual harness — set RENDER_PREVIEWS=1 to produce the PNG"
+        )
+        func release(minSupported: String?) -> AppRelease {
+            AppRelease(
+                platform: "macos", version: "9.9.9", build: "9", minSupportedVersion: minSupported,
+                downloadUrl: "https://github.com/Tarachand-Gupta/bookmark-ai/releases",
+                releaseNotes: "Faster search, sign-out fixes, and an update banner.",
+                publishedAt: "2026-09-06T23:21:37.879Z", updatedAt: "2026-09-06T23:21:37.879Z"
+            )
+        }
+        let sidebar = Color(nsColor: .underPageBackgroundColor)
+        let running = VersionRef(version: "0.1.0", build: "1")
+
+        for (appearance, suffix) in Self.appearances {
+            let available = gateEnvironment(target: .local)
+            available.updates.seed(release: release(minSupported: nil), current: running)
+            try render(
+                VStack(spacing: 0) { Divider(); UpdateBanner(); AccountFooter() }
+                    .environment(available).frame(width: 250).background(sidebar).tint(.blue),
+                width: 250, appearance: appearance, name: "update-banner-available-\(suffix)"
+            )
+
+            let blocking = gateEnvironment(target: .local)
+            blocking.updates.seed(release: release(minSupported: "9.0.0"), current: running)
+            try render(
+                VStack(spacing: 0) { Divider(); UpdateBanner(); AccountFooter() }
+                    .environment(blocking).frame(width: 250).background(sidebar).tint(.blue),
+                width: 250, appearance: appearance, name: "update-banner-blocking-\(suffix)"
+            )
+
+            // The WHOLE sidebar at a real window height with a busy library:
+            // the List must give the banner its room and the footer must stay
+            // on screen (a fixedSize text in the banner once overflowed this).
+            for (env, variant) in [(available, "available"), (blocking, "blocking")] {
+                env.library.seed(meta: MetaResponse(
+                    categories: (1...6).map { Facet(name: "Category \($0)", count: 7 - $0) },
+                    browsers: [], devices: [], days: [],
+                    tags: (1...24).map { Facet(name: "tag-\($0)", count: 25 - $0) },
+                    total: 15
+                ))
+                try render(
+                    SidebarView().environment(env).frame(width: 250, height: 700).background(sidebar).tint(.blue),
+                    width: 250, height: 700, appearance: appearance, name: "update-sidebar-\(variant)-\(suffix)"
+                )
+            }
+        }
+    }
+
     // MARK: - History popover
 
     @MainActor

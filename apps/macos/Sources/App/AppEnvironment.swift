@@ -30,6 +30,8 @@ final class AppEnvironment {
     let settings: SettingsModel
     let skills: SkillsModel
     let mcpTokens: McpTokensModel
+    /// The update banner's brain — polls `/api/app/releases` while the gate is open.
+    let updates: AppUpdateModel
 
     /// `GET /api/health` for the Settings diagnostics row.
     private(set) var health: HealthResponse?
@@ -59,6 +61,7 @@ final class AppEnvironment {
         self.settings = SettingsModel(api: api)
         self.skills = SkillsModel(api: api)
         self.mcpTokens = McpTokensModel(api: api)
+        self.updates = AppUpdateModel(api: api, defaults: preferences.defaults)
 
         // ApiClient asks AuthController for a bearer token on every cloud request.
         api.tokenProvider = { [weak auth] forceRefresh in
@@ -124,9 +127,11 @@ final class AppEnvironment {
     }
 
     /// Refresh the library plus the side reads that decorate the UI: who is
-    /// signed in (footer, Settings ▸ Account) and the server's health.
+    /// signed in (footer, Settings ▸ Account) and the server's health. Also the
+    /// moment the update poll starts — every gate opening passes through here.
     func loadEverything() async {
         guard canUseData else { return }
+        updates.start()
         async let identity: Void = auth.loadAccount(using: api)
         async let rows: Void = library.refresh()
         _ = await (identity, rows)
@@ -164,5 +169,9 @@ final class AppEnvironment {
         skills.reset()
         mcpTokens.reset()
         health = nil
+        // The gate is closing (or the target is changing): stop polling; the
+        // next `loadEverything` restarts it against the current server. The
+        // last answer is not account data and stays.
+        updates.stop()
     }
 }

@@ -92,6 +92,14 @@ final class ApiClient {
         try await get("/api/health")
     }
 
+    /// `GET /api/app/releases` — PUBLIC. Sent WITHOUT a bearer even on Cloud
+    /// (no session needed, and it must never trip the no-token guard or the
+    /// 401 → sign-out path). Cached server-side for 5 minutes.
+    func appReleases() async throws -> AppReleasesResponse {
+        let data = try await send(path: "/api/app/releases", method: "GET", query: [], allowRetry: false, attachAuth: false)
+        return try decode(AppReleasesResponse.self, from: data)
+    }
+
     /// `DELETE /api/bookmarks/:id` → 204.
     func deleteBookmark(id: String) async throws {
         let path = "/api/bookmarks/\(id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id)"
@@ -320,7 +328,8 @@ final class ApiClient {
         method: String,
         query: [URLQueryItem],
         body: Data? = nil,
-        allowRetry: Bool
+        allowRetry: Bool,
+        attachAuth: Bool = true
     ) async throws -> Data {
         guard let url = Self.makeURL(base: target.baseURL, path: path, query: query) else {
             throw ApiError.invalidURL
@@ -334,7 +343,7 @@ final class ApiClient {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
-        if target.requiresAuth, let tokenProvider {
+        if attachAuth, target.requiresAuth, let tokenProvider {
             // No token right now (Clerk unreachable, or signed out) ⇒ fail HERE.
             // Sending the request bare would only earn a 401 that looks exactly
             // like an expired session — and on the replay, a false sign-out.
@@ -367,7 +376,7 @@ final class ApiClient {
         // on the replay means a FRESH token was rejected (the guard above
         // guarantees one was attached): the session is over for this API, and
         // the app is told so.
-        if case .unauthorized = apiError, target.requiresAuth, tokenProvider != nil {
+        if case .unauthorized = apiError, attachAuth, target.requiresAuth, tokenProvider != nil {
             if allowRetry {
                 return try await send(path: path, method: method, query: query, body: body, allowRetry: false)
             }

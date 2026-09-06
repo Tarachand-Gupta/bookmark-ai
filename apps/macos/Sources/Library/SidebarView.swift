@@ -59,6 +59,8 @@ struct SidebarView: View {
 
             footerNav
             Divider()
+            // "Bookmark AI x.y.z is available" — nothing unless there is one.
+            UpdateBanner()
             AccountFooter()
         }
         .sheet(isPresented: Binding(

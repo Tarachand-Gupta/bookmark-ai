@@ -24,11 +24,12 @@ xcodegen generate                # writes BookmarkAI.xcodeproj
 xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
            -configuration Debug -derivedDataPath build build
 
-# Test (115 tests: URL construction, error mapping, response decoding,
+# Test (136 tests: URL construction, error mapping, response decoding,
 # chat stream assembly, attachment classification/downscaling, skills/MCP
 # contracts, the SKILL.md import parser, history grouping, the empty-reply
 # guard, the auth state machine + sign-out flush + stubbed-transport 401
-# rules; the 8 RenderPreviewTests are skipped unless
+# rules, release version arithmetic + the update-banner rules; the 9
+# RenderPreviewTests are skipped unless
 # TEST_RUNNER_RENDER_PREVIEWS=1 — a plain env var is NOT forwarded to the
 # test host)
 xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
@@ -194,6 +195,42 @@ so it could never be empty. All five are fixed by the gate above.
 entry: session JWTs are memory-only, and the Clerk cookies live in the
 WKWebsiteDataStore inside the sandbox container, managed by the OS.
 
+### Update banner (`GET /api/app/releases`, contract §12)
+
+`AppUpdateModel` (`Support/AppUpdateModel.swift`) polls the PUBLIC
+`/api/app/releases` — sent **without** a bearer even on Cloud
+(`ApiClient.appReleases()` passes `attachAuth: false`, so it can never trip
+the no-token guard or the 401 → sign-out path) — the moment the gate opens
+(`loadEverything`) and every **6 h** after; `resetModels()` stops the poll and
+the next gate opening restarts it against the current server, so Local polls
+the dev DB and Cloud polls prod. The running version is
+`CFBundleShortVersionString` + `CFBundleVersion` (`MARKETING_VERSION` /
+`CURRENT_PROJECT_VERSION` in `project.yml` — bump both when shipping).
+
+`Models/AppRelease.swift` ports `packages/types/src/releases.ts` line for
+line: `AppVersioning.compareVersions` is numeric (`0.10.0 > 0.9.0`), missing
+components read as 0, a leading `v` and non-numeric tails are tolerated like
+JS `parseInt`, and `build` breaks a tie ONLY when both sides carry one;
+`updateState(current:release:)` → `.current` (no record / same / newer),
+`.updateAvailable`, or `.unsupported` (below `minSupportedVersion`).
+`AppReleaseTests` pins every rule against the TS semantics.
+
+The sidebar renders `UpdateBanner` directly above the account footer:
+icon, "Bookmark AI 9.9.9 is available", the first line of the notes,
+**Download** (opens `downloadUrl`) and **Later** — which snoozes THAT version
+for 24 h in `UserDefaults` (`appUpdate.snoozedUntil.<version>`, survives a
+relaunch; a newer version is not covered). `unsupported` is the same card
+with an orange rim, the copy "This version is no longer supported — update to
+keep syncing.", and no Later. A failed request is silent: nothing shows
+before the first answer, and a later blip keeps the previous one
+(`AppUpdateModelTests`). To try it locally:
+
+```bash
+curl -X PUT localhost:3000/api/admin/releases/macos -H 'content-type: application/json' \
+  -d '{"version":"9.9.9","build":"9","downloadUrl":"https://github.com/Tarachand-Gupta/bookmark-ai/releases","releaseNotes":"Faster search"}'
+# add "minSupportedVersion":"9.0.0" for the blocking variant; DELETE …/macos removes it
+```
+
 ### Base URLs (parity with `apps/mobile/src/api.ts`)
 
 | Mode | Base | Auth |
@@ -236,7 +273,8 @@ apps/macos/
 │   │   ├── Skills.swift            Skill, SkillDraft, SkillValidation, the 3 starter templates
 │   │   ├── SkillMarkdown.swift     SKILL.md parse/serialize (frontmatter → heading/paragraph fallback) + file import gate
 │   │   ├── McpToken.swift          McpToken list/create shapes + Claude Code / JSON config snippets
-│   │   └── Plan.swift              PlanInfo (free), AccountResponse
+│   │   ├── Plan.swift              PlanInfo (free), AccountResponse
+│   │   └── AppRelease.swift        /api/app/releases shapes + AppVersioning (compareVersions, updateState — ported from releases.ts)
 │   ├── Chat/
 │   │   ├── ChatModel.swift         stream assembly (text/reasoning/tool/file parts), attachments, reply notes, re-sync
 │   │   ├── ChatView.swift          transcript, ⋯ menu (Skills…), History button, Thinking placeholder
@@ -267,6 +305,7 @@ apps/macos/
 │   │   ├── ContentView.swift       gate switch: NavigationSplitView / ConnectingView / SignedOutView; sign-in sheet at the root
 │   │   ├── SidebarView.swift       facets with counts (hidden at 0) + account footer
 │   │   ├── AccountFooter.swift     initials avatar, name/email lines, target badge, ⋯ ▸ Account Settings… / Sign Out
+│   │   ├── UpdateBanner.swift      "Bookmark AI x.y.z is available" card above the footer (Download / Later; blocking variant)
 │   │   ├── LibraryBrowserView.swift grid/list host + empty/error states + banner
 │   │   ├── BookmarkGridView.swift  adaptive card grid (default), hover, click-opens
 │   │   ├── BookmarkListView.swift  card rows in a ScrollView: selection, arrows, ⏎, ⌫ via onKeyPress (NOT a List — its context-menu focus halo can't be disabled)
@@ -284,6 +323,7 @@ apps/macos/
 │   │   └── AccountSettingsTab.swift  plan card, then Status → identity row (avatar, name, email) → Sign Out
 │   └── Support/
 │       ├── Preferences.swift       UserDefaults-backed server target + layout (injectable defaults)
+│       ├── AppUpdateModel.swift    release poll (gate open + 6 h), bundle version, banner state, 24 h per-version snooze
 │       ├── InitialsAvatar.swift    initials on a tinted disc, symbol fallback (footer 28pt, Account 36pt)
 │       ├── Interaction.swift       pointingHandCursor, SurfaceCard, HoverHighlight
 │       ├── AiCreditsCard.swift     the free-credits meter (chat + Settings ▸ AI)
@@ -306,11 +346,13 @@ apps/macos/
     ├── SignedOutResetTests.swift   2 tests — handleSignedOut() empties every model (incl. plan, identity, window state); a post-retry 401 flushes through AuthController
     ├── AuthStateTests.swift        11 tests — refresh-tick no-session flushes; unavailable keeps session + data; restore → signedIn / signedOut / connecting; Retry notifies; backoff + stall constants; gate per target; initials; identity kept on /api/me failure
     ├── ApiClientAuthTests.swift    4 tests — stubbed URLProtocol: no token ⇒ no request + `.noToken`; expired token recovers on the replay; fresh token rejected ⇒ onUnauthorized once; Local sends no header
+    ├── AppReleaseTests.swift       12 tests — segments/compareVersions/updateState vs releases.ts, live + empty JSON shapes, bundle version
+    ├── AppUpdateModelTests.swift   8 tests — banner rules, silent failure, 24 h per-version snooze across a "relaunch", blocking can't snooze, start/stop
     ├── MarkdownBlockTests.swift    6 tests — block parser fixtures
     ├── FilteringTests.swift        5 tests — sessions/live search matching
     ├── StreamingLayoutTests.swift  1 test — streaming layout
     ├── PreferencesTests.swift      2 tests — layout default + persistence
-    └── RenderPreviewTests.swift    8 previews — light+dark PNGs incl. the auth gate (signed-out window + Settings panel, connecting + stalled, footer name/email/local, Account tab) (TEST_RUNNER_RENDER_PREVIEWS=1)
+    └── RenderPreviewTests.swift    9 previews — light+dark PNGs incl. the auth gate (signed-out window + Settings panel, connecting + stalled, footer name/email/local, Account tab) and both update-banner variants (TEST_RUNNER_RENDER_PREVIEWS=1)
 ```
 
 ---
