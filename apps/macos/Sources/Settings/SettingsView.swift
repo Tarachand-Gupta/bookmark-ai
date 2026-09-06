@@ -12,8 +12,28 @@ enum SettingsTab: String, Hashable {
 /// General (server), AI (mode switch + own key — `AiSettingsTab.swift`), MCP
 /// (tools + tokens — `McpSettingsTab.swift`), Sync (native bookmark
 /// mirroring), Live (server URL), Data (export/import), Account (plan +
-/// sign-in — `AccountSettingsTab.swift`).
+/// identity + sign-out — `AccountSettingsTab.swift`).
+///
+/// Every tab holds account data, so the tabs exist only behind an open gate.
+/// Signed out / connecting on Cloud, the window is the `SettingsGatePanel`:
+/// sign-in (or the spinner) plus the server picker, and nothing else.
 struct SettingsView: View {
+    @Environment(AppEnvironment.self) private var appEnvironment
+
+    var body: some View {
+        Group {
+            if appEnvironment.canUseData {
+                SettingsTabs()
+            } else {
+                SettingsGatePanel()
+            }
+        }
+        .frame(width: 500)
+    }
+}
+
+/// The tabbed Settings — see `SettingsView`.
+private struct SettingsTabs: View {
     @Environment(AppEnvironment.self) private var appEnvironment
 
     @State private var selection: SettingsTab = .general
@@ -48,7 +68,6 @@ struct SettingsView: View {
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
                 .tag(SettingsTab.account)
         }
-        .frame(width: 500)
         .task { await appEnvironment.settings.load() }
         // The sidebar can ask for a specific tab before the window opens.
         .onChange(of: appEnvironment.requestedSettingsTab, initial: true) { _, requested in

@@ -186,9 +186,9 @@ extension ApiClient {
         request.httpBody = try JSONEncoder().encode(body)
 
         if target.requiresAuth, let tokenProvider {
-            if let token = await tokenProvider(!allowRetry) {
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            }
+            // Same rule as `ApiClient.send`: never POST bare to the cloud.
+            guard let token = await tokenProvider(!allowRetry) else { throw ApiError.noToken }
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
         let bytes: URLSession.AsyncBytes
@@ -214,8 +214,11 @@ extension ApiClient {
             }
             let body = try? Self.decoder.decode(ErrorBody.self, from: data)
             let apiError = ApiError.fromResponse(status: http.statusCode, body: body)
-            if case .unauthorized = apiError, allowRetry, target.requiresAuth, tokenProvider != nil {
-                return try await startChatTurn(message: message, conversationId: conversationId, allowRetry: false)
+            if case .unauthorized = apiError, target.requiresAuth, tokenProvider != nil {
+                if allowRetry {
+                    return try await startChatTurn(message: message, conversationId: conversationId, allowRetry: false)
+                }
+                onUnauthorized?()
             }
             throw Self.chatError(status: http.statusCode, body: body, fallback: apiError)
         }

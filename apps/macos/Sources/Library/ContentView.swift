@@ -1,8 +1,12 @@
 import SwiftUI
 
-/// The window's root: a two-column `NavigationSplitView`. On macOS the sidebar
-/// column gets the system's translucent sidebar material automatically, and
-/// `.windowToolbarStyle(.unified)` (set on the scene) lets it meet the title bar.
+/// The window's root. Behind an open gate (`AppEnvironment.gate == .ready`) it
+/// is a two-column `NavigationSplitView`: on macOS the sidebar column gets the
+/// system's translucent material automatically, and `.windowToolbarStyle(.unified)`
+/// (set on the scene) lets it meet the title bar. While the gate is closed the
+/// WHOLE window is replaced — no sidebar, no toolbar — by the sign-in screen
+/// (Clerk said there is no session) or the connecting screen (it hasn't
+/// answered yet), so nothing from a previous account can be on screen.
 ///
 /// The detail column routes on the sidebar selection: library filters share the
 /// browse UI (grid/list, search); the feature views (Ask AI, Sessions, Live
@@ -15,19 +19,29 @@ struct ContentView: View {
     var body: some View {
         @Bindable var auth = appEnvironment.auth
 
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            SidebarView()
-                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 340)
-        } detail: {
-            detailView
+        Group {
+            switch appEnvironment.gate {
+            case .ready:
+                NavigationSplitView(columnVisibility: $columnVisibility) {
+                    SidebarView()
+                        .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 340)
+                } detail: {
+                    featureView
+                }
+            case .connecting:
+                ConnectingView()
+            case .signedOut:
+                SignedOutView()
+            }
         }
+        // Attached at the root so Sign In… works from every gate state.
         .sheet(isPresented: $auth.isPresentingSignIn) {
             SignInSheet()
         }
     }
 
     @ViewBuilder
-    private var detailView: some View {
+    private var featureView: some View {
         switch appEnvironment.library.selection {
         case .chat:
             ChatView()

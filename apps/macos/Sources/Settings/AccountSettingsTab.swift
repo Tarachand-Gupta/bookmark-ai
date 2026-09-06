@@ -1,16 +1,83 @@
 import SwiftUI
 
-/// Settings ▸ Account: the plan (everyone is on Free — badge + what it
-/// includes), then sign in / sign out and whatever `GET /api/me` reports.
+/// Settings ▸ Account: the plan (badge + what it includes) on top, then the
+/// account itself — status, WHO is signed in (initials, name, email), and the
+/// Sign Out button directly beneath. Only rendered behind an open gate, so on
+/// Cloud there is a session; everything here belongs to that account and is
+/// cleared with it.
 struct AccountSettingsTab: View {
     @Environment(AppEnvironment.self) private var appEnvironment
 
     var body: some View {
         let target = appEnvironment.preferences.serverTarget
         let auth = appEnvironment.auth
-        let plan = appEnvironment.settings.plan
 
         Form {
+            planSection
+
+            if target.requiresAuth {
+                Section {
+                    LabeledContent("Status") {
+                        switch auth.status {
+                        case .unknown, .unreachable:
+                            Label("Connecting…", systemImage: "person.crop.circle.badge.clock")
+                                .foregroundStyle(.secondary)
+                        case .signedOut:
+                            Label("Signed out", systemImage: "person.crop.circle.badge.xmark")
+                                .foregroundStyle(.secondary)
+                        case .signedIn:
+                            Label("Signed in", systemImage: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                        }
+                    }
+
+                    if auth.status == .signedIn {
+                        identityRow(auth.account)
+                    }
+
+                    if auth.status == .signedIn {
+                        Button("Sign Out") {
+                            Task { await appEnvironment.signOut() }
+                        }
+                        .pointingHandCursor()
+                        .accessibilityIdentifier("sign-out-button")
+                    } else {
+                        Button("Sign In…") { auth.beginSignIn() }
+                            .buttonStyle(.borderedProminent)
+                            .pointingHandCursor()
+                    }
+
+                    if let error = auth.lastError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                } header: {
+                    Text("Account")
+                } footer: {
+                    Text("Sign-in opens the web app's Clerk page in a secure window. The session is kept in this app's own sandboxed website storage — no password or token is written anywhere else.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Section {
+                    Label("Local mode needs no sign-in", systemImage: "laptopcomputer")
+                } footer: {
+                    Text("The local dev server is expected to run with DEV_OPEN_API=1, which bypasses Clerk entirely. Switch to Cloud in General to sign in.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(height: 540)
+    }
+
+    /// The plan card — drawn only once `GET /api/account` has answered for
+    /// THIS session (nil after every sign-out).
+    @ViewBuilder
+    private var planSection: some View {
+        if let plan = appEnvironment.settings.plan {
             Section {
                 HStack(alignment: .firstTextBaseline) {
                     PlanBadge(title: plan.badgeTitle)
@@ -36,66 +103,48 @@ struct AccountSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            if target.requiresAuth {
-                Section {
-                    LabeledContent("Status") {
-                        switch auth.status {
-                        case .unknown:
-                            Text("Checking…").foregroundStyle(.secondary)
-                        case .signedOut:
-                            Label("Signed out", systemImage: "person.crop.circle.badge.xmark")
-                                .foregroundStyle(.secondary)
-                        case .signedIn:
-                            Label("Signed in", systemImage: "checkmark.seal.fill")
-                                .foregroundStyle(.green)
-                        }
-                    }
-
-                    if let account = auth.account {
-                        LabeledContent("Name") {
-                            Text(account.displayName).foregroundStyle(.secondary)
-                        }
-                        if let detail = account.displayDetail {
-                            LabeledContent("Email") {
-                                Text(detail).foregroundStyle(.secondary).textSelection(.enabled)
-                            }
-                        }
-                    }
-                } footer: {
-                    Text("Sign-in opens the web app's Clerk page in a secure window. The session is kept in this app's own sandboxed website storage — no password or token is written anywhere else.")
-                        .font(.caption)
+        } else {
+            Section("Plan") {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading your plan…")
                         .foregroundStyle(.secondary)
                 }
+                .padding(.vertical, 2)
+            }
+        }
+    }
 
-                Section {
-                    if auth.status == .signedIn {
-                        Button("Sign Out") {
-                            Task { await appEnvironment.signOut() }
-                        }
-                    } else {
-                        Button("Sign In…") { auth.beginSignIn() }
-                            .buttonStyle(.borderedProminent)
+    /// Who is signed in: initials avatar, name (or email), email. A session
+    /// whose `/api/me` hasn't answered yet shows a quiet placeholder.
+    @ViewBuilder
+    private func identityRow(_ account: AccountInfo?) -> some View {
+        HStack(spacing: 12) {
+            InitialsAvatar(account: account, size: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                if let account, account.hasIdentity {
+                    Text(account.displayName)
+                        .font(.body.weight(.medium))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if let email = account.displayDetail {
+                        Text(email)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
-
-                    if let error = auth.lastError {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-                }
-            } else {
-                Section {
-                    Label("Local mode needs no sign-in", systemImage: "laptopcomputer")
-                } footer: {
-                    Text("The local dev server is expected to run with DEV_OPEN_API=1, which bypasses Clerk entirely. Switch to Cloud in General to sign in.")
-                        .font(.caption)
+                } else {
+                    Text("Loading your account…")
                         .foregroundStyle(.secondary)
                 }
             }
+            Spacer(minLength: 0)
         }
-        .formStyle(.grouped)
-        .frame(height: 500)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("account-identity-row")
     }
 }
 

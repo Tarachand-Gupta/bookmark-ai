@@ -99,6 +99,15 @@ final class LiveModel {
         streamTask = nil
     }
 
+    #if DEBUG
+    /// Tests: a loaded live state without a server.
+    func seed(devices: [LiveDevice], enabled: Bool = true, loaded: Bool = true) {
+        self.devices = devices
+        self.enabled = enabled
+        self.loaded = loaded
+    }
+    #endif
+
     func reset() {
         stop()
         devices = []

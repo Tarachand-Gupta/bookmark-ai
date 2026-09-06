@@ -38,7 +38,9 @@ struct BookmarkAIApp: App {
 
 /// Menu-bar entries for the library. Every toolbar action has a menu equivalent
 /// with a shortcut — on macOS the menu bar, not the toolbar, is the canonical
-/// home for an app's actions.
+/// home for an app's actions. Everything that needs account data is disabled
+/// while the gate is closed (signed out / connecting on Cloud); only Open Web
+/// App stays live.
 struct LibraryCommands: Commands {
     let appEnvironment: AppEnvironment
 
@@ -47,38 +49,46 @@ struct LibraryCommands: Commands {
     }
 
     var body: some Commands {
+        let canUseData = appEnvironment.canUseData
+
         CommandMenu("Library") {
             Button("Refresh") {
                 Task { await appEnvironment.loadEverything() }
             }
             .keyboardShortcut("r", modifiers: .command)
+            .disabled(!canUseData)
 
             Divider()
 
-            // An inline Picker renders as check-marked menu items, so the menu
-            // always shows which layout is active.
-            Picker("View", selection: Binding(
-                get: { appEnvironment.preferences.libraryLayout },
-                set: { appEnvironment.preferences.libraryLayout = $0 }
-            )) {
-                Text("as Grid")
-                    .tag(LibraryLayout.grid)
-                    .keyboardShortcut("1", modifiers: .command)
-                Text("as List")
-                    .tag(LibraryLayout.list)
-                    .keyboardShortcut("2", modifiers: .command)
+            // Check-marked menu items for the layout. Toggles rather than an
+            // inline Picker: a Picker's items ignore `.disabled` (only its
+            // header greys out), and these must go quiet with the rest while
+            // the gate is closed.
+            Text("View")
+            ForEach(LibraryLayout.allCases) { layout in
+                Toggle(
+                    "as \(layout.title)",
+                    isOn: Binding(
+                        get: { appEnvironment.preferences.libraryLayout == layout },
+                        set: { if $0 { appEnvironment.preferences.libraryLayout = layout } }
+                    )
+                )
+                .keyboardShortcut(layout == .grid ? "1" : "2", modifiers: .command)
+                .disabled(!canUseData)
             }
-            .pickerStyle(.inline)
 
             Divider()
 
             // Navigation — every sidebar destination is reachable by keyboard.
             Button("Ask AI") { goTo(.chat) }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
+                .disabled(!canUseData)
             Button("Sessions") { goTo(.sessions) }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
+                .disabled(!canUseData)
             Button("Live Tabs") { goTo(.liveTabs) }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
+                .disabled(!canUseData)
 
             Divider()
 

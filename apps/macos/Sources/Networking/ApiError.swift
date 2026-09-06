@@ -16,6 +16,10 @@ enum ApiError: LocalizedError, Equatable {
     case network(String)
     case decoding(String)
     case invalidURL
+    /// Cloud target, but no session token could be minted for this request
+    /// (Clerk unreachable, or no session). Raised BEFORE any network call —
+    /// see `ApiClient.send`. Never a sign-out signal.
+    case noToken
 
     var errorDescription: String? {
         switch self {
@@ -27,6 +31,7 @@ enum ApiError: LocalizedError, Equatable {
         case .network(let message): message
         case .decoding(let message): "Couldn't read the server's response. \(message)"
         case .invalidURL: "Couldn't build a valid request URL."
+        case .noToken: "Couldn't confirm your session with bookmark-ai.cloud."
         }
     }
 
@@ -38,6 +43,7 @@ enum ApiError: LocalizedError, Equatable {
         case .provisioning: "Your account is still being set up — this usually takes a few seconds."
         case .rateLimited: "Too many requests. Wait a moment and try again."
         case .network: "Check that the server is reachable, then refresh."
+        case .noToken: "Check your connection — the app keeps retrying in the background."
         default: nil
         }
     }

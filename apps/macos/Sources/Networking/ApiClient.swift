@@ -17,6 +17,8 @@ final class ApiClient {
 
     /// Supplied by `AuthController`. Only consulted when `target.requiresAuth`.
     var tokenProvider: TokenProvider?
+    /// A request 401'd even after the forced re-mint — the session is over.
+    var onUnauthorized: (() -> Void)?
 
     /// Internal (not private) so the chat-stream extension can open SSE byte
     /// streams over the same configured session.
@@ -333,9 +335,11 @@ final class ApiClient {
         }
 
         if target.requiresAuth, let tokenProvider {
-            if let token = await tokenProvider(!allowRetry) {
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            }
+            // No token right now (Clerk unreachable, or signed out) ⇒ fail HERE.
+            // Sending the request bare would only earn a 401 that looks exactly
+            // like an expired session — and on the replay, a false sign-out.
+            guard let token = await tokenProvider(!allowRetry) else { throw ApiError.noToken }
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
         let data: Data
@@ -359,9 +363,15 @@ final class ApiClient {
         let apiError = ApiError.fromResponse(status: http.statusCode, body: errorBody)
 
         // Single retry on 401, with a forced token re-mint. `allowRetry` is the
-        // recursion guard — the replay passes false, so it can never loop.
-        if case .unauthorized = apiError, allowRetry, target.requiresAuth, tokenProvider != nil {
-            return try await send(path: path, method: method, query: query, body: body, allowRetry: false)
+        // recursion guard — the replay passes false, so it can never loop. A 401
+        // on the replay means a FRESH token was rejected (the guard above
+        // guarantees one was attached): the session is over for this API, and
+        // the app is told so.
+        if case .unauthorized = apiError, target.requiresAuth, tokenProvider != nil {
+            if allowRetry {
+                return try await send(path: path, method: method, query: query, body: body, allowRetry: false)
+            }
+            onUnauthorized?()
         }
         throw apiError
     }

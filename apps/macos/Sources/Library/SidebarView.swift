@@ -121,8 +121,10 @@ struct SidebarView: View {
     }
 
     private func row(for item: SidebarItem, count: Int) -> some View {
+        // No count badge at zero — after a sign-out flush the rows read as
+        // plain destinations, not "0".
         Label(item.title, systemImage: item.symbolName)
-            .badge(count)
+            .badge(count > 0 ? Text("\(count)") : nil)
             .tag(item)
     }
 

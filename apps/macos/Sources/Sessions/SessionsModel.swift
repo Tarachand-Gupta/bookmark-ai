@@ -166,6 +166,14 @@ final class SessionsModel {
         }
     }
 
+    #if DEBUG
+    /// Tests: a loaded list without a server.
+    func seed(sessions: [Session], loaded: Bool = true) {
+        self.sessions = sessions
+        self.loaded = loaded
+    }
+    #endif
+
     func reset() {
         loadTask?.cancel()
         query = ""

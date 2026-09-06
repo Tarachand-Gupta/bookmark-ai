@@ -54,6 +54,14 @@ enum ServerTarget: String, CaseIterable, Identifiable, Codable, Sendable {
         }
     }
 
+    /// The host, as a short caption (sidebar footer, sign-in screen footer).
+    var hostLabel: String {
+        switch self {
+        case .local: "localhost:3000"
+        case .cloud: "bookmark-ai.cloud"
+        }
+    }
+
     var symbolName: String {
         switch self {
         case .local: "laptopcomputer"

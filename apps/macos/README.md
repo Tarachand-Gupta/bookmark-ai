@@ -24,10 +24,11 @@ xcodegen generate                # writes BookmarkAI.xcodeproj
 xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
            -configuration Debug -derivedDataPath build build
 
-# Test (97 unit tests: URL construction, error mapping, response decoding,
+# Test (115 tests: URL construction, error mapping, response decoding,
 # chat stream assembly, attachment classification/downscaling, skills/MCP
 # contracts, the SKILL.md import parser, history grouping, the empty-reply
-# guard; the 7 RenderPreviewTests are skipped unless
+# guard, the auth state machine + sign-out flush + stubbed-transport 401
+# rules; the 8 RenderPreviewTests are skipped unless
 # TEST_RUNNER_RENDER_PREVIEWS=1 — a plain env var is NOT forwarded to the
 # test host)
 xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
@@ -123,6 +124,72 @@ Token lifecycle:
 - Sign-out calls `window.Clerk.signOut()`, then wipes the whole website data
   store and tears the token webview down.
 
+### Session states and the gate
+
+`AuthController.Status` keeps two very different "no token" answers apart, and
+`AppEnvironment.gate` (`AccessGate`) turns them into the ONE decision every
+scene reads — the main window, the Settings window, and the menu bar can never
+disagree about whether account data may be on screen:
+
+| Target · auth status | `gate` | Main window | ⌘, Settings | Library menu |
+| --- | --- | --- | --- | --- |
+| Local · any | `.ready` | full app (no sign-in concept) | tabs | enabled |
+| Cloud · `.signedIn` | `.ready` | full app | tabs | enabled |
+| Cloud · `.unknown` / `.unreachable` | `.connecting` | `ConnectingView` — spinner, "Connecting to your account…"; after 60 s "Can't reach bookmark-ai.cloud" + Retry | `SettingsGatePanel` (same message) | disabled (Open Web App stays) |
+| Cloud · `.signedOut` | `.signedOut` | `SignedOutView` — app mark, "Sign in to Bookmark AI", Sign In…, server picker footer. **No sidebar, no toolbar items.** | `SettingsGatePanel` — Sign In… + server picker, **no tabs** | disabled (Open Web App stays) |
+
+- **`signedOut` is definitive** — Clerk loaded and reported no session (at
+  launch, or from the 45 s refresh loop when the session expired under an idle
+  app), the user chose Sign Out, or the server 401'd a *freshly minted* token
+  (the one replay after a 401 still failed → `ApiClient.onUnauthorized`). Every
+  one of these goes through ONE path, `setSignedOut()` → `onSignedOut` →
+  `AppEnvironment.handleSignedOut()`, which resets **every** model: library
+  rows + facets + search + selection, sessions, live, chat transcript + history
+  + draft + attachments + history search, settings **and the plan card**
+  (`SettingsModel.plan` is nil until `/api/account` answers for THIS session),
+  skills, MCP tokens, health, the identity (`AuthController.account`), the
+  requested Settings tab and the tour flag. `SignedOutResetTests` asserts each
+  of those is empty afterwards.
+- **`unreachable` is transient** — the token webview didn't load in time,
+  `window.Clerk` isn't there yet, the renderer was recycled, or the machine is
+  offline. It says nothing about the session, so it is NEVER rendered as "not
+  signed in": at launch it is the connecting gate (no data, no sidebar), and the
+  silent restore retries with backoff **1 → 2 → 4 → 8 → 15 → 30 s** (the last
+  repeats). Once the stretch passes `AuthController.stallAfter` (60 s) the
+  screen switches to "Can't reach bookmark-ai.cloud" with Retry; retries keep
+  going underneath. A session confirmed by any attempt after the awaited one
+  (a backoff tick, Retry, or an on-demand mint) fires `onSessionRestored`, which
+  runs the data load the launch skipped.
+- **Mid-session, a transient mint failure keeps the session.** The status stays
+  `.signedIn`, the data stays on screen, and `AuthController.token` returns nil.
+  `ApiClient.send` / `startChatTurn` then throw `ApiError.noToken` **before any
+  network call** — a bare request would 401, replay bare, and turn a Clerk blip
+  into a false sign-out. `onUnauthorized` can only fire for a token that was
+  actually attached and rejected twice (`ApiClientAuthTests` pins the three
+  cases against a stubbed `URLProtocol`).
+- **Identity**: `GET /api/me` is loaded alongside the library on every
+  confirmed session (`loadEverything`) and shown in the sidebar footer (initials
+  avatar, name → else email, email → else the server host, a Local/Cloud glyph
+  badge, ⋯ ▸ Account Settings… / Sign Out) and in Settings ▸ Account (Status,
+  then the identity row, then Sign Out — the plan card above). A transient
+  `/api/me` failure keeps the last identity of the same session; sign-out
+  clears it.
+- Breadcrumbs for every transition are in the unified log:
+  `log show --last 2d --predicate 'subsystem == "ai.purecode.bookmarkai" AND category == "auth"'`.
+- Tests drive the state machine without a webview through
+  `AuthController.mintOverride` (DEBUG) and `refreshTick()` — the same code
+  the 45 s loop runs (`AuthStateTests`).
+
+Why this exists: an instance left running for days showed **"Not signed in ·
+Cloud" while the sidebar still listed 73 bookmarks**, and even after an explicit
+Sign Out the sidebar navigation, facets and the Account tab's plan card stayed.
+Root causes: the 45 s refresh loop flipped the status on "no session" without
+flushing any model; `restore()` collapsed "couldn't reach Clerk" into
+signed-out; only the detail column was gated (the sidebar rendered regardless);
+`ApiClient` sent bare requests when no token could be minted, so a blip
+401-replayed into a false sign-out; and `SettingsModel.plan` defaulted to Free,
+so it could never be empty. All five are fixed by the gate above.
+
 **Nothing durable is stored by this app**, which is why there is no Keychain
 entry: session JWTs are memory-only, and the Clerk cookies live in the
 WKWebsiteDataStore inside the sandbox container, managed by the OS.
@@ -157,8 +224,8 @@ apps/macos/
 │   └── Assets.xcassets/AppIcon.appiconset/
 ├── Sources/
 │   ├── App/
-│   │   ├── BookmarkAIApp.swift     @main, WindowGroup + Settings, menu commands
-│   │   └── AppEnvironment.swift    composition root; wires api ↔ auth ↔ library
+│   │   ├── BookmarkAIApp.swift     @main, WindowGroup + Settings, menu commands (data items disabled while gated)
+│   │   └── AppEnvironment.swift    composition root; wires api ↔ auth ↔ models; `gate`/`canUseData`; handleSignedOut() = THE flush
 │   ├── Models/
 │   │   ├── Bookmark.swift          Bookmark, OpenGraph, BookmarkSource, ISO8601
 │   │   ├── ApiResponses.swift      List/Meta/Search/Health/Account/Settings (+ AiMode, ownKeyReady)
@@ -185,18 +252,21 @@ apps/macos/
 │   ├── Sessions/                   SessionsModel + SessionsView
 │   ├── Live/                       LiveModel (SSE + reconnect) + LiveTabsView
 │   ├── Networking/
-│   │   ├── ApiClient.swift         async URLSession, bearer injection, 401 retry, skills/MCP/account calls
+│   │   ├── ApiClient.swift         async URLSession, bearer injection (no token ⇒ `.noToken`, never a bare cloud request), 401 retry, skills/MCP/account calls
 │   │   ├── ChatStream.swift        ChatStreamChunk (SSE parser), ChatTurnBody, reply-note headers, chat error copy
-│   │   ├── ApiError.swift          typed errors + status→error mapping
-│   │   └── ServerTarget.swift      local/cloud base URLs
+│   │   ├── ApiError.swift          typed errors + status→error mapping (+ `.noToken`)
+│   │   └── ServerTarget.swift      local/cloud base URLs, hostLabel
 │   ├── Auth/
 │   │   ├── ClerkWebAuth.swift      the two webviews, JS token minting, sign-out
-│   │   ├── AuthController.swift    @Observable auth state, token cache + refresh
+│   │   ├── AuthController.swift    @Observable auth state (unknown/signedOut/signedIn/unreachable), token cache + refresh, backoff restore + stall, the one sign-out path, identity
+│   │   ├── AuthGate.swift          AuthGateScaffold (glass + centred column + server picker footer), AppMark, GateActionButton
+│   │   ├── SignedOutView.swift     the whole window while signed out on Cloud
+│   │   ├── ConnectingView.swift    the whole window while the session is unconfirmed (spinner → "Can't reach" + Retry)
 │   │   └── SignInSheet.swift       sheet + NSViewRepresentable host
 │   ├── Library/
-│   │   ├── ContentView.swift       NavigationSplitView, .searchable, toolbar
-│   │   ├── SidebarView.swift       facets with counts + account footer
-│   │   ├── AccountFooter.swift
+│   │   ├── ContentView.swift       gate switch: NavigationSplitView / ConnectingView / SignedOutView; sign-in sheet at the root
+│   │   ├── SidebarView.swift       facets with counts (hidden at 0) + account footer
+│   │   ├── AccountFooter.swift     initials avatar, name/email lines, target badge, ⋯ ▸ Account Settings… / Sign Out
 │   │   ├── LibraryBrowserView.swift grid/list host + empty/error states + banner
 │   │   ├── BookmarkGridView.swift  adaptive card grid (default), hover, click-opens
 │   │   ├── BookmarkListView.swift  card rows in a ScrollView: selection, arrows, ⏎, ⌫ via onKeyPress (NOT a List — its context-menu focus halo can't be disabled)
@@ -205,14 +275,16 @@ apps/macos/
 │   │   ├── LibraryModel.swift      @Observable store: filter, search, delete
 │   │   └── SidebarItem.swift       selection enum + PlannedFeature rows
 │   ├── Settings/
-│   │   ├── SettingsView.swift      ⌘, — General/AI/MCP/Sync/Live/Data/Account (web parity)
-│   │   ├── SettingsModel.swift     GET/PUT /api/settings, aiMode switch, removeKey, plan
+│   │   ├── SettingsView.swift      ⌘, — tabs (General/AI/MCP/Sync/Live/Data/Account) behind the gate, else SettingsGatePanel
+│   │   ├── SettingsGatePanel.swift  signed-out / connecting panel: message + Sign In… or Retry + server picker, no tabs
+│   │   ├── SettingsModel.swift     GET/PUT /api/settings, aiMode switch, removeKey, plan (nil until loaded)
 │   │   ├── AiSettingsTab.swift     Included ⇄ Own key, saved-key summary, provider/model, Remove key…
 │   │   ├── McpSettingsTab.swift    endpoint + client setup snippets, tool toggles, token mint/reveal/revoke
 │   │   ├── McpTokensModel.swift    /api/mcp/tokens list/create/revoke
-│   │   └── AccountSettingsTab.swift  plan badge + features, sign-in / local sections
+│   │   └── AccountSettingsTab.swift  plan card, then Status → identity row (avatar, name, email) → Sign Out
 │   └── Support/
-│       ├── Preferences.swift       UserDefaults-backed server target + layout
+│       ├── Preferences.swift       UserDefaults-backed server target + layout (injectable defaults)
+│       ├── InitialsAvatar.swift    initials on a tinted disc, symbol fallback (footer 28pt, Account 36pt)
 │       ├── Interaction.swift       pointingHandCursor, SurfaceCard, HoverHighlight
 │       ├── AiCreditsCard.swift     the free-credits meter (chat + Settings ▸ AI)
 │       ├── CopyButton.swift        "Copy" → "Copied" button, wrapping code block
@@ -231,11 +303,14 @@ apps/macos/
     ├── SkillMarkdownTests.swift    8 tests — SKILL.md parser + round trip, import type gate, createSkill/installSkill copy
     ├── ChatHistoryTests.swift      4 tests — day buckets, relative-time copy, title filter, seed hook
     ├── TranscriptLayoutTests.swift 2 tests — empty-stream failure row + Retry, server `error` chunk on an empty turn (fixture streams via `turnStarter`)
+    ├── SignedOutResetTests.swift   2 tests — handleSignedOut() empties every model (incl. plan, identity, window state); a post-retry 401 flushes through AuthController
+    ├── AuthStateTests.swift        11 tests — refresh-tick no-session flushes; unavailable keeps session + data; restore → signedIn / signedOut / connecting; Retry notifies; backoff + stall constants; gate per target; initials; identity kept on /api/me failure
+    ├── ApiClientAuthTests.swift    4 tests — stubbed URLProtocol: no token ⇒ no request + `.noToken`; expired token recovers on the replay; fresh token rejected ⇒ onUnauthorized once; Local sends no header
     ├── MarkdownBlockTests.swift    6 tests — block parser fixtures
     ├── FilteringTests.swift        5 tests — sessions/live search matching
     ├── StreamingLayoutTests.swift  1 test — streaming layout
     ├── PreferencesTests.swift      2 tests — layout default + persistence
-    └── RenderPreviewTests.swift    7 previews — light+dark PNGs (TEST_RUNNER_RENDER_PREVIEWS=1)
+    └── RenderPreviewTests.swift    8 previews — light+dark PNGs incl. the auth gate (signed-out window + Settings panel, connecting + stalled, footer name/email/local, Account tab) (TEST_RUNNER_RENDER_PREVIEWS=1)
 ```
 
 ---
@@ -273,7 +348,11 @@ apps/macos/
 - Menu bar: **Library ▸ Refresh (⌘R)**, **Open Web App (⇧⌘O)**, `SidebarCommands()`
   for the View-menu sidebar toggle. File ▸ New Window is *removed* — Phase 1 is a
   single-window app, so shipping a window that mirrors state would be a bug.
-- Standard **Settings** scene (⌘,) carrying the Local/Cloud switch and health readout.
+- Standard **Settings** scene (⌘,) carrying the Local/Cloud switch and health readout —
+  gated like the main window: signed out / connecting on Cloud shows only the
+  `SettingsGatePanel` (the unit-test host shares the app's sandbox container, so
+  tests never call `signOut()` — it would wipe the real `WKWebsiteDataStore` —
+  and always build `AppEnvironment` on a throwaway `UserDefaults` suite).
 - `ContentUnavailableView` for empty / no-search-results / error states, overlaid
   on the list so the toolbar and search field stay put.
 - `navigationTitle` + `navigationSubtitle` → window title reads

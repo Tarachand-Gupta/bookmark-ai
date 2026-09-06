@@ -209,8 +209,17 @@ final class LibraryModel {
         }
     }
 
-    /// Drop everything and reload — used when the server target changes, so no
-    /// row from the old backend can survive into the new one's view.
+    #if DEBUG
+    /// Tests/previews: facets, totals and rows without a server.
+    func seed(meta: MetaResponse, bookmarks: [Bookmark] = []) {
+        self.meta = meta
+        self.bookmarks = bookmarks
+        total = meta.total
+    }
+    #endif
+
+    /// Drop everything and reload — used when the server target changes and on
+    /// every sign-out, so no row from the old backend or account can survive.
     func reset() {
         loadTask?.cancel()
         searchTask?.cancel()

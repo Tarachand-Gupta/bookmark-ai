@@ -234,6 +234,85 @@ final class RenderPreviewTests: XCTestCase {
         }
     }
 
+    // MARK: - Auth gate: signed out, connecting, identity
+
+    /// A cloud/local environment on a throwaway defaults suite (the test host
+    /// is the real app — never touch its `.standard` target).
+    @MainActor
+    private func gateEnvironment(target: ServerTarget) -> AppEnvironment {
+        let defaults = UserDefaults(suiteName: "RenderPreview-\(UUID().uuidString)")!
+        let preferences = Preferences(defaults: defaults)
+        preferences.serverTarget = target
+        return AppEnvironment(preferences: preferences)
+    }
+
+    @MainActor
+    func testRenderAuthGatePreviews() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RENDER_PREVIEWS"] == "1",
+            "visual harness — set RENDER_PREVIEWS=1 to produce the PNG"
+        )
+        let tara = AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@purecode.ai")
+        let emailOnly = AccountInfo(signedIn: true, name: nil, email: "tara@purecode.ai")
+        let settings = UserSettings(
+            provider: "google", baseUrl: nil, model: nil, apiKeySet: false, apiKeyLast4: nil,
+            aiMode: "included", liveServerUrl: nil, nativeSyncEnabled: true, nativeSyncFull: false,
+            mcpTools: nil, aiUsage: AiUsage(usedTokens: 412_000, limitTokens: 1_000_000, resetsAt: "2026-09-07T00:00:00.000Z")
+        )
+        let window = Color(nsColor: .windowBackgroundColor)
+        let sidebar = Color(nsColor: .underPageBackgroundColor)
+
+        for (appearance, suffix) in Self.appearances {
+            // The whole main window while signed out — no sidebar, no toolbar.
+            let signedOut = gateEnvironment(target: .cloud)
+            signedOut.auth.seed(status: .signedOut)
+            try render(SignedOutView().environment(signedOut).background(window),
+                       width: 960, height: 600, appearance: appearance, name: "auth-signed-out-\(suffix)")
+            let failed = gateEnvironment(target: .cloud)
+            failed.auth.seed(status: .signedOut)
+            failed.auth.lastError = "The server rejected the session. Sign in again."
+            try render(SignedOutView().environment(failed).background(window),
+                       width: 960, height: 600, appearance: appearance, name: "auth-signed-out-error-\(suffix)")
+            // ⌘, while signed out: the panel, not the tabs.
+            try render(SettingsGatePanel().environment(signedOut).background(window),
+                       width: 500, appearance: appearance, name: "auth-settings-signed-out-\(suffix)")
+
+            // Connecting (launch / retrying) and the stalled variant with Retry.
+            let connecting = gateEnvironment(target: .cloud)
+            connecting.auth.seed(status: .unreachable)
+            try render(ConnectingView().environment(connecting).background(window),
+                       width: 960, height: 600, appearance: appearance, name: "auth-connecting-\(suffix)")
+            let stalled = gateEnvironment(target: .cloud)
+            stalled.auth.seed(status: .unreachable, stalled: true)
+            try render(ConnectingView().environment(stalled).background(window),
+                       width: 960, height: 600, appearance: appearance, name: "auth-connecting-stalled-\(suffix)")
+            try render(SettingsGatePanel().environment(stalled).background(window),
+                       width: 500, appearance: appearance, name: "auth-settings-stalled-\(suffix)")
+
+            // Identity: sidebar footer (name + email / email only / local) and
+            // Settings ▸ Account with the identity row above Sign Out.
+            let signedIn = gateEnvironment(target: .cloud)
+            signedIn.auth.seed(status: .signedIn, account: tara)
+            signedIn.settings.seed(settings, plan: .free)
+            try render(AccountFooter().environment(signedIn).frame(width: 250).background(sidebar),
+                       width: 250, appearance: appearance, name: "auth-footer-\(suffix)")
+            let byEmail = gateEnvironment(target: .cloud)
+            byEmail.auth.seed(status: .signedIn, account: emailOnly)
+            try render(AccountFooter().environment(byEmail).frame(width: 250).background(sidebar),
+                       width: 250, appearance: appearance, name: "auth-footer-email-only-\(suffix)")
+            let local = gateEnvironment(target: .local)
+            local.auth.seed(status: .signedOut, account: AccountInfo(signedIn: true, name: nil, email: nil))
+            try render(AccountFooter().environment(local).frame(width: 250).background(sidebar),
+                       width: 250, appearance: appearance, name: "auth-footer-local-\(suffix)")
+            try render(AccountSettingsTab().environment(signedIn).tint(.blue),
+                       width: 500, appearance: appearance, name: "auth-account-tab-\(suffix)")
+            let loadingIdentity = gateEnvironment(target: .cloud)
+            loadingIdentity.auth.seed(status: .signedIn, account: nil)
+            try render(AccountSettingsTab().environment(loadingIdentity).tint(.blue),
+                       width: 500, appearance: appearance, name: "auth-account-tab-loading-\(suffix)")
+        }
+    }
+
     // MARK: - History popover
 
     @MainActor

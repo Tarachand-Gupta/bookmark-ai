@@ -80,6 +80,24 @@ struct AccountInfo: Codable, Sendable, Equatable {
         guard let email, !email.isEmpty, email != displayName else { return nil }
         return email
     }
+
+    /// Whether Clerk knows who this is (open modes report a nameless session).
+    var hasIdentity: Bool {
+        !(name ?? "").isEmpty || !(email ?? "").isEmpty
+    }
+
+    /// One or two letters for the avatar: first letters of the first two name
+    /// words ("Tara Gupta" → "TG"), else the email's first letter ("T"), else
+    /// nothing (callers draw a symbol instead).
+    var initials: String {
+        if let name, !name.isEmpty {
+            let words = name.split(whereSeparator: { $0 == " " || $0 == "-" }).prefix(2)
+            let letters = words.compactMap { $0.first.map(String.init) }
+            if !letters.isEmpty { return letters.joined().uppercased() }
+        }
+        if let email, let first = email.first { return String(first).uppercased() }
+        return ""
+    }
 }
 
 /// Search modes the API accepts. `hybrid` (RRF blend of FTS + vector) is what

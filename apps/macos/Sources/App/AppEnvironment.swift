@@ -1,6 +1,18 @@
 import Foundation
 import Observation
 
+/// What the window may show right now. Derived from the server target and the
+/// auth status — the ONE gate every scene (main window, Settings, menu bar)
+/// reads, so they can never disagree about whether data may be on screen.
+enum AccessGate: Equatable {
+    /// Local target, or a confirmed cloud session: the full app.
+    case ready
+    /// Cloud, session neither confirmed nor denied yet: spinner, no data.
+    case connecting
+    /// Cloud, Clerk says no session: the sign-in screen and nothing else.
+    case signedOut
+}
+
 /// Composition root — builds the object graph once and keeps the pieces wired
 /// as settings change. Held as a single `@State` in the `App`, then injected
 /// into the view tree with `.environment(_:)`.
@@ -29,8 +41,11 @@ final class AppEnvironment {
     /// Drives the feature-tour sheet (sidebar ▸ Tour).
     var isPresentingTour = false
 
-    init() {
-        let preferences = Preferences()
+    /// `preferences` is injectable so tests/previews can use a throwaway
+    /// `UserDefaults` suite instead of the app's real one (the unit-test host
+    /// IS the app, so `.standard` would be Tara's actual settings).
+    init(preferences: Preferences? = nil) {
+        let preferences = preferences ?? Preferences()
         let api = ApiClient(target: preferences.serverTarget)
         let auth = AuthController(origin: ServerTarget.cloud.baseURL)
 
@@ -49,16 +64,47 @@ final class AppEnvironment {
         api.tokenProvider = { [weak auth] forceRefresh in
             await auth?.token(forceRefresh: forceRefresh)
         }
+        // A 401 that survives the forced re-mint ends the session for the app.
+        api.onUnauthorized = { [weak auth] in
+            Task { @MainActor in auth?.handleUnauthorized() }
+        }
+
+        // Every definitive sign-out — Clerk saying "no session", the account
+        // menu, a rejected fresh token — flushes the models in ONE place; a
+        // session confirmed later (backoff retry, Retry) loads them.
+        auth.onSignedOut = { [weak self] in self?.handleSignedOut() }
+        auth.onSessionRestored = { [weak self] in
+            Task { @MainActor in await self?.loadEverything() }
+        }
 
         // A chat tool that creates/installs a skill refreshes the Skills sheet.
         let skills = self.skills
         self.chat.onSkillsChanged = { Task { await skills.load() } }
     }
 
+    // MARK: - Gate
+
+    /// See `AccessGate`. Local never gates; cloud follows the auth status.
+    var gate: AccessGate {
+        guard preferences.serverTarget.requiresAuth else { return .ready }
+        switch auth.status {
+        case .signedIn: return .ready
+        case .signedOut: return .signedOut
+        case .unknown, .unreachable: return .connecting
+        }
+    }
+
+    /// Data is fetched (and data-bearing UI shown) ONLY behind an open gate.
+    /// Signed out: the sign-in screen. Connecting: the spinner. Nothing is
+    /// requested without a session, so a Clerk blip never yields 401 banners.
+    var canUseData: Bool { gate == .ready }
+
+    // MARK: - Lifecycle
+
     /// First run of the app: restore any persisted session, then load the library.
     func start() async {
         await auth.restore(requiresAuth: preferences.serverTarget.requiresAuth)
-        await loadEverything()
+        if canUseData { await loadEverything() }
     }
 
     /// Flip Local ↔︎ Cloud. Everything downstream is rebuilt: no row, facet,
@@ -68,6 +114,48 @@ final class AppEnvironment {
         guard target != preferences.serverTarget else { return }
         preferences.serverTarget = target
         api.target = target
+        resetModels()
+
+        // Auth always points at the CLOUD origin — that is the only Clerk-backed
+        // one. Local mode simply never attaches the token.
+        auth.updateOrigin(ServerTarget.cloud.baseURL)
+        await auth.restore(requiresAuth: target.requiresAuth)
+        if canUseData { await loadEverything() }
+    }
+
+    /// Refresh the library plus the side reads that decorate the UI: who is
+    /// signed in (footer, Settings ▸ Account) and the server's health.
+    func loadEverything() async {
+        guard canUseData else { return }
+        async let identity: Void = auth.loadAccount(using: api)
+        async let rows: Void = library.refresh()
+        _ = await (identity, rows)
+        health = try? await api.health()
+    }
+
+    /// Called after the sign-in sheet succeeds.
+    func finishSignIn() async {
+        await auth.completeSignIn()
+        if canUseData { await loadEverything() }
+    }
+
+    /// Account menu / Settings ▸ Sign Out. The flush happens through `auth.onSignedOut`.
+    func signOut() async {
+        await auth.signOut()
+    }
+
+    /// THE flush: every model empties on any transition to signed-out, so
+    /// nothing from the previous account can remain anywhere — library, chat,
+    /// sessions, live, settings + plan, skills, MCP tokens, health, and the
+    /// window state that pointed into them. Idempotent — `AuthController`
+    /// calls it through `onSignedOut`.
+    func handleSignedOut() {
+        resetModels()
+        requestedSettingsTab = nil
+        isPresentingTour = false
+    }
+
+    private func resetModels() {
         library.reset()
         chat.reset()
         sessions.reset()
@@ -76,36 +164,5 @@ final class AppEnvironment {
         skills.reset()
         mcpTokens.reset()
         health = nil
-
-        // Auth always points at the CLOUD origin — that is the only Clerk-backed
-        // one. Local mode simply never attaches the token.
-        auth.updateOrigin(ServerTarget.cloud.baseURL)
-        await auth.restore(requiresAuth: target.requiresAuth)
-        await loadEverything()
-    }
-
-    /// Refresh the library plus the two side reads that decorate the UI.
-    func loadEverything() async {
-        await library.refresh()
-        await auth.loadAccount(using: api)
-        health = try? await api.health()
-    }
-
-    /// Called after the sign-in sheet succeeds.
-    func finishSignIn() async {
-        await auth.completeSignIn()
-        await loadEverything()
-    }
-
-    func signOut() async {
-        await auth.signOut()
-        library.reset()
-        chat.reset()
-        sessions.reset()
-        live.reset()
-        settings.reset()
-        skills.reset()
-        mcpTokens.reset()
-        await loadEverything()
     }
 }

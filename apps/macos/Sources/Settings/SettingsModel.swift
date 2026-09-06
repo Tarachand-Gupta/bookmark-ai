@@ -17,10 +17,11 @@ final class SettingsModel {
     private(set) var statusMessage: String?
     private(set) var statusIsError = false
 
-    /// Everyone is on Free today; resolved from `GET /api/account` once per
-    /// session and defaulted to Free when the route isn't there.
-    private(set) var plan: PlanInfo = .free
-    private var planLoaded = false
+    /// The account's plan, resolved from `GET /api/account` once per session.
+    /// nil until loaded and after every sign-out — the plan card belongs to an
+    /// account, so nothing is drawn before one is confirmed. Everyone resolves
+    /// to Free today (also when the route isn't there).
+    private(set) var plan: PlanInfo?
 
     private let api: ApiClient
 
@@ -37,10 +38,19 @@ final class SettingsModel {
         isLoading = true
         defer { isLoading = false }
         settings = try? await api.settings().settings
-        if !planLoaded, let account = try? await api.account() {
-            plan = PlanInfo.resolve(account.plan)
-            planLoaded = true
+        if plan == nil {
+            // A 404 (older server) still means Free; only a transport failure
+            // leaves it unknown for the next load.
+            switch await planResponse() {
+            case .success(let account): plan = PlanInfo.resolve(account.plan)
+            case .failure(ApiError.server(status: 404, _)): plan = .free
+            case .failure: break
+            }
         }
+    }
+
+    private func planResponse() async -> Result<AccountResponse, Error> {
+        do { return .success(try await api.account()) } catch { return .failure(error) }
     }
 
     /// PUT and adopt the server's echo. Returns success so callers can chain
@@ -85,10 +95,9 @@ final class SettingsModel {
 
     #if DEBUG
     /// Previews/tests: settings as if `GET /api/settings` had answered.
-    func seed(_ settings: UserSettings, plan: PlanInfo = .free) {
+    func seed(_ settings: UserSettings, plan: PlanInfo? = .free) {
         self.settings = settings
         self.plan = plan
-        planLoaded = true
     }
     #endif
 
@@ -96,7 +105,6 @@ final class SettingsModel {
         settings = nil
         statusMessage = nil
         statusIsError = false
-        plan = .free
-        planLoaded = false
+        plan = nil
     }
 }
