@@ -93,6 +93,31 @@ export const MASTER_MIGRATIONS: Migration[] = [
       { sql: "ALTER TABLE tenants ADD COLUMN plan TEXT NOT NULL DEFAULT 'free'", tolerant: true },
     ],
   },
+  // App releases — "latest version per platform" for the native apps' update
+  // banners (packages/types/src/releases.ts; queries in queries/app-releases.ts).
+  // One row per platform, admin-written via PUT /api/admin/releases/:platform,
+  // read by the PUBLIC GET /api/app/releases. Control-plane data, not user data
+  // → no export-format impact. v5 is the next number after the highest ever
+  // recorded on any master DB (v3 burned by the reverted newtab feature, v4 =
+  // tenant-plan; verified against the local master 2026-09-07).
+  {
+    version: 5,
+    name: "app-releases",
+    statements: [
+      `
+        CREATE TABLE IF NOT EXISTS app_releases (
+          platform              TEXT PRIMARY KEY,
+          version               TEXT NOT NULL,
+          build                 TEXT,
+          min_supported_version TEXT,
+          download_url          TEXT NOT NULL,
+          release_notes         TEXT,
+          published_at          TEXT NOT NULL,
+          updated_at            TEXT NOT NULL
+        )
+      `,
+    ],
+  },
 ];
 
 /** Read a single platform_config value by key, or null if unset. */

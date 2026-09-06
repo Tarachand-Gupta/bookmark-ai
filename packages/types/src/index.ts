@@ -9,3 +9,4 @@ export * from "./export";
 export * from "./observability";
 export * from "./plan";
 export * from "./skills";
+export * from "./releases";

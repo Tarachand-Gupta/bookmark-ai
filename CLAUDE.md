@@ -125,6 +125,13 @@ mobile via Clerk Expo. The route handlers delegate to `packages/engine` — chan
   SKILL.md) and `installSkill(url)` (net-guarded fetch, 64 KB, user-typed URLs only).
 - `GET /api/account` → `{plan:"free"}` (master `tenants.plan`; features from `PLAN_FEATURES`).
   `DELETE /api/account` → 202 (deletes the Clerk user; the webhook tears down the tenant).
+- `GET /api/app/releases` — PUBLIC like `/api/health` (rate-limited, `Cache-Control: public,
+  max-age=300`) → `{releases:{macos?,ios?,android?}}` from master `app_releases` (migration v5);
+  `{releases:{}}` without a master DB. Admin: `PUT /api/admin/releases/:platform`
+  (`upsertAppReleaseSchema`: semver version, numeric build, https downloadUrl, optional
+  minSupportedVersion/releaseNotes) → `{release}`; `DELETE` → 204. Native apps compare with
+  `compareVersions`/`updateState` from `packages/types/src/releases.ts` — see
+  `docs/features/releases.md`.
 
 ## Hard-won gotchas (do not rediscover these)
 

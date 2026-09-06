@@ -18,8 +18,10 @@ function csv(value: string | undefined): string[] {
  * then the first `x-forwarded-for` hop, then `x-real-ip`, then a constant.
  * SECURITY: XFF is only trustworthy behind Vercel's edge — revisit before
  * self-hosting behind another proxy that doesn't strip an inbound XFF header.
+ * Exported for the PUBLIC routes that skip the gate but still rate-limit
+ * (`/api/app/releases`).
  */
-function clientKey(h: Headers): string {
+export function clientKey(h: Headers): string {
   const vercel = h.get("x-vercel-forwarded-for");
   if (vercel) return vercel.split(",")[0].trim() || "unknown";
   const forwarded = h.get("x-forwarded-for");

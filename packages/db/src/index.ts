@@ -16,6 +16,13 @@ export {
   type UsageField,
 } from "./master";
 export {
+  listAppReleases,
+  getAppRelease,
+  upsertAppRelease,
+  deleteAppRelease,
+  type AppReleaseRow,
+} from "./queries/app-releases";
+export {
   TursoPlatform,
   TursoPlatformError,
   type PlatformConfig,
