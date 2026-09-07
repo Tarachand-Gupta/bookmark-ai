@@ -21,6 +21,7 @@ export {
   sessionToEmbeddingText,
   embedQuery,
   embedBookmark,
+  embedBookmarkById,
   embedSession,
   embedPending,
 } from "./embeddings";

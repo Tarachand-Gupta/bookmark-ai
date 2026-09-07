@@ -9,12 +9,8 @@ import {
   type Bookmark,
   type McpToolName,
 } from "@bookmark-ai/types";
-import {
-  embedPending,
-  enrichBookmark,
-  performSearch,
-  saveBookmarkFast,
-} from "@bookmark-ai/engine";
+import { enrichBookmark, performSearch, saveBookmarkFast } from "@bookmark-ai/engine";
+import { embedAfterSave } from "../post-save-embed";
 import { defineTool, type AnyMcpTool, type McpTool } from "./tool-kit";
 
 /**
@@ -167,11 +163,10 @@ const saveBookmark: McpTool<z.infer<typeof saveArgs>> = {
           `[mcp] enrich ${bookmark.url}: ${(err as Error).message} — keeping instant-save data`,
         );
       }
-      if (ctx.gemini) {
-        await embedPending(ctx.gemini, ctx.db, 5).catch((err: unknown) => {
-          console.warn(`[mcp] post-save embed sweep failed: ${(err as Error).message}`);
-        });
-      }
+      // Own row first, then one straggler — an agent saving a batch is exactly
+      // the burst that made an oldest-first sweep here embed the same rows N
+      // times over (see `embedAfterSave`).
+      if (ctx.gemini) await embedAfterSave(ctx.gemini, ctx.db, bookmark.id);
     });
     return { bookmark: summarize(bookmark) };
   },

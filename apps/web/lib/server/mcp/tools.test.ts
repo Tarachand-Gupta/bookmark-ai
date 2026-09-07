@@ -29,6 +29,7 @@ const performSearch = vi.fn(
 // The engine is stubbed so the module graph stays off the Gemini/network code —
 // these tests are about the tool's argument contract, not about retrieval.
 vi.mock("@bookmark-ai/engine", () => ({
+  embedBookmarkById: vi.fn(),
   embedPending: vi.fn(),
   enrichBookmark: vi.fn(),
   performSearch,

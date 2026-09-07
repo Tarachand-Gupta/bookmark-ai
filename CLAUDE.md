@@ -25,9 +25,11 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
 - **`GEMINI_API_KEY` is set** in the root `.env`, loaded by a dependency-free loader in
   `apps/web/next.config.ts` → Gemini `gemini-2.5-flash`
   categorization, `gemini-embedding-001` 768-dim embeddings, and the `/api/chat` agent.
-  Embedding runs post-save via Next's `after()` right after each save, plus a daily Vercel
-  cron (`/api/cron/embed`, `CRON_SECRET`-gated, see `apps/web/vercel.json`) that sweeps
-  anything that fell through — this is the ONLY embedding path.
+  Embedding runs post-save via Next's `after()`: each save embeds ITS OWN row
+  (`embedBookmarkById`) plus at most one straggler — never an oldest-first sweep, which made
+  burst saves embed the same rows N times and skip the new ones (`lib/server/post-save-embed.ts`).
+  A daily Vercel cron (`/api/cron/embed`, `CRON_SECRET`-gated, see `apps/web/vercel.json`)
+  drains the rest — these are the ONLY embedding paths.
   Without a key everything degrades to heuristics/full-text with `fallback: true`.
 - **DB is Turso cloud**: `DATABASE_URL=libsql://bookmark-ai-tara.aws-ap-south-1.turso.io` +
   `DATABASE_AUTH_TOKEN` in `.env` (manage with the `turso` CLI). The old local file

@@ -1,6 +1,7 @@
 import type { Bookmark, Session } from "@bookmark-ai/types";
 import {
   EMBEDDING_DIM,
+  getBookmark,
   listUnembedded,
   listUnembeddedSessions,
   storeEmbedding,
@@ -35,6 +36,39 @@ export async function embedBookmark(gemini: GeminiClient, db: Db, b: Bookmark): 
     const vector = await gemini.embed(bookmarkToEmbeddingText(b), EMBEDDING_DIM);
     await storeEmbedding(db, b.id, vector);
   });
+}
+
+/**
+ * Embed ONE bookmark by id — what a post-save hook should call for the row it
+ * just saved.
+ *
+ * The alternative (`embedPending`, which takes the N oldest unembedded rows) is
+ * wrong per-save: when saves arrive in a burst every concurrent hook selects the
+ * SAME oldest rows and embeds them in parallel, so the newest saves are never
+ * reached and the same handful of vectors is recomputed N times over.
+ *
+ * Returns whether an embedding was actually written: `false` when the row is
+ * gone (deleted between save and hook) or already has a vector — the "already
+ * embedded" short-circuit is also what keeps a duplicate/retried hook from
+ * spending a second Gemini call on the same row.
+ */
+export async function embedBookmarkById(
+  gemini: GeminiClient,
+  db: Db,
+  id: string,
+): Promise<boolean> {
+  return traced(
+    "embed",
+    "embed-saved",
+    { input: { id }, output: (embedded) => ({ embedded }) },
+    async () => {
+      const bookmark = await getBookmark(db, id);
+      if (!bookmark || bookmark.embedded) return false;
+      await embedBookmark(gemini, db, bookmark);
+      console.log(`[embed] ${bookmark.id} ${bookmark.domain}`);
+      return true;
+    },
+  );
 }
 
 /** How many tabs of a session feed its embedding — bounds token cost on a

@@ -2,8 +2,9 @@ import { after, NextResponse, type NextRequest } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
 import { createBookmarkSchema, listBookmarksQuerySchema } from "@bookmark-ai/types";
 import { listBookmarks } from "@bookmark-ai/db";
-import { embedPending, enrichBookmark, saveBookmarkFast } from "@bookmark-ai/engine";
+import { enrichBookmark, saveBookmarkFast } from "@bookmark-ai/engine";
 import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
+import { embedAfterSave } from "@/lib/server/post-save-embed";
 import { flushObservability } from "@/lib/server/observability/flush";
 
 export async function GET(req: NextRequest) {
@@ -55,12 +56,11 @@ export async function POST(req: NextRequest) {
           console.warn(`[enrich] ${bookmark.id}: ${(err as Error).message} — keeping instant-save data`);
         }
         // Embed either way: enrichment cleared the embedding, and even a failed
-        // enrichment leaves heuristic text worth embedding.
-        if (gemini) {
-          await embedPending(gemini, db, 5).catch((err: unknown) => {
-            console.warn(`[embed] post-save sweep failed: ${(err as Error).message}`);
-          });
-        }
+        // enrichment leaves heuristic text worth embedding. THIS save's own row
+        // first — a plain oldest-first sweep here means N burst saves all embed
+        // the same oldest rows in parallel and never reach the new ones (see
+        // `embedAfterSave`).
+        if (gemini) await embedAfterSave(gemini, db, bookmark.id);
       },
     );
     await flushObservability();
