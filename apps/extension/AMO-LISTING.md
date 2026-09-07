@@ -156,9 +156,12 @@ No (the hosted service has a free plan; self-hosting is free).
 ## 3 · Listing images
 
 Reuse the CWS assets in `store-assets/` (AMO accepts PNG/JPG; screenshots are displayed at
-their native size and scaled down, 1280×800 works). Upload the icon `public/icon/128.png`
-(AMO also asks for a 64×64 — `public/icon/96.png` is accepted and scaled, or export 64 from
-`scripts/generate-icons.mjs`). Captions per image are in `store-assets/README.md`.
+their native size and scaled down, 1280×800 works). AMO has no five-image cap, so upload all six
+in file order — `1-save.png`, `2-library.png`, `3-ask-ai.png`, `4-live.png`, `5-everywhere.png`,
+`6-search.png` (the standalone search-by-meaning frame is the AMO-only sixth). Upload the icon
+`public/icon/128.png` (AMO also asks for a 64×64 — `public/icon/96.png` is accepted and scaled,
+or export 64 from `scripts/generate-icons.mjs`). Captions per image (≤132 chars each; AMO's own
+caption field is longer but the same text is used) are in `store-assets/README.md`.
 
 ## 4 · Submission walkthrough
 

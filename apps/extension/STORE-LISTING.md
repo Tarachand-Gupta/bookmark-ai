@@ -69,16 +69,16 @@ removed and the private key bundled as `key.pem`, which keeps the pinned extensi
 | Asset | Size | Required | Source |
 | --- | --- | --- | --- |
 | Store icon | 128×128 PNG | yes | already in the zip: `icon/128.png` (dashboard picks it up from the manifest; upload the same file if asked) |
-| Screenshots (1–5) | **1280×800** (preferred) or 640×400, PNG/JPEG, no alpha | at least 1 | `store-assets/1-save.png … 5-live.png` — captions + provenance in `store-assets/README.md` |
+| Screenshots (1–5) | **1280×800** (preferred) or 640×400, PNG/JPEG, no alpha | at least 1 | `store-assets/1-save.png … 5-everywhere.png` — captions + provenance in `store-assets/README.md` (`6-search.png` is the AMO-only sixth frame; CWS caps at 5) |
 | Small promo tile | 440×280 | no (recommended) | `store-assets/promo-440x280.png` — brand mark on dark background + one-liner |
 | Marquee promo | 1400×560 | no | only if featured placement is ever pursued |
 
-**Screenshot shot list** (in display order, with suggested captions):
-1. `1-save.png` — the popup on a real article, Save bookmark button visible — "One click saves the page you're on."
-2. `2-library.png` — the library grid with categories/tags sidebar — "Every save lands filed, tagged, and searchable."
-3. `3-search.png` — results for a vague query, "closest results by meaning" — "Search by meaning, not keywords."
-4. `4-live-optin.png` — the popup's Live tabs panel expanded, sharing on for one window — "Share a window as a live session."
-5. `5-live.png` — the Live sessions view with a device streaming its tabs — "Your open tabs, on every device, live."
+**Screenshot shot list** (in display order; captions are ≤132 characters, the CWS cap — the same text is in `store-assets/README.md`):
+1. `1-save.png` — popup on a real article with the native-apps and Ask AI callouts — "One click saves the page you're on — title, icon and link captured, AI files and tags it. Also on Mac, iPhone, iPad and Android."
+2. `2-library.png` — library grid + search-by-meaning inset — "Filed, tagged, and searchable by meaning — auto-categorized on save, with full-text and semantic search blended."
+3. `3-ask-ai.png` — Ask AI dock beside the library, one completed exchange — "Ask AI about everything you've saved — a chat agent over your library, sessions and open tabs that cites the bookmarks it used."
+4. `4-live.png` — Live sessions view + the popup's Live tabs panel — "Your open tabs, on every device, live — opt in per window; private windows never leave the browser and live data expires in 7 days."
+5. `5-everywhere.png` — native Mac app with iPhone, iPad and Android — "One library on every screen — native Mac, iPhone, iPad and Android apps plus the web app. Works with Chrome, Firefox and Safari."
 
 Rules of thumb: exact pixel size (1280×800), real UI only (no mockups that misrepresent),
 readable text, no personal data in frame — use a demo account with curated bookmarks,
