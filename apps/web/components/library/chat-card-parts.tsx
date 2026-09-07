@@ -2,7 +2,17 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { Check, ChevronDown, Copy, Loader2, Search, X } from "lucide-react";
-import { describePageRange, type ToolPageMeta } from "@bookmark-ai/types";
+import {
+  CARD_COLLAPSED_ROWS,
+  CARD_EXPAND_CHUNK,
+  describePageRange,
+  filterByText,
+  foldState,
+  nextFoldShown,
+  pageFooterVisible,
+  showMoreLabel,
+  type ToolPageMeta,
+} from "@bookmark-ai/types";
 import { Button } from "@/components/ui/button";
 import { hostOf } from "@/lib/chat-tools";
 import { cn } from "@/lib/utils";
@@ -15,18 +25,18 @@ import { cn } from "@/lib/utils";
  * so the cards read as one component family rather than four one-offs.
  */
 
-/** Rows shown per group before the rest folds behind "show N more". */
-export const COLLAPSED_ROWS = 10;
-/** How many more rows one "show more" click reveals — a 92-tab window opens in
- * readable chunks instead of dumping everything into the thread at once. */
-export const EXPAND_CHUNK = 25;
+/** Rows shown per group before the rest folds behind "show N more"; the fold
+ * and chunk sizes are the shared contract (`@bookmark-ai/types`) so the mobile
+ * and macOS cards fold identically. */
+export const COLLAPSED_ROWS = CARD_COLLAPSED_ROWS;
+export const EXPAND_CHUNK = CARD_EXPAND_CHUNK;
 
 /** Case-insensitive substring filter over any list, memoized. */
 export function useTextFilter<T>(items: readonly T[], haystack: (item: T) => string) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const filtered = useMemo(
-    () => (q ? items.filter((i) => haystack(i).toLowerCase().includes(q)) : items),
+    () => (q ? filterByText(items, haystack, q) : items),
     // `haystack` is defined inline by callers; the filter only depends on the data + query.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [items, q],
@@ -97,13 +107,7 @@ export function ShowMoreRow({
   className?: string;
 }) {
   if (hidden <= 0 && !expanded) return null;
-  const step = Math.min(nextChunk ?? hidden, hidden);
-  const label =
-    hidden === 0
-      ? "Show less"
-      : step < hidden
-        ? `Show ${step} more (${hidden} left)`
-        : `Show ${hidden} more ${hidden === 1 ? noun : `${noun}s`}`;
+  const label = showMoreLabel(hidden, nextChunk, noun);
   return (
     <button
       type="button"
@@ -127,16 +131,15 @@ export function ShowMoreRow({
  */
 export function useExpandable(total: number, limit = COLLAPSED_ROWS, chunk = EXPAND_CHUNK) {
   const [shown, setShown] = useState(limit);
-  const visibleCount = Math.min(total, shown);
-  const hidden = Math.max(0, total - visibleCount);
+  const { visibleCount, hidden, expanded, nextChunk } = foldState(total, shown, limit, chunk);
   return {
-    expanded: visibleCount > limit,
+    expanded,
     visibleCount,
     hidden,
     /** Reveal the next chunk (or collapse when everything is already shown). */
-    toggle: () => setShown((n) => (n >= total ? limit : Math.min(total, n + chunk))),
+    toggle: () => setShown((n) => nextFoldShown(total, n, limit, chunk)),
     /** How many the next click reveals — the button says so. */
-    nextChunk: Math.min(chunk, hidden),
+    nextChunk,
   };
 }
 
@@ -198,10 +201,9 @@ export function PageFooter({
   error: string | null;
   onLoadMore: () => void;
 }) {
-  if (!page) return null;
-  const more = page.hasMore;
   // Nothing worth saying when the card holds the whole, first, complete result.
-  if (!more && firstOffset === 0 && !error) return null;
+  if (!page || !pageFooterVisible(page, firstOffset, error)) return null;
+  const more = page.hasMore;
   return (
     <div className="flex flex-wrap items-center gap-2 border-t bg-muted/20 px-2.5 py-1.5">
       <span className="text-[11px] tabular-nums text-muted-foreground">

@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { ExternalLink, Folder, Globe } from "lucide-react";
-import type { SearchMode } from "@bookmark-ai/types";
+import { pageSearchResponse, type SearchMode } from "@bookmark-ai/types";
 import { Button } from "@/components/ui/button";
 import { searchBookmarksPage, type LibraryFilters } from "@/lib/api";
 import { hostOf } from "@/lib/chat-tools";
@@ -38,24 +38,7 @@ export function BookmarksCard({
   const fetchPage = useCallback(
     async (offset: number, limit: number): Promise<{ rows: BookmarkHit[]; page: ToolPageMeta }> => {
       const res = await searchBookmarksPage(q, mode, { limit, offset });
-      return {
-        rows: res.results.map(({ score, bookmark: b }) => ({
-          id: b.id,
-          title: b.title,
-          url: b.url,
-          category: b.category,
-          tags: b.tags,
-          day: b.source.savedAt.slice(0, 10),
-          score,
-        })),
-        page: {
-          total: null,
-          offset,
-          limit,
-          hasMore: res.hasMore === true,
-          nextOffset: res.hasMore === true ? offset + limit : null,
-        },
-      };
+      return pageSearchResponse(res.results, res.hasMore, offset, limit);
     },
     [q, mode],
   );

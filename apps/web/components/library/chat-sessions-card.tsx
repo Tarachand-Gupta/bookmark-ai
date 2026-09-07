@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { Layers } from "lucide-react";
+import { pageSessionsSnapshot } from "@bookmark-ai/types";
 import { getSessions } from "@/lib/api";
 import { hostOf } from "@/lib/chat-tools";
 import { safeHref } from "@/lib/safe-href";
@@ -28,37 +29,8 @@ export function SessionsCard({ output }: { output: SessionsToolOutput }) {
   // /api/sessions returns the whole (small) list in one call, so a later page is
   // sliced from it here — the same filter the tool applied, then the same offset.
   const fetchPage = useCallback(
-    async (offset: number, limit: number): Promise<{ rows: SessionHit[]; page: ToolPageMeta }> => {
-      const { sessions: all } = await getSessions();
-      const q = toolQuery?.trim().toLowerCase();
-      const matching = q
-        ? all.filter((sn) =>
-            [sn.name, sn.description ?? "", ...sn.tabs.flatMap((t) => [t.title ?? "", t.url])].some((f) =>
-              f.toLowerCase().includes(q),
-            ),
-          )
-        : all;
-      const slice = matching.slice(offset, offset + limit);
-      const hasMore = matching.length > offset + limit;
-      return {
-        rows: slice.map((sn) => ({
-          id: sn.id,
-          name: sn.name,
-          description: sn.description ?? null,
-          tabCount: sn.tabCount,
-          browser: sn.browser,
-          savedAt: sn.savedAt,
-          tabs: sn.tabs.slice(0, 15).map((t) => ({ title: t.title ?? "", url: t.url })),
-        })),
-        page: {
-          total: matching.length,
-          offset,
-          limit,
-          hasMore,
-          nextOffset: hasMore ? offset + limit : null,
-        },
-      };
-    },
+    async (offset: number, limit: number): Promise<{ rows: SessionHit[]; page: ToolPageMeta }> =>
+      pageSessionsSnapshot((await getSessions()).sessions, toolQuery, offset, limit),
     [toolQuery],
   );
   const { rows: sessions, page, loading, error, loadMore } = useToolPaging(

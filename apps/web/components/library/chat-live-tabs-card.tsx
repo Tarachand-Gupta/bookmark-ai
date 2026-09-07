@@ -2,6 +2,13 @@
 
 import { useCallback } from "react";
 import { AppWindow } from "lucide-react";
+import {
+  flattenLiveDevices,
+  pageLiveSnapshot,
+  regroupLiveTabs,
+  type FlatLiveTab,
+  type RegroupedLiveDevice,
+} from "@bookmark-ai/types";
 import { getLive } from "@/lib/api";
 import { hostOf } from "@/lib/chat-tools";
 import { deviceFreshness, formatDeviceAge } from "@/lib/live-format";
@@ -17,13 +24,7 @@ import {
   useTextFilter,
   useToolPaging,
 } from "./chat-card-parts";
-import type {
-  LiveDeviceHit,
-  LiveTabHit,
-  LiveTabsToolOutput,
-  LiveWindowHit,
-  ToolPageMeta,
-} from "./chat-tool-types";
+import type { LiveTabHit, LiveTabsToolOutput, LiveWindowHit, ToolPageMeta } from "./chat-tool-types";
 
 /**
  * `listLiveTabs` as an INTERACTIVE CARD: device sections → window groups → tab
@@ -40,44 +41,13 @@ export function LiveTabsCard({ output }: { output: LiveTabsToolOutput }) {
   // The live server hands back the whole current snapshot in one call, so a
   // later page is the same flatten → filter → slice the tool did, client-side.
   const fetchPage = useCallback(
-    async (offset: number, limit: number): Promise<{ rows: FlatTab[]; page: ToolPageMeta }> => {
-      const live = await getLive();
-      const flat: FlatTab[] = [];
-      const q = toolQuery?.trim().toLowerCase();
-      for (const d of live.devices) {
-        d.windows.forEach((w, wi) => {
-          for (const t of w.tabs) {
-            if (q && !`${t.title} ${t.url}`.toLowerCase().includes(q)) continue;
-            flat.push({
-              device: {
-                label: d.label,
-                browser: d.browser,
-                lastSeenAgeSeconds: d.lastSeenAgeSeconds,
-                tabCount: d.tabCount,
-                hiddenTabCount: d.hiddenTabCount,
-                windows: [],
-              },
-              windowId: w.windowId,
-              windowName: w.name ?? null,
-              windowIndex: wi + 1,
-              windowTabCount: w.tabs.length,
-              tab: { title: t.title, url: t.url, favIconUrl: t.favIconUrl ?? null },
-            });
-          }
-        });
-      }
-      const slice = flat.slice(offset, offset + limit);
-      const hasMore = flat.length > offset + limit;
-      return {
-        rows: slice,
-        page: { total: flat.length, offset, limit, hasMore, nextOffset: hasMore ? offset + limit : null },
-      };
-    },
+    async (offset: number, limit: number): Promise<{ rows: FlatLiveTab[]; page: ToolPageMeta }> =>
+      pageLiveSnapshot(await getLive(), toolQuery, offset, limit),
     [toolQuery],
   );
 
   const { rows, page, loading, error, loadMore } = useToolPaging(
-    flatten(output.devices ?? []),
+    flattenLiveDevices(output.devices ?? []),
     output.page,
     fetchPage,
   );
@@ -102,7 +72,7 @@ export function LiveTabsCard({ output }: { output: LiveTabsToolOutput }) {
     );
   }
 
-  const devices = regroup(filtered);
+  const devices = regroupLiveTabs(filtered);
   const deviceCount = new Set(rows.map((r) => r.device.label)).size;
   const summary = active
     ? `${filtered.length} of ${rows.length}`
@@ -132,73 +102,8 @@ export function LiveTabsCard({ output }: { output: LiveTabsToolOutput }) {
   );
 }
 
-/**
- * One tab plus the device/window it belongs to. Paging happens over this FLAT
- * order (matching the server's), and the sections are rebuilt from whatever is
- * loaded — so "load more" appends into the right groups instead of restarting.
- */
-interface FlatTab {
-  device: LiveDeviceHit;
-  windowId?: number;
-  windowName: string | null;
-  windowIndex: number;
-  windowTabCount: number;
-  tab: LiveTabHit;
-}
-
-function flatten(devices: LiveDeviceHit[]): FlatTab[] {
-  const out: FlatTab[] = [];
-  for (const d of devices) {
-    for (const w of d.windows ?? []) {
-      for (const t of w.tabs ?? []) {
-        out.push({
-          device: d,
-          windowId: w.windowId,
-          windowName: w.name ?? null,
-          windowIndex: w.index ?? 1,
-          windowTabCount: w.windowTabCount ?? (w.tabs ?? []).length,
-          tab: t,
-        });
-      }
-    }
-  }
-  return out;
-}
-
-/** Flat tabs → device sections → window groups, preserving first-seen order. */
-function regroup(flat: readonly FlatTab[]): (LiveDeviceHit & { loadedTabCount: number })[] {
-  const byDevice = new Map<string, LiveDeviceHit & { loadedTabCount: number }>();
-  const windows = new Map<string, Map<string, LiveWindowHit>>();
-  for (const f of flat) {
-    const dKey = f.device.label;
-    let device = byDevice.get(dKey);
-    if (!device) {
-      device = { ...f.device, windows: [], loadedTabCount: 0 };
-      byDevice.set(dKey, device);
-      windows.set(dKey, new Map());
-    }
-    device.loadedTabCount++;
-    const wKey = String(f.windowId ?? f.windowIndex);
-    const wins = windows.get(dKey)!;
-    let win = wins.get(wKey);
-    if (!win) {
-      win = {
-        windowId: f.windowId,
-        name: f.windowName,
-        index: f.windowIndex,
-        windowTabCount: f.windowTabCount,
-        tabs: [],
-      };
-      wins.set(wKey, win);
-      device.windows.push(win);
-    }
-    win.tabs.push(f.tab);
-  }
-  return [...byDevice.values()];
-}
-
 /** One device: presence dot, name, browser, freshness — then its windows. */
-function DeviceSection({ device }: { device: LiveDeviceHit & { loadedTabCount: number } }) {
+function DeviceSection({ device }: { device: RegroupedLiveDevice }) {
   const { filled, dim } = deviceFreshness(device.lastSeenAgeSeconds);
   const partial = device.loadedTabCount < device.tabCount;
 

@@ -11,6 +11,7 @@ import {
   useToolPaging,
 } from "./chat-card-parts";
 import type { SqlToolOutput, ToolPageMeta } from "./chat-tool-types";
+import { cellText } from "@bookmark-ai/types";
 import { runChatQueryPage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -50,12 +51,6 @@ export function SqlCard({
       )}
     </>
   );
-}
-
-function cellText(v: unknown): string {
-  if (v === null || v === undefined) return "";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
 }
 
 function SqlResultTable({
