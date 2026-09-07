@@ -189,15 +189,16 @@ disagree about whether account data may be on screen:
   cases against a stubbed `URLProtocol`).
 - **Identity**: `GET /api/me` is loaded alongside the library on every
   confirmed session (`gateOpened` → `loadEverything`) and shown in the sidebar
-  footer (initials avatar, the **email** on the first line — one line,
-  middle-truncated when the sidebar is narrow, the full address as the tooltip;
-  the name only when Clerk has no email — the server host on the second,
+  footer (initials avatar, the **name** on the first line — one line,
+  middle-truncated when the sidebar is narrow, with the **email** as the
+  tooltip; the email takes the line only when the account has no name — the
+  server host on the second,
   "Loading…" while `/api/me` is in flight, a Local/Cloud glyph badge, ⋯ ▸
   Account Settings… / Sign Out; `AccountFooter.lines` is the pure, tested
   derivation) and in Settings ▸ Account (Status, then the identity row with
   name + email, then Sign Out — the plan card above). The footer's text column
-  takes exactly what the badge and menu leave, so a long address truncates
-  instead of moving them. A transient `/api/me` failure keeps the last
+  takes exactly what the badge and menu leave, so a long name or address
+  truncates instead of moving them. A transient `/api/me` failure keeps the last
   identity of the same session; sign-out clears it.
 - Breadcrumbs for every transition are in the unified log:
   `log show --last 2d --predicate 'subsystem == "ai.purecode.bookmarkai" AND category == "auth"'`.
@@ -331,7 +332,7 @@ apps/macos/
 │   ├── Library/
 │   │   ├── ContentView.swift       gate switch: NavigationSplitView / ConnectingView / SignedOutView; sign-in sheet at the root
 │   │   ├── SidebarView.swift       facets with counts (hidden at 0) + account footer
-│   │   ├── AccountFooter.swift     initials avatar, email (middle-truncated, tooltip) over host, target badge, ⋯ ▸ Account Settings… / Sign Out; `lines` = pure copy
+│   │   ├── AccountFooter.swift     initials avatar, name (middle-truncated, email as tooltip) over host, target badge, ⋯ ▸ Account Settings… / Sign Out; `lines` = pure copy
 │   │   ├── UpdateBanner.swift      "Bookmark AI x.y.z is available" card above the footer (Download / Later; blocking variant)
 │   │   ├── LibraryBrowserView.swift grid/list host + empty/error states + banner
 │   │   ├── BookmarkGridView.swift  adaptive card grid (default), hover, click-opens
@@ -373,7 +374,7 @@ apps/macos/
     ├── SignedOutResetTests.swift   2 tests — handleSignedOut() empties every model (incl. plan, identity, window state); a post-retry 401 flushes through AuthController
     ├── AuthStateTests.swift        11 tests — refresh-tick no-session flushes; unavailable keeps session + data; restore → signedIn / signedOut / connecting; Retry confirms; backoff + stall constants; gate per target; initials; identity kept on /api/me failure
     ├── SessionLoadTests.swift      4 tests — stubbed /api/me: sign-in completed inside the sheet's CANCELLED task still loads the identity; finishSignIn hands off; one load per transition (restore, tick, sign-out, sign-in again); on-demand mint while connecting confirms + loads
-    ├── AccountFooterTests.swift    4 tests — footer copy: email over host, name/status fallbacks, "Loading…" placeholder, Local + gate states
+    ├── AccountFooterTests.swift    4 tests — footer copy: name over host with the email as tooltip, email/status fallbacks, "Loading…" placeholder, Local + gate states
     ├── ApiClientAuthTests.swift    4 tests — stubbed URLProtocol: no token ⇒ no request + `.noToken`; expired token recovers on the replay; fresh token rejected ⇒ onUnauthorized once; Local sends no header
     ├── AppReleaseTests.swift       12 tests — segments/compareVersions/updateState vs releases.ts, live + empty JSON shapes, bundle version
     ├── AppUpdateModelTests.swift   8 tests — banner rules, silent failure, 24 h per-version snooze across a "relaunch", blocking can't snooze, start/stop
@@ -381,7 +382,7 @@ apps/macos/
     ├── FilteringTests.swift        5 tests — sessions/live search matching
     ├── StreamingLayoutTests.swift  1 test — streaming layout
     ├── PreferencesTests.swift      2 tests — layout default + persistence
-    └── RenderPreviewTests.swift    9 previews — light+dark PNGs incl. the auth gate (signed-out window + Settings panel, connecting + stalled, footer email / long email at 250 + 200 / loading / local, Account tab loading + resolved, and both footer + Account tab straight after a sign-in run through the real cancelled-sheet path) and both update-banner variants (TEST_RUNNER_RENDER_PREVIEWS=1)
+    └── RenderPreviewTests.swift    9 previews — light+dark PNGs incl. the auth gate (signed-out window + Settings panel, connecting + stalled, footer name / email-only (long address) at 250 + 200 / loading / local, Account tab loading + resolved, and both footer + Account tab straight after a sign-in run through the real cancelled-sheet path) and both update-banner variants (TEST_RUNNER_RENDER_PREVIEWS=1)
 ```
 
 ---

@@ -254,7 +254,8 @@ final class RenderPreviewTests: XCTestCase {
         )
         let tara = AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@purecode.ai")
         let emailOnly = AccountInfo(signedIn: true, name: nil, email: "tara@purecode.ai")
-        let longEmail = AccountInfo(signedIn: true, name: "Tarachand Gupta", email: "tarachandragupta2784@gmail.com")
+        // No name, so the long address is what the footer actually renders.
+        let longEmail = AccountInfo(signedIn: true, name: nil, email: "tarachandragupta2784@gmail.com")
         let settings = UserSettings(
             provider: "google", baseUrl: nil, model: nil, apiKeySet: false, apiKeyLast4: nil,
             aiMode: "included", liveServerUrl: nil, nativeSyncEnabled: true, nativeSyncFull: false,
@@ -290,8 +291,9 @@ final class RenderPreviewTests: XCTestCase {
             try render(SettingsGatePanel().environment(stalled).background(window),
                        width: 500, appearance: appearance, name: "auth-settings-stalled-\(suffix)")
 
-            // Identity: sidebar footer (name + email / email only / local) and
-            // Settings ▸ Account with the identity row above Sign Out.
+            // Identity: sidebar footer (the name / the email when there is no
+            // name / local) and Settings ▸ Account with the identity row above
+            // Sign Out.
             let signedIn = gateEnvironment(target: .cloud)
             signedIn.auth.seed(status: .signedIn, account: tara)
             signedIn.settings.seed(settings, plan: .free)
