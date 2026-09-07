@@ -52,3 +52,6 @@ openmemory.md
 
 # stray local package store (pnpm store-dir misconfig once created it in-repo)
 .pnpm-store/
+
+# Local capture/QA work dirs (screenshots, browser profiles, scratch scripts) — never committed
+**/.work/

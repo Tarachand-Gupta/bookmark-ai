@@ -71,3 +71,6 @@ apps/extension/safari-app/Extension/Resources
 
 # Session notes are untracked on purpose and not part of any build.
 docs/HANDOFF-*.md
+
+# Local capture/QA work dirs (see .gitignore)
+**/.work
