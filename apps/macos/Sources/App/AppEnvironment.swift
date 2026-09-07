@@ -55,7 +55,7 @@ final class AppEnvironment {
     init(preferences: Preferences? = nil, session: URLSession? = nil) {
         let preferences = preferences ?? Preferences()
         let api = ApiClient(target: preferences.serverTarget, session: session)
-        let auth = AuthController(origin: ServerTarget.cloud.baseURL)
+        let auth = AuthController(origin: preferences.serverTarget.authOrigin)
 
         self.preferences = preferences
         self.api = api
@@ -126,9 +126,10 @@ final class AppEnvironment {
         api.target = target
         resetModels()
 
-        // Auth always points at the CLOUD origin — that is the only Clerk-backed
-        // one. Local mode simply never attaches the token.
-        auth.updateOrigin(ServerTarget.cloud.baseURL)
+        // Auth points at the CLOUD origin — the Clerk-backed one — unless the
+        // local target was started with sign-in on (`ServerTarget.authOrigin`).
+        // Plain Local mode simply never attaches the token.
+        auth.updateOrigin(target.authOrigin)
         await auth.restore(requiresAuth: target.requiresAuth)
         if !target.requiresAuth { gateOpened() }
     }

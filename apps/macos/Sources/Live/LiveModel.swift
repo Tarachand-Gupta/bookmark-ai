@@ -205,6 +205,13 @@ final class LiveModel {
     private(set) var settingsBusy = false
     private(set) var settingsError: String?
 
+    /// One plain `GET /live` — the chat's live-tabs card pages by re-reading
+    /// the whole snapshot and slicing it client-side (no model turn). Doesn't
+    /// touch the Live view's state.
+    func snapshot() async throws -> ListLiveResponse {
+        try await fetchSnapshot(base: await resolveBase())
+    }
+
     /// One-shot snapshot for the Settings window (which must not hold the SSE
     /// stream open the way the Live view does).
     func loadForSettings() async {

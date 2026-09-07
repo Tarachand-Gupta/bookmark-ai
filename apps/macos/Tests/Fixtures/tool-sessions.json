@@ -1,0 +1,97 @@
+{
+ "total": 4,
+ "sessions": [
+  {
+   "id": "c3c953f9-dc1f-4a95-a624-05d2294bb956",
+   "name": "Rust Programming",
+   "description": "Exploring the Rust programming language, its official website, and documentation. Also browsing Hacker News for tech news.",
+   "tabCount": 3,
+   "browser": "chrome",
+   "savedAt": "2026-09-02T18:26:46.604Z",
+   "tabs": [
+    {
+     "title": "Hacker News",
+     "url": "https://news.ycombinator.com/"
+    },
+    {
+     "title": "Rust Programming Language",
+     "url": "https://www.rust-lang.org/"
+    },
+    {
+     "title": "The Rust Book",
+     "url": "https://doc.rust-lang.org/book/"
+    }
+   ]
+  },
+  {
+   "id": "e01b5358-47b4-41c1-8842-6d16515c1aa7",
+   "name": "Japan trip planning",
+   "description": "Planning a trip to Japan, researching travel guides for Tokyo, train timetables on Hyperdia, and accommodation in Kyoto via Airbnb. Also looking into restaurant options on Tabelog and the Japan Rail Pass.",
+   "tabCount": 5,
+   "browser": "chrome",
+   "savedAt": "2026-08-27T15:44:54.200Z",
+   "tabs": [
+    {
+     "title": "Tokyo Travel Guide",
+     "url": "https://www.japan-guide.com/e/e2025.html"
+    },
+    {
+     "title": "Hyperdia Timetable",
+     "url": "https://www.hyperdia.com"
+    },
+    {
+     "title": "Kyoto stays \u2014 Airbnb",
+     "url": "https://www.airbnb.com/s/Kyoto"
+    },
+    {
+     "title": "Tabelog \u2014 restaurant search",
+     "url": "https://tabelog.com/en/"
+    },
+    {
+     "title": "Japan Rail Pass",
+     "url": "https://www.jrpass.com"
+    }
+   ]
+  },
+  {
+   "id": "64ff4c8c-2922-4f9d-aacb-36b9901bd13f",
+   "name": "Morning research",
+   "description": "Exploring deep learning research, focusing on papers like 'Attention Is All You Need' from arXiv. This included reviewing models on Hugging Face and research from Anthropic and Papers With Code.",
+   "tabCount": 4,
+   "browser": "chrome",
+   "savedAt": "2026-08-27T15:44:54.152Z",
+   "tabs": [
+    {
+     "title": "Attention Is All You Need \u2014 arXiv",
+     "url": "https://arxiv.org/abs/2401.00001"
+    },
+    {
+     "title": "Research \u2014 Anthropic",
+     "url": "https://www.anthropic.com/research"
+    },
+    {
+     "title": "Models \u2014 Hugging Face",
+     "url": "https://huggingface.co/models"
+    },
+    {
+     "title": "Papers With Code",
+     "url": "https://paperswithcode.com"
+    }
+   ]
+  },
+  {
+   "id": "f27a03bf-137f-4612-8f18-dc174b48d68d",
+   "name": "Research",
+   "description": "Browsing Hacker News for tech news, articles, and discussions.",
+   "tabCount": 1,
+   "browser": "other",
+   "savedAt": "2026-08-12T18:00:22.114Z",
+   "tabs": [
+    {
+     "title": "HN",
+     "url": "https://news.ycombinator.com"
+    }
+   ]
+  }
+ ]
+}

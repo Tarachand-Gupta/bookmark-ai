@@ -1,0 +1,212 @@
+{
+ "enabled": true,
+ "query": null,
+ "devices": [
+  {
+   "label": "iPhone 16",
+   "browser": "safari",
+   "lastSeenAgeSeconds": 1532,
+   "tabCount": 8,
+   "matchingTabCount": 8,
+   "hiddenTabCount": 0,
+   "windows": [
+    {
+     "windowId": 1,
+     "name": null,
+     "index": 1,
+     "windowTabCount": 8,
+     "tabs": [
+      {
+       "title": "Kyoto in autumn — 7 day itinerary",
+       "url": "https://www.japan-guide.com/e/e2158.html",
+       "favIconUrl": null
+      },
+      {
+       "title": "Shinkansen pass calculator",
+       "url": "https://www.japan-guide.com/railpass/",
+       "favIconUrl": null
+      },
+      {
+       "title": "Best ramen in Osaka",
+       "url": "https://www.timeout.com/osaka/restaurants/best-ramen-osaka",
+       "favIconUrl": null
+      },
+      {
+       "title": "Google Maps — Kyoto",
+       "url": "https://maps.google.com/?q=kyoto",
+       "favIconUrl": null
+      },
+      {
+       "title": "Weather in Tokyo",
+       "url": "https://weather.com/weather/today/l/tokyo",
+       "favIconUrl": null
+      },
+      {
+       "title": "Anki — powerful, intelligent flashcards",
+       "url": "https://apps.ankiweb.net/",
+       "favIconUrl": null
+      },
+      {
+       "title": "Duolingo Japanese",
+       "url": "https://www.duolingo.com/course/ja/en/Learn-Japanese",
+       "favIconUrl": null
+      },
+      {
+       "title": "Wanikani dashboard",
+       "url": "https://www.wanikani.com/dashboard",
+       "favIconUrl": null
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "label": "Tara's MacBook Pro",
+   "browser": "chrome",
+   "lastSeenAgeSeconds": 1532,
+   "tabCount": 23,
+   "matchingTabCount": 23,
+   "hiddenTabCount": 3,
+   "windows": [
+    {
+     "windowId": 1,
+     "name": null,
+     "index": 1,
+     "windowTabCount": 13,
+     "tabs": [
+      {
+       "title": "Next.js Docs | Next.js",
+       "url": "https://nextjs.org/docs",
+       "favIconUrl": "https://nextjs.org/favicon.ico"
+      },
+      {
+       "title": "React Server Components RFC",
+       "url": "https://github.com/reactjs/rfcs/pull/188",
+       "favIconUrl": null
+      },
+      {
+       "title": "Tailwind CSS v4.0",
+       "url": "https://tailwindcss.com/blog/tailwindcss-v4",
+       "favIconUrl": null
+      },
+      {
+       "title": "AI SDK by Vercel",
+       "url": "https://sdk.vercel.ai/docs",
+       "favIconUrl": null
+      },
+      {
+       "title": "Turso — SQLite for Production",
+       "url": "https://turso.tech/",
+       "favIconUrl": null
+      },
+      {
+       "title": "libSQL vector search",
+       "url": "https://docs.turso.tech/features/ai-and-embeddings",
+       "favIconUrl": null
+      },
+      {
+       "title": "Clerk Documentation",
+       "url": "https://clerk.com/docs",
+       "favIconUrl": null
+      },
+      {
+       "title": "shadcn/ui — Components",
+       "url": "https://ui.shadcn.com/docs/components/sidebar",
+       "favIconUrl": null
+      },
+      {
+       "title": "Zod | Documentation",
+       "url": "https://zod.dev/",
+       "favIconUrl": null
+      },
+      {
+       "title": "TypeScript 5.9 Release Notes",
+       "url": "https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-9.html",
+       "favIconUrl": null
+      },
+      {
+       "title": "Fastify — Server-Sent Events",
+       "url": "https://fastify.dev/docs/latest/Reference/Reply/",
+       "favIconUrl": null
+      },
+      {
+       "title": "Redis Streams intro",
+       "url": "https://redis.io/docs/latest/develop/data-types/streams/",
+       "favIconUrl": null
+      },
+      {
+       "title": "How to Deploy a Next.js App on a DigitalOcean Droplet",
+       "url": "https://www.digitalocean.com/community/tutorials/deploy-nextjs",
+       "favIconUrl": null
+      }
+     ]
+    },
+    {
+     "windowId": 2,
+     "name": null,
+     "index": 2,
+     "windowTabCount": 10,
+     "tabs": [
+      {
+       "title": "Designing Data-Intensive Applications",
+       "url": "https://dataintensive.net/",
+       "favIconUrl": null
+      },
+      {
+       "title": "The Rust Programming Language",
+       "url": "https://doc.rust-lang.org/book/",
+       "favIconUrl": null
+      },
+      {
+       "title": "Async Rust in three parts",
+       "url": "https://jacko.io/async_intro.html",
+       "favIconUrl": null
+      },
+      {
+       "title": "Tokio — an asynchronous runtime",
+       "url": "https://tokio.rs/",
+       "favIconUrl": null
+      },
+      {
+       "title": "Zig Language Reference",
+       "url": "https://ziglang.org/documentation/master/",
+       "favIconUrl": null
+      },
+      {
+       "title": "SQLite Query Optimizer Overview",
+       "url": "https://www.sqlite.org/optoverview.html",
+       "favIconUrl": null
+      },
+      {
+       "title": "Hacker News",
+       "url": "https://news.ycombinator.com/",
+       "favIconUrl": null
+      },
+      {
+       "title": "lobste.rs",
+       "url": "https://lobste.rs/",
+       "favIconUrl": null
+      },
+      {
+       "title": "A Philosophy of Software Design — notes",
+       "url": "https://gist.github.com/example/philosophy",
+       "favIconUrl": null
+      },
+      {
+       "title": "Simple Made Easy — transcript",
+       "url": "https://github.com/matthiasn/talk-transcripts",
+       "favIconUrl": null
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "page": {
+  "total": 31,
+  "offset": 0,
+  "limit": 50,
+  "hasMore": false,
+  "nextOffset": null
+ }
+}

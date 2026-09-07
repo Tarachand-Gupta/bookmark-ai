@@ -1,0 +1,26 @@
+{
+ "query": "rust",
+ "mode": "hybrid",
+ "fallback": true,
+ "results": [
+  {
+   "id": "a91eac6d-acb2-48d1-9f31-6e73a7db69e0",
+   "title": "Learn Rust",
+   "url": "https://www.rust-lang.org/learn",
+   "category": "Development",
+   "tags": [
+    "development",
+    "rust-lang"
+   ],
+   "day": "2026-08-27",
+   "score": 0.016
+  }
+ ],
+ "page": {
+  "total": null,
+  "offset": 0,
+  "limit": 50,
+  "hasMore": false,
+  "nextOffset": null
+ }
+}

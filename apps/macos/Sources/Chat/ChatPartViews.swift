@@ -79,7 +79,10 @@ struct ReasoningDisclosure: View {
 
 /// One tool call as a row: spinner while running, check when done, red when
 /// the tool errored (`errorText` shown). Clicking toggles a disclosure with the
-/// input arguments and a compact output summary.
+/// input arguments and a compact output summary. The list-shaped tools render
+/// their result as an INTERACTIVE CARD under the row — grouped live tabs,
+/// bookmark hits, a SQL table, saved sessions — with a filter, folding, and a
+/// "Load next 50" that pages over HTTP without a model turn.
 struct ChatToolRow: View {
     let call: ChatToolCall
 
@@ -87,6 +90,39 @@ struct ChatToolRow: View {
     @State private var isHovering = false
 
     private var isFailure: Bool { call.isFailure }
+
+    /// The tool-specific result body, or nil. Bodies render only from a settled
+    /// output the tool considers a success (the `{error}` shape is the row's
+    /// business) — except queryDatabase, whose SQL is worth seeing even while
+    /// it streams and when it fails, and listLiveTabs, whose `{enabled:false}`
+    /// is a card note rather than a failure.
+    @ViewBuilder
+    private var cardBody: some View {
+        switch call.name {
+        case "searchBookmarks":
+            if let output = call.searchOutput { ChatBookmarksCard(output: output) }
+        case "queryDatabase":
+            if call.sqlText != nil || call.sqlOutput != nil {
+                ChatSqlCard(sql: call.sqlText, output: call.sqlOutput)
+            }
+        case "listSessions":
+            if let output = call.sessionsOutput { ChatSessionsCard(output: output) }
+        case "listLiveTabs":
+            if let output = call.liveTabsOutput, !call.isFailure { ChatLiveTabsCard(output: output) }
+        default:
+            EmptyView()
+        }
+    }
+
+    private var hasCard: Bool {
+        switch call.name {
+        case "searchBookmarks": call.searchOutput != nil
+        case "queryDatabase": call.sqlText != nil || call.sqlOutput != nil
+        case "listSessions": call.sessionsOutput != nil
+        case "listLiveTabs": call.liveTabsOutput != nil && !call.isFailure
+        default: false
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -116,7 +152,15 @@ struct ChatToolRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // The pointer cue belongs to the header only — the card body has
+            // rows and buttons with cursors of their own.
+            .pointingHandCursor()
             .help(isExpanded ? "Hide the call details" : "Show the input and output")
+
+            if hasCard {
+                Divider()
+                cardBody
+            }
 
             if isExpanded {
                 Divider()
@@ -125,10 +169,13 @@ struct ChatToolRow: View {
                     .transition(.opacity)
             }
         }
-        .frame(maxWidth: 560, alignment: .leading)
+        // A bare row keeps the compact width; a card takes the whole column so
+        // its table/rows have room.
+        .frame(maxWidth: hasCard ? .infinity : 560, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(isHovering ? .cardHoverFill : AnyShapeStyle(.clear))
+                .fill(isHovering && !hasCard ? .cardHoverFill : AnyShapeStyle(.clear))
         )
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -142,7 +189,6 @@ struct ChatToolRow: View {
                 )
         )
         .onHover { isHovering = $0 }
-        .pointingHandCursor()
     }
 
     @ViewBuilder

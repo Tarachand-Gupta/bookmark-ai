@@ -81,9 +81,12 @@ extension LiveDevice {
     /// nothing pushed for 15 minutes — the browser is probably closed.
     var isInactive: Bool { lastSeenAgeSeconds >= 900 }
 
-    var freshnessText: String {
-        if isActive { return "active now" }
-        let seconds = lastSeenAgeSeconds
+    var freshnessText: String { Self.freshnessText(ageSeconds: lastSeenAgeSeconds) }
+
+    /// "active now" / "6m ago" / "3h ago" — shared with the chat's live-tabs
+    /// card, which carries the same server-computed age.
+    static func freshnessText(ageSeconds seconds: Int) -> String {
+        if seconds < 75 { return "active now" }
         if seconds < 3600 { return "\(seconds / 60)m ago" }
         if seconds < 86_400 { return "\(seconds / 3600)h ago" }
         return "\(seconds / 86_400)d ago"

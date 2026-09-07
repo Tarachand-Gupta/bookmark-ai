@@ -1,0 +1,254 @@
+{
+ "sql": "SELECT id, title, url, category FROM bookmarks ORDER BY saved_at DESC",
+ "columns": [
+  "id",
+  "title",
+  "url",
+  "category"
+ ],
+ "rows": [
+  [
+   "bd26350f-3216-4325-900e-05e2dd345791",
+   "Fetch API - Web APIs | MDN",
+   "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API",
+   "Docs & Reference"
+  ],
+  [
+   "42540e00-5e69-47c8-b915-4f28c0fbba5f",
+   "Documentation - Generics",
+   "https://www.typescriptlang.org/docs/handbook/2/generics.html",
+   "Docs & Reference"
+  ],
+  [
+   "56b7a9c9-ad4b-4ef6-ba0d-bbf7eea95067",
+   "Next.js Docs | Next.js",
+   "https://nextjs.org/docs",
+   "Development"
+  ],
+  [
+   "a15029f1-20b9-4f1c-9e1f-20c4e4f0bedf",
+   "Tailwind CSS v4.0",
+   "https://tailwindcss.com/blog/tailwindcss-v4",
+   "Development"
+  ],
+  [
+   "552c5ab0-5322-45ec-b2a5-1791c9446655",
+   "Home | Laws of UX",
+   "https://lawsofux.com/",
+   "Design"
+  ],
+  [
+   "9b8ab986-d225-46a6-9613-9289701b450a",
+   "10 Usability Heuristics for User Interface Design",
+   "https://www.nngroup.com/articles/ten-usability-heuristics/",
+   "Design"
+  ],
+  [
+   "01da3526-297b-400d-82a0-37ca62f89298",
+   "How to Do Great Work",
+   "https://paulgraham.com/greatwork.html",
+   "Productivity"
+  ],
+  [
+   "2af10bde-9724-4f06-b8f1-b41794c7d4f7",
+   "Atomic Habits: An Easy & Proven Way to Build Good Habits & Break Bad Ones",
+   "https://jamesclear.com/atomic-habits",
+   "Productivity"
+  ],
+  [
+   "224de9b4-18bb-417c-86f5-ba34171af092",
+   "Zettelkasten - Wikipedia",
+   "https://en.wikipedia.org/wiki/Zettelkasten",
+   "Docs & Reference"
+  ],
+  [
+   "b74c0dd3-f76a-4620-92f0-e3d76df5db9d",
+   "Attention Is All You Need",
+   "https://arxiv.org/abs/1706.03762",
+   "AI & ML"
+  ],
+  [
+   "2fd126ff-b587-48f7-ad60-e0a482ecd97a",
+   "The Illustrated Transformer",
+   "https://jalammar.github.io/illustrated-transformer/",
+   "AI & ML"
+  ],
+  [
+   "ef8202b5-a085-4db6-85aa-0137fb18cea4",
+   "Transformers \u00b7 Hugging Face",
+   "https://huggingface.co/docs/transformers/index",
+   "AI & ML"
+  ],
+  [
+   "18b6377b-652f-4dae-a0db-92ccbc98cb48",
+   "Appropriate Uses For SQLite",
+   "https://sqlite.org/whentouse.html",
+   "Development"
+  ],
+  [
+   "a91eac6d-acb2-48d1-9f31-6e73a7db69e0",
+   "Learn Rust",
+   "https://www.rust-lang.org/learn",
+   "Development"
+  ],
+  [
+   "cee267cc-e4b1-457b-af1a-54b9e2488a88",
+   "The Food Lab",
+   "https://www.seriouseats.com/the-food-lab",
+   "Food"
+  ],
+  [
+   "3a47946b-7886-4cb1-b67b-139aeedfbbe3",
+   "James Webb Space Telescope - NASA Science",
+   "https://science.nasa.gov/mission/webb/",
+   "Science"
+  ],
+  [
+   "c30906a3-a8db-4d79-8ca9-b7177cc6d7ad",
+   "Stratechery by Ben Thompson",
+   "https://stratechery.com/",
+   "News"
+  ],
+  [
+   "e5f87cb6-2a8b-40bc-a8c6-3a5c086129f1",
+   "The Unreasonable Effectiveness of Recurrent Neural Networks",
+   "https://karpathy.github.io/2015/05/21/rnn-effectiveness/",
+   "AI & ML"
+  ],
+  [
+   "44435351-11c1-4c72-b65a-9b96681c82d0",
+   "Smashing Magazine \u2014 For Web Designers And Developers",
+   "https://www.smashingmagazine.com/",
+   "Development"
+  ],
+  [
+   "41e454ed-185c-4a9e-8d9e-7a90a5d9d833",
+   "GitHub - vercel/next.js: The React Framework",
+   "https://github.com/vercel/next.js",
+   "Development"
+  ],
+  [
+   "d4278814-0614-411b-bf5e-b78357fbeb76",
+   "Gemini API  |  Google AI for Developers",
+   "https://ai.google.dev/gemini-api/docs",
+   "AI & ML"
+  ],
+  [
+   "ea1dafa1-17db-4e38-b359-80606a5e1a79",
+   "Figma Blog | Shortcut",
+   "https://www.figma.com/blog/",
+   "Design"
+  ],
+  [
+   "08d704b1-e506-4eb7-ab9b-d1658c096984",
+   "Catalog of Patterns of Distributed Systems",
+   "https://martinfowler.com/articles/patterns-of-distributed-systems/",
+   "Development"
+  ],
+  [
+   "c1039ea9-bfb3-4121-8385-ace408493f34",
+   "But what is a neural network? | Deep learning chapter 1",
+   "https://www.youtube.com/watch?v=aircAruvnKk",
+   "AI & ML"
+  ],
+  [
+   "68b91d8e-dfc8-4d45-ac4f-f7eda8b1b7f3",
+   "Client Challenge",
+   "https://support.mozilla.org/products/firefox",
+   "Docs & Reference"
+  ],
+  [
+   "6dece820-f4e2-4cf1-8516-0c072b9d0a59",
+   "Client Challenge",
+   "https://support.mozilla.org/kb/customize-firefox-controls-buttons-and-toolbars?utm_source=firefox-browser&utm_medium=default-bookmarks&utm_campaign=customize",
+   "Docs & Reference"
+  ],
+  [
+   "503ebb29-e39b-46d0-abb3-a79e27c798a6",
+   "Volunteer Opportunities at Mozilla",
+   "https://www.mozilla.org/contribute/",
+   "Development"
+  ],
+  [
+   "804890c2-74f9-48ec-bea9-daa3b793b046",
+   "Learn about Mozilla",
+   "https://www.mozilla.org/about/",
+   "Other"
+  ],
+  [
+   "60bd58ea-0bb3-4aa4-888f-a5ea6009278f",
+   "Wikipedia, the free encyclopedia",
+   "https://www.wikipedia.org/",
+   "Docs & Reference"
+  ],
+  [
+   "ce6a3bf6-6299-4952-bc34-fd0ca734a268",
+   "nngroup.com",
+   "https://www.nngroup.com/articles/dashboard-design/",
+   "Design"
+  ],
+  [
+   "04510e28-28db-40c8-afb1-21de71c71cba",
+   "GitHub - oven-sh/bun: Incredibly fast JavaScript runtime, bundler, test runner, and package manager \u2013 all in one",
+   "https://github.com/oven-sh/bun",
+   "Development"
+  ],
+  [
+   "d4df9c8e-4e4c-4576-93aa-4109afd3c7bf",
+   "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+   "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+   "Music"
+  ],
+  [
+   "f5060903-783c-4993-95ec-c1d3c520a532",
+   "Stripe API Reference",
+   "https://stripe.com/docs/api",
+   "Docs & Reference"
+  ],
+  [
+   "e27646b3-7e44-4afa-a28a-8d640cc3f686",
+   "Is that the woke mind virus in action Elon Musk has been talking about on his pe... | Hacker News",
+   "https://news.ycombinator.com/item?id=41234567",
+   "Social"
+  ],
+  [
+   "cd7a5132-28f9-4fda-8020-e1b7368ab60f",
+   "Discover community-made templates, plugins, and widgets | Figma",
+   "https://www.figma.com/community",
+   "Design"
+  ],
+  [
+   "25bfd414-99ff-44a7-a3a3-d1ba2e516c94",
+   "Dark mode - Core concepts",
+   "https://tailwindcss.com/docs/dark-mode",
+   "Docs & Reference"
+  ],
+  [
+   "6258757f-61f0-4ca1-8475-05748878f653",
+   "React Native \u00b7 Learn once, write anywhere",
+   "https://reactnative.dev",
+   "Development"
+  ],
+  [
+   "12118de2-ec40-4327-976f-5dd7fdb21fd4",
+   "Vite",
+   "https://vitejs.dev",
+   "Development"
+  ],
+  [
+   "66b573b9-8902-4097-83ab-2fc15a958838",
+   "React",
+   "https://react.dev",
+   "Development"
+  ]
+ ],
+ "rowCount": 39,
+ "truncated": false,
+ "page": {
+  "total": 39,
+  "offset": 0,
+  "limit": 50,
+  "hasMore": false,
+  "nextOffset": null
+ }
+}

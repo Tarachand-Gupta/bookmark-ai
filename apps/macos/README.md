@@ -24,15 +24,16 @@ xcodegen generate                # writes BookmarkAI.xcodeproj
 xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
            -configuration Debug -derivedDataPath build build
 
-# Test (144 tests: URL construction, error mapping, response decoding,
+# Test (163 tests: URL construction, error mapping, response decoding,
 # chat stream assembly, attachment classification/downscaling, skills/MCP
 # contracts, the SKILL.md import parser, history grouping, the empty-reply
-# guard, the auth state machine + sign-out flush + the load every confirmed
-# session starts (incl. from the sign-in sheet's cancelled task) +
-# stubbed-transport 401 rules, the footer copy, release version arithmetic
-# + the update-banner rules; the 9 RenderPreviewTests are skipped unless
-# TEST_RUNNER_RENDER_PREVIEWS=1 — a plain env var is NOT forwarded to the
-# test host)
+# guard, the chat tool cards (output decoding, fold/filter/regroup, the
+# client-side pagers), the auth state machine + sign-out flush + the load
+# every confirmed session starts (incl. from the sign-in sheet's cancelled
+# task) + stubbed-transport 401 rules, the footer copy, release version
+# arithmetic + the update-banner rules; the 9 RenderPreviewTests are skipped
+# unless TEST_RUNNER_RENDER_PREVIEWS=1 — a plain env var is NOT forwarded to
+# the test host)
 xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
            -configuration Debug -derivedDataPath build test
 
@@ -274,6 +275,7 @@ curl -X PUT localhost:3000/api/admin/releases/macos -H 'content-type: applicatio
 | Mode | Base | Auth |
 | --- | --- | --- |
 | **Local** (default) | `http://localhost:3000` | **none** — expects `DEV_OPEN_API=1` |
+| **Local + sign-in** (`BOOKMARKAI_LOCAL_AUTH=1` in the app's environment) | `http://localhost:3000` | `Bearer` minted by the sign-in sheet on `localhost:3000/sign-in` (the dev-instance Clerk) |
 | **Cloud** | `https://www.bookmark-ai.cloud` | `Authorization: Bearer <Clerk session JWT>` |
 
 The cloud base **must** be the `www` host. The apex 308-redirects `/api/*` to
@@ -283,6 +285,15 @@ signed in. There is a unit test pinning this.
 
 Local deliberately sends no token: a prod-instance JWT is meaningless to a
 dev-instance server, and `DEV_OPEN_API=1` short-circuits before Clerk anyway.
+The exception is a dev server run WITHOUT the bypass — per-user features (the
+tenant DB, the chat's live-tabs tool, which needs a browser session to mint a
+live token from) never resolve in open mode. Launch with
+`BOOKMARKAI_LOCAL_AUTH=1` (an Xcode scheme env var, or
+`BOOKMARKAI_LOCAL_AUTH=1 build/…/BookmarkAI.app/Contents/MacOS/BookmarkAI`)
+and the Local target signs in exactly like Cloud, against `localhost:3000`
+(`ServerTarget.localSignIn` / `authOrigin`). Add `-serverTarget local` to the
+launch arguments to pick the target for that run without touching the saved
+preference.
 
 ---
 

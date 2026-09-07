@@ -1,0 +1,36 @@
+{
+ "enabled": true,
+ "query": "digitalocean",
+ "devices": [
+  {
+   "label": "Tara's MacBook Pro",
+   "browser": "chrome",
+   "lastSeenAgeSeconds": 1532,
+   "tabCount": 23,
+   "matchingTabCount": 1,
+   "hiddenTabCount": 3,
+   "windows": [
+    {
+     "windowId": 1,
+     "name": null,
+     "index": 1,
+     "windowTabCount": 13,
+     "tabs": [
+      {
+       "title": "How to Deploy a Next.js App on a DigitalOcean Droplet",
+       "url": "https://www.digitalocean.com/community/tutorials/deploy-nextjs",
+       "favIconUrl": null
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "page": {
+  "total": 1,
+  "offset": 0,
+  "limit": 50,
+  "hasMore": false,
+  "nextOffset": null
+ }
+}

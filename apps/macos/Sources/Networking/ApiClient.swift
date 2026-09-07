@@ -73,13 +73,35 @@ final class ApiClient {
     func search(
         query: String,
         mode: SearchMode = .hybrid,
-        limit: Int = 40
+        limit: Int = 40,
+        offset: Int? = nil
     ) async throws -> SearchResponse {
-        try await get("/api/search", query: [
+        var items = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "mode", value: mode.rawValue),
             URLQueryItem(name: "limit", value: String(min(max(limit, 1), Self.maxSearchLimit))),
-        ])
+        ]
+        // `offset` OPTS INTO paging: the response then carries `{offset, hasMore}`
+        // (the chat bookmarks card's "Load more"); omitting it is the classic shape.
+        if let offset { items.append(URLQueryItem(name: "offset", value: String(max(offset, 0)))) }
+        return try await get("/api/search", query: items)
+    }
+
+    /// `POST /api/query` — one PAGE of a read-only SELECT, for the chat SQL
+    /// card's "Load more". The same engine path and guards the `queryDatabase`
+    /// tool used; no recount, so `page.total` comes back null.
+    func queryPage(sql: String, limit: Int, offset: Int) async throws -> ChatQueryPageResponse {
+        struct Body: Encodable {
+            let sql: String
+            let limit: Int
+            let offset: Int
+        }
+        let payload = Body(sql: sql, limit: min(max(limit, 1), ToolPageMeta.pageLimit), offset: max(offset, 0))
+        let data = try await send(
+            path: "/api/query", method: "POST", query: [],
+            body: try JSONEncoder().encode(payload), allowRetry: true
+        )
+        return try decode(ChatQueryPageResponse.self, from: data)
     }
 
     /// `GET /api/me` — the account row in the sidebar footer.

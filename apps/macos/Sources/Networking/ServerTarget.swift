@@ -37,8 +37,31 @@ enum ServerTarget: String, CaseIterable, Identifiable, Codable, Sendable {
     /// Local deliberately sends NO auth header: the dev server is expected to run
     /// with `DEV_OPEN_API=1`, which short-circuits before Clerk entirely. Sending
     /// a PROD-instance token to a DEV-instance server would be meaningless anyway
-    /// — the two Clerk instances don't share signing keys.
-    var requiresAuth: Bool { self == .cloud }
+    /// — the two Clerk instances don't share signing keys. The one exception is
+    /// `localSignIn`: a dev server WITHOUT the bypass, signed into through its
+    /// own (dev-instance) Clerk — the sign-in sheet then renders
+    /// `localhost:3000/sign-in` and the token it mints is sent to :3000.
+    var requiresAuth: Bool {
+        switch self {
+        case .cloud: true
+        case .local: Self.localSignIn
+        }
+    }
+
+    /// `BOOKMARKAI_LOCAL_AUTH=1` in the app's environment (Xcode scheme or
+    /// `env … open`): the Local target signs in like Cloud, against the dev
+    /// server's own Clerk. For exercising per-user features — the tenant DB, the
+    /// chat's live-tabs tool — that the open-mode bypass can't reach. Off by
+    /// default, so a normal Local run is unchanged.
+    static var localSignIn: Bool {
+        ProcessInfo.processInfo.environment["BOOKMARKAI_LOCAL_AUTH"] == "1"
+    }
+
+    /// The origin whose `/sign-in` page the auth sheet renders and whose
+    /// `window.Clerk` mints tokens: Cloud, unless this is a signed-in Local run.
+    var authOrigin: URL {
+        requiresAuth ? baseURL : ServerTarget.cloud.baseURL
+    }
 
     var displayName: String {
         switch self {
