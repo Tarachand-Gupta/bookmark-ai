@@ -59,3 +59,8 @@ openmemory.md
 # Private signing material (Android release keystore + its passwords, CRX keys).
 # Never committed, never uploaded (also in .vercelignore). See docs/features/releases.md.
 /.keys/
+
+# Store-submission working notes stay local
+apps/extension/STORE-LISTING.md
+apps/extension/AMO-LISTING.md
+apps/extension/RELEASING.md
