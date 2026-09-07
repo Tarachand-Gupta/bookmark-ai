@@ -19,6 +19,7 @@ import {
   type ToolPartLike,
 } from "../../lib/chatParts";
 import { Symbol } from "../Symbol";
+import { chatToolBody } from "./cards/ChatToolBody";
 
 /**
  * One agent step as a row on its own surface: spinner + "Searching bookmarks
@@ -28,6 +29,12 @@ import { Symbol } from "../Symbol";
  * `output-available` whose output is `{ error }` (see toolRowCopy). Tapping
  * toggles a disclosure with the input args and a compact output summary — the
  * answer itself, with its inline citations, stays the payload below.
+ *
+ * The list-shaped tools (searchBookmarks, queryDatabase, listSessions,
+ * listLiveTabs) also get a RICH BODY under the header on the same surface —
+ * an interactive card the user can filter, fold and page without a model turn
+ * (see ./cards). The header and its disclosure are unchanged; the body sits
+ * between them, hairline-separated.
  */
 export function ChatToolRow({ part }: { part: ToolPartLike }) {
   const { colors, radius } = useAppTheme();
@@ -39,6 +46,7 @@ export function ChatToolRow({ part }: { part: ToolPartLike }) {
   const input = formatToolInput(part.input);
   const output =
     phase === "output-available" && !failed ? summarizeToolOutput(toolName(part), part.output) : null;
+  const body = chatToolBody(part, failed);
 
   const toggle = () => {
     void Haptics.selectionAsync();
@@ -50,11 +58,13 @@ export function ChatToolRow({ part }: { part: ToolPartLike }) {
     setOpen((value) => !value);
   };
 
-  // The pressed tint rounds its own corners (all four collapsed, the top two
-  // open) rather than relying on `overflow: hidden` on the card.
-  const headerRadius = open
-    ? { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg }
-    : { borderRadius: radius.lg };
+  // The pressed tint rounds its own corners (all four when nothing sits below
+  // the header, the top two when a body or the disclosure does) rather than
+  // relying on `overflow: hidden` on the card.
+  const headerRadius =
+    open || body !== null
+      ? { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg }
+      : { borderRadius: radius.lg };
 
   return (
     <View
@@ -119,6 +129,18 @@ export function ChatToolRow({ part }: { part: ToolPartLike }) {
           weight="semibold"
         />
       </Pressable>
+
+      {body !== null && (
+        <View
+          style={[
+            styles.body,
+            { borderTopColor: colors.border },
+            !open && { borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg },
+          ]}
+        >
+          {body}
+        </View>
+      )}
 
       {open && (
         <View style={[styles.details, { borderTopColor: colors.border }]}>
@@ -185,6 +207,9 @@ const styles = StyleSheet.create({
   labels: { flex: 1, gap: 2 },
   label: { fontSize: 14, fontWeight: "500" },
   subline: { fontSize: 12 },
+  // `overflow: hidden` so a pressed row's tint and a horizontally scrolling
+  // table both clip to the card's rounded bottom corners.
+  body: { borderTopWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
   details: { gap: 10, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12, borderTopWidth: StyleSheet.hairlineWidth },
   detail: { gap: 5 },
   detailTitle: { fontSize: 11, fontWeight: "600", letterSpacing: 0.5 },

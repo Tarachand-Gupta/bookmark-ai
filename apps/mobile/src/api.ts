@@ -16,6 +16,7 @@ import type {
   SearchMode,
   SearchResponse,
   Session,
+  ToolPageMeta,
   UpdateUserSettingsInput,
   UserSettingsResponse,
 } from "@bookmark-ai/types";
@@ -330,6 +331,50 @@ export async function getAppReleases(signal?: AbortSignal): Promise<AppReleasesR
   const parsed = parseReleasesResponse(await res.json());
   if (parsed === null) throw new Error("Unexpected /api/app/releases response");
   return parsed;
+}
+
+/**
+ * One PAGE of a search — the chat's bookmarks card re-runs the tool's query
+ * against `/api/search?offset=` for "Load next 50" without a model turn. The
+ * `offset` param opts into paging, so the response carries `hasMore`.
+ */
+export function searchBookmarksPage(
+  q: string,
+  mode: SearchMode,
+  page: { limit: number; offset: number },
+  signal?: AbortSignal,
+): Promise<SearchResponse> {
+  const params = new URLSearchParams({
+    q,
+    mode,
+    limit: String(page.limit),
+    offset: String(page.offset),
+  });
+  return request<SearchResponse>(`/api/search?${params}`, { signal });
+}
+
+/** `POST /api/query` — one page of the chat's read-only SELECT (the SQL card's
+ * "Load next 50"). Same engine path and guards as the `queryDatabase` tool;
+ * `page.total` is always null here because the route never recounts — the
+ * card keeps the total its first page established. */
+export interface ChatQueryPageResponse {
+  columns: string[];
+  rows: unknown[][];
+  rowCount: number;
+  truncated: boolean;
+  page: ToolPageMeta;
+}
+
+export function runChatQueryPage(
+  sql: string,
+  page: { limit: number; offset: number },
+  signal?: AbortSignal,
+): Promise<ChatQueryPageResponse> {
+  return request<ChatQueryPageResponse>("/api/query", {
+    method: "POST",
+    body: { sql, limit: page.limit, offset: page.offset },
+    signal,
+  });
 }
 
 export function searchBookmarks(
