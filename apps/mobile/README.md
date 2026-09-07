@@ -66,6 +66,15 @@ never sent to the other environment's API — no manual pairing needed:
 instance). `EXPO_PUBLIC_*` values are inlined at bundle time, so **rebuild** after
 changing any of them.
 
+> **Never set an `EXPO_PUBLIC_*` var to `""` to mean "no override" — leave it UNSET.** An empty
+> string is still a value: it is inlined into the bundle as the literal `""`, which is falsy but not
+> nullish. Android 1.0.0 (versionCode 1) shipped that way — the release workflow declared
+> `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ""`, `src/lib/clerk.ts` fell back with `?? ` (nullish only), so
+> the key was `""`, Metro folded both real keys out of the bundle, and `<ClerkProvider>` threw
+> `@clerk/expo: Missing publishableKey` on the first render: the app closed instantly, before the
+> splash, on every device. Fallbacks here must test truthiness, and the workflow now fails if any
+> `EXPO_PUBLIC_*` is set at all.
+
 ## "Save to Bookmark AI" (system share sheet)
 
 Any app that can share a link can save to Bookmark AI — Chrome/Safari, chat apps,

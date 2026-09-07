@@ -55,15 +55,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      # Never let a stray override repoint a release build.
-      EXPO_PUBLIC_SERVER_TARGET: ""
-      EXPO_PUBLIC_API_URL: ""
-      EXPO_PUBLIC_LIVE_API_URL: ""
-      EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ""
+      # NEVER declare EXPO_PUBLIC_* here, not even as "". An env var set to the
+      # empty string is still SET: Expo's babel plugin inlines the literal `""`
+      # into the bundle, which is falsy but NOT nullish — that is exactly how
+      # Android 1.0.0 (versionCode 1) shipped with `CLERK_PUBLISHABLE_KEY === ""`
+      # and crashed on launch with "@clerk/expo: Missing publishableKey" before
+      # the splash screen. A fresh runner has none of them set; the guard step
+      # below fails the build if anything did set one.
       EXPO_NO_TELEMETRY: "1"
       CI: "1"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Guard — no EXPO_PUBLIC_* override may be set
+        run: |
+          set -euo pipefail
+          leaked="$(env | grep -E '^EXPO_PUBLIC_' || true)"
+          if [ -n "$leaked" ]; then
+            echo "::error::EXPO_PUBLIC_* is set in this job — a release bundle inlines these at build time and must use the in-repo defaults (src/api.ts SERVER_TARGET, src/lib/clerk.ts CLERK_PUBLISHABLE_KEYS). Found:"
+            echo "$leaked"
+            exit 1
+          fi
+          echo "No EXPO_PUBLIC_* overrides — the bundle will use the production defaults."
 
       - name: Resolve version + versionCode
         id: ver
@@ -170,6 +183,22 @@ jobs:
             | grep -E 'Verifies|Verified using|Signer #1 certificate (DN|SHA-256)'
           grep -q 'CN=Bookmark AI' dist/apksigner.txt || { echo "::error::APK is not signed with the Bookmark AI release certificate"; exit 1; }
           grep -q 'androiddebugkey\|CN=Android Debug' dist/apksigner.txt && { echo "::error::APK is DEBUG-signed"; exit 1; }
+          # The bundle must carry the PROD Clerk key and the prod API host. Both
+          # are plain literals in src/lib/clerk.ts / src/api.ts, so they only go
+          # missing when an EXPO_PUBLIC_* override constant-folded them away —
+          # which is what shipped a launch-crashing 1.0.0. Cheap, exact, and it
+          # fails the release instead of the user's phone.
+          unzip -o -q "dist/$apk" assets/index.android.bundle -d dist/unpacked
+          bundle=dist/unpacked/assets/index.android.bundle
+          for needle in \
+            'pk_live_Y2xlcmsuYm9va21hcmstYWkuY2xvdWQk' \
+            'https://www.bookmark-ai.cloud' \
+            'https://live.bookmark-ai.cloud'; do
+            grep -q -a -F "$needle" "$bundle" \
+              || { echo "::error::index.android.bundle is missing '$needle' — the release bundle is not pointed at production (an EXPO_PUBLIC_* override folded the literal out). Refusing to ship."; exit 1; }
+          done
+          echo "Bundle carries the production Clerk key + API/live hosts."
+          rm -rf dist/unpacked
           "$bt/aapt2" dump badging "dist/$apk" | grep -E "^package|sdkVersion|targetSdkVersion" | tee dist/badging.txt
           min_sdk="$(sed -n "s/^minSdkVersion:'\([0-9]*\)'.*/\1/p" dist/badging.txt)"
           got_ver="$(sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p" dist/badging.txt)"

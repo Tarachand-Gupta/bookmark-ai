@@ -136,8 +136,20 @@ Android refuses to update an existing install (`INSTALL_FAILED_UPDATE_INCOMPATIB
 to uninstall. Never print the passwords, never commit `.keys/`.
 
 A release bundle has `__DEV__ == false`, so `src/api.ts` selects the production target
-(`https://www.bookmark-ai.cloud` + the prod Clerk key) by itself; the workflow blanks every
-`EXPO_PUBLIC_*` override, and a local build must not have one exported either.
+(`https://www.bookmark-ai.cloud` + the prod Clerk key) by itself. The workflow must therefore leave
+every `EXPO_PUBLIC_*` variable **UNSET**, and a local release build must not have one exported
+either (`.work/release/build.sh` `unset`s all four).
+
+> **Never set an `EXPO_PUBLIC_*` var to `""` to "disable" it.** An env var set to the empty string is
+> still set: Expo's babel plugin inlines the literal `""` into the bundle, which is falsy but *not*
+> nullish. Android **1.0.0 (versionCode 1) shipped broken this way** — the workflow declared
+> `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ""`, `src/lib/clerk.ts` used `?? ` (nullish) to fall back, so
+> the key resolved to `""`, Metro constant-folded both real keys out of the bundle, and
+> `<ClerkProvider>` threw `@clerk/expo: Missing publishableKey` on the first render — the app died
+> before the splash screen on every device. Two guards now exist: the job fails if any
+> `EXPO_PUBLIC_*` is set at all, and the packaging step greps the packaged
+> `assets/index.android.bundle` for the prod Clerk key + the `www`/`live` hosts before publishing.
+> Any `EXPO_PUBLIC_*` fallback in app code must test truthiness, never nullishness.
 
 ### Local equivalents
 

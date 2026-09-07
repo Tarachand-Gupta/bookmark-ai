@@ -25,12 +25,27 @@ const CLERK_PUBLISHABLE_KEYS: Record<ServerTarget, string> = {
 
 /**
  * Publishable key for this build's server target.
- * `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`, when set, overrides it (an escape hatch
- * for a throwaway/staging Clerk instance) — normally left unset. Inlined at
- * bundle time, so rebuild after changing the target or this env var.
+ * `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`, when set to a NON-EMPTY value, overrides
+ * it (an escape hatch for a throwaway/staging Clerk instance) — normally left
+ * unset. Inlined at bundle time, so rebuild after changing the target or this
+ * env var.
+ *
+ * The empty-string check is load-bearing, not defensive noise (shipped Android
+ * 1.0.0 / versionCode 1 died on it): `.github/workflows/android-release.yml`
+ * declared `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ""` to *prevent* an override, but
+ * an env var set to "" is still SET. Expo's babel plugin inlines the literal
+ * `""`, `?? ` only falls back on null/undefined, so the key resolved to `""`,
+ * Metro constant-folded the two real keys out of the bundle entirely, and
+ * `<ClerkProvider>` threw "@clerk/expo: Missing publishableKey" on the very
+ * first render — the app died before the splash screen on every device. Any
+ * `EXPO_PUBLIC_*` fallback must therefore test truthiness, never nullishness.
  */
+const CLERK_KEY_OVERRIDE = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
 export const CLERK_PUBLISHABLE_KEY =
-  process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? CLERK_PUBLISHABLE_KEYS[SERVER_TARGET];
+  CLERK_KEY_OVERRIDE && CLERK_KEY_OVERRIDE.length > 0
+    ? CLERK_KEY_OVERRIDE
+    : CLERK_PUBLISHABLE_KEYS[SERVER_TARGET];
 
 /**
  * The app's URI scheme — `expo.scheme` in app.json, which prebuild turns into the
