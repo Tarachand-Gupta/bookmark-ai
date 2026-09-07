@@ -22,7 +22,7 @@
  *    NEVER contains .keys/, *.pem, .env or .env.local (asserted before zipping).
  */
 import { execFileSync } from "node:child_process";
-import { createHash, createPublicKey } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
@@ -46,6 +46,8 @@ const FIREFOX_OUT_DIR = path.join(OUT_DIR, "firefox-mv2");
 
 /** The production CRX id — mirrors CLAUDE.md → "Stable extension ids". */
 const EXPECTED_CRX_ID = "ffhbgpgebpmofjkehpjcemepbgcmoelp";
+/** The only private-key envelope the Chrome Web Store dashboard accepts for `key.pem`. */
+const PKCS8_HEADER = "-----BEGIN PRIVATE KEY-----";
 /** Mirrors `PROD_HOST_PERMISSIONS` in lib/app-origins.ts (the unit test pins
  * the TS side; this pins the built artifact that is about to be uploaded). */
 const EXPECTED_PROD_HOSTS = [
@@ -111,8 +113,16 @@ function buildChromeStoreZip() {
 
   const pem = readFileSync(PEM_PATH);
   let spkiDer;
+  let pkcs8Pem;
   try {
-    spkiDer = createPublicKey(pem).export({ type: "spki", format: "der" });
+    const privateKey = createPrivateKey(pem);
+    spkiDer = createPublicKey(privateKey).export({ type: "spki", format: "der" });
+    // The dashboard only parses PKCS#8 ("-----BEGIN PRIVATE KEY-----", what
+    // `chrome --pack-extension` writes). Our pinned key is stored as PKCS#1
+    // ("-----BEGIN RSA PRIVATE KEY-----"), which the CWS rejects with
+    // "Can not process the key.pem file." (seen 2026-09-07). Re-wrap it — same
+    // key material, same id, different envelope.
+    pkcs8Pem = privateKey.export({ type: "pkcs8", format: "pem" });
   } catch (err) {
     fail(`${PEM_PATH} is not a readable private key: ${err.message}`);
   }
@@ -120,7 +130,8 @@ function buildChromeStoreZip() {
   if (pemId !== EXPECTED_CRX_ID) {
     fail(`.keys/crx-key.pem derives id ${pemId}, expected ${EXPECTED_CRX_ID} — wrong key file.`);
   }
-  log(`key.pem verified → id ${pemId}`);
+  if (!pkcs8Pem.startsWith(PKCS8_HEADER)) fail("PKCS#8 export of the CRX key produced an unexpected header.");
+  log(`key.pem verified → id ${pemId} (re-wrapped as PKCS#8 for the dashboard)`);
 
   const work = mkdtempSync(path.join(tmpdir(), "bookmark-ai-store-"));
   try {
@@ -146,7 +157,7 @@ function buildChromeStoreZip() {
 
     delete manifest.key;
     writeFileSync(manifestPath, JSON.stringify(manifest));
-    copyFileSync(PEM_PATH, path.join(work, "key.pem"));
+    writeFileSync(path.join(work, "key.pem"), pkcs8Pem);
 
     rmSync(STORE_ZIP, { force: true });
     run("zip", ["-q", "-X", "-r", STORE_ZIP, "."], { cwd: work });
@@ -157,6 +168,11 @@ function buildChromeStoreZip() {
   // Re-read the artifact itself, never trust the staging dir.
   const listing = run("unzip", ["-Z1", STORE_ZIP]).toString().trim().split("\n");
   if (!listing.includes("key.pem")) fail("key.pem is not at the root of the store zip.");
+  const shippedPem = run("unzip", ["-p", STORE_ZIP, "key.pem"]).toString();
+  if (!shippedPem.startsWith(PKCS8_HEADER)) fail("key.pem inside the store zip is not PKCS#8 — the dashboard will reject it.");
+  if (crxIdFromSpkiDer(createPublicKey(shippedPem).export({ type: "spki", format: "der" })) !== EXPECTED_CRX_ID) {
+    fail("key.pem inside the store zip does not derive the pinned id.");
+  }
   const shipped = JSON.parse(run("unzip", ["-p", STORE_ZIP, "manifest.json"]).toString());
   if ("key" in shipped) fail("manifest.json inside the store zip still carries `key`.");
 

@@ -56,7 +56,7 @@ manifest, see `lib/app-origins.ts`):
 | File | Use |
 | --- | --- |
 | `bookmark-aiextension-<v>-chrome.zip` | CWS **updates** (what CI uploads) |
-| `bookmark-aiextension-<v>-chrome-store.zip` | CWS **first upload only** ("Add new item"): manifest `key` removed, private key inside as `key.pem` so the store keeps id `ffhbgpgebpmofjkehpjcemepbgcmoelp`. Needs `.keys/crx-key.pem` (gitignored) — `zip:store` aborts if it is missing or derives a different id. |
+| `bookmark-aiextension-<v>-chrome-store.zip` | CWS **first upload only** ("Add new item"): manifest `key` removed, private key inside as `key.pem` (re-wrapped as **PKCS#8** `-----BEGIN PRIVATE KEY-----` — the dashboard answers "Can not process the key.pem file." to the PKCS#1 `BEGIN RSA PRIVATE KEY` form our `.keys/crx-key.pem` is stored in) so the store keeps id `ffhbgpgebpmofjkehpjcemepbgcmoelp`. Needs `.keys/crx-key.pem` (gitignored) — `zip:store` aborts if it is missing or derives a different id. |
 | `bookmark-aiextension-<v>-firefox.zip` | AMO add-on package (MV2, gecko id `bookmark-ai@purecode.ai`) |
 | `bookmark-aiextension-<v>-sources.zip` | AMO **source code** upload: `apps/extension` + `packages/types` + root workspace files + generated `BUILD.md` (Node 22 / pnpm 10.34.1, install + `build:firefox` steps, output file hashes). Reproduces `firefox-mv2` byte-for-byte. Never contains `.keys/`, `*.pem`, `.env`, `.env.local`. |
 
