@@ -62,6 +62,21 @@ export interface BookmarkCardProps {
 }
 
 /**
+ * The site name worth showing beside the domain, or null when it would only
+ * repeat it: a page with no Open Graph site name used to render as
+ * "tailwindcss.com · tailwindcss.com", which on a narrow card became
+ * "tailwi… · tailwi…" — two ellipses saying the same thing.
+ */
+function distinctSiteName(b: Bookmark): string | null {
+  const site = b.og.siteName?.trim();
+  if (!site) return null;
+  const domain = b.domain.toLowerCase();
+  const normalized = site.toLowerCase();
+  if (normalized === domain || normalized === domain.replace(/^www\./, "")) return null;
+  return site;
+}
+
+/**
  * A bookmark rendered as a rich card: OG image hero, favicon + site, title,
  * description, AI category + tags, and capture provenance (browser, device,
  * day). Pure presentational — works in Next.js, Vite, and the extension.
@@ -69,6 +84,7 @@ export interface BookmarkCardProps {
 export function BookmarkCard({ bookmark: b, onDelete, className, selection }: BookmarkCardProps) {
   const browser = BROWSER_META[b.source.browser] ?? BROWSER_META.other;
   const device = DEVICE_META[b.source.device] ?? DEVICE_META.other;
+  const siteName = distinctSiteName(b);
 
   return (
     <Card
@@ -115,43 +131,66 @@ export function BookmarkCard({ bookmark: b, onDelete, className, selection }: Bo
           selection?.selected && "bg-primary/10",
         )}
       >
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        {/* Site · domain. The domain is the short, reliable half, so it keeps its
+            width (capped at under half the row) and the site name is what
+            ellipsizes — "Documentation - Gene… · docs.oracle.com" rather than
+            the two half-words a proportional squeeze produced. */}
+        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           <Favicon bookmark={b} />
-          <span className="truncate">{b.og.siteName ?? b.domain}</span>
-          <span aria-hidden>·</span>
-          <span className="truncate">{b.domain}</span>
+          {siteName ? (
+            <>
+              <span className="min-w-0 truncate">{siteName}</span>
+              <span aria-hidden className="shrink-0">
+                ·
+              </span>
+              <span className="max-w-[45%] shrink-0 truncate">{b.domain}</span>
+            </>
+          ) : (
+            <span className="min-w-0 truncate">{b.domain}</span>
+          )}
         </div>
 
         <a
           href={b.url}
           target="_blank"
           rel="noreferrer noopener"
-          className="line-clamp-2 font-semibold leading-snug hover:underline"
+          className="line-clamp-2 font-semibold leading-snug [overflow-wrap:anywhere] hover:underline"
         >
           {b.title}
         </a>
 
         {b.description ? (
-          <p className="line-clamp-2 text-sm text-muted-foreground">{b.description}</p>
+          <p className="line-clamp-2 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+            {b.description}
+          </p>
         ) : null}
 
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
           <CategoryBadge category={b.category} />
           {b.tags.slice(0, 3).map((tag) => (
             <TagBadge key={tag} tag={tag} />
           ))}
         </div>
 
-        <div className="mt-auto flex items-center gap-3 pt-2 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1" title={`Saved from ${browser.label}`}>
-            <browser.Icon className="size-3.5" aria-hidden />
-            {browser.label}
+        {/* Provenance. The two labels ellipsize (never clip mid-glyph) and the
+            date and delete button keep their width, so a narrow card reads
+            "Chrome · Lap… · Today" at worst, never "Chrome  La". */}
+        <div className="mt-auto flex min-w-0 items-center gap-3 pt-2 text-xs text-muted-foreground">
+          <span
+            className="inline-flex min-w-0 items-center gap-1"
+            title={`Saved from ${browser.label}`}
+          >
+            <browser.Icon className="size-3.5 shrink-0" aria-hidden />
+            <span className="truncate">{browser.label}</span>
           </span>
-          <span className="inline-flex items-center gap-1" title={b.source.deviceName ?? device.label}>
-            <device.Icon className="size-3.5" aria-hidden />
-            {device.label}
+          <span
+            className="inline-flex min-w-0 items-center gap-1"
+            title={b.source.deviceName ?? device.label}
+          >
+            <device.Icon className="size-3.5 shrink-0" aria-hidden />
+            <span className="truncate">{device.label}</span>
           </span>
-          <time dateTime={b.source.savedAt} className="ml-auto">
+          <time dateTime={b.source.savedAt} className="ml-auto shrink-0 whitespace-nowrap">
             {formatDay(b.source.savedAt)}
           </time>
           {onDelete ? (
@@ -159,7 +198,7 @@ export function BookmarkCard({ bookmark: b, onDelete, className, selection }: Bo
               type="button"
               onClick={() => onDelete(b.id)}
               aria-label={`Delete ${b.title}`}
-              className="rounded-md p-1 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+              className="shrink-0 rounded-md p-1 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
             >
               <Trash2 className="size-3.5" aria-hidden />
             </button>
@@ -182,6 +221,7 @@ export function BookmarkListItem({
 }: BookmarkCardProps) {
   const browser = BROWSER_META[b.source.browser] ?? BROWSER_META.other;
   const device = DEVICE_META[b.source.device] ?? DEVICE_META.other;
+  const siteName = distinctSiteName(b);
 
   return (
     <Card
@@ -213,10 +253,12 @@ export function BookmarkListItem({
       <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <FaviconOrSelect bookmark={b} selection={selection} />
-          <span className="line-clamp-1 min-w-0 [overflow-wrap:anywhere]">
-            {b.og.siteName ?? b.domain}
-          </span>
-          <span aria-hidden>·</span>
+          {siteName ? (
+            <>
+              <span className="line-clamp-1 min-w-0 [overflow-wrap:anywhere]">{siteName}</span>
+              <span aria-hidden>·</span>
+            </>
+          ) : null}
           <span className="line-clamp-1 min-w-0 [overflow-wrap:anywhere]">{b.domain}</span>
           <time dateTime={b.source.savedAt} className="ml-auto shrink-0">
             {formatDay(b.source.savedAt)}
@@ -346,8 +388,14 @@ function CategoryBadge({
   className?: string;
   variant?: React.ComponentProps<typeof Badge>["variant"];
 }) {
+  // max-w-full: a chip can never be wider than its row, so a long name
+  // ellipsizes inside the chip instead of the chip running under the card edge.
   return (
-    <Badge variant={variant} className={className} title={`Category: ${category}`}>
+    <Badge
+      variant={variant}
+      className={cn("max-w-full", className)}
+      title={`Category: ${category}`}
+    >
       <Folder className="size-3 shrink-0" aria-hidden />
       <span className="truncate">{category}</span>
     </Badge>
@@ -356,9 +404,9 @@ function CategoryBadge({
 
 function TagBadge({ tag, className }: { tag: string; className?: string }) {
   return (
-    <Badge variant="muted" className={className} title={`Tag: ${tag}`}>
-      <Hash className="size-3" aria-hidden />
-      {tag}
+    <Badge variant="muted" className={cn("max-w-full", className)} title={`Tag: ${tag}`}>
+      <Hash className="size-3 shrink-0" aria-hidden />
+      <span className="truncate">{tag}</span>
     </Badge>
   );
 }

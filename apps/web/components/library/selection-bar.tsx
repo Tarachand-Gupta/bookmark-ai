@@ -8,13 +8,15 @@ import { Separator } from "@/components/ui/separator";
 import { useSidebar } from "@/components/ui/sidebar";
 
 /**
- * The expanded sidebar's width, mirroring SIDEBAR_WIDTH in components/ui/sidebar.tsx.
- * It can't be read as `var(--sidebar-width)` here: that variable is declared on the
- * SidebarProvider wrapper, and this bar is portalled to <body>, outside its scope.
- * The sidebar is `collapsible="offcanvas"` (see app-sidebar.tsx), so its collapsed
- * width — and its mobile width, where it's an overlay sheet — is 0.
+ * The sidebar's widths, mirroring SIDEBAR_WIDTH / SIDEBAR_WIDTH_ICON in
+ * components/ui/sidebar.tsx. They can't be read as `var(--sidebar-width)` here:
+ * that variable is declared on the SidebarProvider wrapper, and this bar is
+ * portalled to <body>, outside its scope. The sidebar is `collapsible="icon"`
+ * (see app-sidebar.tsx), so collapsed it is the 3rem rail; on mobile, where it's
+ * an overlay sheet, it takes no width at all.
  */
 const SIDEBAR_WIDTH = "16rem";
+const SIDEBAR_WIDTH_ICON = "3rem";
 
 export interface SelectionBarProps {
   /** How many items are ticked. 0 dismisses the bar. */
@@ -40,7 +42,7 @@ export interface SelectionBarProps {
  * sidebar on the left and by the docked Ask AI chat on the right, so the bar pads
  * itself by both. Padding both edges of a `justify-center` row shifts the centre
  * by exactly half the difference, which is what keeps it over the grid whether
- * the sidebar is expanded, collapsed (offcanvas → 0), or a mobile overlay (0),
+ * the sidebar is expanded, collapsed to the icon rail, or a mobile overlay (0),
  * and whether the chat is docked (`--chat-dock-w`) or floating/closed (0px).
  */
 export function SelectionBar({
@@ -53,7 +55,11 @@ export function SelectionBar({
 }: SelectionBarProps) {
   // The sidebar's live width — expanded, collapsed off-canvas, or a mobile sheet.
   const { state, isMobile } = useSidebar();
-  const sidebarWidth = isMobile || state === "collapsed" ? "0px" : SIDEBAR_WIDTH;
+  const sidebarWidth = isMobile
+    ? "0px"
+    : state === "collapsed"
+      ? SIDEBAR_WIDTH_ICON
+      : SIDEBAR_WIDTH;
 
   // Portals need a DOM; render nothing on the server pass.
   const [mounted, setMounted] = useState(false);

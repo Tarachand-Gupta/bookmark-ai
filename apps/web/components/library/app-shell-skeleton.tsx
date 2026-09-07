@@ -1,4 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { BOOKMARK_GRID_COLUMNS } from "@/lib/app-layout";
 import { cn } from "@/lib/utils";
 
 /**
@@ -67,9 +68,10 @@ export function AppShellSkeleton({ children }: { children: React.ReactNode }) {
 const ROW_WIDTHS = ["78%", "56%", "88%", "64%"];
 
 /**
- * Card placeholders in the library's grid layout — same columns and same
- * image/title/meta stack as BookmarkGrid's own loading state, redrawn here for the
- * server-renderable reason above (that grid is a client module).
+ * Card placeholders in the library's grid layout — same columns (the shared
+ * container-width rule in lib/app-layout.ts) and same image/title/meta stack as
+ * BookmarkGrid's own loading state, redrawn here for the server-renderable reason
+ * above (that grid is a client module).
  */
 export function BookmarkGridSkeleton({
   count = 8,
@@ -79,13 +81,7 @@ export function BookmarkGridSkeleton({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4",
-        className,
-      )}
-      aria-hidden
-    >
+    <div className={cn("grid gap-4", BOOKMARK_GRID_COLUMNS, className)} aria-hidden>
       {Array.from({ length: count }, (_, i) => (
         <div key={i} className="space-y-3">
           <Skeleton className="aspect-[1.91/1] w-full rounded-xl" />

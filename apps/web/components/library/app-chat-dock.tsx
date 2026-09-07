@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { LibraryFilters } from "@/lib/api";
+import { AI_PARAM } from "@/hooks/use-app-layout";
 import { AiChat } from "./ai-chat";
 import { ChatPanel } from "./chat-panel";
 
@@ -10,10 +11,9 @@ import { ChatPanel } from "./chat-panel";
  * chat-applied facet reads back identically on the page. */
 const FILTER_KEYS = ["category", "browser", "device", "day", "tag", "from", "to"] as const;
 
-/** The URL flag that opens the docked chat. Kept as its own param (not the
- * search `mode`) so the layout-level dock and the page's Ask AI button share a
- * single source of truth that survives navigation and refresh. */
-const AI_PARAM = "ai";
+// The `?ai=1` flag (AI_PARAM) is kept as its own param (not the search `mode`)
+// so the layout-level dock, the page's Ask AI button and the layout store share
+// a single source of truth that survives navigation and refresh.
 
 /**
  * Mounts the Ask AI dock at the /app LAYOUT level — ONE instance that outlives

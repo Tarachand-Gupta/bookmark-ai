@@ -11,6 +11,7 @@ import {
 } from "@bookmark-ai/ui/components/bookmark-card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BOOKMARK_GRID_COLUMNS } from "@/lib/app-layout";
 import { groupBookmarksByDate } from "@/lib/date-groups";
 import type { SelectionState } from "@/hooks/use-selection";
 import { FirstRunPanel } from "./first-run-panel";
@@ -244,8 +245,12 @@ function ItemLayout({
     );
   }
 
+  // Columns come from the grid's OWN width (auto-fill of CARD_MIN_PX cells), not
+  // viewport breakpoints: beside a docked Ask AI panel and an expanded sidebar a
+  // 1136px window has ~700px for this grid, and a viewport rule drew three
+  // 155px columns there. See lib/app-layout.ts for the card minimum.
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+    <div className={`grid gap-4 ${BOOKMARK_GRID_COLUMNS}`}>
       {items.map((b) => (
         <BookmarkCard key={b.id} bookmark={b} onDelete={onDelete} selection={selectionFor(b)} />
       ))}
@@ -281,7 +286,7 @@ function LoadingSkeleton({ view, count }: { view: LibraryView; count?: number })
     );
   }
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+    <div className={`grid gap-4 ${BOOKMARK_GRID_COLUMNS}`}>
       {Array.from({ length: n }, (_, i) => (
         <div key={i} className="space-y-3">
           <Skeleton className="aspect-[1.91/1] w-full rounded-xl" />

@@ -34,6 +34,7 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -89,10 +90,22 @@ export interface AppSidebarProps {
   onOpenTour?: () => void;
 }
 
+/** "Docs & Reference · 8" — the rail tooltip carries the count the badge shows. */
+function withCount(label: string, count: number | null | undefined): string {
+  return count == null ? label : `${label} · ${count}`;
+}
+
 /**
  * Facet navigation: categories (AI), source browsers, devices, recent days.
  * Selecting a facet swaps the whole filter (one facet active at a time keeps
  * the mental model simple); selecting it again clears it.
+ *
+ * `collapsible="icon"`: collapsed, the sidebar is a 3rem rail of icons rather
+ * than gone — the layout store (hooks/use-app-layout.ts) collapses it to make
+ * room for the Ask AI dock, and the rail keeps every destination one click (and
+ * one tooltip) away. Every row therefore carries a `tooltip`, the brand header
+ * stacks its mark and the + button, and each facet group gets a rail-only rule
+ * where its label used to be.
  */
 export function AppSidebar({
   meta,
@@ -137,13 +150,19 @@ export function AppSidebar({
           .concat(categories.slice(VISIBLE_CATEGORIES).filter((c) => c.name === filters.category));
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-1.5">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+        {/* On the rail the row becomes a column: the 32px brand mark over the
+            32px + button, each exactly the rail's inner width (3rem − p-2), the
+            wordmark and count hidden. */}
+        <div className="flex items-center gap-2 px-2 py-1.5 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:px-0">
+          <div
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"
+            title="Bookmark AI"
+          >
             <Bookmark className="size-4" aria-hidden />
           </div>
-          <div className="grid min-w-0 flex-1 leading-tight">
+          <div className="grid min-w-0 flex-1 leading-tight group-data-[collapsible=icon]:hidden">
             <span className="font-semibold">Bookmark AI</span>
             <span className="text-xs text-muted-foreground">
               {meta ? `${meta.total} saved` : "—"}
@@ -167,8 +186,13 @@ export function AppSidebar({
 
       {/* pb-2 reserves the gap the pinned footer's own padding doesn't cover, so
           the last facet row can be scrolled clear of Tour/Settings instead of
-          ending up half-hidden behind them. */}
-      <SidebarContent className="pb-2">
+          ending up half-hidden behind them.
+
+          The rail keeps scrolling (shadcn's default clips it): every facet is
+          still a row there, and a tall list must not lose its last rows behind
+          the footer. The scrollbar itself is hidden — a 3rem column has no room
+          for one, and the wheel/trackpad still works. */}
+      <SidebarContent className="pb-2 group-data-[collapsible=icon]:overflow-y-auto! group-data-[collapsible=icon]:[scrollbar-width:none]">
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -179,6 +203,7 @@ export function AppSidebar({
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     isActive={!!homeActive}
+                    tooltip="Home"
                     onClick={() => {
                       onShowHome();
                       setOpenMobile(false);
@@ -192,6 +217,7 @@ export function AppSidebar({
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={!homeActive && noFilter && !sessionsActive && !liveActive}
+                  tooltip={withCount("All bookmarks", meta?.total)}
                   onClick={() => select({})}
                 >
                   <FEATURE_ICONS.bookmarks aria-hidden />
@@ -202,6 +228,7 @@ export function AppSidebar({
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={!!liveActive}
+                  tooltip="Live sessions"
                   onClick={() => {
                     onShowLive?.();
                     setOpenMobile(false);
@@ -222,6 +249,7 @@ export function AppSidebar({
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={!!sessionsActive}
+                  tooltip={withCount("Saved sessions", sessionCount)}
                   onClick={() => {
                     onShowSessions?.();
                     setOpenMobile(false);
@@ -243,12 +271,14 @@ export function AppSidebar({
           label="Categories"
           loading={facetsLoading}
           count={categories.length}
+          railItem={{ Icon: Folder, active: !!filters.category }}
         >
           <SidebarMenu>
             {visibleCategories.map((c) => (
               <SidebarMenuItem key={c.name}>
                 <SidebarMenuButton
                   isActive={filters.category === c.name}
+                  tooltip={withCount(c.name, c.count)}
                   onClick={() => select(filters.category === c.name ? {} : { category: c.name })}
                 >
                   <Folder aria-hidden />
@@ -261,6 +291,7 @@ export function AppSidebar({
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={() => setAllCategories((v) => !v)}
+                  tooltip={allCategories ? "Show fewer categories" : `All ${categories.length} categories`}
                   className="text-muted-foreground"
                 >
                   <ChevronDown
@@ -288,6 +319,7 @@ export function AppSidebar({
                 <SidebarMenuItem key={b.name}>
                   <SidebarMenuButton
                     isActive={filters.browser === b.name}
+                    tooltip={withCount(capitalize(b.name), b.count)}
                     onClick={() => select(filters.browser === b.name ? {} : { browser: b.name })}
                   >
                     <Icon aria-hidden />
@@ -312,6 +344,7 @@ export function AppSidebar({
                 <SidebarMenuItem key={d.name}>
                   <SidebarMenuButton
                     isActive={filters.device === d.name}
+                    tooltip={withCount(capitalize(d.name), d.count)}
                     onClick={() => select(filters.device === d.name ? {} : { device: d.name })}
                   >
                     <Icon aria-hidden />
@@ -328,12 +361,14 @@ export function AppSidebar({
           label="Recent days"
           loading={facetsLoading}
           count={days.length}
+          railItem={{ Icon: CalendarDays, active: !!filters.day }}
         >
           <SidebarMenu>
             {days.map((d) => (
               <SidebarMenuItem key={d.day}>
                 <SidebarMenuButton
                   isActive={filters.day === d.day}
+                  tooltip={withCount(formatDayLabel(d.day), d.count)}
                   onClick={() => select(filters.day === d.day ? {} : { day: d.day })}
                 >
                   <CalendarDays aria-hidden />
@@ -354,7 +389,7 @@ export function AppSidebar({
         <SidebarMenu>
           {onOpenTour && (
             <SidebarMenuItem>
-              <SidebarMenuButton onClick={onOpenTour}>
+              <SidebarMenuButton tooltip="Tour" onClick={onOpenTour}>
                 <Sparkles aria-hidden />
                 <span>Tour</span>
               </SidebarMenuButton>
@@ -366,6 +401,7 @@ export function AppSidebar({
               the setup UI (same panel the ?settings=mcp deep link lands on). */}
           <SidebarMenuItem>
             <SidebarMenuButton
+              tooltip="MCP"
               onClick={() => {
                 onOpenSettings?.("mcp");
                 setOpenMobile(false);
@@ -377,6 +413,7 @@ export function AppSidebar({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
+              tooltip="Settings"
               onClick={() => {
                 onOpenSettings?.();
                 setOpenMobile(false);
@@ -399,6 +436,14 @@ interface CollapsibleGroupProps {
   /** How many facet rows `children` will render. 0 once loaded ⇒ the whole
    * section is dropped (see below). */
   count: number;
+  /**
+   * On the icon rail, stand in for the WHOLE section with one icon that expands
+   * the sidebar. For sections whose rows all share a glyph (every category is a
+   * folder, every day a calendar) a rail of identical icons says nothing; one
+   * icon that says "Categories" and opens them does. Sections whose rows have
+   * distinct glyphs (browsers, devices) omit this and stay row-per-icon.
+   */
+  railItem?: { Icon: React.ElementType; active: boolean };
   children: React.ReactNode;
 }
 
@@ -415,8 +460,9 @@ interface CollapsibleGroupProps {
  * empty first render and never open. `userOpen` pins the user's own toggle so a
  * later data change can't yank a section shut under someone who just opened it.
  */
-function CollapsibleGroup({ label, loading, count, children }: CollapsibleGroupProps) {
+function CollapsibleGroup({ label, loading, count, railItem, children }: CollapsibleGroupProps) {
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const { state, isMobile, setOpen } = useSidebar();
   // While /api/meta is in flight the groups don't exist at all — four labelled
   // headers over skeleton bars read as broken empty dropdowns (owner feedback
   // on the landing loader), and the nav rows above are enough sidebar until
@@ -424,10 +470,46 @@ function CollapsibleGroup({ label, loading, count, children }: CollapsibleGroupP
   if (loading || count === 0) return null;
   const open = userOpen ?? true;
 
+  // Rail stand-in (see `railItem`). Expanding from here goes through the
+  // provider's controlled `open`, i.e. the layout store — so on a rail the dock
+  // forced, this is the same "the user wants the sidebar back" as the header
+  // trigger, and the dock floats to make room (rule 4 in lib/app-layout.ts).
+  if (railItem && state === "collapsed" && !isMobile) {
+    return (
+      <>
+        <SidebarSeparator />
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={railItem.active}
+                  tooltip={label}
+                  aria-label={`${label} — expand sidebar`}
+                  onClick={() => setOpen(true)}
+                >
+                  <railItem.Icon aria-hidden />
+                  <span>{label}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </>
+    );
+  }
+
   return (
     <Collapsible open={open} onOpenChange={setUserOpen} className="group/collapsible">
+      {/* Rail only: the label below folds away there (shadcn pulls it up under
+          the previous rows at zero height), so a hairline is what separates one
+          run of icons from the next. */}
+      <SidebarSeparator className="hidden group-data-[collapsible=icon]:block" />
       <SidebarGroup>
-        <SidebarGroupLabel asChild>
+        {/* pointer-events-none on the rail: the folded-away label still sits,
+            invisible, over the bottom of the previous group's last row and would
+            otherwise steal that row's clicks to toggle this section. */}
+        <SidebarGroupLabel asChild className="group-data-[collapsible=icon]:pointer-events-none">
           <CollapsibleTrigger>
             <span>{label}</span>
             <ChevronDown
@@ -453,6 +535,10 @@ function CountBadge({ value, loading }: { value?: number | null; loading?: boole
       <Skeleton className="h-3 w-4" />
     </SidebarMenuBadge>
   );
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function formatDayLabel(day: string): string {

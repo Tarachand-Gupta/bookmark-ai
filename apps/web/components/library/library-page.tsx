@@ -25,6 +25,7 @@ import {
   updateSettings,
   type LibraryFilters,
 } from "@/lib/api";
+import { AI_PARAM, useAppShellLayout } from "@/hooks/use-app-layout";
 import {
   useBookmarks,
   useHealth,
@@ -68,10 +69,11 @@ const ONBOARDED_KEY = "bmk:onboarded";
 
 const FILTER_KEYS = ["category", "browser", "device", "day", "tag", "from", "to"] as const;
 
-/** URL flag that opens the Ask AI dock. The dock itself lives at the /app layout
- * level (see AppChatDock) — this page only reads/toggles the param for the
- * header button and preserves it across navigation. Keep in sync with the dock. */
-const AI_PARAM = "ai";
+// The `?ai=1` flag (AI_PARAM, from the layout store) opens the Ask AI dock. The
+// dock itself lives at the /app layout level (see AppChatDock) — this page only
+// reads/toggles the param for the header button and preserves it across
+// navigation, and hands the same flag to the layout store so the sidebar can
+// make room for the dock (see below).
 
 /**
  * The whole library view. Facet filters live in the URL (shareable,
@@ -499,6 +501,12 @@ export function LibraryPage() {
   // purely by ?ai — this page only reflects the button's pressed state and
   // toggles the param. Toggling preserves the rest of the URL (facets/search).
   const aiActive = searchParams.get(AI_PARAM) === "1";
+  // ONE arbiter for sidebar × dock × content (lib/app-layout.ts): with the dock
+  // open, the sidebar is forced to its icon rail before the main pane may drop
+  // under two card columns, and the dock floats only when even the rail can't
+  // keep it. The provider is CONTROLLED off that decision; the user's own toggle
+  // goes back into the store (re-expanding a forced rail wins — the dock floats).
+  const shell = useAppShellLayout(aiActive);
   const toggleAi = useCallback(() => {
     const params = new URLSearchParams(searchParams);
     if (params.get(AI_PARAM) === "1") {
@@ -513,7 +521,7 @@ export function LibraryPage() {
   }, [searchParams, pathname, shallowPush]);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider open={shell.sidebar === "expanded"} onOpenChange={shell.setSidebarOpen}>
       <AppSidebar
         meta={meta.data}
         metaLoading={meta.loading}
@@ -543,7 +551,9 @@ export function LibraryPage() {
         />
         {/* Reserve right-side space for the layout-level docked chat (side mode
             only) so content squeezes beside it instead of hiding under it; the
-            var is 0px in overlay/full/closed states. See chat-panel.tsx. */}
+            var is 0px in overlay/full/closed states. See chat-panel.tsx. The
+            grid inside sizes its columns from THIS width (auto-fill), so the
+            reservation is all it takes to keep the cards readable. */}
         <div
           className="flex min-w-0 flex-1 items-stretch"
           style={{ paddingRight: "var(--chat-dock-w, 0px)" }}

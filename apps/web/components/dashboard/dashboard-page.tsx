@@ -15,6 +15,7 @@ import {
   SettingsDialog,
   type SectionId,
 } from "@/components/library/settings-dialog";
+import { AI_PARAM, useAppShellLayout } from "@/hooks/use-app-layout";
 import { useMeta, useRefresh } from "@/hooks/use-library";
 import { useLiveDevices } from "@/hooks/use-live";
 import { useDashboard } from "@/hooks/use-dashboard";
@@ -154,8 +155,13 @@ export function DashboardPage() {
   const showSkeletons = !data && dashboard.loading;
   const firstRun = !!data && data.totalBookmarks === 0 && data.totalSessions === 0;
 
+  // The Ask AI dock is mounted at the /app layout, so it's open here too when
+  // `?ai=1` rides along — and the sidebar has to yield to it the same way the
+  // library's does (one arbiter, lib/app-layout.ts; see LibraryPage).
+  const shell = useAppShellLayout(searchParams.get(AI_PARAM) === "1");
+
   return (
-    <SidebarProvider>
+    <SidebarProvider open={shell.sidebar === "expanded"} onOpenChange={shell.setSidebarOpen}>
       <AppSidebar
         meta={meta.data}
         metaLoading={meta.loading}
