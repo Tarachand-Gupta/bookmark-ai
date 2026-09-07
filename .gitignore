@@ -64,3 +64,18 @@ openmemory.md
 apps/extension/STORE-LISTING.md
 apps/extension/AMO-LISTING.md
 apps/extension/RELEASING.md
+
+# Working notes kept local only
+apps/docs/docs/getting-started/01-sign-up.md
+apps/docs/docs/getting-started/04-first-session.md
+apps/docs/docs/guides/05-ask-ai.md
+apps/docs/docs/guides/10-mobile-app.md
+apps/docs/docs/guides/11-export-import.md
+apps/docs/docs/privacy.md
+apps/docs/docs/reference/01-api.md
+apps/docs/docs/reference/02-architecture.md
+apps/docs/docs/self-hosting/01-overview.md
+apps/docs/docs/self-hosting/02-web-and-api.md
+apps/docs/docs/self-hosting/03-live-server.md
+apps/docs/docs/self-hosting/04-multi-tenant.md
+apps/mobile/AGENTS.md
