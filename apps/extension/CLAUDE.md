@@ -122,6 +122,14 @@ Layout (keep multi-file — the user explicitly banned monolith files):
   (`local:nativeSyncEnabled` default ON, `local:nativeSyncFull` default OFF) are cached copies of
   the ACCOUNT-level `user_settings` columns (migration v8), refreshed from `GET /api/settings`
   at boot + on the 6h auth alarm; the UI lives in the web app Settings → "Sync" section.
+- **Popup dark mode needs `color-scheme`, or Safari alone stays light.** `main.tsx` mirrors the OS
+  preference onto `<html class="dark">` (every `dark:` utility is gated on that class), but WebKit
+  renders an extension popover in the LIGHT appearance — and answers `prefers-color-scheme: dark`
+  with `false` inside it — until the document declares it supports dark. So `:root` in
+  `assets/tailwind.css` carries `color-scheme: light dark` and `popup/index.html` a matching
+  `<meta name="color-scheme">` (Apple's own template does the same); both are pinned by
+  `entrypoints/popup/popup-theme.test.ts`. Deliberately NOT `color-scheme: dark` under `.dark` —
+  the class lands after first paint, which would flash a white frame.
 - `entrypoints/popup/` — `main.tsx` (theme sync + `PopupErrorBoundary`/`PopupFallback`; NO Clerk
   client — see Auth), `App.tsx` (auth gate: loading → `SignInGate` → full UI; save state machine),
   hooks `use-auth.ts` (background `GET_USER` poll) / `use-live.ts`, `nav.ts` (every "leave the

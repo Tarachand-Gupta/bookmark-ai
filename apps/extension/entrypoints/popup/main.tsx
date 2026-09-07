@@ -16,6 +16,14 @@ import "@/assets/tailwind.css";
  * keeps the document alive across that. No storage, no dependency, no in-popup
  * theme setting — the popup follows the OS, same as the extension chrome around it.
  *
+ * SAFARI needs one more thing, and without it this whole mechanism was dead
+ * there: WebKit renders an extension popover in the light appearance — and
+ * `matchMedia("(prefers-color-scheme: dark)")` answers `false` inside it — unless
+ * the document declares that it supports dark. That declaration is
+ * `color-scheme: light dark`, on `:root` in `assets/tailwind.css` and as a
+ * `<meta name="color-scheme">` in `index.html` (pinned by `popup-theme.test.ts`);
+ * Chrome and Firefox always matched the OS, which is why this looked Safari-only.
+ *
  * The popup is the extension's ONLY rendered UI; `background.ts`,
  * `bridge.content.ts`, and `marker.content.ts` render nothing (the content
  * scripts only read/stamp attributes on the host page), so nothing else needs this.

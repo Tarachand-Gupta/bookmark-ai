@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Safari's extension popover only adopts the dark appearance — and only then
+         does `prefers-color-scheme: dark` match INSIDE it — when the document says
+         it supports both. Declared here as well as in assets/tailwind.css so it is
+         known from the first byte, before any stylesheet or script loads. -->
+    <meta name="color-scheme" content="light dark" />
     <title>Bookmark AI</title>
   </head>
   <body>
