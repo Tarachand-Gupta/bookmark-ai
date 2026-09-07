@@ -4,8 +4,11 @@ Everything to paste into the CWS developer dashboard (https://chrome.google.com/
 for the first (manual) submission. After this one-time upload, CI publishes updates
 automatically — see `RELEASING.md`.
 
-The upload package is the zip produced by `pnpm --filter @bookmark-ai/extension zip`
-(`.output/bookmark-aiextension-<version>-chrome.zip`).
+The FIRST upload package is `.output/bookmark-aiextension-<version>-chrome-store.zip` from
+`pnpm --filter @bookmark-ai/extension release:zip` — the Chrome zip with the manifest `key`
+removed and the private key bundled as `key.pem`, which keeps the pinned extension id
+`ffhbgpgebpmofjkehpjcemepbgcmoelp` (see `RELEASING.md`). Every later update uploads the plain
+`*-chrome.zip`.
 
 ---
 
@@ -49,7 +52,7 @@ The upload package is the zip produced by `pnpm --filter @bookmark-ai/extension 
 > PRIVATE BY DESIGN
 > You sign in once on the website — the extension mirrors that session. Nothing is
 > collected beyond what makes your own library work, and live sharing is strictly
-> opt-in. Full details: https://docs.bookmark-ai.cloud/privacy
+> opt-in. Full details: https://www.bookmark-ai.cloud/privacy
 >
 > OPEN SOURCE
 > The whole product is open source and self-hostable. Docs: https://docs.bookmark-ai.cloud
@@ -97,7 +100,7 @@ window on the demo pages, app shots from a demo-seeded session — ask.)
 | `storage` | Store the user's extension settings (API URL, device name, live-sharing preference) locally. |
 | `alarms` | Periodic heartbeat so an opted-in device's live-tab mirror stays fresh and expires server-side when the device goes quiet. |
 | `cookies` | Read the session cookie of our own auth domain (clerk.bookmark-ai.cloud) so the extension reuses the website sign-in instead of asking for credentials in the popup. |
-| Host permissions (`bookmark-ai.cloud`, `www.…`, `clerk.…`, `live.…`, `localhost`, dev alias) | All are the product's own first-party API/auth/live endpoints (localhost = self-hosted/dev instance). No third-party sites are accessed. |
+| Host permissions — exactly four: `https://bookmark-ai.cloud/*`, `https://www.bookmark-ai.cloud/*`, `https://clerk.bookmark-ai.cloud/*`, `https://live.bookmark-ai.cloud/*` | All are the product's own first-party endpoints: the web app + its API (apex redirects to www), our authentication domain, and our live-sessions server. No third-party sites are accessed; dev/localhost origins exist only in non-store builds. |
 
 **Data usage disclosures** — tick exactly these:
 - **Personally identifiable information** — email/name from the user's own account (sign-in).
@@ -107,7 +110,7 @@ window on the demo pages, app shots from a demo-seeded session — ask.)
 
 **Privacy policy URL** (required because data is collected):
 
-> https://docs.bookmark-ai.cloud/privacy
+> https://www.bookmark-ai.cloud/privacy
 
 ## 4 · Distribution tab
 
@@ -118,7 +121,7 @@ window on the demo pages, app shots from a demo-seeded session — ask.)
 ## 5 · Submission walkthrough
 
 1. https://chrome.google.com/webstore/devconsole → pay the one-time $5 developer fee if not yet done.
-2. "New item" → upload `bookmark-aiextension-<version>-chrome.zip`.
+2. "New item" → upload `bookmark-aiextension-<version>-chrome-store.zip` (the `key.pem` one — first upload only).
 3. Fill **Store listing** (section 1–2 above), **Privacy** (section 3), **Distribution** (section 4).
 4. Account tab: verified contact email is required before submitting.
 5. Submit for review. First review typically takes a few days; the `tabs`/`cookies`
@@ -128,7 +131,8 @@ window on the demo pages, app shots from a demo-seeded session — ask.)
 7. After approval: update `apps/web` install buttons/marketing with the real store URL,
    and add the store listing URL to the docs install page.
 
-**Post-approval note**: the extension ID of the store build will differ from the local
-dev ID. Add the new ID's origin to the Clerk instance `allowed_origins` and to
-`AUTHORIZED_PARTIES` (`apps/web/lib/authorized-parties.ts`) BEFORE announcing, or
-store-installed users can't authenticate. This is part of definition-of-done for the release.
+**Post-upload check**: because the first upload carries `key.pem`, the store item id should be
+the pinned `ffhbgpgebpmofjkehpjcemepbgcmoelp` — the id already registered in the Clerk
+instance `allowed_origins` and in `AUTHORIZED_PARTIES` (`apps/web/lib/authorized-parties.ts`).
+VERIFY it in the dashboard URL right after the upload. If it differs, register the new id in
+both places BEFORE announcing, or store-installed users can't authenticate.

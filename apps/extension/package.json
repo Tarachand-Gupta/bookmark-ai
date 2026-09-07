@@ -1,6 +1,6 @@
 {
   "name": "@bookmark-ai/extension",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,7 +16,8 @@
     "zip": "node ./scripts/wxt-run.mjs zip",
     "zip:firefox": "node ./scripts/wxt-run.mjs zip -b firefox",
     "zip:safari": "node ./scripts/wxt-run.mjs zip -b safari --mv3",
-    "release:zip": "node ./scripts/wxt-run.mjs zip && node ./scripts/wxt-run.mjs zip -b firefox",
+    "zip:store": "node ./scripts/store-zip.mjs",
+    "release:zip": "node ./scripts/wxt-run.mjs zip && node ./scripts/wxt-run.mjs zip -b firefox && node ./scripts/store-zip.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "check-types": "tsc --noEmit",
     "test": "vitest run",

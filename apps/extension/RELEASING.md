@@ -44,15 +44,24 @@ GitHub → **Actions** → **extension release** → **Run workflow**:
 
 ## Local command
 
-Build both store zips locally (Chrome + Firefox) without CI:
+Build every store artifact locally without CI:
 
 ```bash
-pnpm --filter @bookmark-ai/extension release:zip
+pnpm --filter @bookmark-ai/extension release:zip   # = zip → zip:firefox → zip:store
 ```
 
-Outputs land in `apps/extension/.output/` (e.g. `bookmark-aiextension-<version>-chrome.zip`
-and the Firefox zip). Upload the **zip** by hand at the CWS dashboard if you ever need to
-publish outside CI.
+Outputs in `apps/extension/.output/` (all `production` mode — prod origins ONLY in the
+manifest, see `lib/app-origins.ts`):
+
+| File | Use |
+| --- | --- |
+| `bookmark-aiextension-<v>-chrome.zip` | CWS **updates** (what CI uploads) |
+| `bookmark-aiextension-<v>-chrome-store.zip` | CWS **first upload only** ("Add new item"): manifest `key` removed, private key inside as `key.pem` so the store keeps id `ffhbgpgebpmofjkehpjcemepbgcmoelp`. Needs `.keys/crx-key.pem` (gitignored) — `zip:store` aborts if it is missing or derives a different id. |
+| `bookmark-aiextension-<v>-firefox.zip` | AMO add-on package (MV2, gecko id `bookmark-ai@purecode.ai`) |
+| `bookmark-aiextension-<v>-sources.zip` | AMO **source code** upload: `apps/extension` + `packages/types` + root workspace files + generated `BUILD.md` (Node 22 / pnpm 10.34.1, install + `build:firefox` steps, output file hashes). Reproduces `firefox-mv2` byte-for-byte. Never contains `.keys/`, `*.pem`, `.env`, `.env.local`. |
+
+`pnpm zip:store` alone re-derives the last two from zips already present (`--chrome-only` /
+`--sources-only` to pick one).
 
 > The `.crx` file WXT also writes into `.output/` is for **self-hosted sideloading only**
 > (loading a signed package directly / enterprise policy install). The Chrome Web Store
@@ -67,12 +76,16 @@ Do these once; after that, pushes to `main` publish automatically.
 1. Register a Chrome Web Store developer account (one-time US$5 fee) at
    <https://chrome.google.com/webstore/devconsole>.
 2. **The very first upload must be done by hand** in the dashboard — CI can only *update* an
-   existing item, it cannot create one. Build the zip locally
+   existing item, it cannot create one. Build locally
    (`pnpm --filter @bookmark-ai/extension release:zip`), click **Add new item**, upload
-   `apps/extension/.output/*-chrome.zip`, fill in the listing (name, description, icons,
-   screenshots, privacy fields), and save/submit.
-3. Grab the **item id** from the dashboard URL
-   (`.../devconsole/.../items/<THIS_IS_THE_ID>/edit`). This is `CWS_EXTENSION_ID`.
+   `apps/extension/.output/*-chrome-store.zip` (the one WITH `key.pem` — this is what keeps
+   the pinned id; the plain `*-chrome.zip` would get a new id and break Clerk auth), fill in
+   the listing (name, description, icons, screenshots, privacy fields —
+   `STORE-LISTING.md`), and save/submit.
+3. **Verify the item id** in the dashboard URL
+   (`.../devconsole/.../items/<THIS_IS_THE_ID>/edit`) is `ffhbgpgebpmofjkehpjcemepbgcmoelp`.
+   This is `CWS_EXTENSION_ID`. If it differs, stop: register the new id in Clerk
+   `allowed_origins` + `apps/web/lib/authorized-parties.ts` before announcing.
 
 ### 2. OAuth client + refresh token for the CWS API
 
@@ -129,6 +142,20 @@ gh secret set CWS_REFRESH_TOKEN
 
 Until all four exist, CI stays in build-only mode and the `publish-chrome` job is skipped
 (no failure).
+
+### 4. Firefox Add-ons (AMO) — manual, not automated
+
+1. <https://addons.mozilla.org/developers/> → Submit a New Add-on → upload
+   `apps/extension/.output/*-firefox.zip`. The manifest already carries the mandatory
+   `data_collection_permissions` (required: `authenticationInfo`, `bookmarksInfo`,
+   `browsingActivity`) and `strict_min_version: "140.0"` — the AMO form's data questions must
+   match it. Pre-check locally:
+   `pnpm dlx web-ext@8 lint --source-dir apps/extension/.output/firefox-mv2 --no-input`
+   (0 errors; `UNSAFE_VAR_ASSIGNMENT` warnings come from bundled React/Clerk and are expected).
+2. When asked for **source code** (required — the bundle is minified), upload
+   `apps/extension/.output/*-sources.zip`; reviewers follow its `BUILD.md`.
+3. No AMO API credentials exist in this repo/CI (`WEB_EXT_API_KEY`/`_SECRET`), so Firefox
+   releases stay manual; bump `version` and re-run `release:zip` for each.
 
 ## Notes / caveats
 

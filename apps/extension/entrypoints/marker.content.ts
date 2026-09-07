@@ -1,5 +1,5 @@
 import { defineContentScript } from "#imports";
-import { APP_PAGE_MATCHES } from "@/lib/app-origins";
+import { appPageMatchesFor } from "@/lib/app-origins";
 import { keepExtensionMarked } from "@/lib/extension-marker";
 
 /**
@@ -19,9 +19,14 @@ import { keepExtensionMarked } from "@/lib/extension-marker";
  * makes Next log an "extra attribute from the server" warning). Landing at
  * document_idle costs at most one frame of the card being visible on a first
  * visit — the web app observes the attribute and caches the last-known answer.
+ *
+ * `matches` is mode-aware (lib/app-origins.ts): WXT evaluates these options at
+ * BUILD time with Vite's `import.meta.env.MODE` inlined, so a `production`
+ * build injects only on the two prod origins while dev/local builds keep
+ * localhost + the dev deployments — the same split as `host_permissions`.
  */
 export default defineContentScript({
-  matches: [...APP_PAGE_MATCHES],
+  matches: [...appPageMatchesFor(import.meta.env.MODE)],
   include: ["firefox", "safari"],
   main() {
     keepExtensionMarked(document);

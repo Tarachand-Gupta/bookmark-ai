@@ -45,29 +45,37 @@ Ordered so that items later in the list depend on items earlier in it.
 ## 2. Chrome Web Store
 
 - [ ] Developer account: Google account + one-time **$5** registration fee.
-- [ ] Package: `pnpm --filter @bookmark-ai/extension zip` → zip in
-      `apps/extension/.output/` (built with the prod env overrides above).
-- [ ] **Remove the manifest `key`** for the store build (CWS rejects packages that pin it).
-      To KEEP the extension id `ffhbgpgebpmofjkehpjcemepbgcmoelp` (Clerk `allowed_origins`
-      and `apps/web/lib/extension-bridge.ts` depend on it), include the private key as
-      `key.pem` in the zip root on the FIRST upload — verify this flow in the current CWS
-      docs at upload time. If the id changes anyway: update Clerk `allowed_origins` and the
-      `EXTENSION_ID` constant, and redeploy the web app.
-- [ ] Store listing: 128px icon, 1280×800 screenshots, description, category.
-- [ ] **Privacy policy URL** (required — the extension handles auth cookies) + a data-use
-      disclosure, and per-permission justifications for `tabs` (session snapshots), `cookies`
-      (Clerk session sync), `tabGroups` (session restore), `storage`, `activeTab`, and each
-      host permission.
-- [ ] Review typically takes 1–3 days; broad host permissions can slow it down, so keep
-      `host_permissions` to exactly the prod domains.
+- [x] Package (2026-09-07): `pnpm --filter @bookmark-ai/extension release:zip` →
+      `apps/extension/.output/bookmark-aiextension-<v>-chrome-store.zip` for the FIRST upload
+      (`zip:store` strips the manifest `key` and bundles `.keys/crx-key.pem` as `key.pem`, after
+      asserting it derives id `ffhbgpgebpmofjkehpjcemepbgcmoelp` — Clerk `allowed_origins` and
+      `apps/web/lib/authorized-parties.ts` depend on that id). Later updates upload the plain
+      `*-chrome.zip` (CI). VERIFY the item id in the dashboard URL after the upload; if it
+      differs, register the new id in Clerk + authorized-parties and redeploy the web app.
+- [x] **Prod-only permissions** (2026-09-07): production builds request exactly
+      `bookmark-ai.cloud` apex/www, `clerk.bookmark-ai.cloud`, `live.bookmark-ai.cloud`
+      (`lib/app-origins.ts`, mode-aware); localhost/dev origins exist only in dev/local builds.
+- [ ] Store listing: 128px icon, 1280×800 screenshots, description, category
+      (`apps/extension/STORE-LISTING.md`).
+- [ ] **Privacy policy URL** `https://www.bookmark-ai.cloud/privacy` (required — the extension
+      handles auth cookies) + a data-use disclosure, and per-permission justifications for
+      `tabs` (session snapshots), `cookies` (Clerk session sync), `tabGroups` (session restore),
+      `storage`, `activeTab`, and each host permission.
+- [ ] Review typically takes 1–3 days.
 
 ## 3. Firefox Add-ons (AMO)
 
 - [ ] Developer account: free.
-- [ ] Package: `pnpm --filter @bookmark-ai/extension zip:firefox` (MV2 build; gecko id
-      `bookmark-ai@purecode.ai` + data-collection manifest already set).
-- [ ] AMO requires **source code upload + build instructions** for bundled/minified
-      extensions (this repo qualifies: WXT/Vite build).
+- [x] Package (2026-09-07): `pnpm --filter @bookmark-ai/extension release:zip` →
+      `.output/bookmark-aiextension-<v>-firefox.zip` (MV2; gecko id `bookmark-ai@purecode.ai`;
+      `strict_min_version: "140.0"`; TRUTHFUL `data_collection_permissions.required` =
+      `authenticationInfo` + `bookmarksInfo` + `browsingActivity` — AMO rejects a wrong
+      declaration, and `technicalAndInteraction` may only ever be optional so it is not
+      declared; reasoning in `wxt.config.ts`). `web-ext lint` → 0 errors.
+- [x] **Source code upload** (2026-09-07): `.output/bookmark-aiextension-<v>-sources.zip`
+      (from `zip:store`) — apps/extension + packages/types + root workspace files + generated
+      `BUILD.md` (Node 22, pnpm 10.34.1, `install --frozen-lockfile`, `build:firefox`, output
+      hashes). Verified to rebuild `firefox-mv2` byte-for-byte.
 - [ ] Known gaps to resolve or accept before submitting:
       - `externally_connectable` is Chrome-only → the web app's "Open all in window/group"
         handoff doesn't reach the Firefox extension (users get the pop-up-blocker fallback).

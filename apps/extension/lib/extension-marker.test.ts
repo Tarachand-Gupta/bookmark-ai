@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { APP_PAGE_MATCHES } from "./app-origins";
 import {
   EXTENSION_MARKER_ATTR,
   EXTENSION_MARKER_VALUE,
@@ -68,21 +67,5 @@ describe("markExtensionPresent", () => {
   });
 });
 
-describe("APP_PAGE_MATCHES", () => {
-  /** Both detection channels read this one list (Chrome's
-   * externally_connectable in wxt.config.ts, the marker content script's
-   * `matches`), so a missing origin blinds detection on that origin. */
-  it("covers the app origins the web app is served from", () => {
-    expect(APP_PAGE_MATCHES).toContain("https://bookmark-ai.cloud/*");
-    expect(APP_PAGE_MATCHES).toContain("https://www.bookmark-ai.cloud/*");
-    expect(APP_PAGE_MATCHES).toContain("https://bookmark-ai-dev.vercel.app/*");
-    // Ports are ignored in match patterns → covers the dev server on :3000.
-    expect(APP_PAGE_MATCHES).toContain("http://localhost/*");
-  });
-
-  it("only lists page origins (no wildcard host)", () => {
-    for (const pattern of APP_PAGE_MATCHES) {
-      expect(pattern).toMatch(/^https?:\/\/[a-z0-9.-]+\/\*$/);
-    }
-  });
-});
+// The origin lists the marker's `matches` come from are pinned in
+// lib/app-origins.test.ts (mode-aware: production = prod origins only).

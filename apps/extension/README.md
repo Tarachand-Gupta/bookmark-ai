@@ -22,7 +22,9 @@ id + web origins to be listed in the Clerk instance's `allowed_origins`.
 | `entrypoints/background.ts` | service worker: API calls with auth, session restore (new window / `tabs.group`), message hub |
 | `lib/api.ts` | API client (token provider injected by the background) |
 | `lib/messages.ts` | typed message contracts between popup ⇄ background ⇄ web app |
-| `wxt.config.ts` | manifest: permissions (`tabs`, Chrome-only `tabGroups`), pinned key, `externally_connectable` |
+| `wxt.config.ts` | manifest: permissions (`tabs`, Chrome-only `tabGroups`), pinned key, `externally_connectable`, Firefox data-collection declaration |
+| `lib/app-origins.ts` | per-mode origins: a **production** build requests only `bookmark-ai.cloud` (apex + www), `clerk.bookmark-ai.cloud`, `live.bookmark-ai.cloud`; dev/local builds add localhost + the dev deployment |
+| `scripts/store-zip.mjs` | `pnpm zip:store` — CWS first-upload zip (`key` removed, `key.pem` at root) + AMO sources zip with `BUILD.md` |
 
 The API contract comes from the `@bookmark-ai/types` workspace package — inside this
 app's `node_modules` that's a **symlink** into `packages/types`, not a copy. Styling is
@@ -35,6 +37,7 @@ pnpm --filter @bookmark-ai/extension dev              # live-reload Chrome dev b
 pnpm --filter @bookmark-ai/extension build            # → .output/chrome-mv3
 pnpm --filter @bookmark-ai/extension build:firefox    # → .output/firefox-mv2
 pnpm --filter @bookmark-ai/extension build:safari     # → .output/safari-mv3
+pnpm --filter @bookmark-ai/extension release:zip      # store zips: chrome, firefox, chrome-store (key.pem), sources (AMO)
 ```
 
 - **Chrome / Edge / Arc**: `chrome://extensions` → Developer mode → Load unpacked → `.output/chrome-mv3`

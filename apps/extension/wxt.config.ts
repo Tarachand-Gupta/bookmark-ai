@@ -1,6 +1,6 @@
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "wxt";
-import { APP_PAGE_MATCHES } from "./lib/app-origins";
+import { appPageMatchesFor, hostPermissionsFor } from "./lib/app-origins";
 
 /**
  * THREE side-by-side build targets, each with its OWN pinned CRX key so the
@@ -48,40 +48,18 @@ function iconsFor(mode: string): Record<string, string> {
   );
 }
 
-/**
- * Hosts the extension needs to reach — the manifest's `host_permissions`.
- * On the MV2 (Firefox) target WXT folds these into `permissions`, which is
- * where Firefox expects host patterns in MV2; `lib/manifest-shim.ts` re-derives
- * a `host_permissions` view from there at runtime for the Clerk SDK.
- * A static SUPERSET so ONE manifest shape covers all three build targets.
- * - `http://localhost/*` — match patterns ignore ports, so this covers the web
- *   dev server at localhost:3000 (both Clerk syncHost and the local /api base) —
- *   the LOCAL target.
- * - `bookmark-ai.cloud` apex + www — production web app (prod target: API base +
- *   Clerk syncHost).
- * - `bookmark-ai-dev.vercel.app` — the dedicated DEV deployment (the `build:dev`
- *   app origin + its Clerk syncHost).
- * - Clerk frontend APIs the extension talks to directly — production (default)
- *   first, dev instance kept for the dev + local targets.
- * - `live.bookmark-ai.cloud` — the dedicated Live Sessions server (Fastify,
- *   separate from the Vercel-hosted /api/*). `http://localhost/*` above
- *   already covers a local live server for dev.
- */
-const HOST_PERMISSIONS = [
-  "http://localhost/*",
-  "https://bookmark-ai.cloud/*",
-  "https://www.bookmark-ai.cloud/*",
-  "https://bookmark-ai-dev.vercel.app/*",
-  "https://clerk.bookmark-ai.cloud/*",
-  "https://darling-baboon-13.clerk.accounts.dev/*",
-  "https://live.bookmark-ai.cloud/*",
-];
-
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   vite: () => ({
     plugins: [tailwindcss()],
   }),
+  zip: {
+    // WXT's own `-sources.zip` (Firefox default) holds only apps/extension —
+    // no packages/types, no lockfile — so a reviewer can't rebuild from it.
+    // `scripts/store-zip.mjs` (`pnpm zip:store`) writes the real AMO sources
+    // archive under the same name; keep WXT from racing it.
+    zipSources: false,
+  },
   manifest: ({ browser, manifestVersion, mode }) => ({
     name: targetFor(mode).name,
     icons: iconsFor(mode),
@@ -120,7 +98,14 @@ export default defineConfig({
       ...(browser === "firefox" ? ["bookmarks"] : []),
       ...(browser === "safari" ? ["scripting"] : []),
     ],
-    host_permissions: HOST_PERMISSIONS,
+    // MODE-AWARE (lib/app-origins.ts): a `production` build — every store zip —
+    // lists ONLY the four prod origins (apex + www, prod Clerk FAPI, live);
+    // `development`/`dev-remote` add localhost, the dev deployment and the dev
+    // Clerk FAPI. On the MV2 (Firefox) target WXT folds these into
+    // `permissions`, where Firefox expects host patterns in MV2;
+    // `lib/manifest-shim.ts` re-derives a `host_permissions` view from whatever
+    // host patterns are present at runtime for the Clerk SDK.
+    host_permissions: [...hostPermissionsFor(mode)],
     ...(browser === "chrome" && {
       // Per-target key → distinct, stable id per install (prod/dev/local).
       key: targetFor(mode).key,
@@ -138,13 +123,42 @@ export default defineConfig({
       //     content script on these origins.
       // Both of those targets get `entrypoints/marker.content.ts` instead, which
       // stamps a `<html>` attribute the page reads synchronously.
-      externally_connectable: { matches: [...APP_PAGE_MATCHES] },
+      // Mode-aware like host_permissions: production = apex + www only.
+      externally_connectable: { matches: [...appPageMatchesFor(mode)] },
     }),
     ...(browser === "firefox" && {
       browser_specific_settings: {
         gecko: {
           id: "bookmark-ai@purecode.ai",
-          data_collection_permissions: { required: ["none"] },
+          // Firefox 140 introduced the built-in data-consent UI that renders
+          // `data_collection_permissions`; AMO asks new submissions declaring
+          // any collection to require it.
+          strict_min_version: "140.0",
+          // TRUTHFUL declaration — AMO rejects a new add-on whose declaration
+          // understates what it does (mandatory since Nov 2025). Each category
+          // maps to a real code path:
+          // - authenticationInfo: the background mirrors the user's Clerk
+          //   sign-in (createClerkClient syncHost + lib/native-session.ts
+          //   `__client` cookie) and mints/stores a device token
+          //   (lib/device-token.ts) that authenticates every API call.
+          // - bookmarksInfo: saving the current tab (entrypoints/background.ts
+          //   SAVE_BOOKMARK → POST /api/bookmarks) and mirroring native bookmark
+          //   add/remove into the library (lib/native-sync.ts).
+          // - browsingActivity: whole-window tab snapshots (SAVE_SESSION →
+          //   POST /api/sessions) and, opt-in only, streaming the window's open
+          //   tabs as a live session (lib/live-*.ts, LIVE_SET_ENABLED).
+          // NOT declared — `technicalAndInteraction`: Mozilla's schema forbids
+          // it under `required` (addons-linter: "must be equal to one of the
+          // allowed values"; the category "must be optional"), and an optional
+          // grant the user can switch off would have to be honored. The
+          // browser/device/OS values we send (lib/detect.ts `detectSource()`)
+          // are not analytics: they are the user-visible "saved from" / device
+          // labels on the user's own bookmark, session and live-tab records,
+          // i.e. part of the bookmarksInfo/browsingActivity data above. The
+          // extension collects no usage, interaction or crash telemetry at all.
+          data_collection_permissions: {
+            required: ["authenticationInfo", "bookmarksInfo", "browsingActivity"],
+          },
         },
       },
     }),
