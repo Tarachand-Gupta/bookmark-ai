@@ -3,7 +3,6 @@ import { Alert, Image, Linking, ScrollView, StyleSheet, Text, View } from "react
 import { useClerk, useUser } from "@clerk/clerk-expo";
 import * as Application from "expo-application";
 import * as Clipboard from "expo-clipboard";
-import * as WebBrowser from "expo-web-browser";
 import { getApiUrl, SERVER_TARGET } from "../api";
 import { DeleteAccountSheet } from "../components/DeleteAccountSheet";
 import { AiSettingsGroup } from "../components/settings/AiSettingsGroup";
@@ -16,17 +15,7 @@ import {
   type ThemePreference,
 } from "../context/PreferencesContext";
 import { useAiPlan } from "../hooks/useAiPlan";
-
-// `www` is the canonical host (the apex 308s to it — see PROD_API_URL in api.ts).
-const WEB_URL = "https://www.bookmark-ai.cloud";
-/**
- * Both stores require the privacy policy to be reachable from INSIDE the app
- * (App Store guideline 5.1.1(i); Play's User Data policy), not only from the
- * store listing. Same URLs the listings will carry.
- */
-const PRIVACY_URL = `${WEB_URL}/privacy`;
-const TERMS_URL = `${WEB_URL}/terms`;
-const SUPPORT_EMAIL = "tara@purecode.ai";
+import { openWebPage, PRIVACY_URL, SUPPORT_EMAIL, TERMS_URL, WEB_URL } from "../lib/links";
 
 /** This binary's marketing version + build, e.g. "1.0.0 (1)" — what a support
  * reply needs first. expo-application reads CFBundleShortVersionString/
@@ -35,15 +24,6 @@ const SUPPORT_EMAIL = "tara@purecode.ai";
 const APP_VERSION = Application.nativeApplicationVersion
   ? `${Application.nativeApplicationVersion} (${Application.nativeBuildVersion ?? "—"})`
   : null;
-
-/** Legal pages open in the in-app browser sheet (SFSafariViewController /
- * Chrome Custom Tab) so the user lands back in Settings when they're done. A
- * refused URL falls through to the system browser; both failing is silent. */
-function openWebPage(url: string): void {
-  void WebBrowser.openBrowserAsync(url).catch(() =>
-    Linking.openURL(url).catch(() => undefined),
-  );
-}
 
 /** "Contact support" — the mail composer when a mail app exists, otherwise an
  * alert with the address and a Copy action, so the email is never a dead end

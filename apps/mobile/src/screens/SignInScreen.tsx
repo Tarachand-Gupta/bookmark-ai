@@ -17,6 +17,7 @@ import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 import { useFinishPendingSession } from "../hooks/useFinishPendingSession";
 import { SSO_REDIRECT_URL } from "../lib/clerk";
+import { openWebPage, PRIVACY_URL, TERMS_URL } from "../lib/links";
 
 // Completes the SSO browser round-trip when the app regains focus.
 WebBrowser.maybeCompleteAuthSession();
@@ -813,6 +814,34 @@ export function SignInScreen() {
             </Text>
           )}
         </View>
+
+        {/* Consent line — the disclosure both stores expect at the point an
+            account is created (App Store 5.1.1(i)/5.1.2(i): personal data and
+            saved links go to the server and to third-party AI; Play User Data
+            policy). Every path on this screen — Google, password, email code —
+            can create the account, so it sits under the whole form, on the
+            credentials step only (the code step is mid-flow). */}
+        {phase === "credentials" && !finishing && (
+          <Text style={[styles.consent, { color: colors.mutedForeground }]}>
+            By continuing you agree to the{" "}
+            <Text
+              onPress={() => openWebPage(TERMS_URL)}
+              accessibilityRole="link"
+              style={[styles.consentLink, { color: colors.foreground }]}
+            >
+              Terms of Service
+            </Text>{" "}
+            and{" "}
+            <Text
+              onPress={() => openWebPage(PRIVACY_URL)}
+              accessibilityRole="link"
+              style={[styles.consentLink, { color: colors.foreground }]}
+            >
+              Privacy Policy
+            </Text>
+            .
+          </Text>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -864,4 +893,8 @@ const styles = StyleSheet.create({
   codeInput: { textAlign: "center", fontSize: 22, letterSpacing: 6 },
   codeInputEmpty: { fontSize: 17, letterSpacing: 0 },
   error: { fontSize: 14, textAlign: "center", lineHeight: 19 },
+  // Pulled up against the form (the root's gap is sized for hero → form) and
+  // kept clear of the home indicator by the SafeAreaView around this screen.
+  consent: { fontSize: 13, lineHeight: 18, textAlign: "center", marginTop: -12 },
+  consentLink: { fontWeight: "600", textDecorationLine: "underline" },
 });
