@@ -57,6 +57,16 @@ xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
 
 Both paths are verified working.
 
+### Release builds
+
+`.github/workflows/macos-release.yml` builds the downloadable zip: tag `macos-v<MARKETING_VERSION>`
+(or dispatch), `xcodegen generate` → `xcodebuild test` → ad-hoc-signed Release build →
+`ditto -c -k --keepParent` → `BookmarkAI-<version>-macos.zip` + sha256 on the GitHub Release.
+Ad-hoc means Gatekeeper's "Open Anyway" on first launch until a Developer ID + notarization
+exist. Bump `MARKETING_VERSION` **and** `CURRENT_PROJECT_VERSION` first, then publish the
+record for the update banner. Full procedure: `docs/features/releases.md` → "Building and
+publishing downloads".
+
 ---
 
 ## Platform choices

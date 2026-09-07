@@ -1,0 +1,180 @@
+name: macos release
+
+# Builds the native SwiftUI Mac app (apps/macos) and attaches it to a GitHub
+# Release as a downloadable zip. This is the artifact `/api/app/releases`
+# (docs/features/releases.md) points Mac users at.
+#
+# TRIGGERS
+#   - tag push `macos-v<version>` (e.g. macos-v0.1.0) → the release for that tag.
+#   - workflow_dispatch with an optional `version` input; blank = the
+#     MARKETING_VERSION in apps/macos/project.yml. The tag `macos-v<version>` is
+#     created at the dispatched commit if it does not exist yet.
+#   In both cases the version MUST equal project.yml's MARKETING_VERSION — the
+#   app compares its own CFBundleShortVersionString against the published record,
+#   so a mislabeled zip would break the update banner. The job fails otherwise.
+#
+# SIGNING — ad-hoc (`CODE_SIGN_IDENTITY=-`), same as the documented local
+# fallback in apps/macos/README.md. There is no Developer ID certificate yet, so
+# the app is NOT notarized: macOS 14+ shows "Apple could not verify…" on first
+# launch and the user goes through System Settings ▸ Privacy & Security ▸ Open
+# Anyway (the release notes below spell it out). Notarization is a documented
+# follow-up (docs/features/releases.md → "Building and publishing downloads")
+# that needs a Developer ID Application cert + notarytool credentials as secrets.
+#
+# No secrets are required: uploads use the workflow's own GITHUB_TOKEN.
+
+on:
+  push:
+    tags: ["macos-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (blank = MARKETING_VERSION from apps/macos/project.yml)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: apps/macos
+
+jobs:
+  build-and-release:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version + build number
+        id: ver
+        run: |
+          set -euo pipefail
+          manifest_version="$(sed -n 's/^ *MARKETING_VERSION: *"\([^"]*\)".*/\1/p' project.yml | head -n1)"
+          build="$(sed -n 's/^ *CURRENT_PROJECT_VERSION: *"\([^"]*\)".*/\1/p' project.yml | head -n1)"
+          [ -n "$manifest_version" ] && [ -n "$build" ] || { echo "Could not read MARKETING_VERSION / CURRENT_PROJECT_VERSION from project.yml"; exit 1; }
+          case "${GITHUB_REF}" in
+            refs/tags/macos-v*) requested="${GITHUB_REF#refs/tags/macos-v}" ;;
+            *) requested="${{ github.event.inputs.version }}" ;;
+          esac
+          version="${requested:-$manifest_version}"
+          if [ "$version" != "$manifest_version" ]; then
+            echo "::error::Requested version $version but apps/macos/project.yml says MARKETING_VERSION $manifest_version — bump project.yml first."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build=$build"     >> "$GITHUB_OUTPUT"
+          echo "tag=macos-v$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing BookmarkAI $version (build $build) as tag macos-v$version"
+
+      - name: Xcode
+        run: |
+          xcodebuild -version
+          major="$(xcodebuild -version | sed -n 's/^Xcode \([0-9]*\).*/\1/p')"
+          [ "$major" -ge 16 ] || { echo "::error::Xcode 16+ required, found $major"; exit 1; }
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      - name: Unit tests (BookmarkAITests, ad-hoc signed)
+        run: |
+          set -o pipefail
+          xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI -configuration Debug \
+            -destination 'platform=macOS' -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= DEVELOPMENT_TEAM= \
+            test | tee build/test.log | grep -E 'Test Suite|Executed|error:|\*\* TEST'
+
+      - name: Release build (ad-hoc signed)
+        run: |
+          set -o pipefail
+          xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI -configuration Release \
+            -destination 'platform=macOS' -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= DEVELOPMENT_TEAM= \
+            build | tee build/build.log | grep -E 'error:|\*\* BUILD'
+          app=build/Build/Products/Release/BookmarkAI.app
+          codesign --verify --deep --strict "$app"
+          codesign -dv --verbose=2 "$app" 2>&1 | grep -E 'Signature|Identifier|flags'
+          plist="$app/Contents/Info.plist"
+          got="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$plist")"
+          [ "$got" = "${{ steps.ver.outputs.version }}" ] || { echo "::error::Built app reports $got, expected ${{ steps.ver.outputs.version }}"; exit 1; }
+
+      - name: Package (ditto zip + sha256)
+        id: pkg
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          zip="BookmarkAI-${{ steps.ver.outputs.version }}-macos.zip"
+          ditto -c -k --keepParent build/Build/Products/Release/BookmarkAI.app "dist/$zip"
+          (cd dist && shasum -a 256 "$zip" > "$zip.sha256" && cat "$zip.sha256")
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BookmarkAI-${{ steps.ver.outputs.version }}-macos
+          path: |
+            apps/macos/dist/*.zip
+            apps/macos/dist/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Release notes
+        run: |
+          cat > dist/notes.md <<EOF
+          # Bookmark AI for macOS ${{ steps.ver.outputs.version }} (build ${{ steps.ver.outputs.build }})
+
+          Native SwiftUI app for the Bookmark AI library. **Requires macOS 14 Sonoma or newer** (Apple silicon and Intel).
+
+          ## Install
+
+          1. Download \`${{ steps.pkg.outputs.zip }}\` below and unzip it.
+          2. Drag **BookmarkAI.app** to your Applications folder and open it.
+          3. Sign in with your Bookmark AI account (the app talks to https://www.bookmark-ai.cloud).
+
+          ## First launch on macOS 14/15/26 — "Apple could not verify…"
+
+          This build is **ad-hoc signed and not notarized** (no Developer ID yet), so Gatekeeper stops the first launch.
+          Either:
+
+          - Open it once, dismiss the dialog, then go to **System Settings ▸ Privacy & Security**, scroll to the
+            *Security* section and click **Open Anyway** next to "BookmarkAI was blocked…", then confirm; **or**
+          - in Terminal: \`xattr -d com.apple.quarantine /Applications/BookmarkAI.app\` and open it normally.
+
+          You only have to do this once per download. The app is sandboxed (network client + user-selected files only).
+
+          ## Updates
+
+          The app checks \`/api/app/releases\` at launch and every 6 hours and shows an in-app **update banner**
+          with a Download button when a newer version is published here. Replace the app in Applications with the new zip's copy.
+
+          ## Verify
+
+          \`shasum -a 256 -c ${{ steps.pkg.outputs.zip }}.sha256\` (with both files in the same directory).
+          EOF
+
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG exists — replacing assets + notes"
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file dist/notes.md \
+              --title "Bookmark AI for macOS ${{ steps.ver.outputs.version }}"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Bookmark AI for macOS ${{ steps.ver.outputs.version }}" --notes-file dist/notes.md
+          fi
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            "dist/${{ steps.pkg.outputs.zip }}" "dist/${{ steps.pkg.outputs.zip }}.sha256"
+          echo "Download URL: https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/${{ steps.pkg.outputs.zip }}"
+          echo "Publish the record: PUT /api/admin/releases/macos {\"version\":\"${{ steps.ver.outputs.version }}\",\"build\":\"${{ steps.ver.outputs.build }}\",\"downloadUrl\":\"https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG\"}"

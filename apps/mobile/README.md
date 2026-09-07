@@ -143,6 +143,16 @@ export ANDROID_HOME=$HOME/Library/Android/sdk
 npx expo run:android
 ```
 
+### Release builds (Android APK download)
+
+`.github/workflows/android-release.yml` builds the sideload APK: tag `android-v<expo.version>` (or
+dispatch), `expo prebuild` → `gradlew assembleRelease` signed with the release keystore
+(`plugins/withReleaseSigning.js` reads `ANDROID_KEYSTORE_*` from env / GitHub secrets, debug
+keystore when unset) → `bookmark-ai-<version>-android.apk` + sha256 on the GitHub Release. A
+release bundle targets production by itself (`__DEV__` false). Bump `expo.version` **and**
+`android.versionCode` first. Keystore custody, secrets and the local recipe:
+`docs/features/releases.md` → "Building and publishing downloads". Store builds stay `eas build`.
+
 The iOS simulator reaches the local API (the web dev server) at `localhost:3000`; the
 Android emulator sees the host machine as `10.0.2.2` (handled in `src/api.ts`).
 

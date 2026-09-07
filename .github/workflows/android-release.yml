@@ -1,0 +1,241 @@
+name: android release
+
+# Builds the Expo app (apps/mobile) as a RELEASE-signed Android APK and attaches
+# it to a GitHub Release — the sideload download `/api/app/releases` points
+# Android users at (docs/features/releases.md). The Play Store path stays
+# `eas build` (eas.json); this is the direct-download build.
+#
+# TRIGGERS
+#   - tag push `android-v<version>` (e.g. android-v1.0.0).
+#   - workflow_dispatch with an optional `version` input; blank = `expo.version`
+#     in apps/mobile/app.json. The tag is created at the dispatched commit if it
+#     does not exist yet.
+#   Either way the version MUST equal app.json's `expo.version` (the app compares
+#   `nativeApplicationVersion` against the published record) — the job fails on
+#   a mismatch instead of shipping a mislabeled APK.
+#
+# SERVER TARGET — a release bundle has `__DEV__ == false`, so src/api.ts picks
+# `production` (https://www.bookmark-ai.cloud + the prod Clerk instance) by
+# itself. The job asserts no EXPO_PUBLIC_* override is set.
+#
+# SIGNING — the Expo template signs `release` with the DEBUG keystore;
+# apps/mobile/plugins/withReleaseSigning.js (registered in app.json) makes the
+# release build type read the real keystore from these env vars, restored here
+# from repository secrets of the same names:
+#
+#   ANDROID_KEYSTORE_BASE64     base64 of .keys/android-release.keystore (repo root, gitignored)
+#   ANDROID_KEYSTORE_PASSWORD   store password        (from .keys/android-release.env)
+#   ANDROID_KEY_ALIAS           key alias, "bookmark-ai"
+#   ANDROID_KEY_PASSWORD        key password
+#
+# All four are REQUIRED here — a missing one fails the job rather than silently
+# producing a debug-signed "release" (which no user could ever update in place).
+# Losing the keystore means existing installs cannot update: keep .keys/ backed up.
+
+on:
+  push:
+    tags: ["android-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (blank = expo.version from apps/mobile/app.json)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Never let a stray override repoint a release build.
+      EXPO_PUBLIC_SERVER_TARGET: ""
+      EXPO_PUBLIC_API_URL: ""
+      EXPO_PUBLIC_LIVE_API_URL: ""
+      EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ""
+      EXPO_NO_TELEMETRY: "1"
+      CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version + versionCode
+        id: ver
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          manifest_version="$(node -p 'require("./app.json").expo.version')"
+          vcode="$(node -p 'require("./app.json").expo.android.versionCode')"
+          case "${GITHUB_REF}" in
+            refs/tags/android-v*) requested="${GITHUB_REF#refs/tags/android-v}" ;;
+            *) requested="${{ github.event.inputs.version }}" ;;
+          esac
+          version="${requested:-$manifest_version}"
+          if [ "$version" != "$manifest_version" ]; then
+            echo "::error::Requested version $version but apps/mobile/app.json says expo.version $manifest_version — bump app.json first."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "vcode=$vcode"     >> "$GITHUB_OUTPUT"
+          echo "tag=android-v$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing Bookmark AI $version (versionCode $vcode) as tag android-v$version"
+
+      - name: Check signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=""
+          for v in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing — set them from .keys/android-release.env (see docs/features/releases.md). Refusing to build a debug-signed release."
+            exit 1
+          fi
+          echo "All four ANDROID_* signing secrets present."
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install (mobile subgraph)
+        run: pnpm --filter @bookmark-ai/mobile... install --frozen-lockfile
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Prebuild (expo prebuild → android/, with the release-signing plugin)
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          npx expo prebuild --platform android --no-install
+          grep -q 'signingConfig signingConfigs.release' android/app/build.gradle \
+            || { echo "::error::withReleaseSigning did not patch android/app/build.gradle"; exit 1; }
+          echo "release build type → signingConfigs.release (env-driven)"
+
+      - name: Restore the release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          [ -s "$RUNNER_TEMP/release.keystore" ] || { echo "::error::decoded keystore is empty"; exit 1; }
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Gradle assembleRelease (signed)
+        working-directory: apps/mobile/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --no-daemon --console=plain \
+            | tee "$RUNNER_TEMP/gradle.log" | grep -E 'withReleaseSigning|BUILD |FAILED|error:|> Task :app:(package|assemble)'
+          grep -q '\[withReleaseSigning\] release signing:' "$RUNNER_TEMP/gradle.log" \
+            || { echo "::error::Gradle did not pick up the release keystore (saw the debug fallback?)"; exit 1; }
+
+      - name: Package (rename, verify signature, sha256)
+        id: pkg
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          apk="bookmark-ai-${{ steps.ver.outputs.version }}-android.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/$apk"
+          bt="$ANDROID_HOME/build-tools/36.0.0"
+          "$bt/apksigner" verify --verbose --print-certs "dist/$apk" | tee dist/apksigner.txt \
+            | grep -E 'Verifies|Verified using|Signer #1 certificate (DN|SHA-256)'
+          grep -q 'CN=Bookmark AI' dist/apksigner.txt || { echo "::error::APK is not signed with the Bookmark AI release certificate"; exit 1; }
+          grep -q 'androiddebugkey\|CN=Android Debug' dist/apksigner.txt && { echo "::error::APK is DEBUG-signed"; exit 1; }
+          "$bt/aapt2" dump badging "dist/$apk" | grep -E "^package|sdkVersion|targetSdkVersion" | tee dist/badging.txt
+          min_sdk="$(sed -n "s/^minSdkVersion:'\([0-9]*\)'.*/\1/p" dist/badging.txt)"
+          got_ver="$(sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p" dist/badging.txt)"
+          [ "$got_ver" = "${{ steps.ver.outputs.version }}" ] || { echo "::error::APK versionName $got_ver ≠ ${{ steps.ver.outputs.version }}"; exit 1; }
+          (cd dist && shasum -a 256 "$apk" > "$apk.sha256" && cat "$apk.sha256")
+          echo "apk=$apk" >> "$GITHUB_OUTPUT"
+          echo "min_sdk=$min_sdk" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bookmark-ai-${{ steps.ver.outputs.version }}-android
+          path: |
+            apps/mobile/dist/*.apk
+            apps/mobile/dist/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Release notes
+        working-directory: apps/mobile
+        run: |
+          case "${{ steps.pkg.outputs.min_sdk }}" in
+            24) android_name="Android 7.0 (Nougat)" ;; 26) android_name="Android 8.0 (Oreo)" ;;
+            28) android_name="Android 9 (Pie)" ;; 29) android_name="Android 10" ;; 30) android_name="Android 11" ;;
+            31) android_name="Android 12" ;; 33) android_name="Android 13" ;; 34) android_name="Android 14" ;;
+            35) android_name="Android 15" ;; 36) android_name="Android 16" ;; *) android_name="API ${{ steps.pkg.outputs.min_sdk }}" ;;
+          esac
+          cat > dist/notes.md <<EOF
+          # Bookmark AI for Android ${{ steps.ver.outputs.version }} (versionCode ${{ steps.ver.outputs.vcode }})
+
+          The Bookmark AI mobile app as a direct-download APK. **Requires ${android_name} or newer** (API ${{ steps.pkg.outputs.min_sdk }}+; arm64-v8a, armeabi-v7a, x86, x86_64).
+          It talks to https://www.bookmark-ai.cloud — sign in with your Bookmark AI account.
+
+          ## Install ("unknown sources")
+
+          1. Download \`${{ steps.pkg.outputs.apk }}\` on the phone (or copy it over).
+          2. Open it from the Files app / the download notification. Android asks to allow installs from this
+             source the first time: **Settings ▸ Apps ▸ Special app access ▸ Install unknown apps** (Android 8+),
+             enable it for your browser or Files app, then go back and tap **Install**.
+          3. Play Protect may warn that it doesn't recognise the developer — choose **Install anyway**.
+
+          ## Updates
+
+          The app checks \`/api/app/releases\` at launch and shows an in-app **update banner** when a newer version is
+          published here. Installing a newer APK over the current one keeps your sign-in (same signing key).
+
+          ## Verify
+
+          \`sha256sum -c ${{ steps.pkg.outputs.apk }}.sha256\` (with both files in the same directory).
+          EOF
+
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG exists — replacing assets + notes"
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file dist/notes.md \
+              --title "Bookmark AI for Android ${{ steps.ver.outputs.version }}"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Bookmark AI for Android ${{ steps.ver.outputs.version }}" --notes-file dist/notes.md
+          fi
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            "dist/${{ steps.pkg.outputs.apk }}" "dist/${{ steps.pkg.outputs.apk }}.sha256"
+          echo "Download URL: https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/${{ steps.pkg.outputs.apk }}"
+          echo "Publish the record: PUT /api/admin/releases/android {\"version\":\"${{ steps.ver.outputs.version }}\",\"build\":\"${{ steps.ver.outputs.vcode }}\",\"downloadUrl\":\"https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/${{ steps.pkg.outputs.apk }}\"}"

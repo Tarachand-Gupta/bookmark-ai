@@ -55,3 +55,7 @@ openmemory.md
 
 # Local capture/QA work dirs (screenshots, browser profiles, scratch scripts) — never committed
 **/.work/
+
+# Private signing material (Android release keystore + its passwords, CRX keys).
+# Never committed, never uploaded (also in .vercelignore). See docs/features/releases.md.
+/.keys/

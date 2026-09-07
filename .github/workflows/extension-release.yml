@@ -13,6 +13,16 @@ name: extension release
 #
 # ONE-TIME SETUP + secret list: see apps/extension/RELEASING.md.
 #
+# GITHUB RELEASE (job `github-release`, no secrets needed — GITHUB_TOKEN only):
+#   attaches the three sideload/AMO zips built by `release:zip` — chrome, firefox
+#   and the AMO sources zip — to the GitHub Release `extension-v<version>`
+#   (version = apps/extension/package.json). On a push to main it runs ONLY when
+#   that tag does not exist yet (so every version is released once, and a fix
+#   pushed under the same version leaves the published release alone); on a
+#   dispatch it always creates-or-updates (assets --clobber). The
+#   `*-chrome-store.zip` (contains the private key.pem, needs .keys/ which CI
+#   never has) is asserted ABSENT — it must never be attached to a release.
+#
 # Required repo secrets for the publish job (job is skipped if any is missing):
 #   CWS_EXTENSION_ID  — the item id from the Chrome Web Store dashboard URL
 #   CWS_CLIENT_ID     — Google OAuth 2.0 client id (Desktop app)
@@ -66,6 +76,24 @@ jobs:
 
       - name: Build + zip (firefox)
         run: pnpm --filter @bookmark-ai/extension zip:firefox
+
+      - name: AMO sources zip (no key material — the script asserts it)
+        # `--sources-only` skips the chrome-store zip, which needs .keys/crx-key.pem
+        # (never present in CI) and must never leave this machine anyway.
+        run: pnpm --filter @bookmark-ai/extension zip:store --sources-only
+
+      - name: Assert the zips carry no private key
+        working-directory: apps/extension/.output
+        run: |
+          set -euo pipefail
+          ls -la *.zip
+          if ls *-chrome-store.zip >/dev/null 2>&1; then echo "::error::a *-chrome-store.zip (contains key.pem) was built in CI"; exit 1; fi
+          for z in *.zip; do
+            if unzip -Z1 "$z" | grep -Eq '(^|/)(key\.pem|.*\.pem|\.keys/.*|\.env|\.env\.local)$'; then
+              echo "::error::$z contains key/env material"; unzip -Z1 "$z" | grep -E '\.pem|\.keys|\.env'; exit 1
+            fi
+          done
+          echo "OK: $(ls *.zip | wc -l | tr -d ' ') zips, no key material"
 
       - name: Upload store zips
         uses: actions/upload-artifact@v4
@@ -193,3 +221,93 @@ jobs:
           fi
           echo "Published — item queued by the Chrome Web Store (may require review before going live)."
           echo "::endgroup::"
+
+  github-release:
+    # Attach the chrome / firefox / sources zips to the GitHub Release
+    # `extension-v<version>`. push→main: only if that tag is new; dispatch: always.
+    needs: verify-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version + whether the tag exists
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./apps/extension/package.json").version')"
+          tag="extension-v$version"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then exists=true; else exists=false; fi
+          if [ "${{ github.event_name }}" = "push" ] && [ "$exists" = "true" ]; then
+            echo "Tag $tag already exists — push to main does not re-release. Dispatch the workflow to update it."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "exists=$exists" >> "$GITHUB_OUTPUT"
+
+      - name: Download zips
+        if: steps.ver.outputs.run == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-zips
+          path: dist
+
+      - name: Pick the three release assets (never the chrome-store zip)
+        if: steps.ver.outputs.run == 'true'
+        id: assets
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.version }}"
+          ls -la dist
+          if ls dist/*-chrome-store.zip >/dev/null 2>&1; then echo "::error::refusing: a *-chrome-store.zip (private key inside) is present"; exit 1; fi
+          chrome="dist/bookmark-aiextension-$v-chrome.zip"
+          firefox="dist/bookmark-aiextension-$v-firefox.zip"
+          sources="dist/bookmark-aiextension-$v-sources.zip"
+          for f in "$chrome" "$firefox" "$sources"; do
+            [ -f "$f" ] || { echo "::error::missing $f — does package.json version match the built zips?"; exit 1; }
+            unzip -Z1 "$f" | grep -Eq '\.pem$|(^|/)\.keys/' && { echo "::error::$f contains key material"; exit 1; }
+          done
+          (cd dist && shasum -a 256 "$(basename "$chrome")" "$(basename "$firefox")" "$(basename "$sources")" | tee "bookmark-aiextension-$v-SHA256SUMS.txt")
+          echo "files=$chrome $firefox $sources dist/bookmark-aiextension-$v-SHA256SUMS.txt" >> "$GITHUB_OUTPUT"
+
+      - name: Release notes
+        if: steps.ver.outputs.run == 'true'
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          cat > dist/notes.md <<EOF
+          # Bookmark AI browser extension $v
+
+          Save the current tab (or a whole window as a session) to your Bookmark AI library. Signs in by mirroring
+          your https://www.bookmark-ai.cloud session — no in-extension sign-in.
+
+          | File | Use |
+          | --- | --- |
+          | \`bookmark-aiextension-$v-chrome.zip\` | Chrome / Edge / Brave (MV3). Unzip, then **chrome://extensions ▸ Developer mode ▸ Load unpacked** and pick the folder. The Chrome Web Store listing is the recommended install when available. |
+          | \`bookmark-aiextension-$v-firefox.zip\` | Firefox (MV2, id \`bookmark-ai@purecode.ai\`). Temporary load via **about:debugging ▸ This Firefox ▸ Load Temporary Add-on**; a permanent install needs the AMO-signed build. |
+          | \`bookmark-aiextension-$v-sources.zip\` | Reproducible source of the Firefox build (\`BUILD.md\` inside) — what is uploaded to AMO's source-code review. |
+
+          Verify: \`shasum -a 256 -c bookmark-aiextension-$v-SHA256SUMS.txt\`.
+          EOF
+
+      - name: Create or update the GitHub Release
+        if: steps.ver.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.ver.outputs.exists }}" = "true" ]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file dist/notes.md \
+              --title "Bookmark AI extension ${{ steps.ver.outputs.version }}"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Bookmark AI extension ${{ steps.ver.outputs.version }}" --notes-file dist/notes.md
+          fi
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber ${{ steps.assets.outputs.files }}
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
