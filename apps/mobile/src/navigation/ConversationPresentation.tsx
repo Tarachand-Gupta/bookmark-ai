@@ -12,6 +12,11 @@ import { ModalSafeArea } from "./ModalSafeArea";
  * `target === null` = closed. The target is passed rather than kept here so the
  * Ask AI tab stays the single owner of "which conversation is open", and so the
  * whole thread unmounts on close (a closed modal must not keep a live stream).
+ *
+ * `overFullScreen` for the same reason as SettingsPresentation (see the note
+ * there): a `fullScreen` presentation detaches the app's root view, which is
+ * the only thing that tells React Native about an OS light/dark switch — the
+ * thread would stay in the old theme until closed.
  */
 export function ConversationPresentation({
   target,
@@ -26,7 +31,7 @@ export function ConversationPresentation({
     <Modal
       visible={target !== null}
       animationType="slide"
-      presentationStyle="fullScreen"
+      presentationStyle="overFullScreen"
       // Android's hardware/gesture back closes the thread (no unsaved state to
       // lose — every turn is persisted server-side as it streams).
       onRequestClose={() => onClose(false)}

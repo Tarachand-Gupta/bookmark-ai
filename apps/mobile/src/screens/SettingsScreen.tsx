@@ -15,6 +15,7 @@ import {
   type ThemePreference,
 } from "../context/PreferencesContext";
 import { useAiPlan } from "../hooks/useAiPlan";
+import { useContentWidth } from "../hooks/useContentWidth";
 import { openWebPage, PRIVACY_URL, SUPPORT_EMAIL, TERMS_URL, WEB_URL } from "../lib/links";
 
 /** This binary's marketing version + build, e.g. "1.0.0 (1)" — what a support
@@ -59,6 +60,8 @@ const SERVER_HOST = getApiUrl().replace(/^https?:\/\//, "");
 export function SettingsScreen() {
   const { colors } = useAppTheme();
   const { themePreference, setThemePreference } = usePreferences();
+  // Tablet widths: the groups sit in the shared centered column (0 on phones).
+  const { inset } = useContentWidth();
   const { user } = useUser();
   const { signOut } = useClerk();
   const [avatarFailed, setAvatarFailed] = useState(false);
@@ -113,15 +116,30 @@ export function SettingsScreen() {
     <>
       <ScrollView
         style={{ backgroundColor: colors.background }}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingHorizontal: CONTENT_GUTTER + inset }]}
       >
         <View style={styles.profile}>
           {user?.imageUrl && !avatarFailed ? (
-            <Image
-              source={{ uri: user.imageUrl }}
-              onError={() => setAvatarFailed(true)}
-              style={styles.avatarImage}
-            />
+            // The picture gets a hairline RING, never shown bare. Profile images
+            // are routinely a white silhouette on a colored disc (Google's default
+            // avatar, proxied by Clerk — Tara's own), and on the light theme the
+            // silhouette's white body ran straight into the white page: the disc
+            // read as cut off flat at the bottom with the figure spilling out.
+            // Dark mode hid the problem (the same image was a clean circle), which
+            // is why it looked device-specific in QA. The ring draws the circle's
+            // edge on every background; it's an overlay so the image keeps its
+            // full 64pt and nothing shifts.
+            <View style={styles.avatarFrame}>
+              <Image
+                source={{ uri: user.imageUrl }}
+                onError={() => setAvatarFailed(true)}
+                style={styles.avatarImage}
+              />
+              <View
+                pointerEvents="none"
+                style={[styles.avatarRing, { borderColor: colors.border }]}
+              />
+            </View>
           ) : (
             <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
               <Symbol
@@ -257,20 +275,40 @@ export function SettingsScreen() {
   );
 }
 
+/** The list's own gutter; the content column's inset is added on tablets. */
+const CONTENT_GUTTER = 20;
+const AVATAR_SIZE = 64;
+
 const styles = StyleSheet.create({
   // Presented full-screen under its own header, so this is plain list padding —
   // no large title above it and no floating tab bar below it to clear.
-  content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 48 },
+  content: { paddingHorizontal: CONTENT_GUTTER, paddingTop: 8, paddingBottom: 48 },
   profile: { alignItems: "center", gap: 4, paddingVertical: 24 },
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 6,
   },
-  avatarImage: { width: 64, height: 64, borderRadius: 32, marginBottom: 6 },
+  avatarFrame: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    overflow: "hidden",
+    marginBottom: 6,
+  },
+  avatarImage: { width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2 },
+  avatarRing: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: AVATAR_SIZE / 2,
+    borderWidth: 1,
+  },
   profileName: { fontSize: 20, fontWeight: "600" },
   profileMeta: { fontSize: 13 },
 });

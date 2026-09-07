@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChatThread } from "../components/chat/ChatThread";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
+import { useContentWidth } from "../hooks/useContentWidth";
 import { useConversation } from "../hooks/useConversation";
 
 /** What the Ask AI tab asked to open: a fresh thread, or a stored one. */
@@ -29,6 +30,9 @@ export function ConversationScreen({
 }) {
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
+  // Tablet widths: the Back button sits over the content column's edge, in line
+  // with the composer's paperclip below it (the title stays screen-centered).
+  const { inset } = useContentWidth();
   const existingId = target.kind === "existing" ? target.id : null;
   const detail = useConversation(existingId);
   // Whether anything happened worth refreshing the list for. A ref, not state:
@@ -51,7 +55,12 @@ export function ConversationScreen({
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      <View
+        style={[
+          styles.header,
+          { borderBottomColor: colors.border, paddingHorizontal: HEADER_GUTTER + inset },
+        ]}
+      >
         <Pressable
           onPress={() => onClose(changed.current)}
           hitSlop={12}
@@ -107,13 +116,16 @@ export function ConversationScreen({
   );
 }
 
+/** The header's own gutter; the content column's inset is added on tablets. */
+const HEADER_GUTTER = 12;
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: HEADER_GUTTER,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },

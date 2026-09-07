@@ -10,6 +10,7 @@ import { Symbol } from "../components/Symbol";
 import { UpdateBanner } from "../components/UpdateBanner";
 import { useAppTheme } from "../context/PreferencesContext";
 import { useAppUpdate } from "../hooks/useAppUpdate";
+import { useContentWidth } from "../hooks/useContentWidth";
 import { useDashboard } from "../hooks/useDashboard";
 import { useLiveDevices } from "../hooks/useLiveDevices";
 import { releaseKey } from "../lib/appUpdate";
@@ -57,6 +58,9 @@ export function HomeScreen({
 }) {
   const { colors, radius } = useAppTheme();
   const tabBarClearance = useTabBarClearance();
+  // Tablet widths: the whole column (header, search field, cards, rows) is
+  // capped and centered by ONE inset on the scroll content; 0 on phones.
+  const { inset } = useContentWidth();
   const onScroll = useTabBarScroll();
   const dash = useDashboard(active);
   // A newer build published for this platform (§12) — Home is the landing tab
@@ -95,7 +99,7 @@ export function HomeScreen({
   return (
     <ScrollView
       style={{ backgroundColor: colors.background }}
-      contentContainerStyle={{ paddingBottom: tabBarClearance }}
+      contentContainerStyle={{ paddingBottom: tabBarClearance, paddingHorizontal: inset }}
       onScroll={onScroll}
       scrollEventThrottle={16}
       refreshControl={

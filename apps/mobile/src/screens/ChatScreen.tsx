@@ -16,6 +16,7 @@ import { ConversationRow } from "../components/chat/ConversationRow";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 import { useChatConversations } from "../hooks/useChatConversations";
+import { useContentWidth } from "../hooks/useContentWidth";
 import { ConversationPresentation } from "../navigation/ConversationPresentation";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 import type { ConversationTarget } from "./ConversationScreen";
@@ -34,6 +35,8 @@ import type { ConversationTarget } from "./ConversationScreen";
 export function ChatScreen({ active = true }: { active?: boolean }) {
   const { colors, radius } = useAppTheme();
   const tabBarClearance = useTabBarClearance();
+  // Tablet widths: header, search field and rows share the centered column.
+  const { inset } = useContentWidth();
   const onScroll = useTabBarScroll();
   const history = useChatConversations(active);
 
@@ -176,7 +179,7 @@ export function ChatScreen({ active = true }: { active?: boolean }) {
         onScrollBeginDrag={Keyboard.dismiss}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingBottom: tabBarClearance }}
+        contentContainerStyle={{ paddingBottom: tabBarClearance, paddingHorizontal: inset }}
       />
       <ConversationPresentation target={target} onClose={closeThread} />
     </View>

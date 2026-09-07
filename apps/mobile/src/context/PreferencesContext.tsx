@@ -2,10 +2,11 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useColorScheme } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SERVER_TARGET, type ServerTarget } from "../api";
+import { resolveDark, type ThemePreference } from "../lib/appearance";
 import { darkColors, lightColors, radius, type Theme } from "../theme";
 import type { ViewMode } from "../components/SegmentedControl";
 
-export type ThemePreference = "system" | "light" | "dark";
+export type { ThemePreference } from "../lib/appearance";
 
 interface Preferences {
   themePreference: ThemePreference;
@@ -28,6 +29,10 @@ const THEME_KEY = "bookmark-ai:theme";
 const VIEW_KEY = "bookmark-ai:view";
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
+  // The live OS scheme. Every themed surface — the presented Settings and chat
+  // modals included — is a React descendant of this provider, so a change here
+  // repaints them all in place. What can STOP this updating is native: see the
+  // note on `resolveDark` about full-screen modals and `traitCollectionDidChange`.
   const system = useColorScheme();
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>("system");
   const [viewMode, setViewModeState] = useState<ViewMode>("list");
@@ -53,7 +58,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   };
 
   const value = useMemo<Preferences>(() => {
-    const dark = themePreference === "system" ? system === "dark" : themePreference === "dark";
+    const dark = resolveDark(themePreference, system);
     return {
       themePreference,
       setThemePreference,

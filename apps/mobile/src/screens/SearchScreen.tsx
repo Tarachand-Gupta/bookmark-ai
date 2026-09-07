@@ -17,6 +17,7 @@ import { SegmentedControl } from "../components/SegmentedControl";
 import { SessionCard } from "../components/SessionCard";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
+import { useContentWidth } from "../hooks/useContentWidth";
 import type { LiveDeviceMatchGroup } from "../hooks/useLiveSearchMatches";
 import { useLiveSearchMatches } from "../hooks/useLiveSearchMatches";
 import { useSearch } from "../hooks/useSearch";
@@ -38,6 +39,8 @@ export function SearchScreen({
 }) {
   const { colors, radius } = useAppTheme();
   const tabBarClearance = useTabBarClearance();
+  // Tablet widths: the field and the result lists share the centered column.
+  const { inset } = useContentWidth();
   const onScroll = useTabBarScroll();
   const search = useSearch();
   // Live devices are searched entirely client-side and independently of
@@ -104,7 +107,7 @@ export function SearchScreen({
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingHorizontal: GUTTER + inset }]}>
         <Text style={[styles.largeTitle, { color: colors.foreground }]}>Search</Text>
         <View style={[styles.field, { backgroundColor: colors.muted, borderRadius: radius.lg }]}>
           <Symbol name="magnifyingglass" size={17} color={colors.mutedForeground} fallback="⌕" />
@@ -158,7 +161,11 @@ export function SearchScreen({
           onScrollBeginDrag={Keyboard.dismiss}
           onScroll={onScroll}
           scrollEventThrottle={16}
-          contentContainerStyle={{ paddingTop: 12, paddingBottom: tabBarClearance }}
+          contentContainerStyle={{
+            paddingTop: 12,
+            paddingBottom: tabBarClearance,
+            paddingHorizontal: inset,
+          }}
           renderItem={({ item }) =>
             item.kind === "live" ? (
               <LiveSearchMatchGroup group={item.group} />
@@ -232,7 +239,7 @@ export function SearchScreen({
         onScrollBeginDrag={Keyboard.dismiss}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingBottom: tabBarClearance }}
+        contentContainerStyle={{ paddingBottom: tabBarClearance, paddingHorizontal: inset }}
         ListEmptyComponent={
           <View style={styles.empty}>
             {hasQuery && !search.searching ? (
@@ -264,9 +271,12 @@ export function SearchScreen({
   );
 }
 
+/** The screen's own gutter; the content column's inset is added on tablets. */
+const GUTTER = 20;
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { gap: 12, paddingTop: 8, paddingHorizontal: 20, paddingBottom: 8 },
+  header: { gap: 12, paddingTop: 8, paddingHorizontal: GUTTER, paddingBottom: 8 },
   largeTitle: { fontSize: 34, fontWeight: "700", letterSpacing: 0.2 },
   field: {
     flexDirection: "row",

@@ -19,6 +19,7 @@ import { SegmentedControl } from "../components/SegmentedControl";
 import { SessionCard } from "../components/SessionCard";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
+import { useContentWidth } from "../hooks/useContentWidth";
 import { useLiveDevices, type SessionsSegment } from "../hooks/useLiveDevices";
 import { useSessions } from "../hooks/useSessions";
 import { ageLabel, deviceDisplayLabel, isOlder, isStale } from "../lib/live";
@@ -65,6 +66,8 @@ export function SessionsScreen({
 }) {
   const { colors } = useAppTheme();
   const tabBarClearance = useTabBarClearance();
+  // Tablet widths: header and both lists share the centered content column.
+  const { inset } = useContentWidth();
   const onScroll = useTabBarScroll();
 
   /**
@@ -304,7 +307,7 @@ export function SessionsScreen({
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingHorizontal: GUTTER + inset }]}>
         <Text style={[styles.largeTitle, { color: colors.foreground }]}>Sessions</Text>
         <SegmentedControl
           // Live first: it's the tab's headline (and the tab bar's radio icon),
@@ -343,7 +346,11 @@ export function SessionsScreen({
           keyExtractor={(s) => s.id}
           onScroll={onScroll}
           scrollEventThrottle={16}
-          contentContainerStyle={{ paddingTop: 4, paddingBottom: tabBarClearance }}
+          contentContainerStyle={{
+            paddingTop: 4,
+            paddingBottom: tabBarClearance,
+            paddingHorizontal: inset,
+          }}
           refreshControl={
             <RefreshControl
               refreshing={saved.refreshing}
@@ -364,7 +371,11 @@ export function SessionsScreen({
           onScroll={onScroll}
           onScrollBeginDrag={live.ping}
           scrollEventThrottle={16}
-          contentContainerStyle={{ paddingTop: 4, paddingBottom: tabBarClearance }}
+          contentContainerStyle={{
+            paddingTop: 4,
+            paddingBottom: tabBarClearance,
+            paddingHorizontal: inset,
+          }}
           refreshControl={
             <RefreshControl
               refreshing={live.refreshing}
@@ -426,10 +437,13 @@ export function SessionsScreen({
   );
 }
 
+/** The screen's own gutter; the content column's inset is added on tablets. */
+const GUTTER = 20;
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
   list: { flex: 1 },
-  header: { gap: 10, paddingTop: 8, paddingBottom: 8, paddingHorizontal: 20 },
+  header: { gap: 10, paddingTop: 8, paddingBottom: 8, paddingHorizontal: GUTTER },
   largeTitle: { fontSize: 34, fontWeight: "700", letterSpacing: 0.2 },
   paused: { fontSize: 13 },
   // Quiet, full-width divider row — deliberately not a card, so the fold reads as

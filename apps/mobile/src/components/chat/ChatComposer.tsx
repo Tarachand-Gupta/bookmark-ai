@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import * as Haptics from "expo-haptics";
 import { useAppTheme } from "../../context/PreferencesContext";
 import type { ChatAttachmentsState } from "../../hooks/useChatAttachments";
+import { useContentWidth } from "../../hooks/useContentWidth";
 import { canSendTurn } from "../../lib/chatAttachments";
 import { Symbol } from "../Symbol";
 import { useAttachmentMenu } from "./AttachmentMenu";
@@ -40,6 +41,9 @@ export function ChatComposer({
   attachments: ChatAttachmentsState;
 }) {
   const { colors, radius } = useAppTheme();
+  // Tablet widths: the row sits in the transcript's centered column; the
+  // hairline top rule still spans the full width (it's the wrapper's border).
+  const { inset } = useContentWidth();
   const [draft, setDraft] = useState("");
   const [height, setHeight] = useState(0);
   const menu = useAttachmentMenu({ onPhotos: attachments.pickPhotos, onFiles: attachments.pickFiles });
@@ -58,7 +62,9 @@ export function ChatComposer({
   };
 
   return (
-    <View style={[styles.wrap, { borderTopColor: colors.border }]}>
+    <View
+      style={[styles.wrap, { borderTopColor: colors.border, paddingHorizontal: GUTTER + inset }]}
+    >
       <ChatAttachmentPills items={attachments.items} onRemove={attachments.remove} disabled={streaming} />
       {attachments.error !== null && (
         <Pressable
@@ -156,9 +162,12 @@ export function ChatComposer({
   );
 }
 
+/** The composer's own gutter (matches ChatMessage's 16); the column inset is added on tablets. */
+const GUTTER = 16;
+
 const styles = StyleSheet.create({
   wrap: {
-    paddingHorizontal: 16,
+    paddingHorizontal: GUTTER,
     paddingTop: 4,
     paddingBottom: 10,
     borderTopWidth: StyleSheet.hairlineWidth,

@@ -12,6 +12,7 @@ import type { UIMessage } from "ai";
 import { useAppTheme } from "../../context/PreferencesContext";
 import { useAiChat } from "../../hooks/useAiChat";
 import { useChatAttachments } from "../../hooks/useChatAttachments";
+import { useContentWidth } from "../../hooks/useContentWidth";
 import { useKeyboardOverlap } from "../../hooks/useKeyboardOverlap";
 import { toFileParts } from "../../lib/chatAttachments";
 import {
@@ -21,6 +22,7 @@ import {
   type LoosePart,
 } from "../../lib/chatParts";
 import { ChatComposer } from "./ChatComposer";
+import { ChatEmptyState } from "./ChatEmptyState";
 import { ChatMessage } from "./ChatMessage";
 import {
   ChatErrorNotice,
@@ -28,7 +30,6 @@ import {
   ChatQuotaNotice,
   ChatRejectedNotice,
 } from "./ChatNotice";
-import { ChatSamplePrompts } from "./ChatSamplePrompts";
 import { ChatSourceNote } from "./ChatSourceNote";
 import { ChatThinking } from "./ChatThinking";
 import { ImageLightbox } from "./ImageLightbox";
@@ -65,6 +66,9 @@ export function ChatThread({
 }) {
   const { colors } = useAppTheme();
   const keyboardOverlap = useKeyboardOverlap();
+  // Tablet widths: transcript, empty state and (below) the composer share the
+  // centered content column, so a reply never runs 1000pt wide. 0 on phones.
+  const { inset } = useContentWidth();
   const chat = useAiChat({
     initialMessages,
     conversationId: initialConversationId,
@@ -208,8 +212,12 @@ export function ChatThread({
         ListHeaderComponent={<View style={styles.gap} />}
         ListFooterComponent={footer}
         ListEmptyComponent={
+          // Centered in the free area (the list fills it: `content` grows). On
+          // a screen too short for the block — a phone with the keyboard up —
+          // the content is taller than the list and the stick-to-bottom scroll
+          // below parks the prompts right above the composer instead.
           <View style={styles.empty}>
-            <ChatSamplePrompts onPick={send} />
+            <ChatEmptyState onPick={send} />
           </View>
         }
         onScroll={onScroll}
@@ -217,6 +225,12 @@ export function ChatThread({
         onLayout={(e) => {
           layoutHeight.current = e.nativeEvent.layout.height;
           settleIfFits();
+          // The viewport shrank (keyboard up) while parked at the bottom: keep
+          // the latest content — or the empty state's prompts — above the
+          // composer rather than letting the keyboard cover it.
+          if (stuckToBottom.current && contentHeight.current > layoutHeight.current) {
+            scrollToEnd(false);
+          }
         }}
         // Growing content (a token landed, a tool row appeared) follows the
         // bottom; `false` while the user is reading further up.
@@ -227,7 +241,7 @@ export function ChatThread({
         }}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingHorizontal: inset }]}
       />
       {showJumpHint && rows.length > 0 && (
         <JumpToLatest onPress={() => scrollToEnd(true)} />
@@ -284,7 +298,8 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1, paddingBottom: 12 },
   gap: { height: 14 },
   footer: { gap: 12, paddingTop: 12 },
-  empty: { flex: 1, justifyContent: "flex-end", paddingBottom: 12 },
+  // `flex: 1` fills the grown content box, `center` composes the block in it.
+  empty: { flex: 1, justifyContent: "center", paddingVertical: 24 },
   jumpWrap: { alignItems: "center", paddingBottom: 8 },
   jump: {
     overflow: "hidden",

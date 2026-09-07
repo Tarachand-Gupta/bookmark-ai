@@ -19,6 +19,7 @@ import { FilterSheet } from "../components/FilterSheet";
 import { SegmentedControl } from "../components/SegmentedControl";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme, usePreferences } from "../context/PreferencesContext";
+import { useContentWidth } from "../hooks/useContentWidth";
 import { useLibrary, type LibraryState } from "../hooks/useLibrary";
 import { groupByDay } from "../lib/dayGroups";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
@@ -26,7 +27,10 @@ import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 const QUICK_CHIP_LIMIT = 5;
 
 /** Library tab: large title, quick category chips + Filters pill (full facet
- * lists live in a bottom sheet), day-grouped list or 2-column card grid. */
+ * lists live in a bottom sheet), day-grouped list or a card grid — 2 columns on
+ * phones, 3/4 on tablets (portrait/landscape). On tablet widths the LIST sits in
+ * the shared centered content column; the GRID keeps the full width and spends
+ * it on columns instead, and the header follows whichever is showing. */
 export function LibraryScreen({
   active,
   filterSheetOpen,
@@ -62,6 +66,7 @@ export function LibraryScreen({
   const { colors } = useAppTheme();
   const { viewMode, setViewMode } = usePreferences();
   const tabBarClearance = useTabBarClearance();
+  const { inset, gridColumns } = useContentWidth();
   const onScroll = useTabBarScroll();
   const lib = useLibrary(active);
   const sections = useMemo(() => groupByDay(lib.bookmarks), [lib.bookmarks]);
@@ -166,14 +171,17 @@ export function LibraryScreen({
           onEndReachedThreshold={0.4}
           onScroll={onScroll}
           scrollEventThrottle={16}
-          contentContainerStyle={{ paddingBottom: tabBarClearance }}
+          contentContainerStyle={{ paddingBottom: tabBarClearance, paddingHorizontal: inset }}
         />
       ) : (
         <FlatList
+          // FlatList can't change numColumns in place (RN documents the key
+          // remount) — a rotation between 3 and 4 columns re-creates the list.
+          key={`grid-${gridColumns}`}
           data={lib.bookmarks}
           keyExtractor={(b) => b.id}
           renderItem={({ item }) => <BookmarkCard bookmark={item} />}
-          numColumns={2}
+          numColumns={gridColumns}
           columnWrapperStyle={styles.cardRow}
           ListHeaderComponent={header}
           ListEmptyComponent={empty}
