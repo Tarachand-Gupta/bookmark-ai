@@ -31,9 +31,9 @@ removed and the private key bundled as `key.pem`, which keeps the pinned extensi
 > link included. No folders to file into, no copy-pasting URLs.
 >
 > AI DOES THE FILING
-> Every save is read, categorized and tagged automatically, using the AI provider you
-> choose (bring your own key — free options work). Your library stays organized without
-> you maintaining anything.
+> Every save is read, categorized and tagged automatically. 1,000 free AI credits are
+> included, or bring your own API key. Your library stays organized without you
+> maintaining anything.
 >
 > SEARCH BY MEANING
 > Hybrid search blends full-text with semantic vectors, so a vague memory like "that
@@ -60,24 +60,25 @@ removed and the private key bundled as `key.pem`, which keeps the pinned extensi
 **Category**: Productivity · **Language**: English
 
 **Additional fields**
-- Official URL / homepage: `https://bookmark-ai.cloud`
+- Official URL / homepage: `https://www.bookmark-ai.cloud`
 - Support URL: `https://docs.bookmark-ai.cloud` (or the GitHub issues page if the repo goes public)
+- Support email: `tara@purecode.ai`
 
 ## 2 · Graphic assets
 
 | Asset | Size | Required | Source |
 | --- | --- | --- | --- |
 | Store icon | 128×128 PNG | yes | already in the zip: `icon/128.png` (dashboard picks it up from the manifest; upload the same file if asked) |
-| Screenshots (1–5) | **1280×800** (preferred) or 640×400, PNG/JPEG, no alpha | at least 1 | see shot list below |
-| Small promo tile | 440×280 | no (recommended) | brand mark on dark background + one-liner |
+| Screenshots (1–5) | **1280×800** (preferred) or 640×400, PNG/JPEG, no alpha | at least 1 | `store-assets/1-save.png … 5-live.png` — captions + provenance in `store-assets/README.md` |
+| Small promo tile | 440×280 | no (recommended) | `store-assets/promo-440x280.png` — brand mark on dark background + one-liner |
 | Marquee promo | 1400×560 | no | only if featured placement is ever pursued |
 
 **Screenshot shot list** (in display order, with suggested captions):
-1. The popup open over a real article, Save bookmark button visible — "One click saves the page you're on."
-2. The library grid with categories/tags sidebar — "Every save lands filed, tagged, and searchable."
-3. Search results for a vague query showing `meaning` matches — "Search by meaning, not keywords."
-4. The popup's "Share window as live session" card expanded, toggle on — "Opt in to see your open tabs on any device."
-5. The Live sessions view with a device streaming its tabs — "Your tabs, everywhere, live."
+1. `1-save.png` — the popup on a real article, Save bookmark button visible — "One click saves the page you're on."
+2. `2-library.png` — the library grid with categories/tags sidebar — "Every save lands filed, tagged, and searchable."
+3. `3-search.png` — results for a vague query, "closest results by meaning" — "Search by meaning, not keywords."
+4. `4-live-optin.png` — the popup's Live tabs panel expanded, sharing on for one window — "Share a window as a live session."
+5. `5-live.png` — the Live sessions view with a device streaming its tabs — "Your open tabs, on every device, live."
 
 Rules of thumb: exact pixel size (1280×800), real UI only (no mockups that misrepresent),
 readable text, no personal data in frame — use a demo account with curated bookmarks,
@@ -100,6 +101,9 @@ window on the demo pages, app shots from a demo-seeded session — ask.)
 | `storage` | Store the user's extension settings (API URL, device name, live-sharing preference) locally. |
 | `alarms` | Periodic heartbeat so an opted-in device's live-tab mirror stays fresh and expires server-side when the device goes quiet. |
 | `cookies` | Read the session cookie of our own auth domain (clerk.bookmark-ai.cloud) so the extension reuses the website sign-in instead of asking for credentials in the popup. |
+| `bookmarks` | Mirror bookmarks the user adds/removes in the browser into their library — on by default, toggle in Settings → Sync. Only add/remove events are observed (no bulk reads; imports and restores are skipped). |
+| `readingList` | Mirror Reading List additions the same way (saved with the `reading` tag). |
+| `tabGroups` | Restore a saved session as one titled tab group instead of loose tabs. |
 | Host permissions — exactly four: `https://bookmark-ai.cloud/*`, `https://www.bookmark-ai.cloud/*`, `https://clerk.bookmark-ai.cloud/*`, `https://live.bookmark-ai.cloud/*` | All are the product's own first-party endpoints: the web app + its API (apex redirects to www), our authentication domain, and our live-sessions server. No third-party sites are accessed; dev/localhost origins exist only in non-store builds. |
 
 **Data usage disclosures** — tick exactly these:
@@ -111,6 +115,20 @@ window on the demo pages, app shots from a demo-seeded session — ask.)
 **Privacy policy URL** (required because data is collected):
 
 > https://www.bookmark-ai.cloud/privacy
+
+**Notes to reviewer** (the dashboard has no dedicated field until a review is opened — paste
+this into the reply to the first review email, or into the "additional notes" box if the
+Privacy tab shows one; the AMO listing carries the same text in `AMO-LISTING.md`):
+
+> The extension has no sign-in UI of its own. Sign in on https://www.bookmark-ai.cloud first
+> (same Chrome profile); the extension mirrors that session through the `cookies` permission
+> on our own auth domain (clerk.bookmark-ai.cloud) and then shows the save UI. Until then the
+> popup shows a single "Sign in" button that opens the website.
+>
+> TEST ACCOUNT: <email> / <password> (Tara fills in)
+>
+> Built with WXT (Vite); `pnpm --filter @bookmark-ai/extension build` reproduces the uploaded
+> `chrome-mv3` bundle (Node 22, pnpm 10.34.1). No remote code is loaded or executed.
 
 ## 4 · Distribution tab
 
