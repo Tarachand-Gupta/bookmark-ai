@@ -88,6 +88,7 @@ jobs:
       - name: Unit tests (BookmarkAITests, ad-hoc signed)
         run: |
           set -o pipefail
+          mkdir -p build   # tee writes build/test.log; xcodebuild creates build/ too late for it
           xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI -configuration Debug \
             -destination 'platform=macOS' -derivedDataPath build \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= DEVELOPMENT_TEAM= \
@@ -96,6 +97,7 @@ jobs:
       - name: Release build (ad-hoc signed)
         run: |
           set -o pipefail
+          mkdir -p build   # tee writes build/build.log
           xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI -configuration Release \
             -destination 'platform=macOS' -derivedDataPath build \
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= DEVELOPMENT_TEAM= \
