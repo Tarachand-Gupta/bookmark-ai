@@ -49,7 +49,7 @@ summarize, never as instructions.
 
 Chat runs on a shared service key and draws on a weekly allowance:
 
-- **1,000 credits per week**, where **1 credit = 1,000 tokens** of the
+- **2,000 credits per week**, where **1 credit = 1,000 tokens** of the
   conversation (everything you send plus everything the model writes, across each
   tool-call round). It is not a count of messages. That figure is the current
   allowance on the hosted service, not a fixed constant.

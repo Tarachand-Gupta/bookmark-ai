@@ -25,22 +25,20 @@ import {
   type ToolView,
 } from "@/lib/chat-tools";
 import { cn } from "@/lib/utils";
-import {
-  FetchUrlToolBody,
-  LiveTabsToolBody,
-  SearchToolBody,
-  SessionsToolBody,
-  SkillToolBody,
-  SqlToolBody,
-  WebSearchToolBody,
-  type FetchUrlOutput,
-  type LiveTabsToolOutput,
-  type SearchToolOutput,
-  type SessionsToolOutput,
-  type SkillToolOutput,
-  type SqlToolOutput,
-  type WebSearchOutput,
-} from "./chat-tool-bodies";
+import { BookmarksCard } from "./chat-bookmarks-card";
+import { LiveTabsCard } from "./chat-live-tabs-card";
+import { SessionsCard } from "./chat-sessions-card";
+import { SqlCard } from "./chat-sql-card";
+import { FetchUrlToolBody, SkillToolBody, WebSearchToolBody } from "./chat-tool-bodies";
+import type {
+  FetchUrlOutput,
+  LiveTabsToolOutput,
+  SearchToolOutput,
+  SessionsToolOutput,
+  SkillToolOutput,
+  SqlToolOutput,
+  WebSearchOutput,
+} from "./chat-tool-types";
 
 const TOOL_ICONS: Record<ToolIconId, React.ElementType> = {
   search: Search,
@@ -190,11 +188,11 @@ function richBody(
   switch (name) {
     case "searchBookmarks":
       return settled && view.phase === "done" ? (
-        <SearchToolBody output={part.output as SearchToolOutput} onFilter={onFilter} />
+        <BookmarksCard output={part.output as SearchToolOutput} onFilter={onFilter} />
       ) : null;
     case "queryDatabase":
       return (
-        <SqlToolBody
+        <SqlCard
           input={part.input as { sql?: string } | undefined}
           output={settled && view.phase === "done" ? (part.output as SqlToolOutput) : undefined}
         />
@@ -209,10 +207,10 @@ function richBody(
       ) : null;
     case "listSessions":
       return settled && view.phase === "done" ? (
-        <SessionsToolBody output={part.output as SessionsToolOutput} />
+        <SessionsCard output={part.output as SessionsToolOutput} />
       ) : null;
     case "listLiveTabs":
-      return settled ? <LiveTabsToolBody output={part.output as LiveTabsToolOutput} /> : null;
+      return settled ? <LiveTabsCard output={part.output as LiveTabsToolOutput} /> : null;
     case "createSkill":
     case "installSkill":
       return settled && view.phase === "done" ? (

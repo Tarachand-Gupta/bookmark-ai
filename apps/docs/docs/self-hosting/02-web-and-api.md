@@ -93,7 +93,7 @@ by default.
 Chat requests that run on the **server's** `GEMINI_API_KEY` are counted
 (input + output tokens, tool-call rounds included) against a weekly budget that
 resets Monday 00:00 UTC. With no control-plane database configured, the compiled
-default applies: **1,000,000 tokens per week**, tracked in the database those
+default applies: **2,000,000 tokens per week**, tracked in the database those
 chats read — so per user on a multi-tenant instance, and instance-wide on a
 single shared database. Past the limit, `POST /api/chat` returns `402
 free-limit-exceeded`.

@@ -24,7 +24,16 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
 
 - **`GEMINI_API_KEY` is set** in the root `.env`, loaded by a dependency-free loader in
   `apps/web/next.config.ts` → Gemini `gemini-2.5-flash`
-  categorization, `gemini-embedding-001` 768-dim embeddings, and the `/api/chat` agent.
+  categorization and `gemini-embedding-001` 768-dim embeddings.
+- **`OPENROUTER_API_KEY` is set** in the root `.env` (and Vercel prod+preview). The included
+  (free) AI tier for `/api/chat` runs **`z-ai/glm-5.3-flash` via OpenRouter at LOW reasoning
+  effort**, with **`gemini-3.8-flash` (medium thinking) as an automatic fallback** whenever
+  OpenRouter has no key, errors, rate-limits or emits nothing before the first chunk
+  (`lib/server/ai-fallback-model.ts` wraps the two as one model;
+  `lib/server/ai-model.ts` owns the ids + provider options). Both halves stream reasoning, so
+  the chat's thinking disclosure works either way. `X-Ai-Model-Tier: primary|fallback` reports
+  which one answered; model names are NEVER shown in the UI. `OPENROUTER_BASE_URL` overrides the
+  endpoint (point it at a dead port to exercise the fallback).
   Embedding runs post-save via Next's `after()`: each save embeds ITS OWN row
   (`embedBookmarkById`) plus at most one straggler — never an oldest-first sweep, which made
   burst saves embed the same rows N times and skip the new ones (`lib/server/post-save-embed.ts`).
@@ -103,6 +112,7 @@ mobile via Clerk Expo. The route handlers delegate to `packages/engine` — chan
   `listSessions`/`listLiveTabs`/`useSkill`/`createSkill`/`installSkill`/`webSearch`/`fetchUrl` call `packages/engine` directly
   (no HTTP hop). Response headers `X-Conversation-Id` + `X-Ai-Source: included|own|own-fallback`
   (own-fallback = free credits exhausted, stored own key took over) + optional
+  `X-Ai-Model-Tier: primary|fallback` (which half of the included stack answered) + optional
   `X-Ai-Note: own-key-incomplete` (mode is `own` but the key config can't run — e.g. OpenAI key, no
   model — so the included AI answered). Attachments = AI SDK `file`
   parts with `data:` URLs on the user message; rules in `CHAT_ATTACHMENT_RULES`/`classifyAttachment`
@@ -115,7 +125,7 @@ mobile via Clerk Expo. The route handlers delegate to `packages/engine` — chan
   import against prod): `cd apps/web && pnpm tsx scripts/import-browser-bookmarks.ts [--apply]`.
 - `GET|PUT /api/settings` — `{settings}` incl. `aiMode: "included"|"own"` (explicit, persisted;
   NULL column derives key-stored→own) and `ownKeyReady` (own config complete: provider + key, plus a
-  model for openai/anthropic/custom — Google defaults to `gemini-2.5-flash`). PUT: `{aiMode}` switches WITHOUT touching the key (`own`
+  model for openai/anthropic/custom — Google defaults to `gemini-3.8-flash`). PUT: `{aiMode}` switches WITHOUT touching the key (`own`
   needs a stored key, else 400); `{apiKey:"sk…"}` stores + sets `own`; `{apiKey:""}` removes + sets
   `included`; `{provider}` never clears model/key (`model:""` clears the model).
 - `GET|POST /api/skills` → `{skills}` / `201 {skill}` (409 duplicate name, case-insensitive);

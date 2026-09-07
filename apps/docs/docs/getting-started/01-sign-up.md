@@ -28,7 +28,7 @@ same data.
 The first time you open the app, an onboarding tour walks you through setup. Its
 first step is AI — but there's nothing you have to do to make **Ask AI** work.
 
-Every account includes **free AI credits**: 1,000 credits a week, which reset
+Every account includes **free AI credits**: 2,000 credits a week, which reset
 every Monday at 00:00 UTC. No key, no billing, no setup. Chat is the only thing
 that spends them, and you can see the meter any time in **Settings → AI**.
 

@@ -65,7 +65,7 @@ export function describeAiNote(note: string | null | undefined): string | null {
 
 /**
  * Providers whose key is only usable WITH an explicit model. Google falls back
- * to `gemini-2.5-flash` server-side; everything else has no sensible default,
+ * to `gemini-3.8-flash` server-side; everything else has no sensible default,
  * so Save must wait for a chosen model.
  */
 export function providerNeedsModel(provider: string): boolean {

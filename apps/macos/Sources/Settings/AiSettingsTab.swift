@@ -231,7 +231,7 @@ struct AiSettingsTab: View {
         case (.included, true):
             "Your key stays saved. When the free credits run out this week, chat automatically switches to your key."
         case (.included, false):
-            "Chat runs on Bookmark AI's shared model — 1,000 free credits every week, no setup."
+            "Chat runs on Bookmark AI's shared model — 2,000 free credits every week, no setup."
         }
     }
 

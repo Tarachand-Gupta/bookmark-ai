@@ -52,7 +52,7 @@ function corsHeaders(origin: string | null): Record<string, string> {
     // Response headers a cross-origin caller (the extension) may read: the chat
     // route's conversation id, which key answered, and the optional advisory
     // (`own-key-incomplete`) — see /api/chat.
-    "access-control-expose-headers": "X-Conversation-Id, X-Ai-Source, X-Ai-Note",
+    "access-control-expose-headers": "X-Conversation-Id, X-Ai-Source, X-Ai-Note, X-Ai-Model-Tier",
     // Allow the Safari cookie path (fetch with credentials:'include') to pass a
     // credentialed CORS check. Valid only because ACAO echoes the specific origin
     // above, never "*". Bearer clients (web/chrome/mobile) ignore it.

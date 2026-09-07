@@ -32,7 +32,7 @@ struct PlanInfo: Hashable, Sendable {
         features: [
             PlanFeature(key: "bookmarks", label: "Unlimited bookmarks"),
             PlanFeature(key: "live-sessions", label: "Unlimited live sessions"),
-            PlanFeature(key: "ai-credits", label: "1,000 AI chat credits every week"),
+            PlanFeature(key: "ai-credits", label: "2,000 AI chat credits every week"),
             PlanFeature(key: "byok", label: "Bring your own key — unmetered AI on your provider"),
         ]
     )

@@ -2,15 +2,61 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel } from "ai";
+import type { SharedV4ProviderOptions } from "@ai-sdk/provider";
 import { getUserSettings, type Db, type UserSettingsRow } from "@bookmark-ai/db";
 import { assertSafeUrl, type GeminiClient } from "@bookmark-ai/engine";
 import type { AiMode, AiProvider, ChatAiNote, ChatAiSource } from "@bookmark-ai/types";
 import { decryptApiKey } from "@/lib/server/ai-key-crypto";
 import { deriveAiMode } from "@/lib/server/ai-mode";
+import { withModelFallback } from "@/lib/server/ai-fallback-model";
 
-/** The model the included free tier runs on (the server's GEMINI_API_KEY). */
-export const INCLUDED_MODEL_ID = "gemini-2.5-flash";
+/**
+ * The INCLUDED (free tier) stack, in order:
+ *  1. PRIMARY — GLM 5.3 Flash through OpenRouter (`OPENROUTER_API_KEY`), asked
+ *     for LOW reasoning effort. Fast and cheap for the agent's tool loops.
+ *  2. FALLBACK — Gemini 3.8 Flash on the server's `GEMINI_API_KEY` (medium
+ *     thinking). Takes over automatically when OpenRouter has no key, errors,
+ *     rate-limits or stalls (see ai-fallback-model.ts).
+ * Neither id is ever shown in the UI; `X-Ai-Model-Tier` tells clients which one
+ * answered.
+ */
+export const INCLUDED_PRIMARY_MODEL_ID = "z-ai/glm-5.3-flash";
+export const INCLUDED_FALLBACK_MODEL_ID = "gemini-3.8-flash";
+
+/**
+ * The model a Google own-key user runs when they saved no model of their own.
+ * Kept equal to the included FALLBACK id (both are Gemini on a Google key) so
+ * the "Provider default" badge and the resolver can't disagree.
+ */
+export const INCLUDED_MODEL_ID = INCLUDED_FALLBACK_MODEL_ID;
+
+/**
+ * Reasoning settings for the included stack. GLM runs at LOW effort (the agent
+ * loops a lot; low keeps it snappy) and Gemini at MEDIUM thinking. BOTH ask for
+ * the reasoning tokens to be streamed, so the chat's "Thought for N s"
+ * disclosure appears whichever half answers.
+ *
+ * NOTE the asymmetry: Gemini takes its thinking config as per-REQUEST
+ * `providerOptions`, while @openrouter/ai-sdk-provider reads `reasoning` off the
+ * MODEL SETTINGS at construction (`this.settings.reasoning` → the request body's
+ * `reasoning` field) and ignores a `providerOptions.openrouter.reasoning`. So
+ * GLM's setting lives in OPENROUTER_MODEL_SETTINGS below, not here.
+ */
+export const INCLUDED_PROVIDER_OPTIONS: SharedV4ProviderOptions = {
+  google: { thinkingConfig: { includeThoughts: true, thinkingLevel: "medium" } },
+};
+
+/** GLM's reasoning setting — see the note above; applied at model construction. */
+export const OPENROUTER_MODEL_SETTINGS = {
+  reasoning: { enabled: true, effort: "low" as const },
+};
+
+/** A user's OWN Google key: same thinking config as the included fallback. */
+export const GOOGLE_PROVIDER_OPTIONS: SharedV4ProviderOptions = {
+  google: INCLUDED_PROVIDER_OPTIONS.google,
+};
 
 /** The chat model to run, plus a short human label for logging/telemetry. */
 export interface ResolvedChatModel {
@@ -29,10 +75,31 @@ export interface ResolvedChatModel {
    * Gemini `thinkingConfig`) without re-deriving it from the label. */
   providerId: AiProvider;
   modelId: string;
+  /**
+   * For the included tier: which half of the stack this request STARTED on.
+   * `undefined` for a user's own key. The wrapper flips a request from
+   * "primary" to "fallback" at runtime via `onIncludedFallback`, so the header
+   * is written after the model is chosen, not before.
+   */
+  tier?: ChatModelTier;
+  /**
+   * The `providerOptions` this model needs, keyed by provider. Providers ignore
+   * keys that aren't theirs, so the included tier ships BOTH blocks — the
+   * OpenRouter one and the Google one — and a mid-request handoff to Gemini
+   * still gets its thinking config without re-deriving anything.
+   */
+  providerOptions?: SharedV4ProviderOptions;
 }
+
+/** Which half of the included stack answered — echoed as `X-Ai-Model-Tier`. */
+export type ChatModelTier = "primary" | "fallback";
 
 interface ResolveArgs {
   db: Db;
+  /** Notified when the included tier's primary (OpenRouter) hands off to Gemini. */
+  onIncludedFallback?: (reason: string) => void;
+  /** Notified once with the included tier that actually answered. */
+  onIncludedTier?: (tier: ChatModelTier) => void;
   /** Clerk user id, or null in open/self-host mode. */
   userId: string | null;
   /** The shared env Gemini client — non-null iff GEMINI_API_KEY is configured. */
@@ -84,7 +151,7 @@ export type OwnKeyConfig = Pick<UserSettingsRow, "aiProvider" | "aiModel" | "aiB
 /**
  * Is the user's own-key config COMPLETE enough to run? Provider + a stored key,
  * plus a model for openai/anthropic/custom (and a base URL for custom). Google
- * is the one provider with a known-good default — `gemini-2.5-flash`, the same
+ * is the one provider with a known-good default — `gemini-3.8-flash`, the same
  * model the included tier runs — so a NULL model there still counts as ready:
  * both the web card and the macOS "Provider default" option legitimately leave
  * `ai_model` empty. Pure; shared with GET /api/settings (`ownKeyReady`) so the
@@ -130,6 +197,7 @@ async function buildOwnModel(
         providerId: "google",
         model: createGoogleGenerativeAI({ apiKey })(modelId),
         label: `google:${modelId}`,
+        providerOptions: GOOGLE_PROVIDER_OPTIONS,
       };
     case "openai":
       return { ...base, providerId: "openai", model: createOpenAI({ apiKey })(modelId), label: `openai:${modelId}` };
@@ -174,19 +242,79 @@ async function buildOwnModel(
   }
 }
 
-/** The included server Gemini, or null without GEMINI_API_KEY. `gemini` being
- * non-null mirrors the key being set; the raw key builds the AI SDK model. */
-function buildIncludedModel(gemini: GeminiClient | null): ResolvedChatModel | null {
+/** Google's Gemini on the SERVER key — the included tier's fallback half. */
+function buildIncludedGemini(gemini: GeminiClient | null): LanguageModel | null {
   const envKey = process.env.GEMINI_API_KEY;
+  // `gemini` being non-null mirrors the key being set; the raw key builds the
+  // AI SDK model.
   if (!gemini || !hasText(envKey)) return null;
-  return {
-    model: createGoogleGenerativeAI({ apiKey: envKey })(INCLUDED_MODEL_ID),
-    label: `google:${INCLUDED_MODEL_ID} (env)`,
-    usesServerKey: true,
-    source: "included",
-    providerId: "google",
-    modelId: INCLUDED_MODEL_ID,
+  return createGoogleGenerativeAI({ apiKey: envKey })(INCLUDED_FALLBACK_MODEL_ID);
+}
+
+/** GLM through OpenRouter — the included tier's primary half, or null with no key. */
+function buildIncludedOpenRouter(): LanguageModel | null {
+  const key = process.env.OPENROUTER_API_KEY;
+  if (!hasText(key)) return null;
+  // OPENROUTER_BASE_URL is an escape hatch for testing the Gemini fallback path
+  // (point it at a dead port) and for an OpenRouter-compatible proxy.
+  const baseURL = process.env.OPENROUTER_BASE_URL;
+  return createOpenRouter({ apiKey: key, ...(hasText(baseURL) ? { baseURL } : {}) })(
+    INCLUDED_PRIMARY_MODEL_ID,
+    OPENROUTER_MODEL_SETTINGS,
+  );
+}
+
+/**
+ * The included model: GLM via OpenRouter wrapped so that any failure before the
+ * first content chunk silently continues on Gemini. With only one of the two
+ * keys present, that one runs alone; with neither, there is no included tier.
+ * `onFallback` lets the route report the tier that actually answered.
+ */
+export function buildIncludedModel(
+  gemini: GeminiClient | null,
+  onFallback?: (reason: string) => void,
+  onDecision?: (tier: ChatModelTier) => void,
+): ResolvedChatModel | null {
+  const primary = buildIncludedOpenRouter();
+  const geminiModel = buildIncludedGemini(gemini);
+  const base = {
+    usesServerKey: true as const,
+    source: "included" as const,
   };
+  if (primary && geminiModel) {
+    return {
+      ...base,
+      model: withModelFallback(primary, geminiModel, { onFallback, onDecision }),
+      label: `openrouter:${INCLUDED_PRIMARY_MODEL_ID} (env, gemini fallback)`,
+      providerOptions: INCLUDED_PROVIDER_OPTIONS,
+      providerId: "custom",
+      modelId: INCLUDED_PRIMARY_MODEL_ID,
+      tier: "primary",
+    };
+  }
+  if (primary) {
+    return {
+      ...base,
+      model: primary,
+      label: `openrouter:${INCLUDED_PRIMARY_MODEL_ID} (env)`,
+      providerOptions: INCLUDED_PROVIDER_OPTIONS,
+      providerId: "custom",
+      modelId: INCLUDED_PRIMARY_MODEL_ID,
+      tier: "primary",
+    };
+  }
+  if (geminiModel) {
+    return {
+      ...base,
+      model: geminiModel,
+      label: `google:${INCLUDED_FALLBACK_MODEL_ID} (env)`,
+      providerOptions: INCLUDED_PROVIDER_OPTIONS,
+      providerId: "google",
+      modelId: INCLUDED_FALLBACK_MODEL_ID,
+      tier: "fallback",
+    };
+  }
+  return null;
 }
 
 /**
@@ -195,7 +323,7 @@ function buildIncludedModel(gemini: GeminiClient | null): ResolvedChatModel | nu
  * is encrypted at rest (AES-256-GCM `enc:v1:` envelope) or legacy plaintext; a
  * missing/wrong secret decrypts to null → "no key configured".
  */
-export async function resolveChatCandidates({ db, userId, gemini }: ResolveArgs): Promise<ChatModelCandidates> {
+export async function resolveChatCandidates({ db, userId, gemini, onIncludedFallback, onIncludedTier }: ResolveArgs): Promise<ChatModelCandidates> {
   const settings = await getUserSettings(db, settingsKey(userId)).catch(() => null);
   const key = decryptApiKey(settings?.aiApiKey ?? null);
   const hasStoredKey = hasText(key);
@@ -203,7 +331,7 @@ export async function resolveChatCandidates({ db, userId, gemini }: ResolveArgs)
     aiMode: deriveAiMode(settings?.aiMode, hasStoredKey),
     hasStoredKey,
     own: await buildOwnModel(settings, key),
-    included: buildIncludedModel(gemini),
+    included: buildIncludedModel(gemini, onIncludedFallback, onIncludedTier),
   };
 }
 

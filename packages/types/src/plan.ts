@@ -33,7 +33,7 @@ export const PLAN_FEATURES = {
     features: [
       { key: "bookmarks", label: "Unlimited bookmarks" },
       { key: "live-sessions", label: "Unlimited live sessions" },
-      { key: "ai-credits", label: "1,000 AI chat credits every week" },
+      { key: "ai-credits", label: "2,000 AI chat credits every week" },
       { key: "byok", label: "Bring your own key — unmetered AI on your provider" },
     ],
   },

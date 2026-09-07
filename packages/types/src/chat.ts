@@ -63,6 +63,15 @@ export const AI_SOURCE_FALLBACK_NOTE =
  * the INCLUDED model answered (metered). Absent when nothing needs saying.
  */
 export const AI_NOTE_HEADER = "X-Ai-Note";
+
+/**
+ * Which half of the INCLUDED (free) AI stack answered this turn: `primary` (the
+ * OpenRouter model) or `fallback` (the Gemini model that takes over when the
+ * primary has no key, errors, or stalls). Diagnostics only — never shown in the
+ * UI, which deliberately hides model identities.
+ */
+export const AI_MODEL_TIER_HEADER = "X-Ai-Model-Tier";
+export type ChatAiModelTier = "primary" | "fallback";
 export const chatAiNoteSchema = z.enum(["own-key-incomplete"]);
 export type ChatAiNote = z.infer<typeof chatAiNoteSchema>;
 

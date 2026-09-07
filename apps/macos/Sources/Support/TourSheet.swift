@@ -29,7 +29,7 @@ struct TourSheet: View {
         TourPage(
             symbol: "sparkles",
             title: "Ask AI",
-            body: "A full agent over your library: it searches, counts, reads saved sessions and live tabs, and can bring in the web — with 1,000 free credits every week, or your own API key."
+            body: "A full agent over your library: it searches, counts, reads saved sessions and live tabs, and can bring in the web — with 2,000 free credits every week, or your own API key."
         ),
         TourPage(
             symbol: "rectangle.stack.fill",

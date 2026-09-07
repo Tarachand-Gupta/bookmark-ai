@@ -4,10 +4,10 @@ import type { AiUsage } from "@bookmark-ai/types";
  * Free-tier AI usage, in units a person can hold in their head.
  *
  * The server meters TOKENS (see packages/engine/src/metering.ts + the 402 wall in
- * app/api/chat/route.ts), and a raw "312,480 / 1,000,000 tokens" is hostile: the
+ * app/api/chat/route.ts), and a raw "312,480 / 2,000,000 tokens" is hostile: the
  * unit is invisible to the user and the numbers are too big to read. So the UI
  * speaks CREDITS at a fixed 1 credit = 1,000 tokens, which turns the shipped
- * default budget into a clean "1,000 free credits a week".
+ * default budget into a clean "2,000 free credits a week".
  *
  * Two rules this module exists to keep honest:
  *  - the rate is FIXED and shared (never derived per surface), so the meter in
@@ -19,7 +19,7 @@ import type { AiUsage } from "@bookmark-ai/types";
  * imports it on the server and three client components import it in the browser.
  */
 
-/** Tokens per displayed credit. 1,000,000 tokens ⇒ 1,000 credits. */
+/** Tokens per displayed credit. 2,000,000 tokens ⇒ 2,000 credits. */
 export const TOKENS_PER_CREDIT = 1_000;
 
 /** ms in a day — the reset math is plain UTC arithmetic, no date library. */
@@ -30,7 +30,7 @@ const DAY_MS = 86_400_000;
  * never overstate what someone has spent (599 tokens reads as 0 credits used,
  * not 1), and so `used` can only reach the limit when the budget is genuinely
  * gone. Non-finite/negative input collapses to 0 — a bad meter read must never
- * render "NaN of 1,000".
+ * render "NaN of 2,000".
  */
 export function tokensToCredits(tokens: number): number {
   if (!Number.isFinite(tokens) || tokens <= 0) return 0;

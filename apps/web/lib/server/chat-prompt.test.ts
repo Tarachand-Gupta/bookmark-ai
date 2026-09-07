@@ -10,7 +10,7 @@ describe("buildChatPrompt", () => {
       expect(p).toContain(`- ${word} —`);
     }
     // The free tier is described truthfully: weekly, resets Monday.
-    expect(p).toContain("1,000 credits a week");
+    expect(p).toContain("2,000 credits a week");
     expect(p).toContain("Monday");
     expect(p).not.toMatch(/month(ly)? credits/i);
   });
@@ -144,6 +144,16 @@ describe("buildChatPrompt", () => {
     const skills = Array.from({ length: 40 }, (_, i) => ({ name: `Skill ${i}`, description: `d${i}` }));
     const p = buildChatPrompt({ now: NOW, skills: { skills, total: 57 } });
     expect(p).toContain("showing 40 of 57");
+  });
+  it("forbids re-listing tool results the UI already renders as cards", () => {
+    const p = buildChatPrompt({ now: NOW });
+    expect(p).toContain("LIST RESULTS ARE ALREADY ON SCREEN");
+    expect(p).toContain("NEVER re-list them as prose");
+    expect(p).toContain("at most 5 named highlights");
+    expect(p).toContain("Only enumerate a full list when the user EXPLICITLY asks for it");
+    // And it must not think a truncated digest means the lookup failed.
+    expect(p).toContain("truncated digest");
+    expect(p).toContain("Never claim a result is incomplete");
   });
 });
 

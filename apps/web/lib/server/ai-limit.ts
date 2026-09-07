@@ -10,7 +10,7 @@ import { getMasterContext } from "@/lib/server/context";
  * Changing it applies within a cache TTL — enforcement compares live weekly
  * usage against this, so a user at 700k tokens facing a new 500k limit is
  * blocked. When no master DB is configured (single-shared-DB / local mode) or
- * no override is stored, the compiled DEFAULT (1,000,000) applies.
+ * no override is stored, the compiled DEFAULT (2,000,000) applies.
  */
 
 const CONFIG_KEY = "free_ai_weekly_token_limit";

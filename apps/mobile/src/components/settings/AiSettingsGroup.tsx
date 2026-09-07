@@ -134,7 +134,7 @@ function CreditsRow({ settings }: { settings: UserSettings }) {
       )}
       <Text style={[styles.creditsMeta, { color: colors.mutedForeground }]}>
         {credits === null
-          ? "Included free AI · 1,000 credits a week"
+          ? "Included free AI · 2,000 credits a week"
           : ownKey
             ? `${credits.remaining.toLocaleString()} left this week · not metered while chat runs on your key`
             : `${credits.remaining.toLocaleString()} left this week · ${resetLabel(settings.aiUsage?.resetsAt)}`}

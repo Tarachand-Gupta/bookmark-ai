@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Db } from "@bookmark-ai/db";
 import type { GeminiClient } from "@bookmark-ai/engine";
 import {
+  buildIncludedModel,
+  INCLUDED_FALLBACK_MODEL_ID,
   INCLUDED_MODEL_ID,
+  INCLUDED_PRIMARY_MODEL_ID,
+  OPENROUTER_MODEL_SETTINGS,
   isOwnKeyReady,
   ownModelId,
   pickChatModel,
@@ -29,7 +33,7 @@ const own = (overrides: Partial<ResolvedChatModel> = {}): ResolvedChatModel => (
 });
 const included = (): ResolvedChatModel => ({
   model: {} as ResolvedChatModel["model"],
-  label: "google:gemini-2.5-flash (env)",
+  label: "google:gemini-3.8-flash (env)",
   usesServerKey: true,
   source: "included",
   providerId: "google",
@@ -161,7 +165,7 @@ describe("resolveChatCandidates", () => {
     expect(r.included).not.toBeNull();
   });
 
-  it("a Google key without a model is COMPLETE — it runs gemini-2.5-flash", async () => {
+  it("a Google key without a model is COMPLETE — it runs gemini-3.8-flash", async () => {
     const r = await resolveChatCandidates({
       db: dbWith({ ...baseRow, ai_provider: "google", ai_api_key: "k", ai_mode: "own" }),
       userId: "u",
@@ -214,5 +218,61 @@ describe("resolveChatCandidates", () => {
       exhausted: true,
     });
     expect(r.ok && r.resolved.source).toBe("own-fallback");
+  });
+});
+
+/**
+ * The INCLUDED stack is env-driven: OpenRouter primary + Gemini fallback, either
+ * alone, or nothing. `buildIncludedModel` is the single place that decides.
+ */
+describe("buildIncludedModel — the included AI stack", () => {
+  const geminiStub = {} as GeminiClient;
+  const saved = { gem: process.env.GEMINI_API_KEY, or: process.env.OPENROUTER_API_KEY };
+
+  afterEach(() => {
+    if (saved.gem === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = saved.gem;
+    if (saved.or === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = saved.or;
+  });
+
+  it("runs GLM through OpenRouter with a Gemini fallback when BOTH keys are set", () => {
+    process.env.GEMINI_API_KEY = "gem";
+    process.env.OPENROUTER_API_KEY = "or";
+    const m = buildIncludedModel(geminiStub);
+    expect(m?.modelId).toBe(INCLUDED_PRIMARY_MODEL_ID);
+    expect(m?.tier).toBe("primary");
+    expect(m?.usesServerKey).toBe(true);
+    expect(m?.label).toContain("gemini fallback");
+    // GLM's LOW reasoning effort is a MODEL SETTING (the provider ignores it as
+    // a per-request providerOption); Gemini's thinking config rides along as a
+    // providerOption so a mid-request handoff still streams thoughts.
+    expect(OPENROUTER_MODEL_SETTINGS.reasoning).toEqual({ enabled: true, effort: "low" });
+    expect(m?.providerOptions?.google).toEqual({
+      thinkingConfig: { includeThoughts: true, thinkingLevel: "medium" },
+    });
+  });
+
+  it("runs Gemini alone (tier fallback) when OpenRouter has no key", () => {
+    process.env.GEMINI_API_KEY = "gem";
+    delete process.env.OPENROUTER_API_KEY;
+    const m = buildIncludedModel(geminiStub);
+    expect(m?.modelId).toBe(INCLUDED_FALLBACK_MODEL_ID);
+    expect(m?.tier).toBe("fallback");
+    expect(m?.providerId).toBe("google");
+  });
+
+  it("runs OpenRouter alone when there is no server Gemini", () => {
+    delete process.env.GEMINI_API_KEY;
+    process.env.OPENROUTER_API_KEY = "or";
+    const m = buildIncludedModel(null);
+    expect(m?.modelId).toBe(INCLUDED_PRIMARY_MODEL_ID);
+    expect(m?.tier).toBe("primary");
+  });
+
+  it("is null with neither key — there is no included tier", () => {
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    expect(buildIncludedModel(null)).toBeNull();
   });
 });

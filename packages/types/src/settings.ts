@@ -59,7 +59,7 @@ export const userSettingsSchema = z.object({
   aiMode: aiModeSchema,
   /** True when the own-key config is COMPLETE enough to run: provider + stored
    * key, plus a model for openai/anthropic/custom (and a base URL for custom).
-   * Google needs no model — a NULL model runs `gemini-2.5-flash`. `apiKeySet`
+   * Google needs no model — a NULL model runs `gemini-3.8-flash`. `apiKeySet`
    * with `ownKeyReady: false` = "you saved a key but still need to pick a
    * model"; chat then answers on the included AI with `X-Ai-Note: own-key-incomplete`. */
   ownKeyReady: z.boolean(),

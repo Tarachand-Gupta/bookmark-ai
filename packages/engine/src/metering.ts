@@ -12,7 +12,7 @@ import { addWeeklyTokens, getWeeklyTokens, type Db } from "@bookmark-ai/db";
  */
 
 /** Default weekly budget when no admin override is stored in the master DB. */
-export const DEFAULT_FREE_AI_WEEKLY_TOKEN_LIMIT = 1_000_000;
+export const DEFAULT_FREE_AI_WEEKLY_TOKEN_LIMIT = 2_000_000;
 
 /**
  * The ISO date (YYYY-MM-DD) of the Monday that starts the calendar week

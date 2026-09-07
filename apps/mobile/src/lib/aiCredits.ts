@@ -4,7 +4,7 @@ import type { AiUsage } from "@bookmark-ai/types";
  * Free-tier AI usage in units a person can hold in their head — the phone port
  * of apps/web/lib/ai-credits.ts. The server meters TOKENS; every client speaks
  * CREDITS at a FIXED 1 credit = 1,000 tokens, so the shipped weekly budget reads
- * as "1,000 free credits a week" everywhere. Metering is WEEKLY (Monday 00:00
+ * as "2,000 free credits a week" everywhere. Metering is WEEKLY (Monday 00:00
  * UTC) — copy built here only ever says "Monday".
  */
 export const TOKENS_PER_CREDIT = 1_000;

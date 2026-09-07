@@ -28,7 +28,7 @@ import { AiCreditsCallout, AiCreditsMeter } from "./ai-credits-meter";
 
 /** What a Google key runs on when no model is chosen (server default —
  * `packages/types/src/settings.ts`). Display only; the server owns the choice. */
-const GOOGLE_DEFAULT_MODEL = "gemini-2.5-flash";
+const GOOGLE_DEFAULT_MODEL = "gemini-3.8-flash";
 
 /** OpenRouter is an OpenAI-compatible endpoint, so it maps to the `custom`
  * provider with this base URL — the recommended one-click preset. */
@@ -174,11 +174,11 @@ export function AiSetupCard({
     PROVIDERS.find((p) => p.value === loadedProvider)?.label ?? loadedProvider;
   const providerLabel = PROVIDERS.find((p) => p.value === provider)?.label ?? provider;
   // Save is complete only with a model for providers that need one; Google's
-  // server default (gemini-2.5-flash) is the one exception.
+  // server default (gemini-3.8-flash) is the one exception.
   const needsModel = providerNeedsModel(provider) && !model.trim();
   const keyIncomplete = apiKeySet && aiMode === "own" && !ownKeyReady;
 
-  /** "Saved key ••••1234 · Gemini (Google) · gemini-2.5-flash" — a Google key
+  /** "Saved key ••••1234 · Gemini (Google) · gemini-3.8-flash" — a Google key
    * with no chosen model names the server default so the line never ends in
    * a provider with no visible model. */
   const savedModelLabel =
