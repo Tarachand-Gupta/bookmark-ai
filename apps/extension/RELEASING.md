@@ -157,6 +157,29 @@ Until all four exist, CI stays in build-only mode and the `publish-chrome` job i
 3. No AMO API credentials exist in this repo/CI (`WEB_EXT_API_KEY`/`_SECRET`), so Firefox
    releases stay manual; bump `version` and re-run `release:zip` for each.
 
+### 5. Safari — Mac App Store (manual, not automated)
+
+Safari ships as a Mac app that embeds the `safari-mv3` build. The Xcode project is generated
+from the committed `apps/extension/safari-app/project.yml` (XcodeGen) — never from
+`safari-web-extension-converter` — and the app/appex versions are derived from `package.json`
+by `scripts/safari-version.mjs` (`0.1.2` → `CFBundleVersion` `10200`).
+
+1. Bump `version` in `package.json` — App Store Connect needs a strictly higher `CFBundleVersion`
+   per upload. To re-upload the SAME version, set `SAFARI_BUILD_SUFFIX=1`…`99` (→ `10201`…).
+2. `pnpm --filter @bookmark-ai/extension safari:xcode -- --archive` →
+   `safari-app/build/BookmarkAISafari.xcarchive` (Release, automatic signing with team
+   `L3PP7DQZWS`; needs the paid membership's distribution certificate, which Xcode ▸ Settings ▸
+   Accounts issues on first use). `--unsigned` proves the Release build compiles without a team.
+3. Export + upload:
+   ```bash
+   cd apps/extension && xcodebuild -exportArchive -archivePath safari-app/build/BookmarkAISafari.xcarchive \
+     -exportOptionsPlist safari-app/ExportOptions.plist -exportPath safari-app/build/export -allowProvisioningUpdates
+   ```
+   then upload `safari-app/build/export/*.pkg` with Transporter (or Xcode ▸ Window ▸ Organizer ▸
+   Distribute App straight from the archive). App Store builds are NOT notarized by us — Apple
+   signs them after review; notarization is only for Developer ID (outside-the-store) builds.
+4. Metadata, App Privacy answers, screenshots and the review notes: `docs/safari-store-readiness.md`.
+
 ## Notes / caveats
 
 - Publishing **queues** the item; CWS may hold it for review before it goes live. The job

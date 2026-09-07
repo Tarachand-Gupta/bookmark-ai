@@ -1,0 +1,160 @@
+name: BookmarkAISafari
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XcodeGen manifest — the COMMITTED source of truth for the Safari wrapper
+# project (Mac App Store distribution of the WXT extension). The .xcodeproj is
+# generated and gitignored. Never run `xcrun safari-web-extension-converter`
+# again: this spec replaces it (same two targets, correct ids/versions/
+# entitlements/category/privacy manifest, no post-processing with sed).
+#
+#   pnpm --filter @bookmark-ai/extension safari:xcode            # build:safari → sync → generate
+#   pnpm --filter @bookmark-ai/extension safari:xcode -- --build --install
+#   pnpm --filter @bookmark-ai/extension safari:xcode -- --archive
+#
+# (`scripts/safari-xcode.sh` — it also writes Version.xcconfig from
+# package.json and rsyncs .output/safari-mv3 → Extension/Resources.)
+#
+# ▶ SIGNING — the ONE place to change: `DEVELOPMENT_TEAM` below. It is Tara's
+#   Apple Developer team (L3PP7DQZWS, same as apps/macos and apps/mobile). If
+#   the paid enrolment lands on a different team (an Organization enrolment
+#   creates a new team id), edit that single line and regenerate. Signing is
+#   Automatic: Xcode issues the "Apple Distribution"/"Mac App Store" certificate
+#   and profiles itself on the first Archive → Distribute (or `xcodebuild
+#   -exportArchive -allowProvisioningUpdates`).
+#
+# ▶ BUNDLE IDS — `ai.bookmark.safari` (app) / `ai.bookmark.safari.Extension`
+#   (appex). These are what the repo, the local install and Safari's
+#   registration already use. They become PERMANENT once the App Store Connect
+#   record exists — see docs/safari-store-readiness.md → NEEDS-TARA #1 before
+#   registering the App IDs. The appex id is mirrored in
+#   App/CompanionModel.swift (`extensionBundleIdentifier`); the vitest
+#   `safari-app.test.ts` pins the two together.
+# ─────────────────────────────────────────────────────────────────────────────
+
+options:
+  bundleIdPrefix: ai.bookmark
+  deploymentTarget:
+    # Safari 17 (Sonoma) — first release where the MV3 service-worker background
+    # this build uses is stable, and the floor for @Observable / SMAppService /
+    # SFExtensionProfileKey in the native sources. Verified on macOS 26.6 only.
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+  minimumXcodeGenVersion: "2.38"
+
+# CFBundleShortVersionString / CFBundleVersion for BOTH targets (App Store
+# Connect rejects an appex whose versions differ from its host). GENERATED from
+# apps/extension/package.json by scripts/safari-version.mjs — never hand-edit.
+configFiles:
+  Debug: Version.xcconfig
+  Release: Version.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: L3PP7DQZWS
+    CODE_SIGN_STYLE: Automatic
+    # App Store Review 2.4.5: Mac apps must be sandboxed. Both targets carry the
+    # sandbox via this setting AND an explicit .entitlements file (auditable).
+    ENABLE_APP_SANDBOX: YES
+    ENABLE_HARDENED_RUNTIME: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    ALWAYS_SEARCH_USER_PATHS: NO
+    DEAD_CODE_STRIPPING: YES
+    SWIFT_STRICT_CONCURRENCY: minimal
+    COMBINE_HIDPI_IMAGES: YES
+
+targets:
+  # ── Container app ─────────────────────────────────────────────────────────
+  # Menu-bar (LSUIElement) companion: explains how to enable the extension,
+  # deep-links into Safari ▸ Settings ▸ Extensions, offers "Start at login".
+  BookmarkAI:
+    type: application
+    platform: macOS
+    sources:
+      - path: App/AppDelegate.swift
+      - path: App/CompanionModel.swift
+      - path: App/SetupView.swift
+      - path: App/Assets.xcassets
+      # macOS 26 Liquid Glass icon (Icon Composer document, shared brand mark
+      # with apps/macos). The appiconset below is the pre-26 fallback and the
+      # source of the 1024×1024 App Store icon.
+      - path: App/AppIcon.icon
+      - path: App/PrivacyInfo.xcprivacy
+        buildPhase: resources
+      - path: App/Info.plist
+        buildPhase: none
+      - path: App/BookmarkAI.entitlements
+        buildPhase: none
+    dependencies:
+      # Embedded into Contents/PlugIns by XcodeGen's app-extension handling.
+      - target: BookmarkAIExtension
+    settings:
+      base:
+        PRODUCT_NAME: Bookmark AI
+        PRODUCT_BUNDLE_IDENTIFIER: ai.bookmark.safari
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: App/BookmarkAI.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS: ["$(inherited)", "@executable_path/../Frameworks"]
+
+  # ── Safari web extension appex ────────────────────────────────────────────
+  # The WXT production build (.output/safari-mv3) lands in Contents/Resources:
+  # top-level files as bundle resources, sub-directories as folder references
+  # so `icon/16.png`, `chunks/*`, `content-scripts/*` keep their paths. The
+  # `Extension/Resources` staging dir is gitignored and (re)written by
+  # scripts/safari-xcode.sh, which also FAILS if the WXT output grows a
+  # top-level entry not listed here (drift guard) — add it below when it does.
+  BookmarkAIExtension:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Extension/SafariWebExtensionHandler.swift
+      - path: Extension/PrivacyInfo.xcprivacy
+        buildPhase: resources
+      - path: Extension/Info.plist
+        buildPhase: none
+      - path: Extension/BookmarkAIExtension.entitlements
+        buildPhase: none
+      - path: Extension/Resources/manifest.json
+        buildPhase: resources
+        optional: true
+      - path: Extension/Resources/background.js
+        buildPhase: resources
+        optional: true
+      - path: Extension/Resources/popup.html
+        buildPhase: resources
+        optional: true
+      - path: Extension/Resources/assets
+        type: folder
+        optional: true
+      - path: Extension/Resources/chunks
+        type: folder
+        optional: true
+      - path: Extension/Resources/content-scripts
+        type: folder
+        optional: true
+      - path: Extension/Resources/icon
+        type: folder
+        optional: true
+    settings:
+      base:
+        PRODUCT_NAME: Bookmark AI Extension
+        PRODUCT_BUNDLE_IDENTIFIER: ai.bookmark.safari.Extension
+        INFOPLIST_FILE: Extension/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Extension/BookmarkAIExtension.entitlements
+        SKIP_INSTALL: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          ["$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks"]
+
+schemes:
+  BookmarkAI:
+    build:
+      targets:
+        BookmarkAI: all
+    run:
+      config: Debug
+    archive:
+      config: Release

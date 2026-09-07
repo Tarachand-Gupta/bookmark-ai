@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Tailwind v4 auto-scans every non-gitignored file under apps/extension for
+   class-like tokens. The Safari wrapper (Swift/YAML/plists) and the Safari
+   pipeline scripts never render popup markup, yet a comment saying "container
+   app" once added a dead `.container` utility to the popup CSS and moved every
+   chunk hash. Keep exactly those NEW files out of the scan — not all of
+   scripts/, whose pre-existing files already contribute to the shipped CSS
+   (a dead `.rounded` from generate-icons.mjs) and must keep the store zips
+   byte-identical. */
+@source not "../safari-app";
+@source not "../scripts/safari-xcode.sh";
+@source not "../scripts/safari-version.mjs";
+@source not "../scripts/safari-version.d.mts";
+@source not "../scripts/safari-version.test.ts";
+@source not "../scripts/generate-safari-app-icon.mjs";
+
 @custom-variant dark (&:is(.dark *));
 
 /* shadcn neutral palette (Tailwind v4 / oklch). */

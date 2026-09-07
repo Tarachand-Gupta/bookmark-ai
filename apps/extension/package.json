@@ -19,6 +19,9 @@
     "zip:store": "node ./scripts/store-zip.mjs",
     "release:zip": "node ./scripts/wxt-run.mjs zip && node ./scripts/wxt-run.mjs zip -b firefox && node ./scripts/store-zip.mjs",
     "icons": "node scripts/generate-icons.mjs",
+    "icons:safari-app": "node scripts/generate-safari-app-icon.mjs",
+    "safari:xcode": "bash scripts/safari-xcode.sh",
+    "safari:version": "node scripts/safari-version.mjs --check",
     "check-types": "tsc --noEmit",
     "test": "vitest run",
     "postinstall": "node ./scripts/wxt-run.mjs prepare"

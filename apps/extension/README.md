@@ -45,9 +45,11 @@ pnpm --filter @bookmark-ai/extension release:zip      # store zips: chrome, fire
   (temporary add-ons are gone after a Firefox restart; only an AMO-signed XPI persists). For a
   throwaway session: `pnpm dlx web-ext run --source-dir .output/firefox-mv2 --start-url http://localhost:3000/app`
   launches a fresh Firefox profile with the add-on preloaded (recipe in `docs/TESTING.md` §3).
-- **Safari**: the wrapper app is generated once with `xcrun safari-web-extension-converter .output/safari-mv3 …`
-  (full command + signed `xcodebuild` recipe in `docs/TESTING.md` §3; the project references
-  `.output/safari-mv3` directly, so JS changes only need `build:safari` + a `clean build`)
+- **Safari**: `pnpm --filter @bookmark-ai/extension safari:xcode -- --install` — builds the
+  extension, generates the Xcode wrapper from the committed `safari-app/project.yml` (XcodeGen),
+  signs a Debug build with the Apple Development identity in your keychain and installs it to
+  `/Applications/Bookmark AI.app` (recipe in `docs/TESTING.md` §3; Mac App Store submission in
+  `docs/safari-store-readiness.md`)
 
 Store-submission steps live in [`docs/PRODUCTION.md`](../../docs/PRODUCTION.md).
 See `CLAUDE.md` in this folder for agent-facing details (messaging contracts, testing

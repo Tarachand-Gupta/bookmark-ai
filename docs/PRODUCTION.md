@@ -88,15 +88,20 @@ Ordered so that items later in the list depend on items earlier in it.
 
 ## 4. Safari (App Store)
 
-- [ ] **Apple Developer Program, $99/yr** — required. (The same membership covers a future
-      iOS app.)
-- [ ] Convert: `pnpm --filter @bookmark-ai/extension build:safari`, then
-      `xcrun safari-web-extension-converter .output/safari-mv2` → an Xcode project that wraps
-      the extension in a small macOS (and optionally iOS) host app.
-- [ ] Sign + submit through Xcode / App Store Connect; App Review applies.
-- [ ] Same caveats as Firefox (no `externally_connectable`, Clerk syncHost unverified,
-      plus Safari's stricter cookie access) — realistically the Safari port ships after the
-      JWT auth flow exists.
+- [ ] **Apple Developer Program, $99/yr** — required; enrolment in progress 2026-09-07. (The
+      same membership covers the iOS app.)
+- [x] **Wrapper project is store-shaped (2026-09-07).** `apps/extension/safari-app/` — XcodeGen
+      spec, menu-bar companion app, sandbox-only entitlements, privacy manifests, 1024 icon,
+      versions synced from `package.json`. `pnpm --filter @bookmark-ai/extension safari:xcode --
+      --archive` produces the Release `.xcarchive`; the converter is retired. Audit, App Store
+      Connect paste sheet and the NEEDS-TARA list: `docs/safari-store-readiness.md`.
+- [x] Auth works in Safari without `externally_connectable` or cookie access: the `bkd_`
+      device token is minted through the content-script bridge (`apps/extension/CLAUDE.md` → Auth).
+- [ ] Register App IDs `ai.bookmark.safari` + `ai.bookmark.safari.Extension`, create the App
+      Store Connect record, Archive → Distribute App (Xcode issues the Mac App Store
+      certificate/profiles), App Review with the reviewer account.
+- [ ] Deploy the web app so `https://www.bookmark-ai.cloud/support` (the store's Support URL)
+      is live — committed in `52a797b`, still 404 in prod as of 2026-09-07.
 
 ## 5. Post-launch
 

@@ -16,17 +16,23 @@
 // contrast, so it's plated rather than the transparent silhouette the favicon
 // uses. Keep the inBookmark shape in sync with
 // apps/web/scripts/generate-apple-icon.mjs.
+//
+// The renderer is exported so `generate-safari-app-icon.mjs` can draw the SAME
+// mark on the macOS app-icon grid (inset plate, bigger corner radius) for the
+// Safari companion app — one brand mark, two geometries. (Tailwind scans this
+// file for class names, so comments here avoid bare utility words.)
 import { deflateSync } from "node:zlib";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SIZES = [16, 32, 48, 96, 128];
 const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
-const FG = [250, 250, 250]; // #fafafa — near-white mark (shared by all targets)
+/** #fafafa — near-white mark (shared by all targets). */
+export const FG = [250, 250, 250];
 
-// One entry per build target: { dir, plate-background rgb }.
-const TARGETS = [
+/** One entry per build target: { dir, plate-background rgb }. */
+export const TARGETS = [
   { dir: "icon", bg: [10, 10, 10] },       // prod  — #0a0a0a near-black
   { dir: "icon-dev", bg: [22, 163, 74] },  // dev   — #16a34a green-600
   { dir: "icon-local", bg: [220, 38, 38] }, // local — #dc2626 red-600
@@ -53,7 +59,8 @@ function chunk(type, data) {
   return out;
 }
 
-function encodePng(size, rgba) {
+/** Encode a square RGBA buffer as a PNG (8-bit, color type 6, no filtering). */
+export function encodePng(size, rgba) {
   const stride = size * 4;
   const raw = Buffer.alloc((stride + 1) * size);
   for (let y = 0; y < size; y++) {
@@ -73,9 +80,8 @@ function encodePng(size, rgba) {
   ]);
 }
 
-// Shape tests in normalized [0,1] coordinates.
-function inRoundedSquare(x, y) {
-  const r = 0.2;
+// Shape tests in normalized [0,1] PLATE coordinates.
+function inRoundedSquare(x, y, r) {
   const dx = Math.max(Math.abs(x - 0.5) - (0.5 - r), 0);
   const dy = Math.max(Math.abs(y - 0.5) - (0.5 - r), 0);
   return dx * dx + dy * dy <= r * r;
@@ -112,18 +118,30 @@ function inBookmark(x, y) {
   return y <= lineY;
 }
 
-function render(size, BG) {
+/**
+ * Render the plated bookmark mark into an RGBA buffer.
+ *
+ * `inset` is the transparent margin on each side as a fraction of the canvas
+ * (0 = the plate fills the canvas, the toolbar look; ~0.098 = Apple's macOS
+ * app-icon grid, where the artwork is 824/1024 of the canvas). `radius` is the
+ * plate's corner radius as a fraction of the PLATE size (0.2 for the toolbar
+ * icon; ~0.225 for the macOS grid). The glyph is drawn in plate coordinates,
+ * so the ribbon keeps the same proportions on both geometries.
+ */
+export function render(size, BG, { inset = 0, radius = 0.2, fg = FG } = {}) {
   const rgba = Buffer.alloc(size * size * 4);
   const S = 4; // supersampling for smooth edges
+  const span = 1 - 2 * inset;
   for (let py = 0; py < size; py++) {
     for (let px = 0; px < size; px++) {
       let bgHits = 0;
       let fgHits = 0;
       for (let sy = 0; sy < S; sy++) {
         for (let sx = 0; sx < S; sx++) {
-          const x = (px + (sx + 0.5) / S) / size;
-          const y = (py + (sy + 0.5) / S) / size;
-          if (!inRoundedSquare(x, y)) continue;
+          // Canvas → plate-local coordinates (identity when inset = 0).
+          const x = ((px + (sx + 0.5) / S) / size - inset) / span;
+          const y = ((py + (sy + 0.5) / S) / size - inset) / span;
+          if (!inRoundedSquare(x, y, radius)) continue;
           bgHits++;
           if (inBookmark(x, y)) fgHits++;
         }
@@ -134,7 +152,7 @@ function render(size, BG) {
       const mix = fgHits / bgHits;
       const i = (py * size + px) * 4;
       for (let c = 0; c < 3; c++) {
-        rgba[i + c] = Math.round(BG[c] + (FG[c] - BG[c]) * mix);
+        rgba[i + c] = Math.round(BG[c] + (fg[c] - BG[c]) * mix);
       }
       rgba[i + 3] = Math.round(alpha * 255);
     }
@@ -142,12 +160,20 @@ function render(size, BG) {
   return rgba;
 }
 
-for (const { dir, bg } of TARGETS) {
-  const outDir = join(PUBLIC_DIR, dir);
-  mkdirSync(outDir, { recursive: true });
-  for (const size of SIZES) {
-    const file = join(outDir, `${size}.png`);
-    writeFileSync(file, encodePng(size, render(size, bg)));
-    console.log(`wrote ${file}`);
+function main() {
+  for (const { dir, bg } of TARGETS) {
+    const outDir = join(PUBLIC_DIR, dir);
+    mkdirSync(outDir, { recursive: true });
+    for (const size of SIZES) {
+      const file = join(outDir, `${size}.png`);
+      writeFileSync(file, encodePng(size, render(size, bg)));
+      console.log(`wrote ${file}`);
+    }
   }
+}
+
+// Only generate when run directly (`pnpm icons`) — importing the module for
+// its renderer must not touch public/.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
 }

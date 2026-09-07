@@ -11,6 +11,12 @@ node_modules/
 !.env.dev-remote
 # CRX private key — its public half is committed in wxt.config.ts
 .keys/
-# Stray Safari converter output (placeholder com.yourCompany.* bundle ids) from
-# a flag-less run — the real project is safari-xcode/ (ignored in root .gitignore).
+# Safari wrapper: safari-app/project.yml is the source of truth; everything the
+# pipeline generates is ignored (also listed in the root .gitignore).
+safari-app/*.xcodeproj/
+safari-app/Extension/Resources/
+safari-app/DerivedData/
+safari-app/build/
+# Stray safari-web-extension-converter output from the retired flow.
 Bookmark AI/
+safari-xcode/

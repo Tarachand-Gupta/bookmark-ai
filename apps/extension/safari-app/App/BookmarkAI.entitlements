@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- App Store Review 2.4.5: sandboxed. The container app needs NOTHING else —
+	     it opens URLs through LaunchServices, toggles its own login item
+	     (SMAppService) and asks Safari for the extension state
+	     (SFSafariExtensionManager); none of that requires network, file or
+	     hardware entitlements. Least privilege on purpose: the converter's
+	     default `files.user-selected.read-only` was dropped. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+</dict>
+</plist>

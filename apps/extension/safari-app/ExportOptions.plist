@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Export options for the Mac App Store upload:
+	    xcodebuild -exportArchive -archivePath build/BookmarkAISafari.xcarchive \
+	      -exportOptionsPlist ExportOptions.plist -exportPath build/export \
+	      -allowProvisioningUpdates
+	  → build/export/Bookmark AI.pkg, which Transporter / Xcode Organizer / `xcrun
+	  altool --upload-package` sends to App Store Connect. Needs the paid team's
+	  "Apple Distribution" certificate (Xcode issues it on first use). App Store
+	  builds are NOT notarized by the developer — Apple signs them after review;
+	  notarization only applies to Developer ID (outside-the-store) builds.
+	-->
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>teamID</key>
+	<string>L3PP7DQZWS</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>uploadSymbols</key>
+	<true/>
+	<key>destination</key>
+	<string>export</string>
+</dict>
+</plist>

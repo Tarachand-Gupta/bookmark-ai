@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- App Store Review 2.4.5: sandboxed. A Safari web extension's network
+	     requests are made by Safari on the extension's behalf (governed by the
+	     manifest's host_permissions), so the appex itself needs no network or
+	     file entitlement. The converter's `files.user-selected.read-only` was
+	     dropped — nothing here reads files. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+</dict>
+</plist>

@@ -195,8 +195,12 @@ const ALWAYS_SKIP = new Set([".output", "node_modules", ".wxt", ".keys", ".turbo
 /** Extra skips under apps/extension only. */
 const EXTENSION_SKIP = new Set([
   "store-assets", // listing screenshots, not source
-  "safari-xcode", // generated Xcode wrapper (gitignored)
+  "safari-xcode", // retired converter output (gitignored)
   "Bookmark AI", // stray safari-web-extension-converter output (gitignored)
+  "DerivedData", // safari-app/DerivedData — xcodebuild intermediates (gitignored)
+  "BookmarkAISafari.xcodeproj", // safari-app — generated from project.yml (gitignored)
+  "Resources", // safari-app/Extension/Resources — rsync'd copy of .output/safari-mv3 (gitignored)
+  "build", // safari-app/build — .xcarchive / export (gitignored)
 ]);
 function isPrivateEnv(name) {
   // Keep the committed per-target files (.env.production/.env.development/

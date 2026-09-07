@@ -148,11 +148,12 @@ pnpm --filter @bookmark-ai/extension build:safari:local   # .output/safari-mv3-d
 
 A PROD build only ever signs in against `bookmark-ai.cloud`; load the `-dev` output whenever the
 test plan says "localhost:3000" — a `firefox-mv2` popup pointed at the local dev server can never
-reach the signed-in state. The Safari wrapper project references `.output/safari-mv3` by path, so
-to try the LOCAL target in Safari: `rm -rf .output/safari-mv3 && ditto .output/safari-mv3-dev
-.output/safari-mv3`, run steps 2–4 below, then `pnpm build:safari` again to put the prod bundle
-back before the next wrapper build (not exercised as of 2026-09-03 — only the prod bundle has
-been embedded and registered).
+reach the signed-in state. The Safari wrapper embeds whatever `.output/safari-mv3` holds and
+REFUSES a non-production bundle unless told otherwise, so to try the LOCAL target in Safari on
+purpose: `rm -rf .output/safari-mv3 && ditto .output/safari-mv3-dev .output/safari-mv3 && pnpm
+--filter @bookmark-ai/extension safari:xcode -- --skip-web-build --allow-dev-bundle --install`;
+a plain `… safari:xcode -- --install` afterwards rebuilds and puts the prod bundle back (not
+exercised as of 2026-09-07 — only the prod bundle has ever been embedded and registered).
 
 All three must succeed. Also compare the three `.output/*/manifest.json` side by side — every
 difference must be one of the intentional ones: MV2 vs MV3 shape (`browser_action`/`background.scripts`
@@ -222,46 +223,53 @@ Live test — by hand (needs a real browser via computer use / chrome MCP):
     {outcome:"patched"}` in the diag log, and NO `sdk failed … Missing host_permissions` line
     (that was the 2026-09-03 Firefox regression — see `apps/extension/CLAUDE.md` → Auth).
   - Native-sync bookmark mirror works there too; Firefox has no reading list.
-- Safari (verified recipe — needs full Xcode; note: native-sync is a compile-time no-op in
-  Safari — Apple exposes no bookmarks/Reading List API to extensions):
-  1. `cd apps/extension && xcrun safari-web-extension-converter .output/safari-mv3 --app-name "Bookmark AI" --bundle-identifier ai.bookmark.safari --project-location safari-xcode --macos-only --no-open --no-prompt --force`
-     Note: running the converter WITHOUT `--project-location` dumps a duplicate project with
-     placeholder `com.yourCompany.*` bundle ids into `apps/extension/Bookmark AI/` — delete it and
-     use the command above. JS/manifest-only changes need NO reconversion — the Xcode project
-     references `.output/safari-mv3` directly — BUT an incremental `xcodebuild build` will
-     silently keep the previously-copied resources (verified: it reported BUILD SUCCEEDED while
-     embedding a week-old bundle). After any `pnpm build:safari`, rebuild with `clean build`
-     (step 3) so the fresh resources are re-copied into the appex.
-  2. `apps/extension/scripts/sync-safari-native.sh` — patches the just-generated (gitignored)
-     project with our COMMITTED native sources in `apps/extension/safari-native/`: it turns the
-     wrapper into a **menu-bar background app** (AppDelegate/ViewController overwrite → NSStatusItem,
-     survives window-close, "Start at Login" via SMAppService), fixes the app target's bundle id
-     (`ai.bookmark.Bookmark-AI` → `ai.bookmark.safari`, else the build fails at ValidateEmbeddedBinary),
-     and sets `LSUIElement=true` in the app Info.plist (no Dock icon). Idempotent — re-run after every
-     reconversion, before xcodebuild. Fails loudly (quoting the converter command) if `safari-xcode/`
-     is missing.
-  3. `cd "safari-xcode/Bookmark AI" && xcodebuild -project "Bookmark AI.xcodeproj" -scheme "Bookmark AI" -configuration Debug clean build CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Development: tarachandragupta2784@gmail.com (BB7CP2R7GG)" DEVELOPMENT_TEAM=L3PP7DQZWS PROVISIONING_PROFILE_SPECIFIER=""`
-     (`clean` matters — see step 1 note. The signing flags use the Apple Development
-     cert already in this Mac's keychain: a REAL signature makes Safari keep the
-     extension across restarts with NO "Allow Unsigned Extensions" re-arm. Dropping
-     them falls back to ad-hoc signing, which Safari treats as unsigned and forgets
-     on every restart. Do NOT pass CODE_SIGNING_REQUIRED=NO.)
-  4. Install to a STABLE path and keep it the ONLY copy — multiple registered copies of the
-     app (DerivedData + /Applications + ~/Applications) make Safari's extension list appear
-     empty or doubled, and each rebuild re-registers the DerivedData copy:
-     `ditto "$DD_APP" "/Applications/Bookmark AI.app" && pluginkit -r "$DD_APP/Contents/PlugIns/Bookmark AI Extension.appex"; rm -rf "$DD_APP"; open "/Applications/Bookmark AI.app"`
-     (where `DD_APP=~/Library/Developer/Xcode/DerivedData/Bookmark_AI-*/Build/Products/Debug/"Bookmark AI.app"`).
-     Running the app once registers the extension; verify a single registration with
-     `pluginkit -mAvvv -p com.apple.Safari.web-extension | grep -A4 ai.bookmark` (expect ONE
-     `ai.bookmark.safari.Extension` row whose Path is under `/Applications/Bookmark AI.app`).
-     First launch shows the setup window plus a one-time "Run Bookmark AI in the background?"
-     prompt (`Start at Login` = SMAppService login item); later launches are menu-bar only.
-     The JS/manifest inside the installed appex is whatever `.output/safari-mv3` held at
-     xcodebuild time — after any `pnpm build:safari`, repeat steps 3–4 (quit the running app
-     first: `osascript -e 'quit app "Bookmark AI"'`).
-  5. In Safari: Settings → Advanced → "Show features for web developers", then Develop →
-     "Allow Unsigned Extensions" (re-arm after each Safari restart), then Settings →
-     Extensions → enable Bookmark AI. `safari-xcode/` is gitignored (generated).
+- Safari (verified 2026-09-07 on macOS 26.6.2 / Safari 26.6.2 / Xcode 26.5 / xcodegen 2.46;
+  note: native-sync is a compile-time no-op in Safari — Apple exposes no bookmarks/Reading List
+  API to extensions). The wrapper is a COMMITTED XcodeGen project — `apps/extension/safari-app/`
+  (`project.yml` + Swift sources + plists + entitlements + privacy manifests + icons); the
+  `.xcodeproj` is generated and gitignored. `xcrun safari-web-extension-converter` is RETIRED
+  (its `safari-xcode/` output and the `safari-native/` sed-sync script are gone) — never run it.
+  1. `pnpm --filter @bookmark-ai/extension safari:xcode -- --install` — ONE command
+     (`scripts/safari-xcode.sh`): `build:safari` → bundle check (manifest version ==
+     `package.json`, exactly the four prod `host_permissions`, MV3 service worker;
+     `--allow-dev-bundle` overrides) → `scripts/safari-version.mjs --write` regenerates
+     `safari-app/Version.xcconfig` (`MARKETING_VERSION` = extension version,
+     `CURRENT_PROJECT_VERSION` = 10200 for 0.1.2, both targets) → rsync `.output/safari-mv3` →
+     `safari-app/Extension/Resources` (minus the other targets' `icon-dev/`/`icon-local/`) →
+     drift guard (a new top-level WXT output entry FAILS the run until it is listed in
+     `project.yml`) → `xcodegen generate` → `xcodebuild … Debug clean build`, signed MANUALLY
+     with the "Apple Development" identity found in the keychain (a REAL signature is what makes
+     Safari keep the extension across restarts with NO "Allow Unsigned Extensions" re-arm;
+     ad-hoc fallback if there is none; the project itself stays Automatic-signing for Xcode) →
+     quits the running menu-bar app via AppleScript (never `kill`), replaces
+     `/Applications/Bookmark AI.app` (same bundle ids + team ⇒ Safari keeps the extension ENABLED
+     and its `storage.local` device token — verified), unregisters + deletes the DerivedData copy
+     so pluginkit sees ONE app, relaunches, and prints Safari's own verdict:
+     `defaults read ai.bookmark.safari ai.bookmark.safari.lastExtensionState` → `enabled`.
+     Flags: `--skip-web-build` reuses `.output/safari-mv3`; `--build` stops before installing;
+     `--archive` writes a Release `.xcarchive` to `safari-app/build/` (`--unsigned` = compile
+     proof without a team); `--open` opens the project in Xcode. The `clean` inside step 1 is
+     NOT optional — an incremental xcodebuild silently keeps stale appex resources.
+  2. Expect: `pluginkit -mAvvv -p com.apple.Safari.web-extension | grep -A4 ai.bookmark` → ONE
+     `ai.bookmark.safari.Extension(<version>)` row whose Path is under
+     `/Applications/Bookmark AI.app`; the bookmark glyph in the menu bar whose menu reads
+     "Safari extension: on" / Open Safari Extensions Settings… / Open Bookmark AI / Show Setup
+     Window / Start at Login (checkmark) / Quit. First launch shows the setup window (status card,
+     3 steps, "Turn On in Safari…" deep link, Start-at-login TOGGLE — the old modal prompt is
+     gone); later launches are menu-bar only, and `open "/Applications/Bookmark AI.app"` (or
+     Launchpad) re-shows the window.
+  3. In Safari: Settings → Extensions lists "Bookmark AI <version> from Bookmark AI" ticked with
+     the ⌥⇧S shortcut; the toolbar button opens the popup (signed-in UI when the web-app session
+     exists, `SignInGate` otherwise). No Develop-menu "Allow Unsigned Extensions" needed.
+  4. Headless checks — `osascript` has Accessibility on this Mac:
+     `tell application "System Events" to tell process "Bookmark AI" to tell menu bar item 1 of
+     menu bar 2 to click` opens the status menu (then `click menu item "Open Safari Extensions
+     Settings…" of menu 1` deep-links Safari's pane); in Safari, `click` the toolbar button whose
+     `description` contains "Bookmark AI" (`buttons of toolbar 1 of window 1`) opens the popup —
+     a synthetic `keystroke "s" using {option down, shift down}` does NOT; `get {position, size}
+     of window 1` + `screencapture -x -R x,y,w,h` captures either. Full recipe + store
+     screenshot sizes: `docs/safari-store-readiness.md` §5.
+  Store submission (audit, App Store Connect paste sheet, NEEDS-TARA): `docs/safari-store-readiness.md`.
 
 ## 4. Desktop (native SDK — GUI session required)
 
