@@ -102,8 +102,8 @@ export default function SupportPage() {
           Bookmark AI saves bookmarks from any browser or device into one searchable library.
           Each save is enriched with the page&rsquo;s metadata, categorized and embedded by AI,
           and you can browse it, search it in plain language, or ask the built-in assistant
-          about what you&rsquo;ve saved — from the web app, the browser extension, or the iOS,
-          Android and macOS apps.
+          about what you&rsquo;ve saved — from the web app, the browser extension, or the
+          macOS and Android apps (the iOS app is coming soon).
         </p>
 
         <section className="space-y-3">
@@ -116,6 +116,32 @@ export default function SupportPage() {
             — replies usually arrive within two business days. Include which app you&rsquo;re
             using (web, extension, iOS, Android or macOS) and, on mobile, the version shown in
             Settings → About.
+          </p>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold text-foreground">Installing</h2>
+          <p>
+            Every download and its install steps are on the{" "}
+            <Link href="/download" className={linkClass}>
+              download page
+            </Link>
+            . In short: the{" "}
+            <Link href="/download#macos" className={linkClass}>
+              Mac app
+            </Link>{" "}
+            and the{" "}
+            <Link href="/download#android" className={linkClass}>
+              Android APK
+            </Link>{" "}
+            download directly; the Chrome and Firefox extension listings are under review
+            (sideload the zip meanwhile); the Safari extension and the iOS app are coming
+            soon — build them from source, or add the{" "}
+            <Link href="/download#web" className={linkClass}>
+              web app
+            </Link>{" "}
+            to your home screen. The Mac and Android apps show an update banner when a
+            new build is out.
           </p>
         </section>
 

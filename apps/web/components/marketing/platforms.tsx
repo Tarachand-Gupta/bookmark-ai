@@ -1,150 +1,121 @@
-import {
-  Apple,
-  ArrowRight,
-  ArrowUpRight,
-  Chrome,
-  Compass,
-  Flame,
-  Globe,
-  Monitor,
-  Smartphone,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PLATFORMS, downloadAnchor, getPlatform } from "@/lib/platforms";
 import { PlatformMarquee } from "./marquee";
+import { PlatformActionButton } from "./platform-action";
+import { PlatformIcon } from "./platform-icon";
+import { ReleasesProvider } from "./releases-provider";
 import { Reveal } from "./reveal";
-import { btnPrimary, display, glass, mono, REPO, REPO_README, SectionHead } from "./primitives";
+import { StatusBadge } from "./status-badge";
+import { display, glass, mono, SectionHead } from "./primitives";
 
-// Every client, with an honest availability state. Nothing here promises a
-// store listing that doesn't exist yet.
-const CLIENTS = [
-  {
-    icon: Chrome,
-    name: "Chrome, Edge & Arc",
-    blurb: "One-click save from the toolbar, plus full-tab sessions.",
-    href: REPO,
-    cta: "Build from source",
-    caption: "Store release coming soon",
-  },
-  {
-    icon: Compass,
-    name: "Safari",
-    blurb: "Native Web Extension for macOS Safari.",
-    href: REPO_README,
-    cta: "Build from source",
-  },
-  {
-    icon: Flame,
-    name: "Firefox",
-    blurb: "Save and search without leaving Firefox.",
-    href: REPO,
-    cta: "Build from source",
-    caption: "Store release coming soon",
-  },
-  {
-    icon: Apple,
-    name: "iOS & iPad",
-    blurb: "Save and browse your library on iPhone and iPad.",
-    href: REPO_README,
-    cta: "Build from source",
-  },
-  {
-    icon: Smartphone,
-    name: "Android",
-    blurb: "The same library and search on Android.",
-    href: REPO,
-    cta: "Build from source",
-    caption: "Store release coming soon",
-  },
-  {
-    icon: Monitor,
-    name: "Desktop (macOS)",
-    blurb: "A native menu-bar companion app for the Mac.",
-    href: REPO,
-    cta: "Build from source",
-    caption: "Prebuilt binaries coming soon",
-  },
-];
-
+/**
+ * The launch section: every client with its real availability, straight from
+ * lib/platforms.ts. Download buttons are release-record aware (a published
+ * record from Settings → Releases wins over the static tag URL), and anything
+ * not downloadable yet points into its card on /download rather than at a
+ * store URL that 404s.
+ */
 export function Platforms() {
+  const web = getPlatform("web");
+  const clients = PLATFORMS.filter((p) => p.id !== "web");
+
   return (
-    <section id="platforms" className="mx-auto w-full max-w-6xl scroll-mt-24 px-6 py-20 sm:py-24">
-      <Reveal>
-        <SectionHead
-          eyebrow="one library, every screen"
-          title="Save here, find it there."
-          sub="The same bookmarks and the same search, wherever you save or look them up."
-        />
-      </Reveal>
-
-      <div className="mt-12">
-        <PlatformMarquee />
-      </div>
-
-      {/* Web app — the primary surface, featured full-width. */}
-      <Reveal className="mt-10">
-        <div
-          className={cn(
-            "flex flex-col items-start gap-5 rounded-2xl p-6 sm:flex-row sm:items-center sm:gap-6 sm:p-8",
-            glass,
-          )}
-        >
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-border/60 bg-background/50">
-            <Globe className="size-7 text-foreground" strokeWidth={1.5} aria-hidden />
-          </span>
-          <div className="flex-1">
-            <h3 className={cn(display, "text-xl font-semibold tracking-tight")}>Web app</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Your full library in any browser — nothing to install. Browse, search,
-              chat, and pick up the tabs still open on your other devices.
-            </p>
-          </div>
-          <a href="/app" className={cn(btnPrimary, "shrink-0")}>
-            Open app
-            <ArrowRight className="size-4" aria-hidden />
-          </a>
-        </div>
-      </Reveal>
-
-      <Reveal
-        selector="[data-reveal-item]"
-        className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+    <ReleasesProvider>
+      <section
+        id="platforms"
+        className="mx-auto w-full max-w-6xl scroll-mt-24 px-6 py-20 sm:py-24"
       >
-        {CLIENTS.map((p) => (
-          <div
-            key={p.name}
-            data-reveal-item
-            className={cn(glass, "flex flex-col gap-4 rounded-2xl p-6")}
-          >
-            <p.icon className="size-7 text-foreground" strokeWidth={1.5} aria-hidden />
-            <div className="space-y-1">
-              <h3 className="text-base font-medium tracking-tight">{p.name}</h3>
-              <p className="text-sm text-muted-foreground">{p.blurb}</p>
-            </div>
-            <div className="mt-auto space-y-1.5 pt-2">
-              <a
-                href={p.href}
-                target="_blank"
-                rel="noreferrer noopener"
-                className={cn(
-                  mono,
-                  "group inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition-colors hover:text-muted-foreground",
-                )}
-              >
-                {p.cta}
-                <ArrowUpRight
-                  className="size-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                  aria-hidden
-                />
-              </a>
-              {p.caption && (
-                <p className={cn(mono, "text-[11px] text-muted-foreground/70")}>
-                  {p.caption}
-                </p>
+        <Reveal>
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+            <SectionHead
+              eyebrow="one library, every screen"
+              title="Save here, find it there."
+              sub="The same bookmarks and the same search, wherever you save or look them up. The Mac and Android apps download today; the store listings are on their way."
+            />
+            <a
+              href="/download"
+              className={cn(
+                mono,
+                "group inline-flex shrink-0 items-center gap-1.5 self-start text-sm font-medium text-foreground transition-colors hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm sm:self-auto",
               )}
-            </div>
+            >
+              All downloads &amp; install steps
+              <ArrowRight
+                className="size-3.5 transition-transform group-hover:translate-x-0.5"
+                aria-hidden
+              />
+            </a>
           </div>
-        ))}
-      </Reveal>
-    </section>
+        </Reveal>
+
+        <div className="mt-12">
+          <PlatformMarquee />
+        </div>
+
+        {/* Web app — the primary surface, featured full-width. */}
+        <Reveal className="mt-10">
+          <div
+            className={cn(
+              "flex flex-col items-start gap-5 rounded-2xl p-6 sm:flex-row sm:items-center sm:gap-6 sm:p-8",
+              glass,
+            )}
+          >
+            <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-border/60 bg-background/50">
+              <PlatformIcon icon={web.icon} className="size-7 text-foreground" />
+            </span>
+            <div className="flex-1">
+              <h3 className={cn(display, "text-xl font-semibold tracking-tight")}>{web.name}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {web.blurb} Browse, search, chat, and pick up the tabs still open on your
+                other devices — and add it to your phone&rsquo;s home screen as an app.
+              </p>
+            </div>
+            <PlatformActionButton entry={web} className="shrink-0" />
+          </div>
+        </Reveal>
+
+        <Reveal
+          selector="[data-reveal-item]"
+          className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          {clients.map((p) => (
+            <article
+              key={p.id}
+              data-reveal-item
+              className={cn(
+                glass,
+                "group/card flex flex-col gap-4 rounded-2xl p-6 transition-[border-color,transform] hover:border-border",
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <PlatformIcon icon={p.icon} className="size-7 text-foreground" />
+                {p.badge && <StatusBadge status={p.status}>{p.badge}</StatusBadge>}
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-medium tracking-tight">{p.name}</h3>
+                <p className="text-sm text-muted-foreground">{p.blurb}</p>
+              </div>
+              <div className="mt-auto flex flex-col gap-3 pt-2">
+                <PlatformActionButton entry={p} compact reserveCaption />
+                <a
+                  href={downloadAnchor(p.id)}
+                  className={cn(
+                    mono,
+                    "group inline-flex w-fit items-center gap-1 rounded-sm text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  )}
+                >
+                  How to install
+                  <ArrowRight
+                    className="size-3 transition-transform group-hover:translate-x-0.5"
+                    aria-hidden
+                  />
+                </a>
+              </div>
+            </article>
+          ))}
+        </Reveal>
+      </section>
+    </ReleasesProvider>
   );
 }

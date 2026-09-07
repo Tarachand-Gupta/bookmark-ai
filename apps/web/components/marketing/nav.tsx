@@ -16,7 +16,7 @@ export function Nav() {
 
         <nav className="ml-auto flex items-center gap-1 sm:gap-2">
           <a
-            href="#platforms"
+            href="/#platforms"
             className={cn(
               mono,
               "hidden rounded-md px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground md:inline-flex",
@@ -25,7 +25,16 @@ export function Nav() {
             Platforms
           </a>
           <a
-            href="#pricing"
+            href="/download"
+            className={cn(
+              mono,
+              "hidden rounded-md px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground md:inline-flex",
+            )}
+          >
+            Download
+          </a>
+          <a
+            href="/#pricing"
             className={cn(
               mono,
               "hidden rounded-md px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground md:inline-flex",

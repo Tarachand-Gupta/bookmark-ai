@@ -2,35 +2,31 @@
 
 import { useEffect, useLayoutEffect, useRef } from "react";
 import gsap from "gsap";
-import {
-  Apple,
-  Chrome,
-  Compass,
-  Flame,
-  Globe,
-  Monitor,
-  Smartphone,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PLATFORMS, type PlatformEntry } from "@/lib/platforms";
+import { PlatformIcon } from "./platform-icon";
 import { mono } from "./primitives";
 
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-const PLATFORMS = [
-  { icon: Globe, label: "Web" },
-  { icon: Chrome, label: "Chrome" },
-  { icon: Compass, label: "Safari" },
-  { icon: Flame, label: "Firefox" },
-  { icon: Apple, label: "iOS · iPad" },
-  { icon: Smartphone, label: "Android" },
-  { icon: Monitor, label: "Desktop" },
-];
+/** Short marks for the strip — derived from platforms.ts so it can't list a
+ * platform the cards below don't have. */
+const LABELS: Record<PlatformEntry["id"], string> = {
+  web: "Web",
+  chrome: "Chrome",
+  safari: "Safari",
+  firefox: "Firefox",
+  ios: "iOS · iPad",
+  android: "Android",
+  macos: "macOS app",
+};
+const ITEMS = PLATFORMS.map((p) => ({ icon: p.icon, label: LABELS[p.id] }));
 
-function Item({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+function Item({ icon, label }: { icon: PlatformEntry["icon"]; label: string }) {
   return (
     <span className="flex items-center gap-2.5 px-7 text-muted-foreground">
-      <Icon className="size-5 shrink-0" strokeWidth={1.6} aria-hidden />
+      <PlatformIcon icon={icon} className="size-5 shrink-0" strokeWidth={1.6} />
       <span className={cn(mono, "whitespace-nowrap text-sm uppercase tracking-wide")}>
         {label}
       </span>
@@ -76,7 +72,7 @@ export function PlatformMarquee() {
       <div ref={trackRef} className="flex w-max">
         {[0, 1].map((copy) => (
           <div key={copy} aria-hidden={copy === 1} className="flex shrink-0">
-            {PLATFORMS.map((p) => (
+            {ITEMS.map((p) => (
               <Item key={p.label} icon={p.icon} label={p.label} />
             ))}
           </div>

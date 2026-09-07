@@ -52,6 +52,15 @@ export function Hero() {
               /
             </span>
             bring your own AI
+            <span aria-hidden className="mx-2 text-border">
+              /
+            </span>
+            <a
+              href="/download"
+              className="rounded-sm text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              download the apps
+            </a>
           </p>
         </div>
 

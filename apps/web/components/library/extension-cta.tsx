@@ -126,6 +126,11 @@ export interface ExtensionStoreButtonProps {
 /**
  * "Add to <Browser>" — the single way into the store listing. The sidebar card,
  * the first-run panel and the sessions empty state all render this one button.
+ *
+ * While the listing for this browser isn't live (under review / coming soon —
+ * see lib/platforms.ts) the target is our own /download card, opened in the
+ * same tab, and the label says "Install options" rather than promising a store
+ * page that 404s.
  */
 export function ExtensionStoreButton({
   size = "default",
@@ -135,7 +140,11 @@ export function ExtensionStoreButton({
   const target = useExtensionTarget();
   return (
     <Button asChild size={size} variant={variant} className={className}>
-      <a href={target.url} target="_blank" rel="noreferrer">
+      <a
+        href={target.url}
+        target={target.external ? "_blank" : undefined}
+        rel={target.external ? "noreferrer" : undefined}
+      >
         <Puzzle aria-hidden />
         {target.label}
       </a>
@@ -151,6 +160,7 @@ export function ExtensionCard({ className }: { className?: string }) {
   // Hide once we've confirmed the extension is installed; keep showing while
   // that's unknown (null) or false, so non-Chrome users always see it.
   const installed = useExtensionInstalled();
+  const target = useExtensionTarget();
   if (installed === true) return null;
   return (
     <div
@@ -165,6 +175,11 @@ export function ExtensionCard({ className }: { className?: string }) {
       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
         Save any page — and whole windows of tabs — in one click.
       </p>
+      {target.statusNote && (
+        <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground/80">
+          {target.statusNote}
+        </p>
+      )}
       <ExtensionStoreButton size="sm" className="mt-2.5 w-full" />
     </div>
   );

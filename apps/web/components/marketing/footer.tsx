@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 import { BookmarkMark, DOCS_URL, mono, REPO, Wordmark } from "./primitives";
 
 const LINKS = [
+  { label: "Download", href: "/download", external: false },
   { label: "Docs", href: DOCS_URL, external: true },
   { label: "GitHub", href: REPO, external: true },
   { label: "Privacy", href: "/privacy", external: false },
