@@ -1,25 +1,30 @@
 "use client";
 
+import { useCallback } from "react";
 import { ExternalLink, Folder, Globe } from "lucide-react";
+import type { SearchMode } from "@bookmark-ai/types";
 import { Button } from "@/components/ui/button";
-import type { LibraryFilters } from "@/lib/api";
+import { searchBookmarksPage, type LibraryFilters } from "@/lib/api";
 import { hostOf } from "@/lib/chat-tools";
 import { safeHref } from "@/lib/safe-href";
 import {
   CardNote,
   CardToolbar,
   CopyLinkButton,
+  PageFooter,
   ShowMoreRow,
   useExpandable,
   useTextFilter,
+  useToolPaging,
 } from "./chat-card-parts";
-import type { BookmarkHit, SearchToolOutput } from "./chat-tool-types";
+import type { BookmarkHit, SearchToolOutput, ToolPageMeta } from "./chat-tool-types";
 
 /**
- * `searchBookmarks` as a card: the hits with their category/tag chips (click to
- * filter the library), a substring filter and the same fold-past-8 truncation as
- * the other chat cards. The model only sees a counted digest of this, so the
- * card IS the list — it must stay browsable rather than pretty.
+ * `searchBookmarks` as a card: ONE PAGE of hits with their category/tag chips
+ * (click to filter the library), a substring filter over what's loaded, and a
+ * "Load next 50" that re-runs the same search against /api/search — no model
+ * turn. The model reads the same page verbatim, so the card and the answer can
+ * never disagree about what was found.
  */
 export function BookmarksCard({
   output,
@@ -28,36 +33,79 @@ export function BookmarksCard({
   output: SearchToolOutput;
   onFilter?: (filters: LibraryFilters) => void;
 }) {
+  const q = output.query ?? "";
+  const mode = (output.mode === "ai" ? "ai" : output.mode) as SearchMode;
+  const fetchPage = useCallback(
+    async (offset: number, limit: number): Promise<{ rows: BookmarkHit[]; page: ToolPageMeta }> => {
+      const res = await searchBookmarksPage(q, mode, { limit, offset });
+      return {
+        rows: res.results.map(({ score, bookmark: b }) => ({
+          id: b.id,
+          title: b.title,
+          url: b.url,
+          category: b.category,
+          tags: b.tags,
+          day: b.source.savedAt.slice(0, 10),
+          score,
+        })),
+        page: {
+          total: null,
+          offset,
+          limit,
+          hasMore: res.hasMore === true,
+          nextOffset: res.hasMore === true ? offset + limit : null,
+        },
+      };
+    },
+    [q, mode],
+  );
   return (
-    <BookmarkHits hits={output.results ?? []} showScore={output.mode === "ai"} onFilter={onFilter} />
+    <BookmarkHits
+      hits={output.results ?? []}
+      page={output.page}
+      // Without an echoed query there is nothing to re-run (a turn stored before
+      // paging shipped) — the card stays a plain list.
+      fetchPage={q ? fetchPage : undefined}
+      showScore={output.mode === "ai"}
+      onFilter={onFilter}
+    />
   );
 }
 
 export function BookmarkHits({
   hits,
+  page: initialPage,
+  fetchPage,
   showScore,
   onFilter,
 }: {
   hits: BookmarkHit[];
+  page?: ToolPageMeta;
+  fetchPage?: (offset: number, limit: number) => Promise<{ rows: BookmarkHit[]; page: ToolPageMeta }>;
   showScore: boolean;
   onFilter?: (filters: LibraryFilters) => void;
 }) {
+  const noop = useCallback(
+    async () => ({ rows: [] as BookmarkHit[], page: initialPage as ToolPageMeta }),
+    [initialPage],
+  );
+  const { rows, page, loading, error, loadMore } = useToolPaging(hits, fetchPage ? initialPage : undefined, fetchPage ?? noop);
   const { query, setQuery, filtered, active } = useTextFilter(
-    hits,
+    rows,
     (h) => `${h.title} ${h.url} ${h.category} ${(h.tags ?? []).join(" ")}`,
   );
-  const { expanded, toggle, visibleCount, hidden } = useExpandable(filtered.length);
+  const { expanded, toggle, visibleCount, hidden, nextChunk } = useExpandable(filtered.length);
 
-  if (!hits.length) return <CardNote>No matches in the library.</CardNote>;
+  if (!rows.length) return <CardNote>No matches in the library.</CardNote>;
 
   return (
     <div>
-      {hits.length > 6 && (
+      {rows.length > 6 && (
         <CardToolbar
           query={query}
           onQuery={setQuery}
           placeholder="Filter results by title, site or tag…"
-          summary={active ? `${filtered.length} of ${hits.length}` : `${hits.length} result${hits.length === 1 ? "" : "s"}`}
+          summary={active ? `${filtered.length} of ${rows.length}` : `${rows.length} result${rows.length === 1 ? "" : "s"}`}
         />
       )}
       {filtered.length === 0 ? (
@@ -71,9 +119,18 @@ export function BookmarkHits({
       )}
       {hidden > 0 && (
         <div className="border-t px-2 py-1">
-          <ShowMoreRow hidden={hidden} expanded={expanded} onToggle={toggle} noun="result" />
+          <ShowMoreRow hidden={hidden} expanded={expanded} onToggle={toggle} noun="result" nextChunk={nextChunk} />
         </div>
       )}
+      <PageFooter
+        page={page}
+        firstOffset={initialPage?.offset ?? 0}
+        shown={rows.length}
+        noun="results"
+        loading={loading}
+        error={error}
+        onLoadMore={loadMore}
+      />
     </div>
   );
 }

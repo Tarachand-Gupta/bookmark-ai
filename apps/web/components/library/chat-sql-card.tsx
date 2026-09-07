@@ -1,13 +1,25 @@
 "use client";
 
-import { CardNote, CardToolbar, ShowMoreRow, useExpandable, useTextFilter } from "./chat-card-parts";
-import type { SqlToolOutput } from "./chat-tool-types";
+import { useCallback } from "react";
+import {
+  CardNote,
+  CardToolbar,
+  PageFooter,
+  ShowMoreRow,
+  useExpandable,
+  useTextFilter,
+  useToolPaging,
+} from "./chat-card-parts";
+import type { SqlToolOutput, ToolPageMeta } from "./chat-tool-types";
+import { runChatQueryPage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 /**
  * `queryDatabase` as a card: the SQL that ran (visible even mid-stream) above a
- * real table with a row filter and fold-past-8 truncation. The table scrolls
- * inside its OWN container — a wide SELECT must never widen the chat column.
+ * real table with a row filter, chunked "show more", and a "Load next 50" that
+ * re-runs the SAME SELECT through /api/query — the same engine path and guards
+ * the tool used, with no model turn. The table scrolls inside its OWN container
+ * — a wide SELECT must never widen the chat column.
  */
 export function SqlCard({
   input,
@@ -27,7 +39,13 @@ export function SqlCard({
       )}
       {output?.columns && output.rows && (
         <div className={cn(sql && "border-t")}>
-          <SqlResultTable columns={output.columns} rows={output.rows} truncated={output.truncated} />
+          <SqlResultTable
+            columns={output.columns}
+            rows={output.rows}
+            truncated={output.truncated}
+            page={output.page}
+            sql={output.sql ?? sql}
+          />
         </div>
       )}
     </>
@@ -42,15 +60,32 @@ function cellText(v: unknown): string {
 
 function SqlResultTable({
   columns,
-  rows,
+  rows: initialRows,
   truncated,
+  page: initialPage,
+  sql,
 }: {
   columns: string[];
   rows: unknown[][];
   truncated?: boolean;
+  page?: ToolPageMeta;
+  sql: string;
 }) {
+  const fetchPage = useCallback(
+    async (offset: number, limit: number) => {
+      const res = await runChatQueryPage(sql, { limit, offset });
+      // Keep the total the FIRST page established — /api/query doesn't recount.
+      return { rows: res.rows, page: { ...res.page, total: initialPage?.total ?? null } };
+    },
+    [sql, initialPage?.total],
+  );
+  const { rows, page, loading, error, loadMore } = useToolPaging(
+    initialRows,
+    sql ? initialPage : undefined,
+    fetchPage,
+  );
   const { query, setQuery, filtered, active } = useTextFilter(rows, (r) => r.map(cellText).join(" "));
-  const { expanded, toggle, visibleCount, hidden } = useExpandable(filtered.length);
+  const { expanded, toggle, visibleCount, hidden, nextChunk } = useExpandable(filtered.length);
 
   if (!rows.length) return <CardNote>No rows.</CardNote>;
 
@@ -100,12 +135,21 @@ function SqlResultTable({
       )}
       {(hidden > 0 || truncated) && (
         <div className="flex items-center gap-2 border-t px-2 py-1">
-          <ShowMoreRow hidden={hidden} expanded={expanded} onToggle={toggle} noun="row" />
+          <ShowMoreRow hidden={hidden} expanded={expanded} onToggle={toggle} noun="row" nextChunk={nextChunk} />
           {truncated && (
-            <span className="text-[10px] text-muted-foreground">Result was capped by the query row limit.</span>
+            <span className="text-[10px] text-muted-foreground">Long cell values were clipped.</span>
           )}
         </div>
       )}
+      <PageFooter
+        page={page}
+        firstOffset={initialPage?.offset ?? 0}
+        shown={rows.length}
+        noun="rows"
+        loading={loading}
+        error={error}
+        onLoadMore={loadMore}
+      />
     </div>
   );
 }

@@ -76,6 +76,7 @@ export {
   type ApplyDeviceSnapshotResult,
 } from "./live-sessions";
 export {
+  countReadOnlySql,
   runReadOnlySql,
   type ReadOnlySqlResult,
   type RunReadOnlySqlOptions,

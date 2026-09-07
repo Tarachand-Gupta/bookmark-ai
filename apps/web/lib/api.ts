@@ -26,8 +26,18 @@ import type {
   UpdateSkillInput,
   UpdateUserSettingsInput,
   UserSettingsResponse,
+  ToolPageMeta,
 } from "@bookmark-ai/types";
 import { DEFAULT_PLAN, toPlanId } from "@/lib/plan";
+
+/** POST /api/query response — one page of a read-only SELECT for the chat card. */
+export interface ChatQueryPageResponse {
+  columns: string[];
+  rows: unknown[][];
+  rowCount: number;
+  truncated: boolean;
+  page: ToolPageMeta;
+}
 
 /** Same-origin by default — the API lives in this Next.js app's /api routes.
  * Set NEXT_PUBLIC_API_URL only to point at a separately hosted API. */
@@ -205,6 +215,39 @@ export function searchBookmarks(
   // blend room — relevance decays down the list, which is fine.
   const params = new URLSearchParams({ q, mode, limit: "40" });
   return request<SearchResponse>(`/api/search?${params}`, { signal });
+}
+
+/**
+ * One PAGE of search results — the chat's bookmark card "Load more". Same route
+ * and engine path the `searchBookmarks` tool used, so page N+1 is consistent
+ * with the page the model saw (`offset` opts the response into `hasMore`).
+ */
+export function searchBookmarksPage(
+  q: string,
+  mode: SearchMode,
+  page: { limit: number; offset: number },
+  signal?: AbortSignal,
+): Promise<SearchResponse> {
+  const params = new URLSearchParams({
+    q,
+    mode,
+    limit: String(page.limit),
+    offset: String(page.offset),
+  });
+  return request<SearchResponse>(`/api/search?${params}`, { signal });
+}
+
+/** One PAGE of a read-only SELECT — the chat's SQL card "Load more". */
+export function runChatQueryPage(
+  sql: string,
+  page: { limit: number; offset: number },
+  signal?: AbortSignal,
+): Promise<ChatQueryPageResponse> {
+  return request<ChatQueryPageResponse>("/api/query", {
+    method: "POST",
+    body: JSON.stringify({ sql, limit: page.limit, offset: page.offset }),
+    signal,
+  });
 }
 
 export function createBookmark(input: CreateBookmarkInput): Promise<{ bookmark: Bookmark }> {

@@ -1,7 +1,8 @@
 "use client";
 
-import { Fragment } from "react";
+import { useCallback } from "react";
 import { AppWindow } from "lucide-react";
+import { getLive } from "@/lib/api";
 import { hostOf } from "@/lib/chat-tools";
 import { deviceFreshness, formatDeviceAge } from "@/lib/live-format";
 import { safeHref } from "@/lib/safe-href";
@@ -9,25 +10,78 @@ import { cn } from "@/lib/utils";
 import {
   CardNote,
   CardToolbar,
+  PageFooter,
   ShowMoreRow,
   TabFavicon,
   useExpandable,
   useTextFilter,
+  useToolPaging,
 } from "./chat-card-parts";
-import type { LiveDeviceHit, LiveTabHit, LiveTabsToolOutput, LiveWindowHit } from "./chat-tool-types";
+import type {
+  LiveDeviceHit,
+  LiveTabHit,
+  LiveTabsToolOutput,
+  LiveWindowHit,
+  ToolPageMeta,
+} from "./chat-tool-types";
 
 /**
  * `listLiveTabs` as an INTERACTIVE CARD: device sections → window groups → tab
- * rows (favicon, title, host, opens in a new tab). A filter box narrows every
- * device at once and each window folds past 8 rows, so a 92-tab answer is
- * browsable in place instead of being read out as prose by the model — that is
- * the whole point (the model only ever sees a counted digest).
+ * rows (favicon, title, host, opens in a new tab). The tool returns ONE PAGE of
+ * tabs (flat order, re-nested into its device/window scaffolding), so the card
+ * shows exactly what the model read and offers "Load next 50" to fetch more
+ * without a model turn. A filter box narrows what's loaded, and each window
+ * folds past ~10 rows, opening 25 at a time — a 92-tab device stays browsable
+ * instead of being read out as prose.
  */
 export function LiveTabsCard({ output }: { output: LiveTabsToolOutput }) {
-  const devices = output.devices ?? [];
-  const allTabs = devices.flatMap((d) => (d.windows ?? []).flatMap((w) => w.tabs ?? []));
-  const { query, setQuery, filtered, active } = useTextFilter(allTabs, (t) => `${t.title} ${t.url}`);
-  const matched = new Set(filtered);
+  const toolQuery = output.query ?? undefined;
+
+  // The live server hands back the whole current snapshot in one call, so a
+  // later page is the same flatten → filter → slice the tool did, client-side.
+  const fetchPage = useCallback(
+    async (offset: number, limit: number): Promise<{ rows: FlatTab[]; page: ToolPageMeta }> => {
+      const live = await getLive();
+      const flat: FlatTab[] = [];
+      const q = toolQuery?.trim().toLowerCase();
+      for (const d of live.devices) {
+        d.windows.forEach((w, wi) => {
+          for (const t of w.tabs) {
+            if (q && !`${t.title} ${t.url}`.toLowerCase().includes(q)) continue;
+            flat.push({
+              device: {
+                label: d.label,
+                browser: d.browser,
+                lastSeenAgeSeconds: d.lastSeenAgeSeconds,
+                tabCount: d.tabCount,
+                hiddenTabCount: d.hiddenTabCount,
+                windows: [],
+              },
+              windowId: w.windowId,
+              windowName: w.name ?? null,
+              windowIndex: wi + 1,
+              windowTabCount: w.tabs.length,
+              tab: { title: t.title, url: t.url, favIconUrl: t.favIconUrl ?? null },
+            });
+          }
+        });
+      }
+      const slice = flat.slice(offset, offset + limit);
+      const hasMore = flat.length > offset + limit;
+      return {
+        rows: slice,
+        page: { total: flat.length, offset, limit, hasMore, nextOffset: hasMore ? offset + limit : null },
+      };
+    },
+    [toolQuery],
+  );
+
+  const { rows, page, loading, error, loadMore } = useToolPaging(
+    flatten(output.devices ?? []),
+    output.page,
+    fetchPage,
+  );
+  const { query, setQuery, filtered, active } = useTextFilter(rows, (r) => `${r.tab.title} ${r.tab.url}`);
 
   if (output.error) return <CardNote>Live tabs are unavailable right now.</CardNote>;
   if (!output.enabled) {
@@ -38,44 +92,115 @@ export function LiveTabsCard({ output }: { output: LiveTabsToolOutput }) {
       </CardNote>
     );
   }
-  if (devices.length === 0) return <CardNote>No devices are sharing live tabs right now.</CardNote>;
+  if (rows.length === 0) {
+    return (
+      <CardNote>
+        {toolQuery
+          ? `No open tab matches “${toolQuery}”.`
+          : "No devices are sharing live tabs right now."}
+      </CardNote>
+    );
+  }
 
-  const totalTabs = devices.reduce((n, d) => n + (d.tabCount ?? 0), 0);
+  const devices = regroup(filtered);
+  const deviceCount = new Set(rows.map((r) => r.device.label)).size;
   const summary = active
-    ? `${filtered.length} of ${totalTabs}`
-    : `${totalTabs} tab${totalTabs === 1 ? "" : "s"} · ${devices.length} device${devices.length === 1 ? "" : "s"}`;
+    ? `${filtered.length} of ${rows.length}`
+    : `${page?.total ?? rows.length} tab${(page?.total ?? rows.length) === 1 ? "" : "s"} · ${deviceCount} device${deviceCount === 1 ? "" : "s"}`;
 
   return (
     <div>
-      {allTabs.length > 6 && (
+      {rows.length > 6 && (
         <CardToolbar query={query} onQuery={setQuery} placeholder="Filter tabs by title or site…" summary={summary} />
       )}
       <ul className="divide-y">
         {devices.map((device, di) => (
-          <DeviceSection key={`${device.label}-${di}`} device={device} matched={active ? matched : null} />
+          <DeviceSection key={`${device.label}-${di}`} device={device} />
         ))}
       </ul>
-      {active && filtered.length === 0 && <CardNote>No open tab matches “{query}”.</CardNote>}
+      {active && filtered.length === 0 && <CardNote>No loaded tab matches “{query}”.</CardNote>}
+      <PageFooter
+        page={page}
+        firstOffset={output.page?.offset ?? 0}
+        shown={rows.length}
+        noun="tabs"
+        loading={loading}
+        error={error}
+        onLoadMore={loadMore}
+      />
     </div>
   );
 }
 
-/** One device: presence dot, name, browser, freshness — then its windows. */
-function DeviceSection({
-  device,
-  matched,
-}: {
+/**
+ * One tab plus the device/window it belongs to. Paging happens over this FLAT
+ * order (matching the server's), and the sections are rebuilt from whatever is
+ * loaded — so "load more" appends into the right groups instead of restarting.
+ */
+interface FlatTab {
   device: LiveDeviceHit;
-  matched: Set<LiveTabHit> | null;
-}) {
+  windowId?: number;
+  windowName: string | null;
+  windowIndex: number;
+  windowTabCount: number;
+  tab: LiveTabHit;
+}
+
+function flatten(devices: LiveDeviceHit[]): FlatTab[] {
+  const out: FlatTab[] = [];
+  for (const d of devices) {
+    for (const w of d.windows ?? []) {
+      for (const t of w.tabs ?? []) {
+        out.push({
+          device: d,
+          windowId: w.windowId,
+          windowName: w.name ?? null,
+          windowIndex: w.index ?? 1,
+          windowTabCount: w.windowTabCount ?? (w.tabs ?? []).length,
+          tab: t,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** Flat tabs → device sections → window groups, preserving first-seen order. */
+function regroup(flat: readonly FlatTab[]): (LiveDeviceHit & { loadedTabCount: number })[] {
+  const byDevice = new Map<string, LiveDeviceHit & { loadedTabCount: number }>();
+  const windows = new Map<string, Map<string, LiveWindowHit>>();
+  for (const f of flat) {
+    const dKey = f.device.label;
+    let device = byDevice.get(dKey);
+    if (!device) {
+      device = { ...f.device, windows: [], loadedTabCount: 0 };
+      byDevice.set(dKey, device);
+      windows.set(dKey, new Map());
+    }
+    device.loadedTabCount++;
+    const wKey = String(f.windowId ?? f.windowIndex);
+    const wins = windows.get(dKey)!;
+    let win = wins.get(wKey);
+    if (!win) {
+      win = {
+        windowId: f.windowId,
+        name: f.windowName,
+        index: f.windowIndex,
+        windowTabCount: f.windowTabCount,
+        tabs: [],
+      };
+      wins.set(wKey, win);
+      device.windows.push(win);
+    }
+    win.tabs.push(f.tab);
+  }
+  return [...byDevice.values()];
+}
+
+/** One device: presence dot, name, browser, freshness — then its windows. */
+function DeviceSection({ device }: { device: LiveDeviceHit & { loadedTabCount: number } }) {
   const { filled, dim } = deviceFreshness(device.lastSeenAgeSeconds);
-  const windows = (device.windows ?? []).map((w) => ({
-    ...w,
-    tabs: (w.tabs ?? []).filter((t) => !matched || matched.has(t)),
-  }));
-  const shown = windows.reduce((n, w) => n + w.tabs.length, 0);
-  // A filter that excludes this device entirely hides the whole section.
-  if (matched && shown === 0) return null;
+  const partial = device.loadedTabCount < device.tabCount;
 
   return (
     <li className={cn("px-3 py-2.5", dim && "opacity-80")}>
@@ -92,38 +217,36 @@ function DeviceSection({
         </span>
         <span className="shrink-0 text-xs capitalize text-muted-foreground">{device.browser}</span>
         <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">
-          {matched ? `${shown} matching · ` : ""}
-          {device.tabCount} tab{device.tabCount === 1 ? "" : "s"} · {formatDeviceAge(device.lastSeenAgeSeconds)}
+          {partial ? `${device.loadedTabCount} of ${device.tabCount} tabs` : `${device.tabCount} tab${device.tabCount === 1 ? "" : "s"}`}
+          {" · "}
+          {formatDeviceAge(device.lastSeenAgeSeconds)}
         </span>
       </div>
 
-      {windows.length === 0 || shown === 0 ? (
-        <p className="mt-1 pl-4 text-[11px] text-muted-foreground">No open tabs.</p>
-      ) : (
-        <div className="mt-2 space-y-2 pl-1">
-          {windows.map((w, wi) =>
-            // A filter that matched nothing in this window drops the group
-            // entirely rather than leaving an empty "0 tabs" header behind.
-            matched && w.tabs.length === 0 ? null : (
-              <WindowGroup key={`${w.windowId ?? wi}`} window={w} index={w.index ?? wi + 1} />
-            ),
-          )}
-        </div>
-      )}
+      {/* Window groups are shown even for a single window — the header carries
+          the window's name and its own tab count, which is how the live view
+          identifies "the window I was working in". */}
+      <div className="mt-2 space-y-2 pl-1">
+        {device.windows.map((w, wi) => (
+          <WindowGroup key={`${w.windowId ?? wi}`} window={w} index={w.index ?? wi + 1} />
+        ))}
+      </div>
 
       {device.hiddenTabCount > 0 && (
         <p className="mt-1.5 pl-1 text-[10px] text-muted-foreground">
-          +{device.hiddenTabCount} tab{device.hiddenTabCount === 1 ? "" : "s"} not shared from this device
+          {device.hiddenTabCount} tab{device.hiddenTabCount === 1 ? "" : "s"} on this device{" "}
+          {device.hiddenTabCount === 1 ? "is" : "are"} in windows that aren’t shared to live sessions
         </p>
       )}
     </li>
   );
 }
 
-/** One browser window: its label + tab count, then the tabs, folded past 8. */
+/** One browser window: its label + tab count, then the tabs, folded past ~10. */
 function WindowGroup({ window: win, index }: { window: LiveWindowHit; index: number }) {
   const tabs = win.tabs ?? [];
-  const { expanded, toggle, visibleCount, hidden } = useExpandable(tabs.length);
+  const total = win.windowTabCount ?? tabs.length;
+  const { expanded, toggle, visibleCount, hidden, nextChunk } = useExpandable(tabs.length);
 
   return (
     <div className="rounded-md border bg-muted/10">
@@ -133,19 +256,17 @@ function WindowGroup({ window: win, index }: { window: LiveWindowHit; index: num
           {win.name?.trim() || `Window ${index}`}
         </span>
         <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">
-          {tabs.length} tab{tabs.length === 1 ? "" : "s"}
+          {tabs.length < total ? `${tabs.length} of ${total} tabs` : `${total} tab${total === 1 ? "" : "s"}`}
         </span>
       </div>
       <ul className="divide-y divide-border/50">
         {tabs.slice(0, visibleCount).map((t, ti) => (
-          <Fragment key={`${t.url}-${ti}`}>
-            <TabRow tab={t} />
-          </Fragment>
+          <TabRow key={`${t.url}-${ti}`} tab={t} />
         ))}
       </ul>
       {hidden > 0 && (
         <div className="px-1.5 py-1">
-          <ShowMoreRow hidden={hidden} expanded={expanded} onToggle={toggle} noun="tab" />
+          <ShowMoreRow hidden={hidden} expanded={expanded} onToggle={toggle} noun="tab" nextChunk={nextChunk} />
         </div>
       )}
     </div>

@@ -56,8 +56,17 @@ describe("describeToolPart — queryDatabase", () => {
     expect(describeToolPart("queryDatabase", "output-available", {}, { rowCount: 12, rows: [] }).label).toBe("12 rows");
     expect(describeToolPart("queryDatabase", "output-available", {}, { rows: [[1]] }).label).toBe("1 row");
     expect(describeToolPart("queryDatabase", "output-available", {}, { rowCount: 200, truncated: true }).label).toBe(
-      "200 rows · capped",
+      "200 rows · clipped",
     );
+    // Paged: the row says the TRUE total and how much of it is on screen.
+    expect(
+      describeToolPart(
+        "queryDatabase",
+        "output-available",
+        {},
+        { rowCount: 50, page: { total: 312, offset: 0, limit: 50, hasMore: true, nextOffset: 50 } },
+      ).label,
+    ).toBe("312 rows · showing 50");
     expect(describeToolPart("queryDatabase", "output-available", {}, { error: "no such table" })).toMatchObject({
       phase: "error",
       errorText: "no such table",
@@ -71,6 +80,14 @@ describe("describeToolPart — listSessions / listLiveTabs", () => {
     expect(describeToolPart("listSessions", "output-available", {}, { total: 5, sessions: [{}, {}] }).label).toBe(
       "2 sessions",
     );
+    expect(
+      describeToolPart(
+        "listSessions",
+        "output-available",
+        {},
+        { sessions: [{}, {}], page: { total: 9, offset: 0, limit: 2, hasMore: true, nextOffset: 2 } },
+      ).label,
+    ).toBe("9 sessions · showing 2");
   });
 
   it("reports live tabs across devices, sharing off, and unavailable", () => {
@@ -88,6 +105,22 @@ describe("describeToolPart — listSessions / listLiveTabs", () => {
       },
     );
     expect(done).toMatchObject({ phase: "done", label: "6 tabs on 2 devices" });
+    // A filtered, paged lookup names the filter and says what the card shows.
+    expect(
+      describeToolPart(
+        "listLiveTabs",
+        "output-available",
+        { query: "digitalocean" },
+        {
+          enabled: true,
+          devices: [{ tabCount: 23, windows: [{ tabs: [{}] }] }],
+          page: { total: 1, offset: 0, limit: 50, hasMore: false, nextOffset: null },
+        },
+      ),
+    ).toMatchObject({ label: "1 tab on 1 device", detail: "“digitalocean”" });
+    expect(
+      describeToolPart("listLiveTabs", "input-available", { query: "digitalocean" }, undefined).label,
+    ).toBe("Looking for “digitalocean” in your live tabs");
     expect(describeToolPart("listLiveTabs", "output-available", {}, { enabled: false, devices: [] })).toMatchObject({
       phase: "done",
       label: "Live sharing is off",

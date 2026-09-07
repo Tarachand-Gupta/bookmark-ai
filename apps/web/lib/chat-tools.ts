@@ -100,6 +100,23 @@ function quote(s: string): string {
   return `“${s}”`;
 }
 
+/**
+ * The row's count for a PAGED tool result: the true `page.total` when the tool
+ * knew it, else the rows on this page. Ranked search reports `total: null`, so
+ * it falls back to what came back.
+ */
+function pageTotal(output: Record<string, unknown>, shown: number): { n: number; partial: boolean } {
+  const page = asRecord(output.page);
+  const total = count(page?.total);
+  if (total === undefined) return { n: shown, partial: page?.hasMore === true };
+  return { n: total, partial: total > shown };
+}
+
+/** " · showing 50" when a page is only part of the result. */
+function pageSuffix(shown: number, partial: boolean): string {
+  return partial ? ` · showing ${shown.toLocaleString("en-US")}` : "";
+}
+
 /** Tools whose success adds a row to the user's skills. */
 const SKILL_WRITING_TOOLS = new Set(["createSkill", "installSkill"]);
 
@@ -155,11 +172,12 @@ export function describeToolPart(
       if (failed || softError) {
         return { phase: "error", icon, label: "Bookmark search failed", detail: query && quote(query), errorText: softError ?? errorText };
       }
-      const n = count(out.results) ?? 0;
+      const shown = count(out.results) ?? 0;
+      const { n, partial } = pageTotal(out, shown);
       return {
         phase: "done",
         icon,
-        label: `Found ${plural(n, "bookmark")}${out.fallback ? " · text fallback" : ""}`,
+        label: `Found ${plural(n, "bookmark")}${partial ? "+" : ""}${pageSuffix(shown, partial)}${out.fallback ? " · text fallback" : ""}`,
         detail: query && quote(query),
       };
     }
@@ -169,11 +187,12 @@ export function describeToolPart(
       if (failed || softError) {
         return { phase: "error", icon: "database", label: "Library query failed", detail: purpose, errorText: softError ?? errorText };
       }
-      const n = count(out.rowCount) ?? count(out.rows) ?? 0;
+      const shown = count(out.rowCount) ?? count(out.rows) ?? 0;
+      const { n, partial } = pageTotal(out, shown);
       return {
         phase: "done",
         icon: "database",
-        label: `${plural(n, "row")}${out.truncated ? " · capped" : ""}`,
+        label: `${plural(n, "row")}${pageSuffix(shown, partial)}${out.truncated ? " · clipped" : ""}`,
         detail: purpose,
       };
     }
@@ -183,27 +202,43 @@ export function describeToolPart(
       if (failed || softError) {
         return { phase: "error", icon: "sessions", label: "Couldn't list saved sessions", detail: query && quote(query), errorText: softError ?? errorText };
       }
-      const n = count(out.sessions) ?? count(out.total) ?? 0;
-      return { phase: "done", icon: "sessions", label: plural(n, "session"), detail: query && quote(query) };
+      const shown = count(out.sessions) ?? 0;
+      // Turns stored before paging carried a bare `total`; they labelled the
+      // page's own length, so only a real `page` changes the number.
+      const { n, partial } = pageTotal(out, shown);
+      return {
+        phase: "done",
+        icon: "sessions",
+        label: `${plural(n, "session")}${pageSuffix(shown, partial)}`,
+        detail: query && quote(query),
+      };
     }
     case "listLiveTabs": {
-      if (running) return { phase: "running", icon: "live", label: "Checking live tabs" };
+      const filter = str(inp.query) ?? str(out.query);
+      if (running) {
+        return {
+          phase: "running",
+          icon: "live",
+          label: filter ? `Looking for ${quote(filter)} in your live tabs` : "Checking live tabs",
+        };
+      }
       if (failed || softError) {
         return { phase: "error", icon: "live", label: "Live tabs unavailable", errorText: softError ?? errorText };
       }
       if (out.enabled === false) return { phase: "done", icon: "live", label: "Live sharing is off" };
       const devices = Array.isArray(out.devices) ? (out.devices as unknown[]) : [];
-      const tabs = devices.reduce<number>((sum, d) => {
-        const rec = asRecord(d);
-        const direct = count(rec?.tabCount);
-        if (direct !== undefined) return sum + direct;
-        const windows = Array.isArray(rec?.windows) ? (rec.windows as unknown[]) : [];
-        return sum + windows.reduce<number>((s, w) => s + (count(asRecord(w)?.tabs) ?? 0), 0);
+      // Tabs ON THIS PAGE — the row counts what the card is showing, while
+      // `page.total` (below) is how many the lookup actually matched.
+      const shownTabs = devices.reduce<number>((sum, d) => {
+        const windows = Array.isArray(asRecord(d)?.windows) ? (asRecord(d)!.windows as unknown[]) : [];
+        return sum + windows.reduce<number>((n, w) => n + (count(asRecord(w)?.tabs) ?? 0), 0);
       }, 0);
+      const { n, partial } = pageTotal(out, shownTabs);
       return {
         phase: "done",
         icon: "live",
-        label: `${plural(tabs, "tab")} on ${plural(devices.length, "device")}`,
+        label: `${plural(n, "tab")} on ${plural(devices.length, "device")}${pageSuffix(shownTabs, partial)}`,
+        detail: filter && quote(filter),
       };
     }
     case "webSearch": {

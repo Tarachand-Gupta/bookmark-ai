@@ -110,7 +110,11 @@ mobile via Clerk Expo. The route handlers delegate to `packages/engine` — chan
   stored history and appends; see `docs/features/skills.md`). Streams UI messages incl.
   `reasoning-*` chunks (Gemini `includeThoughts`); tools `searchBookmarks`/`queryDatabase`/
   `listSessions`/`listLiveTabs`/`useSkill`/`createSkill`/`installSkill`/`webSearch`/`fetchUrl` call `packages/engine` directly
-  (no HTTP hop). Response headers `X-Conversation-Id` + `X-Ai-Source: included|own|own-fallback`
+  (no HTTP hop). The four LIST tools are PAGED — `{limit≤50, offset}` in, one page +
+  `{total, offset, limit, hasMore, nextOffset}` out; nothing is summarized for the model, and
+  `listLiveTabs`/`listSessions` take a `query` so it filters instead of paging blindly. The chat
+  cards render the same page and fetch further ones over `/api/search`, `POST /api/query`,
+  `/api/sessions` and the live server WITHOUT a model turn — see `docs/features/chat-tool-paging.md`. Response headers `X-Conversation-Id` + `X-Ai-Source: included|own|own-fallback`
   (own-fallback = free credits exhausted, stored own key took over) + optional
   `X-Ai-Model-Tier: primary|fallback` (which half of the included stack answered) + optional
   `X-Ai-Note: own-key-incomplete` (mode is `own` but the key config can't run — e.g. OpenAI key, no
@@ -128,6 +132,9 @@ mobile via Clerk Expo. The route handlers delegate to `packages/engine` — chan
   model for openai/anthropic/custom — Google defaults to `gemini-3.8-flash`). PUT: `{aiMode}` switches WITHOUT touching the key (`own`
   needs a stored key, else 400); `{apiKey:"sk…"}` stores + sets `own`; `{apiKey:""}` removes + sets
   `included`; `{provider}` never clears model/key (`model:""` clears the model).
+- `POST /api/query` — body `{sql, limit≤50, offset}` → one page of a read-only SELECT
+  (`runReadOnlySql`, same guards as the chat's `queryDatabase`). Exists so the chat's SQL card can
+  page without a model turn.
 - `GET|POST /api/skills` → `{skills}` / `201 {skill}` (409 duplicate name, case-insensitive);
   `GET|PUT|DELETE /api/skills/:id` → `{skill}` / `{skill}` / 204. Body `createSkillSchema`
   (`packages/types/src/skills.ts`). `POST /api/skills/import {markdown, enabled?}` → 201 from a

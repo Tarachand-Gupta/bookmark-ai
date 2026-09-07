@@ -26,14 +26,33 @@ import type { Db } from "@bookmark-ai/db";
 export interface ReadOnlySqlResult {
   columns: string[];
   rows: unknown[][];
+  /** Rows in THIS page (`rows.length`). */
   rowCount: number;
   /** True when the output was reduced: a string cell was clipped, or the row cap was hit. */
   truncated: boolean;
+  /** Rows skipped before this page (the `offset` that produced it). */
+  offset: number;
+  /** The page size that produced it. */
+  limit: number;
+  /** Total rows the query matches, when `countTotal` was asked for. */
+  total?: number;
+  /** True when more rows follow this page. */
+  hasMore: boolean;
+  /** The `offset` that fetches the next page, or null at the end. */
+  nextOffset: number | null;
 }
 
 export interface RunReadOnlySqlOptions {
   /** Hard row cap applied by the wrapping SELECT (default 200). */
   limit?: number;
+  /** Rows to skip — the paging offset applied by the wrapping SELECT (default 0). */
+  offset?: number;
+  /**
+   * Also run `SELECT COUNT(*) FROM (<query>)` so the caller can show "rows
+   * 51–100 of N" and decide whether to page. Off by default: it doubles the
+   * work, and only the paged chat surface needs it.
+   */
+  countTotal?: boolean;
   /** Wall-clock timeout in ms before the race rejects (default 10_000). */
   timeoutMs?: number;
   /** Max characters kept per string cell before clipping (default 400). */
@@ -227,16 +246,19 @@ export async function runReadOnlySql(
   opts: RunReadOnlySqlOptions = {},
 ): Promise<ReadOnlySqlResult> {
   const limit = opts.limit ?? DEFAULT_LIMIT;
+  const offset = Math.max(0, Math.floor(opts.offset ?? 0));
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxCellChars = opts.maxCellChars ?? DEFAULT_MAX_CELL_CHARS;
 
   assertReadOnly(query);
 
-  // Strip the query's own trailing `;`/whitespace, then wrap so the row cap
-  // always applies. The wrapper's `)` and LIMIT sit on their own lines so a
-  // trailing line comment inside the query can't comment them out.
+  // Strip the query's own trailing `;`/whitespace, then wrap so the row cap and
+  // the paging offset always apply. The wrapper's `)` and LIMIT sit on their own
+  // lines so a trailing line comment inside the query can't comment them out.
+  // One row MORE than the page is fetched: its presence is `hasMore` without a
+  // second query, and it is dropped before the result is returned.
   const inner = query.replace(/[\s;]+$/, "");
-  const wrapped = `SELECT * FROM (\n${inner}\n) LIMIT ${limit}`;
+  const wrapped = `SELECT * FROM (\n${inner}\n) LIMIT ${limit + 1} OFFSET ${offset}`;
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -250,16 +272,57 @@ export async function runReadOnlySql(
     const rs = await Promise.race([db.execute(wrapped), timeout]);
     const columns = rs.columns.slice();
     let truncated = false;
-    const rows: unknown[][] = rs.rows.map((row) =>
+    const all: unknown[][] = rs.rows.map((row) =>
       columns.map((_, idx) => {
         const cell = normalizeCell(row[idx], maxCellChars);
         if (cell.truncated) truncated = true;
         return cell.value;
       }),
     );
-    // A full page almost certainly means rows were dropped by the cap.
-    if (rows.length >= limit) truncated = true;
-    return { columns, rows, rowCount: rows.length, truncated };
+    const hasMore = all.length > limit;
+    const rows = hasMore ? all.slice(0, limit) : all;
+    // Callers page instead of being silently cut off, so a full page is no
+    // longer "truncated" — only a clipped CELL is.
+    const total = opts.countTotal ? await countReadOnlySql(db, query, { timeoutMs }) : undefined;
+    return {
+      columns,
+      rows,
+      rowCount: rows.length,
+      truncated,
+      offset,
+      limit,
+      ...(total === undefined ? {} : { total }),
+      hasMore,
+      nextOffset: hasMore ? offset + limit : null,
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * How many rows the query matches in total, for the paging UI's "rows 51–100 of
+ * N". Runs the SAME read-only guards, wrapping the caller's SELECT in a COUNT so
+ * no rows travel. Returns 0 on an empty/odd result rather than throwing on the
+ * shape.
+ */
+export async function countReadOnlySql(
+  db: Db,
+  query: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<number> {
+  assertReadOnly(query);
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const inner = query.replace(/[\s;]+$/, "");
+  const wrapped = `SELECT COUNT(*) AS n FROM (\n${inner}\n)`;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Query exceeded the ${timeoutMs}ms time limit`)), timeoutMs);
+  });
+  try {
+    const rs = await Promise.race([db.execute(wrapped), timeout]);
+    const n = rs.rows[0]?.[0];
+    return typeof n === "bigint" ? Number(n) : typeof n === "number" ? n : Number(n ?? 0) || 0;
   } finally {
     if (timer) clearTimeout(timer);
   }

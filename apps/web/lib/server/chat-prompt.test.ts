@@ -151,9 +151,23 @@ describe("buildChatPrompt", () => {
     expect(p).toContain("NEVER re-list them as prose");
     expect(p).toContain("at most 5 named highlights");
     expect(p).toContain("Only enumerate a full list when the user EXPLICITLY asks for it");
-    // And it must not think a truncated digest means the lookup failed.
-    expect(p).toContain("truncated digest");
-    expect(p).toContain("Never claim a result is incomplete");
+  });
+
+  it("teaches the paging contract and prefers filtering over blind paging", () => {
+    const p = buildChatPrompt({ now: NOW });
+    expect(p).toContain("PAGING — every list tool returns ONE PAGE");
+    expect(p).toContain("`page: {total, offset, limit, hasMore, nextOffset}`");
+    expect(p).toContain("at most 50 rows");
+    expect(p).toContain("offset: <the previous page's nextOffset>");
+    expect(p).toContain("PREFER FILTERING TO PAGING");
+    // Counts come from `total`, not from the rows in front of it.
+    expect(p).toContain("Use `page.total` for counts");
+    expect(p).toContain("never say a result is incomplete");
+    // Every list tool advertises its paging arguments.
+    expect(p).toContain("searchBookmarks(query, mode, limit, offset)");
+    expect(p).toContain("queryDatabase(sql, limit, offset)");
+    expect(p).toContain("listSessions(query?, limit, offset)");
+    expect(p).toContain("listLiveTabs(query?, limit, offset)");
   });
 });
 
