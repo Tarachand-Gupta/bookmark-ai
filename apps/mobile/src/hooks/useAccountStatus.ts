@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth } from "@clerk/expo";
 import { ForbiddenError, getMeta, ProvisioningError, SERVER_TARGET } from "../api";
 import { usePreferences } from "../context/PreferencesContext";
 

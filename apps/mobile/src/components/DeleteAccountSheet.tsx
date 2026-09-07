@@ -41,16 +41,29 @@ export function confirmationMatches(typed: string, email: string): boolean {
  * Failures are reported verbatim and the sheet STAYS OPEN with the session
  * intact — never sign out on a failed delete, that would strand a still-live
  * account behind a "deleted" story. Only a 202 leads to `onDeleted()`.
+ *
+ * Sign in with Apple accounts get one extra line (`signedInWithApple`). Apple's
+ * TN3194 asks apps to revoke the user's Sign in with Apple tokens on deletion,
+ * and — when the app holds no refresh/access token — to "delete the user's
+ * account data from your systems" and "direct the user to manually revoke"
+ * the authorization instead. That is our case: Clerk's native flow verifies
+ * only the identity token (no authorization-code exchange, so no refresh token
+ * exists anywhere on our side), and deleting the Clerk user does not touch
+ * Apple's record ("Deleting the user from Clerk does not reset this on Apple's
+ * side" — Clerk's own docs). So the sheet names the Settings path.
  */
 export function DeleteAccountSheet({
   visible,
   email,
+  signedInWithApple = false,
   onClose,
   onDeleted,
 }: {
   visible: boolean;
   /** The signed-in user's primary email — accepted as the confirmation phrase. */
   email: string;
+  /** The account has an Apple external account → show the manual-revocation step. */
+  signedInWithApple?: boolean;
   onClose: () => void;
   /** Called after the server confirms deletion (202); the caller signs out. */
   onDeleted: () => void;
@@ -208,6 +221,13 @@ export function DeleteAccountSheet({
             Prefer to keep a copy? Export your data from the web app at bookmark-ai.cloud before
             deleting — the export is gone with the account.
           </Text>
+          {signedInWithApple && (
+            <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
+              You signed in with Apple. Apple keeps its own record of that sign-in, which Bookmark
+              AI cannot remove for you — afterwards, open Settings › your name › Sign-In & Security
+              › Sign in with Apple › Bookmark AI and choose Stop Using Sign in with Apple.
+            </Text>
+          )}
         </ScrollView>
       </View>
     </Modal>

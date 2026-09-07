@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Alert, Image, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useClerk, useUser } from "@clerk/clerk-expo";
+import { useClerk, useUser } from "@clerk/expo";
 import * as Application from "expo-application";
 import * as Clipboard from "expo-clipboard";
 import { getApiUrl, SERVER_TARGET } from "../api";
 import { DeleteAccountSheet } from "../components/DeleteAccountSheet";
+import { hasAppleAccount } from "../lib/appleSignIn";
 import { AiSettingsGroup } from "../components/settings/AiSettingsGroup";
 import { PlanBadge, PlanCard } from "../components/settings/PlanCard";
 import { Group, GroupFootnote, GroupLabel, GroupRow } from "../components/settings/SettingsGroup";
@@ -76,6 +77,10 @@ export function SettingsScreen() {
     ? user.fullName || user.username || user.primaryEmailAddress?.emailAddress || "Signed in"
     : "Not signed in";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
+  // Sign in with Apple leaves an authorization on Apple's side that neither we
+  // nor Clerk can revoke (no refresh token in the native flow — see
+  // hasAppleAccount) — the deletion sheet tells these users how to remove it.
+  const signedInWithApple = hasAppleAccount(user?.externalAccounts ?? []);
 
   const confirmSignOut = () => {
     Alert.alert("Sign out?", "You'll need to sign in again to browse your library.", [
@@ -268,6 +273,7 @@ export function SettingsScreen() {
       <DeleteAccountSheet
         visible={deleteSheetOpen}
         email={email}
+        signedInWithApple={signedInWithApple}
         onClose={() => setDeleteSheetOpen(false)}
         onDeleted={finishDelete}
       />

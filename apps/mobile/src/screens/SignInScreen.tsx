@@ -11,11 +11,25 @@ import {
   TextInput,
   View,
 } from "react-native";
+import * as AppleAuthentication from "expo-apple-authentication";
 import * as WebBrowser from "expo-web-browser";
-import { useSignIn, useSignUp, useSSO } from "@clerk/clerk-expo";
+import { useSSO } from "@clerk/expo";
+import { useSignInWithApple } from "@clerk/expo/apple";
+// Core 2 resources (`signIn.create` / `attemptFirstFactor` / `setActive`) —
+// the API every flow on this screen is written and QA'd against. @clerk/expo's
+// main entry exports the Core 3 `useSignIn`/`useSignUp` (`signIn.password()`,
+// `finalize()`), a different object; the stable `useSSO` and
+// `useSignInWithApple` hooks are themselves built on these legacy resources.
+import { useSignIn, useSignUp } from "@clerk/expo/legacy";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 import { useFinishPendingSession } from "../hooks/useFinishPendingSession";
+import {
+  appleButtonStyle,
+  describeAppleSignInError,
+  offersAppleSignIn,
+  resolveAppleFlow,
+} from "../lib/appleSignIn";
 import { SSO_REDIRECT_URL } from "../lib/clerk";
 import { openWebPage, PRIVACY_URL, TERMS_URL } from "../lib/links";
 
@@ -32,11 +46,22 @@ WebBrowser.maybeCompleteAuthSession();
  *    with the native redirect URLs (bookmarkai:// and bookmarkai://sso-callback)
  *    registered on the prod instance's /v1/redirect_urls allowlist.
  *  - LOCAL/dev (*.accounts.dev, pk_test): same set via the dev instance.
+ *  - iOS additionally offers native Sign in with Apple (App Store guideline
+ *    4.8: a third-party login on the screen requires an Apple-equivalent one).
+ *    It needs the Apple social connection enabled AND the iOS app registered
+ *    under "Native applications" (Team ID + bundle id) on the target instance;
+ *    dev has both, prod is being set up alongside the Developer Program
+ *    enrolment — see docs/mobile-store-readiness.md §1.4.
  *
  * If a target instance ever drops its Google connection, gate this back off for
  * that target — an unbacked button dead-ends in the OAuth browser sheet.
  */
 const OAUTH_ENABLED = true;
+
+/** One height for every full-width button on this screen, so the system Apple
+ * button (which takes an explicit height, not padding) matches Google's exactly
+ * — Apple's HIG requires it to be no smaller or less prominent than its peers. */
+const AUTH_BUTTON_HEIGHT = 50;
 
 /** Clerk's code for "no account with this identifier" — the API message is the
  * bare "Couldn't find your account.", which is a dead end on its own. */
@@ -69,13 +94,16 @@ type Mode = "signIn" | "signUp" | "reset";
  *     (new email → new account, verified by an emailed code) if it doesn't.
  *   - "Email me a code instead" — passwordless sign-in via a one-time email code.
  *   - "Forgot password?" — reset the password with an emailed code.
- *   - "Continue with Google" — only on the dev target (see OAUTH_ENABLED).
+ *   - "Continue with Google" — Clerk OAuth in the system auth sheet (see OAUTH_ENABLED).
+ *   - "Continue with Apple" — iOS only, the native Sign in with Apple sheet.
  */
 export function SignInScreen() {
-  const { colors, radius } = useAppTheme();
+  const { colors, radius, dark } = useAppTheme();
   const { startSSOFlow } = useSSO();
+  const { startAppleAuthenticationFlow } = useSignInWithApple();
   const { signIn, setActive, isLoaded } = useSignIn();
   const { signUp, isLoaded: signUpLoaded } = useSignUp();
+  const appleAvailable = OAUTH_ENABLED && offersAppleSignIn(Platform.OS);
   // Finishes an OAuth sign-in that Clerk completed server-side but hasn't
   // handed back yet — the app must never sit there looking dead while a session
   // it already owns waits behind a retrying request.
@@ -231,7 +259,8 @@ export function SignInScreen() {
       //
       //     That fallback MUST stay gated on the sheet never having run, because
       //     a fully SUCCESSFUL round trip is indistinguishable from an untouched
-      //     one by resource shape alone. clerk-expo 2.19.31's useSSO does
+      //     one by resource shape alone. clerk-expo 2.19.31's useSSO (and,
+      //     verified line for line, @clerk/expo 4.6.5's stable one) does
       //     `signIn.create({ strategy, redirectUrl })` (leaving the resource at
       //     `needs_identifier` / `unverified`) and only advances it via
       //     `signIn.reload({ rotatingTokenNonce })` after the callback — and that
@@ -297,6 +326,68 @@ export function SignInScreen() {
         return;
       }
       failed(err);
+    }
+  };
+
+  /**
+   * Native Sign in with Apple (iOS). Unlike Google there is no browser round
+   * trip: Apple's system sheet hands back an identity token in-process and
+   * Clerk's hook posts it straight to FAPI (`strategy: "oauth_token_apple"`),
+   * resolving the sign-up ↔ sign-in transfer itself — so none of the SSO
+   * watcher machinery above applies. What is left for this screen: activate the
+   * session, finish a first sign-up that has nothing missing, stay silent on a
+   * cancel, and turn everything else into a message (resolveAppleFlow /
+   * describeAppleSignInError, unit-tested in src/lib/appleSignIn.test.ts).
+   */
+  const signInWithApple = async () => {
+    if (!isLoaded || !signUpLoaded) return;
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const result = await startAppleAuthenticationFlow();
+      const next = resolveAppleFlow(result);
+      switch (next.kind) {
+        case "activate":
+          await setActive({ session: next.sessionId });
+          return;
+        case "complete-signup": {
+          // First Apple sign-in created the account and nothing is actually
+          // missing — one empty update completes it (same as the Google path).
+          const res = await (result.signUp ?? signUp).update({});
+          if (res.status === "complete" && res.createdSessionId) {
+            await setActive({ session: res.createdSessionId });
+            return;
+          }
+          setError(
+            `Apple sign-in didn't finish (${res.status ?? "unknown"}). ` +
+              "Try again, or use your email and password below.",
+          );
+          setBusy(false);
+          return;
+        }
+        case "cancelled":
+          // The user closed Apple's sheet. Say nothing.
+          setBusy(false);
+          return;
+        case "unresolved":
+          console.warn(`[apple] unresolved: ${next.status}`);
+          setError(
+            `Apple sign-in didn't finish (${next.status}). ` +
+              "Try again, or use your email and password below.",
+          );
+          setBusy(false);
+          return;
+      }
+    } catch (err) {
+      const failure = describeAppleSignInError(err);
+      if (failure.kind === "cancelled") {
+        setBusy(false);
+        return;
+      }
+      console.warn(`[apple] ${failure.kind}:`, err);
+      setError(failure.message);
+      setBusy(false);
     }
   };
 
@@ -605,6 +696,29 @@ export function SignInScreen() {
             <>
               {OAUTH_ENABLED && (
                 <>
+                  {appleAvailable && (
+                    // Apple's own ASAuthorizationAppleIDButton — Apple-approved
+                    // title, logo, colours and localisation for free. It has no
+                    // disabled state of its own, so gate touches and dim it
+                    // while a flow runs, exactly like the Google button. Above
+                    // Google on purpose: it must never read as the lesser option.
+                    <View
+                      pointerEvents={busy ? "none" : "auto"}
+                      accessibilityState={{ disabled: busy }}
+                      style={{ opacity: busy ? 0.6 : 1 }}
+                    >
+                      <AppleAuthentication.AppleAuthenticationButton
+                        buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                        buttonStyle={
+                          AppleAuthentication.AppleAuthenticationButtonStyle[appleButtonStyle(dark)]
+                        }
+                        cornerRadius={radius.lg}
+                        onPress={() => void signInWithApple()}
+                        style={styles.appleBtn}
+                      />
+                    </View>
+                  )}
+
                   <Pressable
                     onPress={() => void signInWithGoogle()}
                     disabled={busy}
@@ -818,8 +932,8 @@ export function SignInScreen() {
         {/* Consent line — the disclosure both stores expect at the point an
             account is created (App Store 5.1.1(i)/5.1.2(i): personal data and
             saved links go to the server and to third-party AI; Play User Data
-            policy). Every path on this screen — Google, password, email code —
-            can create the account, so it sits under the whole form, on the
+            policy). Every path on this screen — Apple, Google, password, email
+            code — can create the account, so it sits under the whole form, on the
             credentials step only (the code step is mid-flow). */}
         {phase === "credentials" && !finishing && (
           <Text style={[styles.consent, styles.column, { color: colors.mutedForeground }]}>
@@ -869,17 +983,22 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: "700", letterSpacing: -0.4 },
   subtitle: { fontSize: 15, textAlign: "center", maxWidth: 280, lineHeight: 20 },
   form: { gap: 14 },
+  // The system Apple button needs an explicit width and height (it renders
+  // nothing without them) and refuses backgroundColor/borderRadius via style —
+  // its colour comes from buttonStyle, its radius from cornerRadius.
+  appleBtn: { width: "100%", height: AUTH_BUTTON_HEIGHT },
   primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 14,
+    height: AUTH_BUTTON_HEIGHT,
   },
   primaryBtnText: { fontSize: 17, fontWeight: "600" },
   secondaryBtn: {
     alignItems: "center",
-    paddingVertical: 14,
+    justifyContent: "center",
+    height: AUTH_BUTTON_HEIGHT,
     borderWidth: StyleSheet.hairlineWidth,
   },
   secondaryBtnText: { fontSize: 17, fontWeight: "500" },

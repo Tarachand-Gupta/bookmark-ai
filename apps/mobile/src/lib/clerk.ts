@@ -1,6 +1,6 @@
 import * as Linking from "expo-linking";
 import * as SecureStore from "expo-secure-store";
-import type { TokenCache } from "@clerk/clerk-expo";
+import type { TokenCache } from "@clerk/expo";
 import { SERVER_TARGET, type ServerTarget } from "../api";
 
 /**

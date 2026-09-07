@@ -12,6 +12,7 @@
       "bundleIdentifier": "ai.purecode.bookmarkai",
       "appleTeamId": "L3PP7DQZWS",
       "buildNumber": "1",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
@@ -102,6 +103,7 @@
         }
       ],
       "expo-web-browser",
+      "expo-apple-authentication",
       [
         "expo-image-picker",
         {

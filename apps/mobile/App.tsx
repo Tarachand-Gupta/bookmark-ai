@@ -8,7 +8,7 @@ import {
   SafeAreaProvider,
   SafeAreaView,
 } from "react-native-safe-area-context";
-import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
+import { ClerkProvider, useAuth } from "@clerk/expo";
 import { ShareIntentProvider } from "expo-share-intent";
 import { setAuthTokenProvider } from "./src/api";
 import { LaunchScreen } from "./src/components/LaunchScreen";

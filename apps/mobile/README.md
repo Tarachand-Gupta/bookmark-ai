@@ -7,9 +7,31 @@ lists, long-press action sheets, and haptics.
 
 ## Signing in
 
-The app is Clerk-gated like the web app: Google SSO or an emailed one-time code. The
-session token is stored in the iOS keychain (SecureStore) and attached to every API
-request, which the Next.js route handlers in `apps/web` verify.
+The app is Clerk-gated like the web app: email + password (or an emailed one-time code),
+Google SSO, and — on iOS — native **Sign in with Apple** (App Store guideline 4.8 requires
+it once Google is offered). The session token is stored in the iOS keychain (SecureStore)
+and attached to every API request, which the Next.js route handlers in `apps/web` verify.
+
+Clerk SDK: `@clerk/expo` 4.x (the renamed successor of `@clerk/clerk-expo`). The screens use
+the Core 2 resources from `@clerk/expo/legacy` (`useSignIn`/`useSignUp` — `signIn.create`,
+`attemptFirstFactor`, `setActive`), `useSSO` from the main entry for Google, and
+`useSignInWithApple` from `@clerk/expo/apple`, which drives `expo-apple-authentication`'s
+system sheet and posts the identity token to Clerk (`oauth_token_apple`). The package also
+ships a native module (Clerk's SwiftUI/Compose components, iOS 17+, pulls the clerk-ios and
+clerk-android SDKs); it is **excluded from autolinking** in `package.json`
+(`expo.autolinking.exclude`) because nothing here uses those components and the app keeps
+its iOS 16.4 floor — remove the exclusion (and add the `@clerk/expo` config plugin) if you
+ever adopt `@clerk/expo/native`.
+
+Sign in with Apple needs, per Clerk instance: the Apple social connection enabled, and the
+iOS app registered under **Native applications** (App ID Prefix = Team ID `L3PP7DQZWS`,
+Bundle ID `ai.purecode.bookmarkai`). The native flow needs no Services ID or `.p8` key — those
+are only for Apple login on the web. On the Apple side the App ID needs the *Sign in with
+Apple* capability (the `com.apple.developer.applesignin` entitlement comes from
+`ios.usesAppleSignIn` + the `expo-apple-authentication` plugin in `app.json`). Account
+deletion cannot revoke the Apple authorization (Clerk's token-only flow never yields a
+refresh token), so `DeleteAccountSheet` tells Apple users the Settings path, per Apple's
+TN3194 fallback.
 
 ### Server target (build-time, not an in-app switch)
 
@@ -99,11 +121,11 @@ curl -X DELETE localhost:3000/api/admin/releases/ios   # clean up
 | `src/api.ts` | API client — same contract as the web app; build-time server target (`SERVER_TARGET`: dev run → local, release → prod); bearer-token injection |
 | `src/theme.ts` | design tokens — hex ports of `packages/ui/src/theme.css` (sync manually on retheme) |
 | `src/navigation/TabBar.tsx` | floating glass tab bar + `useTabBarClearance()` (content scrolls under it) |
-| `src/screens/` | Library (list/cards, quick filters), Search (keyword \| AI), Settings (account, theme; read-only server), SignIn (email+password, email code, forgot-password; Google on dev) |
+| `src/screens/` | Library (list/cards, quick filters), Search (keyword \| AI), Settings (account, theme; read-only server), SignIn (Apple on iOS, Google, email+password, email code, forgot-password) |
 | `src/components/` | FilterSheet (native pageSheet), BookmarkRow/Card, SegmentedControl, Symbol (SF Symbol w/ Android fallback) |
 | `src/hooks/` | `useLibrary` (filters + pagination + meta), `useSearch` (debounced) |
 | `src/context/PreferencesContext.tsx` | theme/view persisted in AsyncStorage (server target is a read-only build constant) |
-| `src/lib/` | Clerk keys + token cache, day grouping, long-press actions, share-intent capture/URL parsing/auto-save |
+| `src/lib/` | Clerk keys + token cache, Sign in with Apple decisions (`appleSignIn.ts`, tested), day grouping, long-press actions, share-intent capture/URL parsing/auto-save |
 
 The `ios/` and `android/` directories are **generated** (`expo prebuild`, gitignored) —
 never edit them; change `app.json` instead.

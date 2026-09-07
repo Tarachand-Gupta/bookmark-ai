@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
-import { useAuth, useClerk } from "@clerk/clerk-expo";
+import { useAuth, useClerk } from "@clerk/expo";
 
 /**
  * Finishes a native SSO sign-in that Clerk already completed SERVER-side but
@@ -8,7 +8,13 @@ import { useAuth, useClerk } from "@clerk/clerk-expo";
  *
  * ── Why this exists (measured in the installed SDKs, not inferred) ───────────
  * Verified against @clerk/clerk-expo 2.19.31 and the @clerk/clerk-js 5.127.0 it
- * bundles (`dist/hooks/useSSO.js`, `dist/clerk.headless.browser.js`):
+ * bundles (`dist/hooks/useSSO.js`, `dist/clerk.headless.browser.js`); re-read
+ * against @clerk/expo 4.6.5 (`dist/hooks/useSSO.js`, backed by the Core 2
+ * hooks from `@clerk/react/legacy` + @clerk/clerk-js 6.25.6): the stable
+ * `useSSO` is the SAME sequence — `signIn.create({ strategy, redirectUrl })`,
+ * `openAuthSessionAsync`, then `signIn.reload({ rotatingTokenNonce })` — and
+ * still does not activate a completed session on its own (only the
+ * `@clerk/expo/experimental` useSSO does), so every point below still holds:
  *
  *  1. On iOS `WebBrowser.openAuthSessionAsync` resolves from the native
  *     ASWebAuthenticationSession completion handler, so once the sheet is off
@@ -29,10 +35,10 @@ import { useAuth, useClerk } from "@clerk/clerk-expo";
  *     quitting and relaunching shows the user signed in — which is exactly the
  *     bug report this hook answers.
  *
- * Upstream's own fix for the same gap ships only as the EXPERIMENTAL `useSSO` in
- * @clerk/clerk-expo 4.2.0 ("activates completed SSO sessions automatically") —
- * a major-version jump away. This is that behaviour, written against the
- * installed 2.x API.
+ * Upstream's own fix for the same gap ships only as the EXPERIMENTAL `useSSO`
+ * (`@clerk/expo/experimental`, "activates completed SSO sessions
+ * automatically"), built on the Core 3 resources this screen does not use. This
+ * is that behaviour, written against the stable Core 2 API.
  *
  * ── What it does ────────────────────────────────────────────────────────────
  * Armed before the browser sheet opens. When the app returns to the foreground
