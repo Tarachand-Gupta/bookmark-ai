@@ -8,12 +8,13 @@ final class SignedOutResetTests: XCTestCase {
 
     /// An environment on the CLOUD target with its own throwaway defaults —
     /// the test host is the real app, so `.standard` is Tara's actual settings.
+    /// `session` lets a test answer the API from a stubbed `URLProtocol`.
     @MainActor
-    static func makeCloudEnvironment() -> AppEnvironment {
+    static func makeCloudEnvironment(session: URLSession? = nil) -> AppEnvironment {
         let defaults = UserDefaults(suiteName: "SignedOutResetTests-\(UUID().uuidString)")!
         let preferences = Preferences(defaults: defaults)
         preferences.serverTarget = .cloud
-        return AppEnvironment(preferences: preferences)
+        return AppEnvironment(preferences: preferences, session: session)
     }
 
     @MainActor
@@ -67,6 +68,7 @@ final class SignedOutResetTests: XCTestCase {
         XCTAssertNil(env.settings.settings, "settings", file: file, line: line)
         XCTAssertNil(env.settings.plan, "plan card", file: file, line: line)
         XCTAssertNil(env.health, "health", file: file, line: line)
+        XCTAssertNil(env.sessionLoad, "a load in flight for the closed gate", file: file, line: line)
         XCTAssertNil(env.requestedSettingsTab, "requested settings tab", file: file, line: line)
         XCTAssertFalse(env.isPresentingTour, "tour", file: file, line: line)
     }

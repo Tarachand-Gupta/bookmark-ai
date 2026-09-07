@@ -7,12 +7,12 @@ import XCTest
 /// a transient "couldn't reach Clerk" must NEVER read as signed out.
 final class AuthStateTests: XCTestCase {
 
-    /// A cloud environment whose `onSessionRestored` is inert, not a network
+    /// A cloud environment whose `onSessionConfirmed` is inert, not a network
     /// load (the test host would otherwise call the real cloud).
     @MainActor
     private func makeEnvironment() -> AppEnvironment {
         let env = SignedOutResetTests.makeCloudEnvironment()
-        env.auth.onSessionRestored = {}
+        env.auth.onSessionConfirmed = {}
         return env
     }
 
@@ -110,13 +110,13 @@ final class AuthStateTests: XCTestCase {
     }
 
     /// Retry from the connecting screen: a session confirmed AFTER the awaited
-    /// restore must announce itself (`onSessionRestored`) so data loads —
+    /// restore must announce itself (`onSessionConfirmed`) so data loads —
     /// the earlier draft dropped that notification on the manual path.
     @MainActor
     func testRetryAfterUnreachableSignsInAndNotifies() async throws {
         let env = makeEnvironment()
         var restored = 0
-        env.auth.onSessionRestored = { restored += 1 }
+        env.auth.onSessionConfirmed = { restored += 1 }
         var outcome: MintOutcome = .unavailable
         env.auth.mintOverride = { _ in outcome }
         await env.auth.restore(requiresAuth: true)

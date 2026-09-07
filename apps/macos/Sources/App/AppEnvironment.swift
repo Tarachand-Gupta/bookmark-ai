@@ -43,12 +43,18 @@ final class AppEnvironment {
     /// Drives the feature-tour sheet (sidebar ▸ Tour).
     var isPresentingTour = false
 
+    /// The load started by the last gate opening (`gateOpened`). Cancelled by
+    /// the flush; awaited by tests.
+    @ObservationIgnored private(set) var sessionLoad: Task<Void, Never>?
+
     /// `preferences` is injectable so tests/previews can use a throwaway
     /// `UserDefaults` suite instead of the app's real one (the unit-test host
-    /// IS the app, so `.standard` would be Tara's actual settings).
-    init(preferences: Preferences? = nil) {
+    /// IS the app, so `.standard` would be Tara's actual settings); `session`
+    /// so they can answer the API from a stubbed `URLProtocol` instead of the
+    /// network.
+    init(preferences: Preferences? = nil, session: URLSession? = nil) {
         let preferences = preferences ?? Preferences()
-        let api = ApiClient(target: preferences.serverTarget)
+        let api = ApiClient(target: preferences.serverTarget, session: session)
         let auth = AuthController(origin: ServerTarget.cloud.baseURL)
 
         self.preferences = preferences
@@ -73,12 +79,11 @@ final class AppEnvironment {
         }
 
         // Every definitive sign-out — Clerk saying "no session", the account
-        // menu, a rejected fresh token — flushes the models in ONE place; a
-        // session confirmed later (backoff retry, Retry) loads them.
+        // menu, a rejected fresh token — flushes the models in ONE place; every
+        // confirmed session — launch restore, backoff retry, Retry, the sign-in
+        // sheet, an on-demand mint — loads them in ONE place.
         auth.onSignedOut = { [weak self] in self?.handleSignedOut() }
-        auth.onSessionRestored = { [weak self] in
-            Task { @MainActor in await self?.loadEverything() }
-        }
+        auth.onSessionConfirmed = { [weak self] in self?.gateOpened() }
 
         // A chat tool that creates/installs a skill refreshes the Skills sheet.
         let skills = self.skills
@@ -104,10 +109,12 @@ final class AppEnvironment {
 
     // MARK: - Lifecycle
 
-    /// First run of the app: restore any persisted session, then load the library.
+    /// First run of the app: restore any persisted session. A confirmed cloud
+    /// session loads through `auth.onSessionConfirmed`; Local has no session to
+    /// confirm — its gate is open from the start — so it loads here.
     func start() async {
         await auth.restore(requiresAuth: preferences.serverTarget.requiresAuth)
-        if canUseData { await loadEverything() }
+        if !preferences.serverTarget.requiresAuth { gateOpened() }
     }
 
     /// Flip Local ↔︎ Cloud. Everything downstream is rebuilt: no row, facet,
@@ -123,12 +130,29 @@ final class AppEnvironment {
         // one. Local mode simply never attaches the token.
         auth.updateOrigin(ServerTarget.cloud.baseURL)
         await auth.restore(requiresAuth: target.requiresAuth)
-        if canUseData { await loadEverything() }
+        if !target.requiresAuth { gateOpened() }
+    }
+
+    /// The gate just opened — load everything, in a task of ITS OWN. Every
+    /// opening passes through here: a confirmed cloud session (whichever path
+    /// confirmed it) and the Local target. Owning the task is the point: the
+    /// trigger may be running inside a task somebody else is about to cancel.
+    /// The sign-in sheet's `.task` is the case that bit — SwiftUI cancels it
+    /// the instant the sheet dismisses (the first thing `completeSignIn` does),
+    /// and inside a cancelled task URLSession fails with `.cancelled` before
+    /// any response is read. The token survived (its mint runs in its own
+    /// task), so the app read "Signed in" while `/api/me` — awaited as a child
+    /// of that task — never landed, and the identity sat on "Loading your
+    /// account…" until a relaunch. The library, which hops into its own task,
+    /// loaded fine, which is why only the identity looked broken.
+    private func gateOpened() {
+        sessionLoad = Task { @MainActor [weak self] in await self?.loadEverything() }
     }
 
     /// Refresh the library plus the side reads that decorate the UI: who is
     /// signed in (footer, Settings ▸ Account) and the server's health. Also the
-    /// moment the update poll starts — every gate opening passes through here.
+    /// moment the update poll starts — every gate opening passes through here
+    /// (via `gateOpened`), and so does ⌘R.
     func loadEverything() async {
         guard canUseData else { return }
         updates.start()
@@ -138,10 +162,13 @@ final class AppEnvironment {
         health = try? await api.health()
     }
 
-    /// Called after the sign-in sheet succeeds.
-    func finishSignIn() async {
-        await auth.completeSignIn()
-        if canUseData { await loadEverything() }
+    /// The sign-in sheet saw a token. Adopts the session in a task of its own
+    /// — the sheet's `.task` dies with the sheet, which `completeSignIn()`
+    /// dismisses first thing — and the confirmed session then loads through
+    /// `onSessionConfirmed` → `gateOpened()`. Returned so tests can await it.
+    @discardableResult
+    func finishSignIn() -> Task<Void, Never> {
+        Task { @MainActor [auth] in await auth.completeSignIn() }
     }
 
     /// Account menu / Settings ▸ Sign Out. The flush happens through `auth.onSignedOut`.
@@ -161,6 +188,10 @@ final class AppEnvironment {
     }
 
     private func resetModels() {
+        // A load still in flight for the closing gate must not land in the
+        // emptied models (or in the next account's).
+        sessionLoad?.cancel()
+        sessionLoad = nil
         library.reset()
         chat.reset()
         sessions.reset()

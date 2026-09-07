@@ -24,12 +24,13 @@ xcodegen generate                # writes BookmarkAI.xcodeproj
 xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
            -configuration Debug -derivedDataPath build build
 
-# Test (136 tests: URL construction, error mapping, response decoding,
+# Test (144 tests: URL construction, error mapping, response decoding,
 # chat stream assembly, attachment classification/downscaling, skills/MCP
 # contracts, the SKILL.md import parser, history grouping, the empty-reply
-# guard, the auth state machine + sign-out flush + stubbed-transport 401
-# rules, release version arithmetic + the update-banner rules; the 9
-# RenderPreviewTests are skipped unless
+# guard, the auth state machine + sign-out flush + the load every confirmed
+# session starts (incl. from the sign-in sheet's cancelled task) +
+# stubbed-transport 401 rules, the footer copy, release version arithmetic
+# + the update-banner rules; the 9 RenderPreviewTests are skipped unless
 # TEST_RUNNER_RENDER_PREVIEWS=1 — a plain env var is NOT forwarded to the
 # test host)
 xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
@@ -161,6 +162,24 @@ disagree about whether account data may be on screen:
   going underneath. A session confirmed by any attempt after the awaited one
   (a backoff tick, Retry, or an on-demand mint) fires `onSessionRestored`, which
   runs the data load the launch skipped.
+- **Every transition to `signedIn` is ONE path too** — `setSignedIn()` (the
+  mirror of `setSignedOut()`, reached from the launch restore, a backoff retry
+  or Retry, the sign-in sheet, or an on-demand mint that confirmed the session)
+  → `onSessionConfirmed` → `AppEnvironment.gateOpened()`, which runs
+  `loadEverything()` (identity, library, health, the update poll) **in a task
+  the app owns**. Owning the task is the point: the sign-in sheet finds its
+  token inside its own `.task`, and `completeSignIn()` dismisses the sheet
+  first thing — SwiftUI cancels that task at the next suspension, and inside
+  a cancelled task URLSession fails with `.cancelled` before any response is
+  read. The token still arrived (its mint runs in its own task), so the app
+  read "Signed in" while `/api/me`, awaited as a child of the dead task, never
+  landed: the identity sat on "Loading your account…" until a relaunch (the
+  library, which hops into its own task, loaded fine — which is why only the
+  identity looked broken). `SignInSheet` now hands off (`finishSignIn()`
+  returns a task) and every load goes through `gateOpened()`; the 45 s tick
+  is not a transition and loads nothing. `SessionLoadTests` reproduces the
+  cancelled sheet task and asserts the identity loads anyway, exactly once
+  per confirmation.
 - **Mid-session, a transient mint failure keeps the session.** The status stays
   `.signedIn`, the data stays on screen, and `AuthController.token` returns nil.
   `ApiClient.send` / `startChatTurn` then throw `ApiError.noToken` **before any
@@ -169,12 +188,17 @@ disagree about whether account data may be on screen:
   actually attached and rejected twice (`ApiClientAuthTests` pins the three
   cases against a stubbed `URLProtocol`).
 - **Identity**: `GET /api/me` is loaded alongside the library on every
-  confirmed session (`loadEverything`) and shown in the sidebar footer (initials
-  avatar, name → else email, email → else the server host, a Local/Cloud glyph
-  badge, ⋯ ▸ Account Settings… / Sign Out) and in Settings ▸ Account (Status,
-  then the identity row, then Sign Out — the plan card above). A transient
-  `/api/me` failure keeps the last identity of the same session; sign-out
-  clears it.
+  confirmed session (`gateOpened` → `loadEverything`) and shown in the sidebar
+  footer (initials avatar, the **email** on the first line — one line,
+  middle-truncated when the sidebar is narrow, the full address as the tooltip;
+  the name only when Clerk has no email — the server host on the second,
+  "Loading…" while `/api/me` is in flight, a Local/Cloud glyph badge, ⋯ ▸
+  Account Settings… / Sign Out; `AccountFooter.lines` is the pure, tested
+  derivation) and in Settings ▸ Account (Status, then the identity row with
+  name + email, then Sign Out — the plan card above). The footer's text column
+  takes exactly what the badge and menu leave, so a long address truncates
+  instead of moving them. A transient `/api/me` failure keeps the last
+  identity of the same session; sign-out clears it.
 - Breadcrumbs for every transition are in the unified log:
   `log show --last 2d --predicate 'subsystem == "ai.purecode.bookmarkai" AND category == "auth"'`.
 - Tests drive the state machine without a webview through
@@ -189,7 +213,10 @@ flushing any model; `restore()` collapsed "couldn't reach Clerk" into
 signed-out; only the detail column was gated (the sidebar rendered regardless);
 `ApiClient` sent bare requests when no token could be minted, so a blip
 401-replayed into a false sign-out; and `SettingsModel.plan` defaulted to Free,
-so it could never be empty. All five are fixed by the gate above.
+so it could never be empty. All five are fixed by the gate above. A sixth
+followed: signing in to an already-running app showed **"Signed in" with the
+identity stuck on "Loading your account…"** until a relaunch — the load ran
+inside the sign-in sheet's cancelled `.task` (see the `signedIn` bullet).
 
 **Nothing durable is stored by this app**, which is why there is no Keychain
 entry: session JWTs are memory-only, and the Clerk cookies live in the
@@ -262,7 +289,7 @@ apps/macos/
 ├── Sources/
 │   ├── App/
 │   │   ├── BookmarkAIApp.swift     @main, WindowGroup + Settings, menu commands (data items disabled while gated)
-│   │   └── AppEnvironment.swift    composition root; wires api ↔ auth ↔ models; `gate`/`canUseData`; handleSignedOut() = THE flush
+│   │   └── AppEnvironment.swift    composition root; wires api ↔ auth ↔ models; `gate`/`canUseData`; handleSignedOut() = THE flush, gateOpened() = THE load (own task)
 │   ├── Models/
 │   │   ├── Bookmark.swift          Bookmark, OpenGraph, BookmarkSource, ISO8601
 │   │   ├── ApiResponses.swift      List/Meta/Search/Health/Account/Settings (+ AiMode, ownKeyReady)
@@ -296,7 +323,7 @@ apps/macos/
 │   │   └── ServerTarget.swift      local/cloud base URLs, hostLabel
 │   ├── Auth/
 │   │   ├── ClerkWebAuth.swift      the two webviews, JS token minting, sign-out
-│   │   ├── AuthController.swift    @Observable auth state (unknown/signedOut/signedIn/unreachable), token cache + refresh, backoff restore + stall, the one sign-out path, identity
+│   │   ├── AuthController.swift    @Observable auth state (unknown/signedOut/signedIn/unreachable), token cache + refresh, backoff restore + stall, the one sign-out path + the one sign-in path (onSessionConfirmed), identity
 │   │   ├── AuthGate.swift          AuthGateScaffold (glass + centred column + server picker footer), AppMark, GateActionButton
 │   │   ├── SignedOutView.swift     the whole window while signed out on Cloud
 │   │   ├── ConnectingView.swift    the whole window while the session is unconfirmed (spinner → "Can't reach" + Retry)
@@ -304,7 +331,7 @@ apps/macos/
 │   ├── Library/
 │   │   ├── ContentView.swift       gate switch: NavigationSplitView / ConnectingView / SignedOutView; sign-in sheet at the root
 │   │   ├── SidebarView.swift       facets with counts (hidden at 0) + account footer
-│   │   ├── AccountFooter.swift     initials avatar, name/email lines, target badge, ⋯ ▸ Account Settings… / Sign Out
+│   │   ├── AccountFooter.swift     initials avatar, email (middle-truncated, tooltip) over host, target badge, ⋯ ▸ Account Settings… / Sign Out; `lines` = pure copy
 │   │   ├── UpdateBanner.swift      "Bookmark AI x.y.z is available" card above the footer (Download / Later; blocking variant)
 │   │   ├── LibraryBrowserView.swift grid/list host + empty/error states + banner
 │   │   ├── BookmarkGridView.swift  adaptive card grid (default), hover, click-opens
@@ -344,7 +371,9 @@ apps/macos/
     ├── ChatHistoryTests.swift      4 tests — day buckets, relative-time copy, title filter, seed hook
     ├── TranscriptLayoutTests.swift 2 tests — empty-stream failure row + Retry, server `error` chunk on an empty turn (fixture streams via `turnStarter`)
     ├── SignedOutResetTests.swift   2 tests — handleSignedOut() empties every model (incl. plan, identity, window state); a post-retry 401 flushes through AuthController
-    ├── AuthStateTests.swift        11 tests — refresh-tick no-session flushes; unavailable keeps session + data; restore → signedIn / signedOut / connecting; Retry notifies; backoff + stall constants; gate per target; initials; identity kept on /api/me failure
+    ├── AuthStateTests.swift        11 tests — refresh-tick no-session flushes; unavailable keeps session + data; restore → signedIn / signedOut / connecting; Retry confirms; backoff + stall constants; gate per target; initials; identity kept on /api/me failure
+    ├── SessionLoadTests.swift      4 tests — stubbed /api/me: sign-in completed inside the sheet's CANCELLED task still loads the identity; finishSignIn hands off; one load per transition (restore, tick, sign-out, sign-in again); on-demand mint while connecting confirms + loads
+    ├── AccountFooterTests.swift    4 tests — footer copy: email over host, name/status fallbacks, "Loading…" placeholder, Local + gate states
     ├── ApiClientAuthTests.swift    4 tests — stubbed URLProtocol: no token ⇒ no request + `.noToken`; expired token recovers on the replay; fresh token rejected ⇒ onUnauthorized once; Local sends no header
     ├── AppReleaseTests.swift       12 tests — segments/compareVersions/updateState vs releases.ts, live + empty JSON shapes, bundle version
     ├── AppUpdateModelTests.swift   8 tests — banner rules, silent failure, 24 h per-version snooze across a "relaunch", blocking can't snooze, start/stop
@@ -352,7 +381,7 @@ apps/macos/
     ├── FilteringTests.swift        5 tests — sessions/live search matching
     ├── StreamingLayoutTests.swift  1 test — streaming layout
     ├── PreferencesTests.swift      2 tests — layout default + persistence
-    └── RenderPreviewTests.swift    9 previews — light+dark PNGs incl. the auth gate (signed-out window + Settings panel, connecting + stalled, footer name/email/local, Account tab) and both update-banner variants (TEST_RUNNER_RENDER_PREVIEWS=1)
+    └── RenderPreviewTests.swift    9 previews — light+dark PNGs incl. the auth gate (signed-out window + Settings panel, connecting + stalled, footer email / long email at 250 + 200 / loading / local, Account tab loading + resolved, and both footer + Account tab straight after a sign-in run through the real cancelled-sheet path) and both update-banner variants (TEST_RUNNER_RENDER_PREVIEWS=1)
 ```
 
 ---

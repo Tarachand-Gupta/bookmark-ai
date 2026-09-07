@@ -57,7 +57,10 @@ struct SignInSheet: View {
             guard !Task.isCancelled else { return }
 
             if let token = await appEnvironment.auth.probeSignInWebView(view), !token.isEmpty {
-                await appEnvironment.finishSignIn()
+                // Hand off, don't await: completing the sign-in dismisses this
+                // sheet, and SwiftUI cancels this task with it — anything still
+                // awaited here (the token page reload, `/api/me`) would die too.
+                appEnvironment.finishSignIn()
                 return
             }
         }

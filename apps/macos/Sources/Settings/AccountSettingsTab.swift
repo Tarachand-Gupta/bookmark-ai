@@ -136,8 +136,14 @@ struct AccountSettingsTab: View {
                             .truncationMode(.middle)
                     }
                 } else {
-                    Text("Loading your account…")
-                        .foregroundStyle(.secondary)
+                    // Every confirmed session requests `/api/me` in the app's
+                    // own task (`AppEnvironment.gateOpened`), so this is a
+                    // moment, not a state — same spinner as the plan card.
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Loading your account…")
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             Spacer(minLength: 0)

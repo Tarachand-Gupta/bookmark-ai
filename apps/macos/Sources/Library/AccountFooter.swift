@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// Sidebar footer — who you are: initials avatar, name (else email) on the
-/// first line, email (else the server host) on the second, a small badge for
-/// the Local/Cloud target, and the ⋯ menu (Account Settings…, Sign Out). It
-/// only renders behind an open gate, so on Cloud there is always a session.
+/// Sidebar footer — who you are: initials avatar, the account's EMAIL on the
+/// first line (middle-truncated when the sidebar is narrow — the full address
+/// is the tooltip), the server host on the second, a small badge for the
+/// Local/Cloud target, and the ⋯ menu (Account Settings…, Sign Out). It only
+/// renders behind an open gate, so on Cloud there is always a session; the
+/// name lives in Settings ▸ Account, above the email.
 struct AccountFooter: View {
     @Environment(AppEnvironment.self) private var appEnvironment
     @Environment(\.openSettings) private var openSettings
@@ -11,6 +13,7 @@ struct AccountFooter: View {
     var body: some View {
         let target = appEnvironment.preferences.serverTarget
         let auth = appEnvironment.auth
+        let lines = Self.lines(target: target, status: auth.status, account: auth.account)
 
         HStack(spacing: 10) {
             InitialsAvatar(
@@ -24,15 +27,18 @@ struct AccountFooter: View {
                     .font(.callout)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .help(lines.isIdentity ? lines.primary : "")
                 Text(lines.secondary)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
+            // The column takes exactly what the trailing controls leave, so the
+            // badge and the menu never move: a long address truncates in the
+            // middle, a short one (or the loading placeholder) changes nothing.
+            .frame(minWidth: 40, maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
-
-            Spacer(minLength: 4)
 
             TargetBadge(target: target)
 
@@ -65,24 +71,42 @@ struct AccountFooter: View {
         .accessibilityIdentifier("account-footer")
     }
 
-    /// Primary = name, else email, else a status; secondary = email when the
-    /// primary is the name, else the server host.
-    private var lines: (primary: String, secondary: String) {
-        let target = appEnvironment.preferences.serverTarget
-        let auth = appEnvironment.auth
-        guard target.requiresAuth else { return ("Local account", target.hostLabel) }
+    /// The footer's two lines.
+    struct Lines: Equatable {
+        var primary: String
+        var secondary: String
+        /// True when `primary` names the account (email or name) — the
+        /// tooltip then carries the untruncated text.
+        var isIdentity: Bool
+    }
 
-        switch auth.status {
+    /// Placeholder while a confirmed session's `/api/me` is still in flight.
+    /// Short on purpose — it lives a second at most: every confirmed session
+    /// requests the identity (`AppEnvironment.gateOpened`).
+    static let loadingPlaceholder = "Loading…"
+
+    /// Pure derivation, unit-tested. Cloud, signed in: the email (the name
+    /// only when Clerk has no email for the account; "Signed in" for a
+    /// nameless open-mode session) over the server host; identity not loaded
+    /// yet: `loadingPlaceholder`. Connecting / signed out (not normally
+    /// rendered — the gate replaces the sidebar) say so. Local: the local
+    /// account over its host.
+    static func lines(target: ServerTarget, status: AuthController.Status, account: AccountInfo?) -> Lines {
+        let host = target.hostLabel
+        guard target.requiresAuth else { return Lines(primary: "Local account", secondary: host, isIdentity: false) }
+
+        switch status {
         case .signedIn:
-            let name = auth.account?.name?.trimmingCharacters(in: .whitespaces) ?? ""
-            let email = auth.account?.email?.trimmingCharacters(in: .whitespaces) ?? ""
-            if !name.isEmpty { return (name, email.isEmpty ? target.hostLabel : email) }
-            if !email.isEmpty { return (email, target.hostLabel) }
-            return ("Signed in", target.hostLabel)
+            guard let account else { return Lines(primary: loadingPlaceholder, secondary: host, isIdentity: false) }
+            let email = account.email?.trimmingCharacters(in: .whitespaces) ?? ""
+            let name = account.name?.trimmingCharacters(in: .whitespaces) ?? ""
+            if !email.isEmpty { return Lines(primary: email, secondary: host, isIdentity: true) }
+            if !name.isEmpty { return Lines(primary: name, secondary: host, isIdentity: true) }
+            return Lines(primary: "Signed in", secondary: host, isIdentity: false)
         case .unknown, .unreachable:
-            return ("Connecting…", target.hostLabel)
+            return Lines(primary: "Connecting…", secondary: host, isIdentity: false)
         case .signedOut:
-            return ("Not signed in", target.hostLabel)
+            return Lines(primary: "Not signed in", secondary: host, isIdentity: false)
         }
     }
 }

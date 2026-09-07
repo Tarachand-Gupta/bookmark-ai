@@ -247,13 +247,14 @@ final class RenderPreviewTests: XCTestCase {
     }
 
     @MainActor
-    func testRenderAuthGatePreviews() throws {
+    func testRenderAuthGatePreviews() async throws {
         try XCTSkipUnless(
             ProcessInfo.processInfo.environment["RENDER_PREVIEWS"] == "1",
             "visual harness — set RENDER_PREVIEWS=1 to produce the PNG"
         )
         let tara = AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@purecode.ai")
         let emailOnly = AccountInfo(signedIn: true, name: nil, email: "tara@purecode.ai")
+        let longEmail = AccountInfo(signedIn: true, name: "Tarachand Gupta", email: "tarachandragupta2784@gmail.com")
         let settings = UserSettings(
             provider: "google", baseUrl: nil, model: nil, apiKeySet: false, apiKeyLast4: nil,
             aiMode: "included", liveServerUrl: nil, nativeSyncEnabled: true, nativeSyncFull: false,
@@ -300,6 +301,21 @@ final class RenderPreviewTests: XCTestCase {
             byEmail.auth.seed(status: .signedIn, account: emailOnly)
             try render(AccountFooter().environment(byEmail).frame(width: 250).background(sidebar),
                        width: 250, appearance: appearance, name: "auth-footer-email-only-\(suffix)")
+            // A long address, at the sidebar's ideal (250) and minimum (200)
+            // widths: middle-truncated on one line, badge and menu unmoved.
+            let wide = gateEnvironment(target: .cloud)
+            wide.auth.seed(status: .signedIn, account: longEmail)
+            try render(AccountFooter().environment(wide).frame(width: 250).background(sidebar),
+                       width: 250, appearance: appearance, name: "auth-footer-long-email-\(suffix)")
+            try render(AccountFooter().environment(wide).frame(width: 200).background(sidebar),
+                       width: 200, appearance: appearance, name: "auth-footer-long-email-narrow-\(suffix)")
+            try render(AccountFooter().environment(signedIn).frame(width: 200).background(sidebar),
+                       width: 200, appearance: appearance, name: "auth-footer-narrow-\(suffix)")
+            // Identity still in flight: the placeholder, same footprint.
+            let loadingFooter = gateEnvironment(target: .cloud)
+            loadingFooter.auth.seed(status: .signedIn, account: nil)
+            try render(AccountFooter().environment(loadingFooter).frame(width: 250).background(sidebar),
+                       width: 250, appearance: appearance, name: "auth-footer-loading-\(suffix)")
             let local = gateEnvironment(target: .local)
             local.auth.seed(status: .signedOut, account: AccountInfo(signedIn: true, name: nil, email: nil))
             try render(AccountFooter().environment(local).frame(width: 250).background(sidebar),
@@ -310,6 +326,23 @@ final class RenderPreviewTests: XCTestCase {
             loadingIdentity.auth.seed(status: .signedIn, account: nil)
             try render(AccountSettingsTab().environment(loadingIdentity).tint(.blue),
                        width: 500, appearance: appearance, name: "auth-account-tab-loading-\(suffix)")
+
+            // Right after an in-app sign-in, through the REAL path — the sheet's
+            // cancelled task and all (`SessionLoadTests`), `/api/me` answered by
+            // the stub: the footer and the Account tab must both show the
+            // identity, not the placeholder.
+            let justSignedIn = SessionLoadTests.makeStubbedEnvironment()
+            justSignedIn.auth.seed(status: .signedOut)
+            justSignedIn.auth.mintOverride = { _ in .token("jwt-preview") }
+            let sheetTask = await SessionLoadTests.completeSignInFromTheSheetsTask(justSignedIn)
+            XCTAssertTrue(sheetTask.isCancelled)
+            await justSignedIn.sessionLoad?.value
+            XCTAssertEqual(justSignedIn.auth.account?.email, "tara@purecode.ai")
+            justSignedIn.settings.seed(settings, plan: .free)
+            try render(AccountFooter().environment(justSignedIn).frame(width: 250).background(sidebar),
+                       width: 250, appearance: appearance, name: "auth-footer-after-sign-in-\(suffix)")
+            try render(AccountSettingsTab().environment(justSignedIn).tint(.blue),
+                       width: 500, appearance: appearance, name: "auth-account-tab-after-sign-in-\(suffix)")
         }
     }
 

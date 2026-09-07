@@ -17,6 +17,12 @@ import WebKit
 ///   *connecting* state (`.unknown`/`.unreachable`, retried with backoff); mid-
 ///   session the status stays `.signedIn` and the data stays on screen.
 ///
+/// The mirror image holds too: every transition INTO `.signedIn` — the silent
+/// restore, a backoff retry or Retry, the sign-in sheet, an on-demand mint —
+/// goes through ONE path, `setSignedIn()`, which announces it through
+/// `onSessionConfirmed` so the app loads that account's data (identity,
+/// library, health) from one place, whichever path confirmed the session.
+///
 /// Breadcrumbs: `log show --predicate 'subsystem == "ai.purecode.bookmarkai" AND category == "auth"'`.
 @MainActor
 @Observable
@@ -50,10 +56,12 @@ final class AuthController {
     /// (Clerk says no session, explicit sign-out, 401 after the forced re-mint)
     /// — the app flushes every model in one place.
     var onSignedOut: (() -> Void)?
-    /// Fired when a session is confirmed OUTSIDE the awaited `restore()` /
-    /// `completeSignIn()` (a backoff retry, Retry, or an on-demand mint
-    /// succeeded) so the app can load data it skipped earlier.
-    var onSessionRestored: (() -> Void)?
+    /// Fired on EVERY transition to signed-in on the cloud origin — the silent
+    /// restore at launch, a backoff retry or Retry, the sign-in sheet, or an
+    /// on-demand mint that confirmed the session (e.g. ⌘R while connecting) —
+    /// so the app loads that account's data in one place. Never fires while
+    /// already signed in (the 45 s tick changes nothing).
+    var onSessionConfirmed: (() -> Void)?
 
     /// Re-mint this long after the last mint. Comfortably inside Clerk's ~60s TTL.
     private static let tokenMaxAge: TimeInterval = 40
@@ -80,9 +88,6 @@ final class AuthController {
     private var restoreRetry: Task<Void, Never>?
     /// When the current connecting stretch began — drives `restoreStalled`.
     private var restoreBeganAt: Date?
-    /// True while `restore()` / `completeSignIn()` drive the status themselves,
-    /// so the mint's own bookkeeping doesn't double-report.
-    private var isRestoring = false
 
     #if DEBUG
     /// Tests: stand in for the webview. Receives `fresh`; returns the outcome.
@@ -120,7 +125,11 @@ final class AuthController {
         return nil
     }
 
-    /// One mint, coalesced, with the status bookkeeping every caller shares.
+    /// One mint, coalesced, with the status bookkeeping every caller shares:
+    /// a token confirms the session (`setSignedIn`), "no session" ends it
+    /// (`setSignedOut`), and "unavailable" changes nothing. Both transitions
+    /// are idempotent, so whoever triggered the mint — the restore, the sheet,
+    /// the 45 s tick, a request — needs no bookkeeping of its own.
     private func mint(forceRefresh: Bool) async -> MintOutcome {
         // Coalesce concurrent mints: an in-flight mint satisfies this call unless
         // we need a guaranteed-fresh token and the in-flight one isn't. Never run
@@ -132,6 +141,9 @@ final class AuthController {
             _ = await mintTask.value // let the cached-path mint settle first
         }
 
+        // Its own task on purpose: the caller may be running inside a task
+        // SwiftUI is about to cancel (the sign-in sheet's), and the webview
+        // evaluation must still complete.
         let task = Task { @MainActor [web] in
             #if DEBUG
             if let mintOverride { return await mintOverride(forceRefresh) }
@@ -147,33 +159,22 @@ final class AuthController {
         case .token(let token):
             cachedToken = token
             cachedAt = Date()
-            if status != .signedIn {
-                let previous = status
-                status = .signedIn
-                Self.log.notice("session available (was \(String(describing: previous), privacy: .public))")
-                if !isRestoring {
-                    // An on-demand mint confirmed the session (e.g. ⌘R while
-                    // connecting): behave like a completed restore.
-                    clearStall()
-                    startRefreshLoop()
-                    onSessionRestored?()
-                }
-            }
+            setSignedIn()
         case .noSession:
             // Definitive: Clerk loaded and reports no session. Sign out for real —
             // this is how a session that expired under a days-idle app ends.
             cachedToken = nil
             cachedAt = nil
-            if !isRestoring, status != .signedOut {
+            if status != .signedOut {
                 Self.log.notice("Clerk reports no session (was \(String(describing: self.status), privacy: .public)) — signing out")
-                setSignedOut()
             }
+            setSignedOut()
         case .unavailable:
             // Transient (network down, page not loaded, renderer recycled). Says
             // NOTHING about the session, so a mid-session blip must not bounce
             // the user to the sign-in screen. Drop the cache, keep the status;
             // the failing request surfaces its own error and the next tick
-            // retries. (The restore path handles its own bookkeeping.)
+            // retries. (The restore path schedules its own retry.)
             cachedToken = nil
             cachedAt = nil
             Self.log.info("token mint unavailable (status \(String(describing: self.status), privacy: .public)) — keeping state")
@@ -194,8 +195,9 @@ final class AuthController {
     /// carry a session, the user is signed in without seeing anything. An
     /// unreachable Clerk is NOT "signed out" — it becomes `.unreachable`
     /// (rendered as "Connecting to your account…") and retries with backoff
-    /// until Clerk answers either way. Returns after the FIRST attempt; a later
-    /// success reports through `onSessionRestored`.
+    /// until Clerk answers either way. Returns after the FIRST attempt; a
+    /// confirmed session — now or on a later attempt — reports through
+    /// `onSessionConfirmed`.
     func restore(requiresAuth: Bool) async {
         cancelRestoreRetry()
         guard requiresAuth else {
@@ -209,29 +211,24 @@ final class AuthController {
         }
         restoreBeganAt = Date()
         restoreStalled = false
-        await attemptRestore(attempt: 0, notifies: false)
+        await attemptRestore(attempt: 0)
     }
 
-    /// One restore attempt. `notifies` is true for every attempt AFTER the one
-    /// the caller awaited (scheduled retries, Retry) — those must announce a
-    /// confirmed session themselves, since nobody is awaiting them.
-    private func attemptRestore(attempt: Int, notifies: Bool) async {
-        isRestoring = true
+    /// One restore attempt. The mint itself makes (and announces) the
+    /// signed-in / signed-out transition; this only owns the connecting state
+    /// and its retry schedule.
+    private func attemptRestore(attempt: Int) async {
         let outcome = await mint(forceRefresh: true)
-        isRestoring = false
 
         switch outcome {
         case .token:
-            clearStall()
-            status = .signedIn
-            startRefreshLoop()
             Self.log.notice("silent restore: signed in (attempt \(attempt))")
-            if notifies { onSessionRestored?() }
         case .noSession:
-            clearStall()
             Self.log.notice("silent restore: Clerk reports no session (attempt \(attempt))")
-            setSignedOut()
         case .unavailable:
+            // An on-demand mint may have confirmed the session while this
+            // attempt was in flight — never demote a confirmed session.
+            guard status != .signedIn else { return }
             status = .unreachable
             if let began = restoreBeganAt, Date().timeIntervalSince(began) >= Self.stallAfter {
                 restoreStalled = true
@@ -241,7 +238,7 @@ final class AuthController {
             restoreRetry = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: delay)
                 guard let self, !Task.isCancelled, self.status == .unreachable else { return }
-                await self.attemptRestore(attempt: attempt + 1, notifies: true)
+                await self.attemptRestore(attempt: attempt + 1)
             }
         }
     }
@@ -252,7 +249,7 @@ final class AuthController {
         cancelRestoreRetry()
         restoreBeganAt = Date()
         restoreStalled = false
-        Task { await attemptRestore(attempt: 0, notifies: true) }
+        Task { await attemptRestore(attempt: 0) }
     }
 
     private func cancelRestoreRetry() {
@@ -271,23 +268,33 @@ final class AuthController {
     }
 
     /// The sign-in sheet saw a token — adopt the session for the whole app.
+    /// Dismissing the sheet is the FIRST thing this does, which is why the
+    /// caller must not run it inside the sheet's own `.task`: SwiftUI cancels
+    /// that task with the sheet (see `AppEnvironment.finishSignIn`).
     func completeSignIn() async {
         isPresentingSignIn = false
         cancelRestoreRetry()
-        await web.refreshAfterSignIn()
-        isRestoring = true
+        await reloadTokenPageAfterSignIn()
         let outcome = await mint(forceRefresh: true)
-        isRestoring = false
         if case .token = outcome {
-            clearStall()
-            status = .signedIn
-            startRefreshLoop()
+            // `mint` made the transition and announced it (`onSessionConfirmed`).
             Self.log.notice("sign-in completed")
         } else {
             lastError = "Sign-in finished but no session token could be minted. Try again."
             Self.log.error("sign-in finished without a token: \(String(describing: outcome), privacy: .public)")
             setSignedOut(force: true)
         }
+    }
+
+    /// Re-park the token webview on the session the sheet just made. Tests
+    /// stand in for the webview through `mintOverride`, so they skip it — the
+    /// test host shares the app's website data store, and a real load here
+    /// would hit the cloud sign-in page with the app's own cookies.
+    private func reloadTokenPageAfterSignIn() async {
+        #if DEBUG
+        if mintOverride != nil { return }
+        #endif
+        await web.refreshAfterSignIn()
     }
 
     func cancelSignIn() {
@@ -311,6 +318,22 @@ final class AuthController {
         Self.log.error("401 after a forced re-mint — treating as signed out")
         lastError = "The server rejected the session. Sign in again."
         setSignedOut()
+    }
+
+    /// The single path to signed-in — the mirror of `setSignedOut()`. A mint
+    /// while already signed in (the 45 s tick, any request) changes nothing;
+    /// a real transition ends the connecting state, starts the refresh loop,
+    /// and announces itself through `onSessionConfirmed` — the ONE trigger for
+    /// loading the account's data, whichever path confirmed the session.
+    private func setSignedIn() {
+        let previous = status
+        guard previous != .signedIn else { return }
+        cancelRestoreRetry()
+        clearStall()
+        status = .signedIn
+        startRefreshLoop()
+        Self.log.notice("session confirmed (was \(String(describing: previous), privacy: .public))")
+        onSessionConfirmed?()
     }
 
     /// The single definitive path to signed-out: drops the token and identity,
