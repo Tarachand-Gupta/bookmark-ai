@@ -6,6 +6,7 @@ const LINKS = [
   { label: "GitHub", href: REPO, external: true },
   { label: "Privacy", href: "/privacy", external: false },
   { label: "Terms", href: "/terms", external: false },
+  { label: "Support", href: "/support", external: false },
   { label: "Sign in", href: "/sign-in", external: false },
 ];
 

@@ -3,8 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { AUTHORIZED_PARTIES } from "@/lib/authorized-parties";
 
 // The app itself (/app and everything else) can't be used without logging in
-// first. Public routes: the marketing home ("/", exact — /app stays protected)
-// and the auth pages. API routes are NOT protect()ed here — they authenticate
+// first. Public routes: the marketing home ("/", exact — /app stays protected),
+// the auth pages, and the legal/support pages the app stores link to (their
+// URLs are entered in App Store Connect / Play Console and must load signed
+// out). API routes are NOT protect()ed here — they authenticate
 // themselves via requireUser() (clean 401 JSON instead of a redirect, and
 // Bearer-token clients like the extension and mobile app never want an HTML
 // sign-in page). clerkMiddleware still runs on /api (and "/") so auth() has
@@ -16,6 +18,7 @@ const isPublicRoute = createRouteMatcher([
   "/sign-up(.*)",
   "/privacy",
   "/terms",
+  "/support",
 ]);
 const isApiRoute = createRouteMatcher(["/api(.*)"]);
 
