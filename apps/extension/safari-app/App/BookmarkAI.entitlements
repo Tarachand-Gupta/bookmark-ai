@@ -2,13 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- App Store Review 2.4.5: sandboxed. The container app needs NOTHING else —
-	     it opens URLs through LaunchServices, toggles its own login item
-	     (SMAppService) and asks Safari for the extension state
-	     (SFSafariExtensionManager); none of that requires network, file or
-	     hardware entitlements. Least privilege on purpose: the converter's
-	     default `files.user-selected.read-only` was dropped. -->
+	<!-- App Store Review 2.4.5: sandboxed. The container app needs no network,
+	     file or hardware entitlement — it opens URLs through LaunchServices,
+	     toggles its own login item (SMAppService) and asks Safari for the
+	     extension state (SFSafariExtensionManager). Least privilege on purpose:
+	     the converter's default `files.user-selected.read-only` was dropped. -->
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<!-- Shared UserDefaults suite with the appex (Shared/AuthStateStore.swift):
+	     the extension reports who is signed in, the app displays it. Team-id
+	     prefixed = the macOS form, no portal registration needed. Same value in
+	     Extension/BookmarkAIExtension.entitlements and project.yml. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>L3PP7DQZWS.ai.bookmark.safari</string>
+	</array>
 </dict>
 </plist>

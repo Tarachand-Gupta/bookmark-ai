@@ -42,7 +42,25 @@ final class CompanionModel {
     static let privacyURL = URL(string: "https://www.bookmark-ai.cloud/privacy")!
     static let supportURL = URL(string: "https://www.bookmark-ai.cloud/support")!
 
+    /// What the EXTENSION reports about its sign-in, read from the App Group suite
+    /// the appex writes (Shared/AuthStateStore.swift). `.unknown` = no report
+    /// has ever arrived (extension never ran / pre-channel build) — shown as
+    /// today's neutral copy, never as "signed out".
+    enum AuthState: Equatable {
+        case unknown
+        case signedOut
+        case signedIn(email: String?, name: String?)
+
+        var isSignedIn: Bool {
+            if case .signedIn = self { return true }
+            return false
+        }
+    }
+
     private(set) var extensionState: ExtensionState = .unknown
+    private(set) var authState: AuthState = .unknown
+    /// When the extension last reported (`at` in its message) — for staleness.
+    private(set) var authUpdatedAt: Date?
     private(set) var launchAtLogin = false
     /// Human-readable failure from the last login-item toggle, shown inline.
     private(set) var loginItemError: String?
@@ -69,7 +87,27 @@ final class CompanionModel {
             self?.extensionState = state
             UserDefaults.standard.set(state.rawValue, forKey: Self.lastExtensionStateKey)
         }
+        readAuthState()
         refreshLoginItem()
+    }
+
+    /// "Signed in as tara@example.com" (falls back to the name, then a generic
+    /// line) — nil unless signed in. Callers truncate for one-line contexts.
+    var signedInLabel: String? {
+        guard case let .signedIn(email, name) = authState else { return nil }
+        if let email, !email.isEmpty { return "Signed in as \(email)" }
+        if let name, !name.isEmpty { return "Signed in as \(name)" }
+        return "Signed in"
+    }
+
+    private func readAuthState() {
+        guard let snapshot = AuthStateStore.read() else {
+            authState = .unknown
+            authUpdatedAt = nil
+            return
+        }
+        authUpdatedAt = snapshot.updatedAt
+        authState = snapshot.signedIn ? .signedIn(email: snapshot.email, name: snapshot.name) : .signedOut
     }
 
     private static func queryExtensionState(_ completion: @escaping @MainActor (ExtensionState) -> Void) {

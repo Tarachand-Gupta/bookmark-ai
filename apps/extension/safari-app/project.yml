@@ -53,6 +53,11 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     DEVELOPMENT_TEAM: L3PP7DQZWS
+    # App Group shared by the appex and the app (Shared/AuthStateStore.swift):
+    # team-id prefixed, the macOS form. Mirrored LITERALLY in both .entitlements
+    # files and in AuthStateStore.appGroupID — safari-app.test.ts keeps the four
+    # in lock-step. Change the team → change all four.
+    BOOKMARK_APP_GROUP: L3PP7DQZWS.ai.bookmark.safari
     CODE_SIGN_STYLE: Automatic
     # App Store Review 2.4.5: Mac apps must be sandboxed. Both targets carry the
     # sandbox via this setting AND an explicit .entitlements file (auditable).
@@ -75,6 +80,7 @@ targets:
       - path: App/AppDelegate.swift
       - path: App/CompanionModel.swift
       - path: App/SetupView.swift
+      - path: Shared/AuthStateStore.swift
       - path: App/Assets.xcassets
       # macOS 26 Liquid Glass icon (Icon Composer document, shared brand mark
       # with apps/macos). The appiconset below is the pre-26 fallback and the
@@ -111,6 +117,7 @@ targets:
     platform: macOS
     sources:
       - path: Extension/SafariWebExtensionHandler.swift
+      - path: Shared/AuthStateStore.swift
       - path: Extension/PrivacyInfo.xcprivacy
         buildPhase: resources
       - path: Extension/Info.plist

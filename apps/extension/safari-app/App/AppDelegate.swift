@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let model = CompanionModel()
 
     private var statusItem: NSStatusItem?
+    private var authStateItem: NSMenuItem?
     private var extensionStateItem: NSMenuItem?
     private var loginMenuItem: NSMenuItem?
 
@@ -120,7 +121,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self // menuWillOpen refreshes the live rows each time it opens
 
-        // Disabled status line — nil action + autoenable ⇒ greyed out. Text updated live.
+        // Disabled status lines — nil action + autoenable ⇒ greyed out. Text updated live.
+        let auth = NSMenuItem(title: Self.menuTitle(for: model.authState), action: nil, keyEquivalent: "")
+        auth.isEnabled = false
+        menu.addItem(auth)
+        authStateItem = auth
+
         let state = NSMenuItem(title: Self.menuTitle(for: model.extensionState), action: nil, keyEquivalent: "")
         state.isEnabled = false
         menu.addItem(state)
@@ -156,10 +162,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// What the extension reported about its sign-in (App Group suite). One line,
+    /// so a long address is middle-truncated and keeps its domain readable.
+    private static func menuTitle(for auth: CompanionModel.AuthState) -> String {
+        switch auth {
+        case .unknown: return "Sign-in state unknown"
+        case .signedOut: return "Not signed in"
+        case let .signedIn(email, name):
+            let who = (email?.isEmpty == false ? email : nil) ?? (name?.isEmpty == false ? name : nil)
+            guard let who else { return "Signed in" }
+            return "Signed in as " + AuthStateStore.middleTruncated(who)
+        }
+    }
+
     /// Menu items are plain AppKit objects, so observe the model by hand and
     /// re-arm after every change (withObservationTracking fires once).
     private func observeModelForMenu() {
         withObservationTracking {
+            authStateItem?.title = Self.menuTitle(for: model.authState)
             extensionStateItem?.title = Self.menuTitle(for: model.extensionState)
             loginMenuItem?.state = model.launchAtLogin ? .on : .off
         } onChange: { [weak self] in

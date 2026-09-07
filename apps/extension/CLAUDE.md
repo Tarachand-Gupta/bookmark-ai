@@ -160,13 +160,17 @@ Layout (keep multi-file — the user explicitly banned monolith files):
   `defaults read`; `SMAppService` login item), `SetupView.swift` (SwiftUI: status card, 3 steps,
   deep link to Safari ▸ Settings ▸ Extensions, Start-at-login toggle — no modal prompt), `Info.plist`
   (`LSUIElement`, `public.app-category.productivity`, display name "Bookmark AI for Safari" so it is
-  distinguishable from apps/macos), sandbox-ONLY `.entitlements`, `PrivacyInfo.xcprivacy`,
+  distinguishable from apps/macos), `.entitlements` (sandbox + the App Group
+  `L3PP7DQZWS.ai.bookmark.safari`), `PrivacyInfo.xcprivacy`,
   `Assets.xcassets/AppIcon.appiconset` (16→1024, `pnpm icons:safari-app` draws the toolbar mark on
   Apple's macOS icon grid) + `AppIcon.icon` (Icon Composer doc copied from apps/macos for the
-  macOS 26 look). `Extension/` = the appex: `SafariWebExtensionHandler.swift`, `Info.plist`
-  (`com.apple.Safari.web-extension`), sandbox-only entitlements, privacy manifest, and the gitignored
-  `Extension/Resources/` staging copy of `.output/safari-mv3` (top-level files + folder references,
-  so `icon/16.png` etc. keep their paths). `Version.xcconfig` is GENERATED from `package.json` by
+  macOS 26 look). `Extension/` = the appex: `SafariWebExtensionHandler.swift` (writes the
+  extension's `authState` reports into the App Group — see Auth → "Safari companion channel"),
+  `Info.plist` (`com.apple.Safari.web-extension`), sandbox + App-Group entitlements, privacy
+  manifest, and the gitignored `Extension/Resources/` staging copy of `.output/safari-mv3`
+  (top-level files + folder references, so `icon/16.png` etc. keep their paths).
+  `Shared/AuthStateStore.swift` (group id, the four stored keys, parse/read/write, redaction,
+  middle-truncation) is compiled into BOTH targets. `Version.xcconfig` is GENERATED from `package.json` by
   `scripts/safari-version.mjs` (0.1.2 → `CURRENT_PROJECT_VERSION` 10200; `SAFARI_BUILD_SUFFIX` for
   same-version re-uploads) and feeds BOTH targets (App Store Connect rejects appex/app version
   mismatches). Bundle ids `ai.bookmark.safari` / `ai.bookmark.safari.Extension` and
@@ -216,6 +220,29 @@ Auth (Clerk, syncHost pattern):
   → **device** (fallback). Server-side the token is SCOPED to the extension's save/live surface
   only (see `DEVICE_TOKEN_ROUTES` in apps/web/lib/server/require-user.ts). Sign-out and a
   definitive bridge signed-out clear it. NEVER log token values — presence/length/status only.
+- **Safari companion channel (`lib/native-auth-report.ts`, Safari target ONLY).** The Mac
+  wrapper's setup window and menu-bar item show the extension's REAL sign-in state instead of
+  guessing: whenever the background resolves the user (`handleGetUser` = `resolveUser` + report),
+  mints a device token (session or bridge path → `reportRememberedSignedIn`), signs out
+  (`handleSignOut`), or runs the 6h `authTick`, it sends `{type:"authState", signedIn, email?,
+  name?, at}` over `browser.runtime.sendNativeMessage` (manifest permission `nativeMessaging`,
+  Safari only — the Chrome/Firefox manifests are unchanged and their bundles early-return on the
+  inlined `import.meta.env.BROWSER`). Deduped per worker boot on (signedIn, case-folded email);
+  the tick FORCES a resend so the companion's `updatedAt` stays fresh; a `stale` Safari reply is
+  deliberately NOT reported (it means "can't see the session right now", not "signed out"). 5 s
+  timeout; every failure is a `diag("nativeAuth", …)` breadcrumb and nothing more — a broken
+  native host can never touch auth. NEVER a token in the message.
+  `safari-app/Extension/SafariWebExtensionHandler.swift` parses it and writes
+  `signedIn`/`email`/`name`/`updatedAt` into the App Group suite `L3PP7DQZWS.ai.bookmark.safari`
+  (`safari-app/Shared/AuthStateStore.swift`; both bundles carry
+  `com.apple.security.application-groups`; the appex log shows the address domain-redacted as
+  `*@domain`). `CompanionModel.refresh()` reads it on every 2 s poll while the window is up and
+  on every menu open. Shell check — use the PLIST PATH, `defaults read` by suite name answers
+  "does not exist" for group suites:
+  `defaults read ~/Library/Group\ Containers/L3PP7DQZWS.ai.bookmark.safari/Library/Preferences/L3PP7DQZWS.ai.bookmark.safari.plist`
+  (the `--install` step of `scripts/safari-xcode.sh` prints it). Tests:
+  `lib/native-auth-report.test.ts` (non-Safari no-op, dedupe, force, wire shape without extras,
+  bounded failure/timeout) + the App-Group pins in `safari-app/safari-app.test.ts`.
 - **Self-healing 401s — a user must NEVER have to open the web app to un-stick one.** Four
   mechanisms, all cross-browser (they used to be Safari-only or popup-only):
   1. **`authFetch` retries once on 401** (`lib/api.ts`) — every background API/live call

@@ -267,8 +267,19 @@ Live test — by hand (needs a real browser via computer use / chrome MCP):
      Settings…" of menu 1` deep-links Safari's pane); in Safari, `click` the toolbar button whose
      `description` contains "Bookmark AI" (`buttons of toolbar 1 of window 1`) opens the popup —
      a synthetic `keystroke "s" using {option down, shift down}` does NOT; `get {position, size}
-     of window 1` + `screencapture -x -R x,y,w,h` captures either. Full recipe + store
-     screenshot sizes: `docs/safari-store-readiness.md` §5.
+     of window 1` + `screencapture -x -R x,y,w,h` captures either (after a popup click Safari
+     stays frontmost and macOS 14+ refuses `NSApp.activate()` — `perform action "AXRaise" of
+     window 1` + `set frontmost to true` on the process first). Full recipe + store screenshot
+     sizes: `docs/safari-store-readiness.md` §5.
+  5. Sign-in channel (extension → companion, Safari only): opening the popup makes the background
+     send `authState` over `nativeMessaging`; the appex writes it to the App Group suite. Check with
+     the plist PATH (by suite name `defaults read` says "does not exist"):
+     `defaults read ~/Library/Group\ Containers/L3PP7DQZWS.ai.bookmark.safari/Library/Preferences/L3PP7DQZWS.ai.bookmark.safari.plist`
+     → `signedIn = 1`, `email`, `name`, `updatedAt`. The setup window's step 2 and the menu's first
+     line follow it within ~2 s. To see the signed-out rendering WITHOUT signing anyone out:
+     `defaults write <that path> signedIn -bool false`, look, then `defaults write <that path>
+     signedIn -bool true` (deleting the key would leave "unknown" until the next state CHANGE —
+     reports are deduped — or the 6h tick, which re-sends unconditionally).
   Store submission (audit, App Store Connect paste sheet, NEEDS-TARA): `docs/safari-store-readiness.md`.
 
 ## 4. Desktop (native SDK — GUI session required)

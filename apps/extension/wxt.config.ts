@@ -88,6 +88,10 @@ export default defineConfig({
     // `bookmarks` (Chrome/Firefox — Safari exposes no bookmarks API) mirrors
     // native bookmark add/remove into the library (lib/native-sync.ts).
     // `readingList` (Chrome 120-only) mirrors Reading List additions.
+    // `nativeMessaging` (Safari-only) lets the background tell the Mac companion
+    // app who is signed in (lib/native-auth-report.ts →
+    // safari-app/Extension/SafariWebExtensionHandler.swift → App Group suite);
+    // identity only, never a token. Chrome/Firefox manifests are unchanged.
     permissions: [
       "activeTab",
       "tabs",
@@ -96,7 +100,7 @@ export default defineConfig({
       "cookies",
       ...(browser === "chrome" ? ["bookmarks", "readingList", "tabGroups"] : []),
       ...(browser === "firefox" ? ["bookmarks"] : []),
-      ...(browser === "safari" ? ["scripting"] : []),
+      ...(browser === "safari" ? ["scripting", "nativeMessaging"] : []),
     ],
     // MODE-AWARE (lib/app-origins.ts): a `production` build — every store zip —
     // lists ONLY the four prod origins (apex + www, prod Clerk FAPI, live);

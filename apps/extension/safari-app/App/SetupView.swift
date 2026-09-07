@@ -95,11 +95,21 @@ struct SetupView: View {
 
     private var statusDetail: String {
         switch model.extensionState {
-        case .enabled: return "Click the bookmark button in Safari's toolbar to save the page you're on."
+        case .enabled:
+            if let account = model.signedInLabel {
+                return "\(account). Click the bookmark button in Safari's toolbar to save."
+            }
+            if model.authState == .signedOut {
+                return "Not signed in yet — sign in on bookmark-ai.cloud (step 2), then save from the toolbar."
+            }
+            return "Click the bookmark button in Safari's toolbar to save the page you're on."
         case .disabled: return "Turn it on under Safari ▸ Settings ▸ Extensions."
         case .unknown: return "Safari hasn't reported the extension's state yet."
         }
     }
+
+    private var extensionIsOn: Bool { model.extensionState == .enabled }
+    private var isSignedIn: Bool { model.authState.isSignedIn }
 
     // MARK: - Steps
 
@@ -108,15 +118,24 @@ struct SetupView: View {
             Text("How it works")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
+            // Steps 1 and 2 flip to a green check once they are actually done —
+            // step 1 from Safari's own verdict, step 2 from what the extension
+            // reports through the App Group (never guessed).
             StepRow(
                 number: 1,
-                title: "Turn on the extension",
-                detail: "Safari ▸ Settings ▸ Extensions ▸ tick Bookmark AI. The button above opens that pane."
+                done: extensionIsOn,
+                title: extensionIsOn ? "Extension is on" : "Turn on the extension",
+                detail: extensionIsOn
+                    ? "Bookmark AI is enabled in Safari."
+                    : "Safari ▸ Settings ▸ Extensions ▸ tick Bookmark AI. The button above opens that pane."
             )
             StepRow(
                 number: 2,
-                title: "Sign in once on the web",
-                detail: "Open bookmark-ai.cloud and sign in. When Safari asks, allow Bookmark AI on that site — that's how the extension picks up your session. It never asks for a password itself."
+                done: isSignedIn,
+                title: isSignedIn ? "Signed in on the web" : "Sign in once on the web",
+                detail: model.signedInLabel
+                    ?? "Open bookmark-ai.cloud and sign in. When Safari asks, allow Bookmark AI on that site — that's how the extension picks up your session. It never asks for a password itself.",
+                singleLineDetail: isSignedIn
             )
             StepRow(
                 number: 3,
@@ -126,8 +145,10 @@ struct SetupView: View {
             HStack(spacing: 10) {
                 Button("Open Bookmark AI") { model.open(CompanionModel.webAppURL) }
                     .controlSize(.large)
-                Button("Sign In") { model.open(CompanionModel.signInURL) }
-                    .controlSize(.large)
+                if !isSignedIn {
+                    Button("Sign In") { model.open(CompanionModel.signInURL) }
+                        .controlSize(.large)
+                }
                 Spacer()
             }
             .padding(.top, 2)
@@ -177,30 +198,59 @@ struct SetupView: View {
 }
 
 /// Numbered step with a circled index — the same "1 / 2 / 3" rhythm as the
-/// setup cards in the web app's onboarding.
+/// setup cards in the web app's onboarding. `done` swaps the index for a green
+/// check; `singleLineDetail` middle-truncates (for an e-mail address).
 private struct StepRow: View {
     let number: Int
+    var done: Bool = false
     let title: String
     let detail: String
+    var singleLineDetail: Bool = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
+            badge
+                .frame(width: 22, height: 22)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                detailText
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Step \(number)\(done ? ", done" : ""): \(title). \(detail)")
+    }
+
+    @ViewBuilder
+    private var badge: some View {
+        if done {
+            Image(systemName: "checkmark")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .background(Color.green, in: Circle().inset(by: -6))
+        } else {
             Text("\(number)")
                 .font(.caption.weight(.bold).monospacedDigit())
                 .frame(width: 22, height: 22)
                 .background(.tint.opacity(0.15), in: Circle())
                 .foregroundStyle(.tint)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.body.weight(.medium))
-                Text(detail)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Step \(number): \(title). \(detail)")
+    }
+
+    @ViewBuilder
+    private var detailText: some View {
+        if singleLineDetail {
+            Text(detail)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        } else {
+            Text(detail)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

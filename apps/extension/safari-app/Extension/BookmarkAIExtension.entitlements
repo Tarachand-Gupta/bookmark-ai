@@ -9,5 +9,12 @@
 	     dropped — nothing here reads files. -->
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<!-- Shared UserDefaults suite with the companion app (Shared/AuthStateStore.swift):
+	     the handler writes the extension's sign-in state there. Same value in
+	     App/BookmarkAI.entitlements and project.yml. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>L3PP7DQZWS.ai.bookmark.safari</string>
+	</array>
 </dict>
 </plist>

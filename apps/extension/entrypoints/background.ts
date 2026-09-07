@@ -25,6 +25,7 @@ import {
 } from "@/lib/device-token";
 import { diag } from "@/lib/diag";
 import { fullName } from "@/lib/identity";
+import { reportAuthState } from "@/lib/native-auth-report";
 import { patchGetManifest } from "@/lib/manifest-shim";
 import { MintGate } from "@/lib/mint-gate";
 import { getNativeSession, getNativeSessionToken, nativeSignOut } from "@/lib/native-session";
@@ -267,6 +268,16 @@ async function staleIdentityReply(): Promise<UserInfo> {
   return SIGNED_OUT;
 }
 
+/** Safari companion channel (lib/native-auth-report.ts; no-op elsewhere): a
+ * successful device-token mint is the moment saves work without an app tab, so
+ * report "signed in" with whatever identity the resolve that triggered the mint
+ * remembered. Deduped by the reporter, so this is free when the resolve itself
+ * already reported. */
+async function reportRememberedSignedIn(): Promise<void> {
+  const last = await lastIdentityItem.getValue().catch(() => null);
+  void reportAuthState({ signedIn: true, email: last?.email ?? null, name: last?.name ?? null });
+}
+
 /* ── Path D: content-script session bridge (Safari) ─────────────────────────
  * Safari 26 partitions the extension's network/cookie context from the browser
  * jar, so an OPEN app tab's content script is the only context that can make a
@@ -395,6 +406,7 @@ async function mintDeviceTokenViaBridge(options: { force?: boolean } = {}): Prom
     if (body?.token) {
       await storeDeviceToken(body);
       bridgeMintGate.succeeded();
+      void reportRememberedSignedIn();
     } else {
       bridgeMintGate.failed();
     }
@@ -493,6 +505,7 @@ async function mintDeviceToken(options: { force?: boolean } = {}): Promise<boole
     if (body?.token) {
       await storeDeviceToken(body);
       sessionMintGate.succeeded();
+      void reportRememberedSignedIn();
     } else {
       sessionMintGate.failed();
     }
@@ -609,7 +622,7 @@ async function purgeDevEraCookies(): Promise<void> {
  *
  * `reentered` guards the ONE self-heal re-run: see Path B.5, where a rejected
  * device token un-pins `winningPath` and the ladder starts over. */
-async function handleGetUser(reentered = false): Promise<UserInfo> {
+async function resolveUser(reentered = false): Promise<UserInfo> {
   diag("getUser", "entry", { cachedPath: winningPath });
   // Path A — SDK (dev instances; settles empty on the prod custom domain).
   if (
@@ -683,7 +696,7 @@ async function handleGetUser(reentered = false): Promise<UserInfo> {
       // once; the SDK/native rungs get their chance and re-mint on success.
       winningPath = null;
       diag("getUser", "device token rejected → re-running the ladder");
-      if (!reentered) return handleGetUser(true);
+      if (!reentered) return resolveUser(true);
     }
     // Otherwise (inconclusive, or already re-run) fall through to the remaining
     // paths, which may still see a live session and re-mint.
@@ -734,6 +747,19 @@ async function handleGetUser(reentered = false): Promise<UserInfo> {
   return SIGNED_OUT;
 }
 
+/** `GET_USER` entry point: resolve the identity (the ladder above), then tell the
+ * Safari companion app what was resolved (lib/native-auth-report.ts — deduped,
+ * bounded, a no-op on Chrome/Firefox). A `stale` reply (Safari, no app tab, the
+ * account remembered) is deliberately NOT reported: it means "can't see the
+ * session right now", not "signed out", so the companion keeps the last
+ * definitive state — the same reason the popup offers "reconnect" there instead
+ * of a fresh sign-in. */
+async function handleGetUser(): Promise<UserInfo> {
+  const info = await resolveUser();
+  if (!info.stale) void reportAuthState({ signedIn: info.signedIn, email: info.email, name: info.name });
+  return info;
+}
+
 /** Sign out of the mirrored session: SDK first, then the native fallback
  * (which ends the same client session the WEB app uses — signing out of the
  * extension signs out of the site too, which is the honest behavior). */
@@ -747,6 +773,11 @@ async function handleSignOut(): Promise<SignOutResult> {
   // shared web session itself still happens via the SDK/native paths below or
   // the web handoff.
   void clearDeviceToken();
+  // Safari companion: the user asked to sign out and the extension's own
+  // credential is gone, so it is signed out from the extension's point of view
+  // even when the shared web session is ended on the website (handoff below).
+  // If the user cancels there, the next resolve reports signed-in again.
+  void reportAuthState({ signedIn: false });
   let ok = false;
   // "device" joins cookie/bridge as tokenless-for-sign-out: a device token can't
   // end the shared Clerk session, so we hand off to the web app just like those.
@@ -918,9 +949,15 @@ async function authTick(reason: "boot" | "alarm"): Promise<void> {
     const token = await getUsableDeviceToken();
     if (token) {
       const probe = await probeDeviceToken(token, "authTick");
-      if (probe && !probe.ok) {
+      if (probe?.ok) {
+        // Safari companion heartbeat: FORCED so its `updatedAt` stays fresh and a
+        // wiped App Group suite heals within six hours (no-op off Safari).
+        void reportAuthState({ signedIn: true, email: probe.email, name: probe.name }, { force: true });
+      } else if (probe && !probe.ok) {
         const minted = await remintDeviceToken();
         diag("authTick", "rejected token → forced re-mint", { reason, minted });
+        // Rejected AND un-mintable: the extension cannot save until the user acts.
+        if (!minted) void reportAuthState({ signedIn: false });
       }
     }
   }

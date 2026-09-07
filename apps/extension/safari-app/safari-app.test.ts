@@ -57,14 +57,52 @@ describe("safari-app: versions are build-setting driven (synced from package.jso
 });
 
 describe("safari-app: App Store Review 2.4.5 — sandbox", () => {
-  it("both targets carry com.apple.security.app-sandbox and nothing broader", () => {
+  it("both targets carry com.apple.security.app-sandbox + the shared App Group and nothing broader", () => {
     for (const ent of [appEntitlements, extEntitlements]) {
       expect(plistHas(ent, "com.apple.security.app-sandbox", "<true/>")).toBe(true);
       const keys = [...ent.matchAll(/<key>([^<]+)<\/key>/g)].map((m) => m[1]);
-      expect(keys).toEqual(["com.apple.security.app-sandbox"]);
+      expect(keys).toEqual(["com.apple.security.app-sandbox", "com.apple.security.application-groups"]);
     }
     expect(projectYml).toMatch(/ENABLE_APP_SANDBOX:\s*YES/);
     expect(projectYml).toMatch(/ENABLE_HARDENED_RUNTIME:\s*YES/);
+  });
+});
+
+describe("safari-app: the extension → companion sign-in channel (App Group)", () => {
+  const authStateStore = read("Shared/AuthStateStore.swift");
+  const team = /DEVELOPMENT_TEAM:\s*([A-Z0-9]{10})\s*$/m.exec(projectYml)?.[1];
+  const appId = /PRODUCT_BUNDLE_IDENTIFIER:\s*(ai\.bookmark\.safari)\s*$/m.exec(projectYml)?.[1];
+  const GROUP = `${team}.${appId}`;
+
+  it("uses ONE team-id-prefixed group id in project.yml, both entitlements and the Swift store", () => {
+    expect(GROUP).toBe("L3PP7DQZWS.ai.bookmark.safari");
+    expect(projectYml).toMatch(new RegExp(`BOOKMARK_APP_GROUP:\\s*${GROUP.replace(/\./g, "\\.")}\\s*$`, "m"));
+    for (const ent of [appEntitlements, extEntitlements]) {
+      const groups = [
+        ...(/<key>com\.apple\.security\.application-groups<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(ent)?.[1] ?? "").matchAll(
+          /<string>([^<]+)<\/string>/g,
+        ),
+      ].map((m) => m[1]);
+      expect(groups).toEqual([GROUP]);
+    }
+    expect(authStateStore).toContain(`static let appGroupID = "${GROUP}"`);
+  });
+
+  it("compiles the shared store into BOTH targets", () => {
+    expect(projectYml.match(/- path: Shared\/AuthStateStore\.swift/g)?.length).toBe(2);
+  });
+
+  it("parses exactly the wire shape lib/native-auth-report.ts sends, and never stores a token", () => {
+    // The JS side builds {type:"authState", signedIn, email?, name?, at}; the Swift
+    // side must key on the same names.
+    for (const key of ['"type"', '"authState"', '"signedIn"', '"email"', '"name"', '"at"']) {
+      expect(authStateStore).toContain(key);
+    }
+    // The stored keys are exactly these four — no token/cookie key can exist.
+    const keyEnum = /enum Key \{([\s\S]*?)\n\s*\}/.exec(authStateStore)?.[1] ?? "";
+    const storedKeys = [...keyEnum.matchAll(/static let (\w+) =/g)].map((m) => m[1]).sort();
+    expect(storedKeys).toEqual(["email", "name", "signedIn", "updatedAt"]);
+    expect(authStateStore).not.toMatch(/forKey:\s*"?token/i);
   });
 });
 

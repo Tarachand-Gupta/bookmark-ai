@@ -40,6 +40,7 @@ APP_NAME="Bookmark AI"
 APPEX_NAME="Bookmark AI Extension.appex"
 APP_BUNDLE_ID="ai.bookmark.safari"
 EXT_BUNDLE_ID="ai.bookmark.safari.Extension"
+DEVELOPMENT_TEAM_ID="L3PP7DQZWS"   # = project.yml DEVELOPMENT_TEAM; prefixes the App Group
 INSTALL_DEST="/Applications/$APP_NAME.app"
 
 SKIP_WEB_BUILD=0; ALLOW_DEV=0; DO_BUILD=0; DO_ARCHIVE=0; UNSIGNED=0; DO_INSTALL=0; DO_OPEN=0
@@ -211,6 +212,16 @@ if [[ $DO_INSTALL -eq 1 ]]; then
   done
   echo "  Safari reports the extension: $state   (defaults read $APP_BUNDLE_ID $STATE_KEY)"
   [[ "$state" == "enabled" ]] || echo "  ⚠ not enabled — Safari ▸ Settings ▸ Extensions ▸ tick Bookmark AI (the app's menu-bar item opens that pane)"
+  # The extension reports its sign-in state to the appex over nativeMessaging;
+  # the appex stores it in the App Group suite (Shared/AuthStateStore.swift).
+  GROUP_ID="$DEVELOPMENT_TEAM_ID.$APP_BUNDLE_ID"
+  GROUP_PLIST="$HOME/Library/Group Containers/$GROUP_ID/Library/Preferences/$GROUP_ID.plist"
+  if [[ -f "$GROUP_PLIST" ]]; then
+    echo "  extension sign-in state (App Group $GROUP_ID):"
+    (defaults read "$GROUP_PLIST" 2>/dev/null || plutil -p "$GROUP_PLIST") | sed 's/^/    /'
+  else
+    echo "  extension sign-in state: not reported yet — open the Safari popup once (the background sends it over nativeMessaging), then: defaults read \"$GROUP_PLIST\""
+  fi
 fi
 
 log "done"
