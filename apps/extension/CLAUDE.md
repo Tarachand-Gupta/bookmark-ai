@@ -157,7 +157,10 @@ Layout (keep multi-file — the user explicitly banned monolith files):
   without a storyboard — verified: the app ran with no status item until that was added),
   `CompanionModel.swift` (`@Observable`: Safari's on/off verdict via `SFSafariExtensionManager`,
   mirrored into UserDefaults `ai.bookmark.safari.lastExtensionState` so scripts can read it with
-  `defaults read`; `SMAppService` login item), `SetupView.swift` (SwiftUI: status card, 3 steps,
+  `defaults read`; `SMAppService` login item; `open(_:)` is the ONE URL funnel and always opens in
+  SAFARI — `NSWorkspace.open(_:withApplicationAt:)` on `com.apple.Safari`, sandbox-safe, no
+  automation entitlement — because the extension mirrors the SAFARI session, so a sign-in in the
+  user's default browser is useless to it), `SetupView.swift` (SwiftUI: status card, 3 steps,
   deep link to Safari ▸ Settings ▸ Extensions, Start-at-login toggle — no modal prompt), `Info.plist`
   (`LSUIElement`, `public.app-category.productivity`, display name "Bookmark AI for Safari" so it is
   distinguishable from apps/macos), `.entitlements` (sandbox + the App Group

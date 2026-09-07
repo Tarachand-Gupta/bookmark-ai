@@ -253,7 +253,7 @@ Live test — by hand (needs a real browser via computer use / chrome MCP):
   2. Expect: `pluginkit -mAvvv -p com.apple.Safari.web-extension | grep -A4 ai.bookmark` → ONE
      `ai.bookmark.safari.Extension(<version>)` row whose Path is under
      `/Applications/Bookmark AI.app`; the bookmark glyph in the menu bar whose menu reads
-     "Safari extension: on" / Open Safari Extensions Settings… / Open Bookmark AI / Show Setup
+     "Safari extension: on" / Open Safari Extensions Settings… / Open Bookmark AI in Safari / Show Setup
      Window / Start at Login (checkmark) / Quit. First launch shows the setup window (status card,
      3 steps, "Turn On in Safari…" deep link, Start-at-login TOGGLE — the old modal prompt is
      gone); later launches are menu-bar only, and `open "/Applications/Bookmark AI.app"` (or

@@ -134,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(actionItem("Open Safari Extensions Settings…", #selector(openExtensionSettings)))
-        menu.addItem(actionItem("Open Bookmark AI", #selector(openWebApp)))
+        menu.addItem(actionItem("Open Bookmark AI in Safari", #selector(openWebApp)))
         menu.addItem(actionItem("Show Setup Window", #selector(showSetupWindowFromMenu)))
 
         menu.addItem(.separator())
@@ -199,6 +199,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.openSafariExtensionSettings()
     }
 
+    /// `model.open` always lands in Safari (see CompanionModel.open) — the whole
+    /// point of this companion is the Safari session.
     @objc private func openWebApp() {
         model.open(CompanionModel.webAppURL)
     }

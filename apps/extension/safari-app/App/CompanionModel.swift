@@ -37,6 +37,12 @@ final class CompanionModel {
     /// silently ("unknown") and the deep link open the wrong pane.
     static let extensionBundleIdentifier = "ai.bookmark.safari.Extension"
 
+    /// Every URL this app opens goes to SAFARI, never the user's default browser
+    /// (Chrome, on plenty of Macs). This is the Safari companion: the extension
+    /// mirrors the session that exists in Safari, so a sign-in completed in
+    /// another browser is useless to it.
+    static let safariBundleIdentifier = "com.apple.Safari"
+
     static let webAppURL = URL(string: "https://www.bookmark-ai.cloud/app")!
     static let signInURL = URL(string: "https://www.bookmark-ai.cloud/sign-in")!
     static let privacyURL = URL(string: "https://www.bookmark-ai.cloud/privacy")!
@@ -136,8 +142,25 @@ final class CompanionModel {
         }
     }
 
+    /// The ONE way this app opens a URL — window buttons, menu items and the
+    /// footer links all funnel through here. Opens in Safari explicitly and
+    /// brings it to the front. `open(_:withApplicationAt:configuration:)` is
+    /// plain launch-services and works inside the sandbox; do NOT reach for
+    /// AppleScript/automation entitlements to do this.
     func open(_ url: URL) {
-        NSWorkspace.shared.open(url)
+        guard let safari = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.safariBundleIdentifier) else {
+            // Should never happen (Safari ships with macOS and cannot be removed).
+            NSLog("Bookmark AI: could not locate Safari (\(Self.safariBundleIdentifier)); falling back to the default browser")
+            NSWorkspace.shared.open(url)
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open([url], withApplicationAt: safari, configuration: configuration) { _, error in
+            if let error {
+                NSLog("Bookmark AI: opening \(url.absoluteString) in Safari failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {

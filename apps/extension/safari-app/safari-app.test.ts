@@ -46,6 +46,33 @@ describe("safari-app: bundle identity", () => {
   });
 });
 
+describe("safari-app: every outbound URL opens in Safari", () => {
+  // This is the SAFARI companion: the extension mirrors the Safari session, so a
+  // sign-in completed in the user's default browser (Chrome, often) does nothing
+  // for it. `CompanionModel.open` is the single funnel and must name Safari.
+  const setupView = read("App/SetupView.swift");
+  const appDelegate = read("App/AppDelegate.swift");
+
+  it("resolves Safari by bundle id and opens there, with a logged default-browser fallback", () => {
+    expect(companionModel).toContain('static let safariBundleIdentifier = "com.apple.Safari"');
+    expect(companionModel).toContain("urlForApplication(withBundleIdentifier: Self.safariBundleIdentifier)");
+    expect(companionModel).toMatch(/NSWorkspace\.shared\.open\(\[url\], withApplicationAt: safari, configuration:/);
+    // The bare default-browser call survives ONLY as the guard's fallback.
+    expect(companionModel.match(/NSWorkspace\.shared\.open\(url\)/g)?.length).toBe(1);
+  });
+
+  it("routes the window buttons, the menu item and the footer links through it", () => {
+    // No view may reach launch services itself, and SwiftUI Links are re-pointed
+    // at model.open via the openURL environment action.
+    for (const source of [setupView, appDelegate]) {
+      expect(source).not.toContain("NSWorkspace");
+    }
+    expect(setupView).toContain("OpenURLAction");
+    expect(setupView).toContain('Button("Open Bookmark AI in Safari") { model.open(CompanionModel.webAppURL) }');
+    expect(appDelegate).toContain('actionItem("Open Bookmark AI in Safari"');
+  });
+});
+
 describe("safari-app: versions are build-setting driven (synced from package.json)", () => {
   it("both Info.plists take CFBundleShortVersionString/CFBundleVersion from Version.xcconfig", () => {
     for (const plist of [appPlist, extPlist]) {

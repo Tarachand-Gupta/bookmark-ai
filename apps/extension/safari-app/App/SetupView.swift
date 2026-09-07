@@ -27,6 +27,13 @@ struct SetupView: View {
         }
         .padding(24)
         .frame(width: 480)
+        // Every link in this window (footer Links included) opens through
+        // model.open, i.e. in SAFARI — never the default browser. The extension
+        // mirrors the Safari session, so anything opened elsewhere is a dead end.
+        .environment(\.openURL, OpenURLAction { url in
+            model.open(url)
+            return .handled
+        })
     }
 
     // MARK: - Header
@@ -143,11 +150,12 @@ struct SetupView: View {
                 detail: "Click the Bookmark AI button or press ⌥⇧S to save the page you're on. Save a whole window as a session, or share it live to your other devices."
             )
             HStack(spacing: 10) {
-                Button("Open Bookmark AI") { model.open(CompanionModel.webAppURL) }
+                Button("Open Bookmark AI in Safari") { model.open(CompanionModel.webAppURL) }
                     .controlSize(.large)
                 if !isSignedIn {
                     Button("Sign In") { model.open(CompanionModel.signInURL) }
                         .controlSize(.large)
+                        .help("Opens the sign-in page in Safari — the extension picks up that session.")
                 }
                 Spacer()
             }
