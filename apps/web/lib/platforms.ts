@@ -13,7 +13,7 @@ import type { AppPlatform, AppReleaseMap } from "@bookmark-ai/types";
  * - `soon`      — not submitted anywhere yet. Build from source or wait.
  *
  * Native downloads are GitHub Release assets on a per-platform tag
- * (`macos-v0.1.0`, `android-v1.0.0`, `extension-v0.1.2`). The `/releases/latest`
+ * (`macos-v0.1.0`, `android-v1.0.1`, `extension-v0.1.2`). The `/releases/latest`
  * alias is NOT used: "latest" is whichever platform shipped last, so a fixed
  * tag is the only stable form. When `GET /api/app/releases` carries a record for
  * a platform, `resolveDownload` prefers that record — so downloads can be
@@ -37,7 +37,7 @@ export function releaseAssetUrl(tag: string, file: string): string {
 /** Release tags the static fallbacks point at. Bump here when a new build ships. */
 export const RELEASE_TAGS = {
   macos: "macos-v0.1.0",
-  android: "android-v1.0.0",
+  android: "android-v1.0.1",
   extension: "extension-v0.1.2",
 } as const;
 
@@ -286,10 +286,10 @@ export const PLATFORMS: readonly PlatformEntry[] = [
     requires: "Android 8 or later",
     action: {
       type: "download",
-      url: releaseAssetUrl(RELEASE_TAGS.android, "bookmark-ai-1.0.0-android.apk"),
-      version: "1.0.0",
+      url: releaseAssetUrl(RELEASE_TAGS.android, "bookmark-ai-1.0.1-android.apk"),
+      version: "1.0.1",
       releasePlatform: "android",
-      fileName: "bookmark-ai-1.0.0-android.apk",
+      fileName: "bookmark-ai-1.0.1-android.apk",
     },
     sideload: null,
     steps: [

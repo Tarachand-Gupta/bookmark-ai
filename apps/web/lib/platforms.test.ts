@@ -89,8 +89,8 @@ describe("platform list", () => {
     expect(android.action).toMatchObject({
       type: "download",
       releasePlatform: "android",
-      version: "1.0.0",
-      url: `https://github.com/Tarachand-Gupta/bookmark-ai/releases/download/${RELEASE_TAGS.android}/bookmark-ai-1.0.0-android.apk`,
+      version: "1.0.1",
+      url: `https://github.com/Tarachand-Gupta/bookmark-ai/releases/download/${RELEASE_TAGS.android}/bookmark-ai-1.0.1-android.apk`,
     });
     expect(getPlatform("chrome").sideload?.url).toBe(
       releaseAssetUrl(RELEASE_TAGS.extension, "bookmark-aiextension-0.1.2-chrome.zip"),
@@ -165,7 +165,7 @@ describe("resolveDownload", () => {
 
   it("falls back to the static tag URL without a record, or with a non-https one", () => {
     const action = getPlatform("android").action;
-    expect(resolveDownload(action, releases)).toMatchObject({ version: "1.0.0", source: "static" });
+    expect(resolveDownload(action, releases)).toMatchObject({ version: "1.0.1", source: "static" });
     expect(resolveDownload(action, null)).toMatchObject({ source: "static" });
     const bad: AppReleaseMap = {
       android: { ...releases.macos!, platform: "android", downloadUrl: "http://evil.example" },
