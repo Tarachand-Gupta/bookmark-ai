@@ -10,6 +10,7 @@ import {
 import type { GeminiClient } from "./gemini";
 import { scrapeOpenGraph } from "./og";
 import { categorize, heuristicCategorize } from "./categorize";
+import { pickBookmarkTitle } from "./title";
 
 /**
  * Instant save: persist immediately with a no-network heuristic category so
@@ -21,7 +22,9 @@ export async function saveBookmarkFast(db: Db, input: CreateBookmarkInput): Prom
   const url = new URL(input.url);
   const domain = url.hostname.replace(/^www\./, "");
   const existing = await getBookmarkByUrl(db, input.url);
-  const title = existing?.title ?? input.title ?? domain;
+  // An enriched row keeps its title on re-save — unless that title is a scrape
+  // artefact ("- YouTube") and the client now offers a real one.
+  const title = pickBookmarkTitle(existing?.title, input.title, { domain, siteName: existing?.og?.siteName });
   const heuristic = heuristicCategorize({
     url: input.url,
     domain,
@@ -72,7 +75,9 @@ export async function enrichBookmark(
   const domain = url.hostname.replace(/^www\./, "");
   const scraped = await scrapeOpenGraph(input.url);
 
-  const title = scraped.title ?? input.title ?? domain;
+  // Consent walls / bot checks hand the datacenter scraper "- YouTube" or
+  // "Just a moment..." — the client's tab title beats those (see ./title).
+  const title = pickBookmarkTitle(scraped.title, input.title, { domain, siteName: scraped.og.siteName });
   const description = scraped.description;
 
   // Share the established vocabulary so the AI reuses tags before inventing.

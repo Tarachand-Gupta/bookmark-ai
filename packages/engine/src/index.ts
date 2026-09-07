@@ -25,6 +25,7 @@ export {
   embedPending,
 } from "./embeddings";
 export { saveBookmarkFast, enrichBookmark } from "./ingest";
+export { pickBookmarkTitle, isJunkTitle, type TitleContext } from "./title";
 export {
   performSearch,
   mergeSessionResults,
