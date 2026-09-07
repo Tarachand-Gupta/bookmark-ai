@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Alert, Image, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useClerk, useUser } from "@clerk/clerk-expo";
+import * as Application from "expo-application";
+import * as Clipboard from "expo-clipboard";
+import * as WebBrowser from "expo-web-browser";
 import { getApiUrl, SERVER_TARGET } from "../api";
 import { DeleteAccountSheet } from "../components/DeleteAccountSheet";
 import { AiSettingsGroup } from "../components/settings/AiSettingsGroup";
@@ -14,7 +17,48 @@ import {
 } from "../context/PreferencesContext";
 import { useAiPlan } from "../hooks/useAiPlan";
 
-const WEB_URL = "https://bookmark-ai.cloud";
+// `www` is the canonical host (the apex 308s to it — see PROD_API_URL in api.ts).
+const WEB_URL = "https://www.bookmark-ai.cloud";
+/**
+ * Both stores require the privacy policy to be reachable from INSIDE the app
+ * (App Store guideline 5.1.1(i); Play's User Data policy), not only from the
+ * store listing. Same URLs the listings will carry.
+ */
+const PRIVACY_URL = `${WEB_URL}/privacy`;
+const TERMS_URL = `${WEB_URL}/terms`;
+const SUPPORT_EMAIL = "tara@purecode.ai";
+
+/** This binary's marketing version + build, e.g. "1.0.0 (1)" — what a support
+ * reply needs first. expo-application reads CFBundleShortVersionString/
+ * CFBundleVersion (iOS) and versionName/versionCode (Android); both are null
+ * only in Expo Go, where the row simply shows nothing. */
+const APP_VERSION = Application.nativeApplicationVersion
+  ? `${Application.nativeApplicationVersion} (${Application.nativeBuildVersion ?? "—"})`
+  : null;
+
+/** Legal pages open in the in-app browser sheet (SFSafariViewController /
+ * Chrome Custom Tab) so the user lands back in Settings when they're done. A
+ * refused URL falls through to the system browser; both failing is silent. */
+function openWebPage(url: string): void {
+  void WebBrowser.openBrowserAsync(url).catch(() =>
+    Linking.openURL(url).catch(() => undefined),
+  );
+}
+
+/** "Contact support" — the mail composer when a mail app exists, otherwise an
+ * alert with the address and a Copy action, so the email is never a dead end
+ * (simulators and many Android devices have no mail client). */
+function contactSupport(): void {
+  const subject = encodeURIComponent(
+    `Bookmark AI support${APP_VERSION ? ` (app ${APP_VERSION})` : ""}`,
+  );
+  Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}`).catch(() => {
+    Alert.alert("Contact support", `Email us at ${SUPPORT_EMAIL}`, [
+      { text: "Copy address", onPress: () => void Clipboard.setStringAsync(SUPPORT_EMAIL) },
+      { text: "OK", style: "cancel" },
+    ]);
+  });
+}
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "system", label: "System" },
@@ -154,7 +198,37 @@ export function SettingsScreen() {
             symbol="safari"
             label="Open web app"
             chevron
-            onPress={() => void Linking.openURL(WEB_URL)}
+            onPress={() => void Linking.openURL(WEB_URL).catch(() => undefined)}
+          />
+          {APP_VERSION !== null && (
+            <GroupRow symbol="info.circle" label="Version" detail={APP_VERSION} />
+          )}
+        </Group>
+
+        {/* Store requirement, not decoration: the privacy policy must be
+            reachable in-app (App Store 5.1.1(i), Play User Data policy), and a
+            support contact is what the listings' Support URL promises. */}
+        <GroupLabel>Legal & Support</GroupLabel>
+        <Group>
+          <GroupRow
+            first
+            symbol="hand.raised"
+            label="Privacy Policy"
+            chevron
+            onPress={() => openWebPage(PRIVACY_URL)}
+          />
+          <GroupRow
+            symbol="doc.text"
+            label="Terms of Service"
+            chevron
+            onPress={() => openWebPage(TERMS_URL)}
+          />
+          <GroupRow
+            symbol="envelope"
+            label="Contact Support"
+            detail={SUPPORT_EMAIL}
+            chevron
+            onPress={contactSupport}
           />
         </Group>
 
