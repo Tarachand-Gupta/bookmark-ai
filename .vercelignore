@@ -49,3 +49,25 @@ data/
 .agents
 .claude
 skills-lock.json
+
+# Native-app build products (xcodebuild -derivedDataPath, XcodeGen output, the
+# Safari appex resource staging copy). Never part of the web build, and the two
+# macOS build dirs alone were 420 MB of the 556 MB upload on 2026-09-07.
+apps/macos/build
+apps/macos/build-history
+apps/macos/*.xcodeproj
+apps/extension/safari-app/build
+apps/extension/safari-app/*.xcodeproj
+apps/extension/safari-app/Extension/Resources
+**/*.xcarchive
+**/DerivedData
+
+# Private signing material and local-only diagnostics. The CRX private keys
+# must never leave this machine; the extension log is a 20 MB ndjson.
+**/.keys
+**/*.pem
+**/*.p12
+.dev-extension-log.ndjson
+
+# Session notes are untracked on purpose and not part of any build.
+docs/HANDOFF-*.md
