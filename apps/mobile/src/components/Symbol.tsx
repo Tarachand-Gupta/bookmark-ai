@@ -32,6 +32,10 @@ const ANDROID_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   desktopcomputer: "desktop-outline",
   display: "desktop-outline",
   "doc.on.clipboard": "clipboard-outline",
+  // Settings → About / Legal & Support rows.
+  envelope: "mail-outline",
+  "hand.raised": "hand-left-outline",
+  "info.circle": "information-circle-outline",
   "exclamationmark.circle": "alert-circle-outline",
   folder: "folder-outline",
   key: "key-outline",

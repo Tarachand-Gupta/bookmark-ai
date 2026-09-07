@@ -580,7 +580,7 @@ export function SignInScreen() {
         contentContainerStyle={[styles.root, { backgroundColor: colors.background }]}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.hero}>
+        <View style={[styles.hero, styles.column]}>
           <View style={[styles.mark, { backgroundColor: colors.primary }]}>
             <Symbol name="bookmark.fill" size={30} color={colors.primaryForeground} fallback="B" />
           </View>
@@ -590,7 +590,7 @@ export function SignInScreen() {
           </Text>
         </View>
 
-        <View style={styles.form}>
+        <View style={[styles.form, styles.column]}>
           {finishing ? (
             <View style={styles.finishing} accessibilityLiveRegion="polite">
               <ActivityIndicator color={colors.mutedForeground} />
@@ -822,7 +822,7 @@ export function SignInScreen() {
             can create the account, so it sits under the whole form, on the
             credentials step only (the code step is mid-flow). */}
         {phase === "credentials" && !finishing && (
-          <Text style={[styles.consent, { color: colors.mutedForeground }]}>
+          <Text style={[styles.consent, styles.column, { color: colors.mutedForeground }]}>
             By continuing you agree to the{" "}
             <Text
               onPress={() => openWebPage(TERMS_URL)}
@@ -849,7 +849,12 @@ export function SignInScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  root: { flexGrow: 1, justifyContent: "center", padding: 28, gap: 32 },
+  // `alignItems: "center"` + the children's maxWidth is the iPad story: on a
+  // 13" iPad the form would otherwise stretch edge to edge (1,000+ pt wide
+  // inputs and a button as wide as the screen). Phones are narrower than the cap,
+  // so nothing changes there.
+  root: { flexGrow: 1, justifyContent: "center", alignItems: "center", padding: 28, gap: 32 },
+  column: { width: "100%", maxWidth: 440 },
   hero: { alignItems: "center", gap: 8 },
   finishing: { alignItems: "center", gap: 12, paddingVertical: 24 },
   finishingTitle: { fontSize: 17, fontWeight: "600" },
