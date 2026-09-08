@@ -77,7 +77,18 @@ export async function getRequestApiContext(): Promise<RequestApiContext> {
       console.error("[api]", err.message);
       return { response: provisioningResponse() };
     }
-    throw err;
+    // Anything else out of getTenantDb comes from the master lookup or from
+    // provisioning itself — a Turso Platform hiccup, a token mint that failed, a
+    // migration against a database that isn't reachable yet seconds after it was
+    // created. Those are TRANSIENT and they land on brand-new accounts, which is
+    // the worst possible moment to answer with a 500: the client treats a 500 as
+    // final, so the very first page load a new user ever sees would give up and
+    // render nothing. The same retryable 503 the not-yet-provisioned case
+    // returns is the honest answer — the account genuinely isn't ready — and the
+    // clients already poll it behind the "Setting up your account" screen. The
+    // underlying error is logged so a real outage is still visible in the logs.
+    console.error("[api] tenant routing failed for", gate.userId, err);
+    return { response: provisioningResponse() };
   }
 }
 

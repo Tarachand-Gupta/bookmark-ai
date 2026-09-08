@@ -11,12 +11,16 @@ import {
   type DashboardParts,
 } from "@bookmark-ai/engine";
 import {
+  DASHBOARD_ERROR_RETRIES,
+  dashboardRetryDelayMs,
+  dashboardView,
   hasDashboardActivity,
   isMobilePlatform,
   liveAgeLabel,
   mergeRecentSaves,
   planTabOpen,
   rankLiveDevices,
+  type DashboardViewInput,
   relativeTime,
   OPEN_TABS_MAX,
 } from "./dashboard";
@@ -479,5 +483,108 @@ describe("planTabOpen", () => {
     const plan = planTabOpen(many.slice(0, 4));
     expect(plan.needsConfirm).toBe(false);
     expect(plan.skipped).toBe(0);
+  });
+});
+
+// ── Which state the dashboard's content column renders ──────────────────────
+
+describe("dashboardView", () => {
+  // A load that has not resolved anything yet: no data, a request in flight.
+  const firstLoad: DashboardViewInput = {
+    hasData: false,
+    loading: true,
+    provisioning: false,
+    forbidden: false,
+    empty: false,
+  };
+
+  it("never returns a state the page cannot render", () => {
+    // Every combination of the six booleans maps to a real view. This is THE
+    // regression test: the arm that used to render nothing was a first load
+    // that had failed (no data, not loading, error), and only that one.
+    const renderable = new Set([
+      "provisioning",
+      "forbidden",
+      "error",
+      "skeletons",
+      "first-run",
+      "cards",
+    ]);
+    for (let mask = 0; mask < 32; mask++) {
+      const input: DashboardViewInput = {
+        hasData: !!(mask & 1),
+        loading: !!(mask & 2),
+        provisioning: !!(mask & 4),
+        forbidden: !!(mask & 8),
+        empty: !!(mask & 16),
+      };
+      expect(renderable.has(dashboardView(input))).toBe(true);
+    }
+  });
+
+  it("shows skeletons on a first load with nothing cached", () => {
+    expect(dashboardView(firstLoad)).toBe("skeletons");
+  });
+
+  it("shows the error card when the first load failed and left nothing", () => {
+    // The reported bug: brand-new account, /api/dashboard never returned a
+    // payload, so the page drew the header and the omnibox over a blank column.
+    expect(dashboardView({ ...firstLoad, loading: false })).toBe("error");
+  });
+
+  it("shows the empty state for a brand-new account that loaded fine", () => {
+    expect(dashboardView({ ...firstLoad, hasData: true, loading: false, empty: true })).toBe(
+      "first-run",
+    );
+  });
+
+  it("shows the cards once there is anything to show", () => {
+    expect(dashboardView({ ...firstLoad, hasData: true, loading: false })).toBe("cards");
+  });
+
+  it("keeps the cards when a revalidate fails on top of a snapshot", () => {
+    // The page's standing invariant: a failed refresh never collapses a working
+    // dashboard into an error card.
+    expect(dashboardView({ ...firstLoad, hasData: true, loading: false })).toBe("cards");
+  });
+
+  it("shows the provisioning screen ahead of everything else", () => {
+    // 503 `provisioning` arrives WITH an error-ish state on the very first load;
+    // "setting up your account" is the truthful thing to say, not an error.
+    expect(dashboardView({ ...firstLoad, loading: false, provisioning: true })).toBe(
+      "provisioning",
+    );
+    // And it wins even when a stale snapshot could be painted instead.
+    expect(dashboardView({ ...firstLoad, hasData: true, provisioning: true })).toBe("provisioning");
+  });
+
+  it("shows the no-access notice ahead of the generic error", () => {
+    // A 403 sets `error` too; retrying can't fix it, so it must not be offered.
+    expect(dashboardView({ ...firstLoad, loading: false, forbidden: true })).toBe("forbidden");
+  });
+});
+
+describe("dashboardRetryDelayMs", () => {
+  it("backs off over the retry budget", () => {
+    expect(dashboardRetryDelayMs(1)).toBe(800);
+    expect(dashboardRetryDelayMs(2)).toBe(1600);
+    expect(dashboardRetryDelayMs(3)).toBe(3200);
+  });
+
+  it("returns null once the budget is spent, so the UI can offer a retry", () => {
+    expect(dashboardRetryDelayMs(DASHBOARD_ERROR_RETRIES + 1)).toBeNull();
+  });
+
+  it("rejects a nonsensical attempt number", () => {
+    expect(dashboardRetryDelayMs(0)).toBeNull();
+    expect(dashboardRetryDelayMs(-1)).toBeNull();
+  });
+
+  it("gives up in a couple of seconds, not a minute", () => {
+    // The whole retry budget has to be short enough that a genuinely broken load
+    // reaches the retry card quickly instead of staring at skeletons.
+    let total = 0;
+    for (let i = 1; i <= DASHBOARD_ERROR_RETRIES; i++) total += dashboardRetryDelayMs(i) ?? 0;
+    expect(total).toBeLessThan(10_000);
   });
 });

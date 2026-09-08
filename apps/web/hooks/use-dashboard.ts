@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DashboardResponse } from "@bookmark-ai/types";
 import { ForbiddenError, getDashboard, ProvisioningError } from "@/lib/api";
-import { DASHBOARD_SNAPSHOT_KEY } from "@/lib/dashboard";
+import { DASHBOARD_SNAPSHOT_KEY, dashboardRetryDelayMs } from "@/lib/dashboard";
 import { detectSource } from "@/lib/detect";
 
 /**
@@ -130,6 +130,12 @@ export function useDashboard(userKey: string | null): DashboardState {
       // (inside the effect) because it needs `navigator`.
       const device = detectSource().device;
       const deadline = Date.now() + PROVISION_MAX_MS;
+      // Retries spent on failures that are NOT provisioning (see
+      // dashboardRetryDelayMs). A brand-new signup can get a 500 from a tenant
+      // whose DB creation threw, or a 401 from a session token that wasn't
+      // minted yet — both clear on their own within a second or two, and both
+      // used to end the load right there, leaving the page blank.
+      let errorAttempts = 0;
       for (;;) {
         try {
           const data = await getDashboard(device, controller.signal);
@@ -151,6 +157,18 @@ export function useDashboard(userKey: string | null): DashboardState {
             setState((s) => ({ ...s, loading: true, error: null, provisioning: true }));
             if (!(await delay(PROVISION_RETRY_MS, controller.signal))) return;
             continue;
+          }
+          // Anything else, on a load that has NOTHING to fall back on: retry a
+          // few times with backoff before giving up. `forbidden` is excluded —
+          // no amount of retrying makes an unauthorized account authorized.
+          if (!(e instanceof ForbiddenError)) {
+            const backoff = dashboardRetryDelayMs(errorAttempts + 1);
+            if (backoff !== null) {
+              errorAttempts += 1;
+              setState((s) => ({ ...s, loading: true, error: null, provisioning: false }));
+              if (!(await delay(backoff, controller.signal))) return;
+              continue;
+            }
           }
           // Keep any cached data on screen — a dashboard that already painted
           // must not collapse into an error card because a revalidate failed.

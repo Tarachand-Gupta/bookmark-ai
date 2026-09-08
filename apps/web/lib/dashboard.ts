@@ -217,3 +217,80 @@ export function planTabOpen(urls: string[]): OpenPlan {
     needsConfirm: capped.length > OPEN_TABS_CONFIRM_OVER,
   };
 }
+
+// ── What the dashboard's content column renders ──────────────────────────────
+
+/**
+ * The one thing the dashboard's content column shows, as a total function of the
+ * fetch state.
+ *
+ * This exists because it USED to be an inline chain of ternaries whose last arm
+ * was `data && (…)` — so an account whose very first `/api/dashboard` failed
+ * (`data === null`, `loading === false`) rendered the header, the omnibox and
+ * then LITERALLY NOTHING. That is what a brand-new signup saw whenever tenant
+ * provisioning didn't finish inside the hook's 60s window: the "Setting up your
+ * account" screen for a minute, then a blank page with no way back. Every input
+ * here maps to something visible; "render nothing" is not one of the outcomes.
+ *
+ * Precedence, and why:
+ *  1. `provisioning` — the account's DB is still being created. It's the most
+ *     specific state and it has its own full-screen takeover.
+ *  2. `forbidden` — signed in as an identity with no access; a retry can't help,
+ *     so it beats the generic error.
+ *  3. any data at all — a stale snapshot with a failed revalidate keeps the
+ *     cards on screen (the page's standing invariant: a failed refresh never
+ *     collapses a working dashboard into an error).
+ *  4. `loading` — first paint with nothing cached: skeletons.
+ *  5. otherwise: nothing to show and nothing in flight, which can only mean the
+ *     load failed. The error card. There is deliberately no `error` flag in the
+ *     input — "no data, not loading" IS the failure state, and reading a
+ *     separate boolean is what let the old code fall through it.
+ */
+export type DashboardView =
+  | "provisioning"
+  | "forbidden"
+  | "error"
+  | "skeletons"
+  | "first-run"
+  | "cards";
+
+export interface DashboardViewInput {
+  /** A payload is on screen — fresh OR from the stale snapshot. */
+  hasData: boolean;
+  /** A request is in flight (including the provisioning re-fires). */
+  loading: boolean;
+  /** Any hook reported 503 `code: "provisioning"`. */
+  provisioning: boolean;
+  /** Any hook reported 403 `code: "forbidden"`. */
+  forbidden: boolean;
+  /** The payload says the account is empty (no bookmarks and no sessions). */
+  empty: boolean;
+}
+
+export function dashboardView(input: DashboardViewInput): DashboardView {
+  if (input.provisioning) return "provisioning";
+  if (input.forbidden) return "forbidden";
+  if (input.hasData) return input.empty ? "first-run" : "cards";
+  if (input.loading) return "skeletons";
+  return "error";
+}
+
+/**
+ * Backoff before re-trying a dashboard load that failed for a reason that ISN'T
+ * provisioning — a 500 from a tenant whose DB creation threw, a 502/504 from a
+ * function that ran long, a 401 from a token that wasn't minted yet on a cold
+ * mobile page load. All of those are transient on a fresh signup, and all of
+ * them used to be terminal: the hook gave up on the first one and the page went
+ * blank.
+ *
+ * `attempt` is 1-based (1 = the first retry). Returns null once the budget is
+ * spent, which is the hook's signal to surface the error card — with a Retry
+ * button, so "gave up" is never the end of the road either.
+ */
+export const DASHBOARD_ERROR_RETRIES = 3;
+export const DASHBOARD_RETRY_BASE_MS = 800;
+
+export function dashboardRetryDelayMs(attempt: number): number | null {
+  if (attempt < 1 || attempt > DASHBOARD_ERROR_RETRIES) return null;
+  return DASHBOARD_RETRY_BASE_MS * 2 ** (attempt - 1);
+}

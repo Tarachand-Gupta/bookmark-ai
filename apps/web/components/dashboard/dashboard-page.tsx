@@ -19,10 +19,11 @@ import { AI_PARAM, useAppShellLayout } from "@/hooks/use-app-layout";
 import { useMeta, useRefresh } from "@/hooks/use-library";
 import { useLiveDevices } from "@/hooks/use-live";
 import { useDashboard } from "@/hooks/use-dashboard";
-import { hasDashboardActivity, rankLiveDevices } from "@/lib/dashboard";
+import { dashboardView, hasDashboardActivity, rankLiveDevices } from "@/lib/dashboard";
 import type { LibraryFilters } from "@/lib/api";
 import { ActivityCard } from "./activity-card";
 import { DashboardCardSkeleton } from "./dashboard-card";
+import { DashboardError } from "./dashboard-error";
 import { InstallCard } from "./install-card";
 import { LiveNowCard } from "./live-now-card";
 import { Omnibox } from "./omnibox";
@@ -62,8 +63,15 @@ import { LIBRARY_PATH } from "./links";
  *    which an empty sparkline is worse than no sparkline, and the install nudge,
  *    which is a nudge and has nothing to say once you've acted on it. Absent
  *    cards just leave the last cell empty — nothing stretches to fill it.
- *  - nothing here renders an error card. A failed revalidate keeps the snapshot
- *    on screen; a dead live server simply shows the live card's empty state.
+ *  - a failed REVALIDATE never renders an error: the snapshot stays on screen,
+ *    and a dead live server simply shows the live card's empty state. A first
+ *    load that comes back with nothing at all is the one exception, and it gets
+ *    DashboardError — because the alternative, which is what shipped, was an
+ *    empty white column under the omnibox with no message and no retry.
+ *
+ * Which of those the content column shows is decided in ONE place —
+ * `dashboardView` in lib/dashboard.ts, unit-tested there. Every state it can be
+ * in maps to something visible.
  */
 export function DashboardPage() {
   const router = useRouter();
@@ -151,9 +159,23 @@ export function DashboardPage() {
     [live.data],
   );
 
-  // First paint with nothing cached: skeletons, not an empty page.
-  const showSkeletons = !data && dashboard.loading;
-  const firstRun = !!data && data.totalBookmarks === 0 && data.totalSessions === 0;
+  // ONE arbiter for the content column (lib/dashboard.ts). Every state maps to
+  // something visible — the chain of ternaries this replaced had a silent
+  // "render nothing" arm, which is exactly what a failed first load hit.
+  const view = dashboardView({
+    hasData: !!data,
+    loading: dashboard.loading,
+    // Every hook here hits the same API — any of them reporting it means the
+    // account isn't ready yet (mirrors LibraryPage's `settingUp`).
+    provisioning: dashboard.provisioning || meta.provisioning,
+    forbidden: dashboard.forbidden,
+    empty: !!data && data.totalBookmarks === 0 && data.totalSessions === 0,
+  });
+
+  const retry = useCallback(() => {
+    dashboard.refresh();
+    refresh();
+  }, [dashboard.refresh, refresh]);
 
   // The Ask AI dock is mounted at the /app layout, so it's open here too when
   // `?ai=1` rides along — and the sidebar has to yield to it the same way the
@@ -187,17 +209,15 @@ export function DashboardPage() {
         >
           <main className="min-w-0 flex-1 p-3 sm:p-4">
             <div className="mx-auto w-full max-w-7xl">
-              {/* every hook hits the same API — any of them reporting it means
-                  the account isn't ready (mirrors LibraryPage's `settingUp`) */}
-              {dashboard.provisioning || meta.provisioning ? (
+              {view === "provisioning" ? (
                 <AccountSetup />
-              ) : dashboard.forbidden ? (
+              ) : view === "forbidden" ? (
                 <NoAccessNotice />
               ) : (
                 <div className="flex flex-col gap-4">
                   <Omnibox />
 
-                  {showSkeletons ? (
+                  {view === "skeletons" ? (
                     // Same geometry as the real thing, so nothing jumps sideways
                     // when the data lands (principle 4).
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -206,13 +226,17 @@ export function DashboardPage() {
                       <DashboardCardSkeleton rows={4} />
                       <DashboardCardSkeleton rows={4} />
                     </div>
+                  ) : view === "error" ? (
+                    // Nothing fresh AND nothing cached. Never leave the column
+                    // empty here — that blank page is the bug this arm fixes.
+                    <DashboardError message={dashboard.error} onRetry={retry} />
                   ) : (
                     data &&
                     // An account with literally nothing in it gets the library's
                     // own teaching panel INSTEAD of the grid: four empty cards
                     // saying "nothing yet" four different ways is worse than one
                     // panel that says what to do first.
-                    (firstRun ? (
+                    (view === "first-run" ? (
                       <FirstRunPanel onAdd={() => setAddOpen(true)} />
                     ) : (
                       <>

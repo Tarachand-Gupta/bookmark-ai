@@ -430,6 +430,26 @@ says what to do first. (Distinct from the per-card absences that principle now a
 drop one cell, this replaces the grid.) The moment anything lands, the grid takes over
 permanently — the panel never competes with real data.
 
+### 6.1 When the first load fails (added 2026-09-08)
+
+First-run has a sibling state that shipped broken: an account whose very first `/api/dashboard`
+never returned a payload. `provisioning` (503 `code: "provisioning"`) takes over the screen with
+`AccountSetup` and re-fires every 2s, but that polling gives up after 60s — and past that point
+the page rendered the header, the omnibox, and **nothing at all**, because the content column's
+last arm was `data && (…)`. A brand-new signup whose tenant DB took longer than a minute (or
+whose provisioning threw, which used to surface as a 500 the client treated as final) landed on
+a blank white page with no message and no way back.
+
+The rule now: **the content column always renders something.** Which "something" is decided by
+`dashboardView` in `apps/web/lib/dashboard.ts` — a pure function over the fetch state, unit-tested
+including an exhaustive sweep of its inputs, so no future edit can reintroduce a silent arm.
+Precedence: provisioning → forbidden → any data at all (a stale snapshot still wins over an
+error, per principle 4) → loading → **error**, which is `DashboardError`: a quiet panel with a
+Try again button. `useDashboard` also retries a non-provisioning failure three times with
+backoff before that panel ever appears, so a transient 401/500 on a cold first load heals itself.
+Server side, `getRequestApiContext` now answers a provisioning *throw* with the same retryable
+503 rather than a 500 — a Turso hiccup on a brand-new tenant is "not ready yet", not "broken".
+
 ## 7. Success criteria & phasing
 
 Measure (client-side, privacy-safe counters are fine): % of landings that interact with a
