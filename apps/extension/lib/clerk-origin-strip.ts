@@ -33,8 +33,24 @@
  *
  * With no `Origin` at all Clerk treats the call as a native (non-browser)
  * request and answers 200 — verified by curl against both instances. CORS is
- * not a concern: an extension request covered by `host_permissions` is not
- * subject to a CORS check, so nothing reads the response's ACAO header.
+ * not a concern **for the extension's own requests**: a request covered by
+ * `host_permissions` is not subject to a CORS check, so nothing reads the
+ * response's ACAO header.
+ *
+ * SCOPE — this must ONLY touch the extension's own requests (regression,
+ * 2026-09-08): a `webRequest` listener sees EVERY request in the browser that
+ * matches its filter, not just the extension's. The first cut filtered on the
+ * FAPI host alone, so it also stripped `Origin` from the WEB APP's Clerk.js
+ * XHRs (`Origin: https://www.bookmark-ai.cloud`, credentialed, made from the
+ * tab). Those DO go through a CORS check: with no `Origin` on the wire Clerk
+ * echoes no `Access-Control-Allow-Origin`, Firefox rejects the response, and
+ * Clerk.js falls back/retries — which is why, with the add-on loaded,
+ * `/app/library?section=live` took 5-10s to show live tabs and sometimes hit
+ * the "Couldn't reach the live sessions server" panel (the page's `getToken()`
+ * for the live server was slow or failed). Chrome was unaffected because the
+ * listener is Firefox-only. The listener is therefore scoped BOTH by the
+ * `RequestFilter` (`tabId: -1` = not owned by a tab) AND, authoritatively, by
+ * `isExtensionOwnRequest` in the handler.
  *
  * Kept free of `wxt/browser` / `import.meta.env` so the header logic is unit
  * testable in node; the caller passes the runtime objects in.
@@ -46,20 +62,46 @@ export interface HeaderLike {
   value?: string;
 }
 
+/**
+ * The `onBeforeSendHeaders` details this module reads. Firefox populates
+ * `originUrl` (the URL of the resource that TRIGGERED the request) on every
+ * request; `documentUrl` is its Chrome-ish sibling and is read defensively.
+ * `tabId` is `-1` when no tab owns the request (background page, extension
+ * page, service worker).
+ */
+export interface RequestDetailsLike {
+  requestHeaders?: HeaderLike[];
+  tabId?: number;
+  originUrl?: string;
+  documentUrl?: string;
+}
+
+/** The `RequestFilter` this module builds. */
+export interface RequestFilterLike {
+  urls: string[];
+  tabId?: number;
+}
+
 /** The subset of `webRequest.onBeforeSendHeaders` this module touches. */
 export interface WebRequestLike {
   onBeforeSendHeaders?: {
     addListener: (
-      listener: (details: { requestHeaders?: HeaderLike[] }) => unknown,
-      filter: { urls: string[] },
+      listener: (details: RequestDetailsLike) => unknown,
+      filter: RequestFilterLike,
       extraInfoSpec: string[],
     ) => void;
   };
 }
 
 export type OriginStripOutcome =
-  /** Listener installed — Clerk FAPI requests will go out without `Origin`. */
+  /** Listener installed — the extension's Clerk FAPI requests lose `Origin`. */
   | "registered"
+  /**
+   * Installed, but this browser rejected the `tabId: -1` filter, so the
+   * listener is scoped by `isExtensionOwnRequest` alone. Still correct — tab
+   * requests are passed through untouched — just less selectively delivered.
+   */
+  | "registered-no-tab-filter"
   /** No FAPI origin could be derived from the publishable key. */
   | "no-origin"
   /** `webRequest.onBeforeSendHeaders` is not available (non-Firefox, tests). */
@@ -70,6 +112,48 @@ export type OriginStripOutcome =
 /** Match pattern covering every Clerk FAPI path for `origin`. */
 export function clerkOriginFilterUrls(origin: string): string[] {
   return [`${origin.replace(/\/+$/, "")}/*`];
+}
+
+/**
+ * The `RequestFilter`: the FAPI host AND `tabId: -1` (requests no tab owns —
+ * the background page and extension pages). The tab filter is an OPTIMIZATION
+ * that keeps the blocking listener off the browsing path entirely; correctness
+ * rests on `isExtensionOwnRequest`, because not every engine honours a `tabId`
+ * filter and `registerClerkOriginStrip` drops it if `addListener` rejects it.
+ */
+export function clerkOriginFilter(origin: string): RequestFilterLike {
+  return { urls: clerkOriginFilterUrls(origin), tabId: NO_TAB };
+}
+
+/** `webRequest`'s sentinel for "no tab owns this request". */
+const NO_TAB = -1;
+
+const EXTENSION_URL = /^moz-extension:\/\//i;
+
+/**
+ * Pure: is this request the EXTENSION's own (background/extension page), as
+ * opposed to one the browser made for a web page?
+ *
+ * Order matters — the tab id is checked first because it is the one field
+ * Firefox always populates:
+ *  • a real tab id (≥ 0) ⇒ a page's request ⇒ NEVER touched (the regression);
+ *  • otherwise the triggering document decides: `moz-extension://` ⇒ ours,
+ *    any other scheme (`https://www.bookmark-ai.cloud`, a service worker) ⇒
+ *    not ours;
+ *  • neither field present ⇒ ours. POLICY, deliberately permissive: `tabId`
+ *    is absent/-1 and no document triggered the request, which is what a
+ *    background `fetch()` looks like — Firefox omits `originUrl` for some
+ *    system-initiated requests, and the alternative (default to "not ours")
+ *    would silently re-break the prod session mint this listener exists to
+ *    fix. The blast radius is bounded by the URL filter: a non-extension
+ *    request to the Clerk FAPI with no tab AND no triggering document is not
+ *    a page's CORS-checked XHR, so it cannot reproduce the regression.
+ */
+export function isExtensionOwnRequest(details: RequestDetailsLike): boolean {
+  if (typeof details.tabId === "number" && details.tabId !== NO_TAB) return false;
+  const trigger = details.originUrl ?? details.documentUrl;
+  if (trigger === undefined || trigger === "") return true;
+  return EXTENSION_URL.test(trigger);
 }
 
 /**
@@ -97,17 +181,24 @@ export function registerClerkOriginStrip(
   if (!fapiOrigin) return "no-origin";
   const on = webRequest?.onBeforeSendHeaders;
   if (!on?.addListener) return "unavailable";
+  const listener = (details: RequestDetailsLike) => {
+    if (!isExtensionOwnRequest(details)) return {};
+    const requestHeaders = stripOriginHeader(details.requestHeaders);
+    return requestHeaders ? { requestHeaders } : {};
+  };
+  const extraInfoSpec = ["blocking", "requestHeaders"];
   try {
-    on.addListener(
-      (details) => {
-        const requestHeaders = stripOriginHeader(details.requestHeaders);
-        return requestHeaders ? { requestHeaders } : {};
-      },
-      { urls: clerkOriginFilterUrls(fapiOrigin) },
-      ["blocking", "requestHeaders"],
-    );
+    on.addListener(listener, clerkOriginFilter(fapiOrigin), extraInfoSpec);
     return "registered";
   } catch {
-    return "failed";
+    // An engine that rejects `tabId` in a RequestFilter must not lose the fix:
+    // retry on the host filter alone — the handler's own check still keeps the
+    // listener off every tab request.
+    try {
+      on.addListener(listener, { urls: clerkOriginFilterUrls(fapiOrigin) }, extraInfoSpec);
+      return "registered-no-tab-filter";
+    } catch {
+      return "failed";
+    }
   }
 }

@@ -233,6 +233,18 @@ Auth (Clerk, syncHost pattern):
   `webRequestBlocking` on the FIREFOX build only (Chrome's id is allowlisted, Safari mints via
   the bridge). Both FAPI calls now log Clerk's error `code` on a non-2xx, so a regression names
   itself in the background console.
+  **The listener MUST only touch the extension's OWN requests.** A `webRequest` listener sees
+  every request in the browser matching its filter — the first cut filtered on the FAPI host
+  alone and therefore also stripped `Origin` from the WEB APP's Clerk.js XHRs, which ARE
+  CORS-checked: no `Origin` → no `Access-Control-Allow-Origin` → Firefox rejects the response →
+  Clerk.js retries, so `window.Clerk.loaded` lands late and `/app/library?section=live` took
+  5-10 s to show live tabs (sometimes the "Couldn't reach the live sessions server" panel, since
+  `authHeaders()` gives up polling for Clerk after 2 s and sends no token → live server 401).
+  Scoping is two-layer: the `RequestFilter` carries `tabId: -1` (delivery optimization, dropped
+  with a retry if an engine rejects it → outcome `registered-no-tab-filter`) and the handler
+  calls `isExtensionOwnRequest` (AUTHORITATIVE — a real `tabId` ≥ 0 or a non-`moz-extension://`
+  `originUrl`/`documentUrl` passes through untouched; tabless + no triggering document is
+  treated as ours, see the policy note in the module).
 - **All browsers run on a long-lived device token** (`lib/device-token.ts`) — a 90-day
   `bkd_` token minted from `POST /api/device-token`, persisted in `storage.local`, attached as
   `Authorization: Bearer` to every API and live-server call, and self-renewing (≤1 attempt/24h
