@@ -99,7 +99,16 @@ export default defineConfig({
       "alarms",
       "cookies",
       ...(browser === "chrome" ? ["bookmarks", "readingList", "tabGroups"] : []),
-      ...(browser === "firefox" ? ["bookmarks"] : []),
+      // `webRequest`/`webRequestBlocking` (Firefox-only, MV2): the ONE thing
+      // they are used for is stripping the `Origin` header off the extension's
+      // OWN requests to the Clerk frontend API — Firefox stamps
+      // `Origin: moz-extension://<per-install UUID>` on every non-GET background
+      // fetch and Clerk 400s an un-allowlisted Origin, which killed session-JWT
+      // minting (and therefore live tabs) on the production instance. The
+      // listener is filtered to the Clerk FAPI host alone and reads nothing;
+      // see lib/clerk-origin-strip.ts. Chrome's extension id IS allowlisted, so
+      // neither permission is requested there.
+      ...(browser === "firefox" ? ["bookmarks", "webRequest", "webRequestBlocking"] : []),
       ...(browser === "safari" ? ["scripting", "nativeMessaging"] : []),
     ],
     // MODE-AWARE (lib/app-origins.ts): a `production` build — every store zip —

@@ -53,6 +53,19 @@ async function readClientToken(): Promise<string | null> {
   }
 }
 
+/** Clerk's machine-readable error code for a failed FAPI call, for diagnostics
+ * only (never a value from the request). `origin_invalid` /
+ * `origin_authorization_headers_conflict` mean the browser attached an `Origin`
+ * this instance does not allowlist — see lib/clerk-origin-strip.ts. */
+export async function errorCode(res: Response): Promise<string | null> {
+  try {
+    const body = (await res.clone().json()) as { errors?: { code?: string }[] };
+    return body.errors?.[0]?.code ?? null;
+  } catch {
+    return null;
+  }
+}
+
 interface FapiUser {
   first_name?: string | null;
   last_name?: string | null;
@@ -117,7 +130,10 @@ export async function getNativeSession(): Promise<NativeSession | null> {
     const res = await fetchWithTimeout(`${origin}/v1/client?_is_native=1`, {
       headers: { Authorization: token },
     });
-    diag("native", "GET /v1/client", { status: res.status });
+    diag("native", "GET /v1/client", {
+      status: res.status,
+      ...(res.ok ? {} : { code: await errorCode(res) }),
+    });
     if (!res.ok) return null;
     const body = (await res.json()) as {
       response?: { sessions?: FapiSession[] } | null;
@@ -152,7 +168,10 @@ export async function getNativeSessionToken(): Promise<string | null> {
       method: "POST",
       headers: { Authorization: token },
     });
-    diag("native", "POST /v1/client/sessions/:id/tokens", { status: res.status });
+    diag("native", "POST /v1/client/sessions/:id/tokens", {
+      status: res.status,
+      ...(res.ok ? {} : { code: await errorCode(res) }),
+    });
     if (!res.ok) return null;
     const body = (await res.json()) as { jwt?: string; response?: { jwt?: string } | null };
     return body.jwt ?? body.response?.jwt ?? null;

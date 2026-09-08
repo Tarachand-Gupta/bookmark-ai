@@ -216,6 +216,23 @@ Auth (Clerk, syncHost pattern):
   `Authorization` with `?_is_native=1` for identity, session-JWT minting, and sign-out. Sign-out
   ends the shared client session, so it signs the user out of the website too. Dev instances
   keep the SDK path; the fallback only runs when the SDK resolves no session.
+- **FIREFOX × prod Clerk — the `Origin` header must NOT reach the FAPI**
+  (`lib/clerk-origin-strip.ts`, firefox target only). Firefox stamps
+  `Origin: moz-extension://<per-install UUID>` on every non-GET background fetch. Clerk's FAPI
+  400s an Origin that isn't in the instance's `allowed_origins` — `origin_invalid` on its own,
+  `origin_authorization_headers_conflict` ("Setting both the 'Origin' and 'Authorization'
+  headers is forbidden") when the native path's `Authorization` is also present. That UUID is
+  regenerated per INSTALL, so unlike the pinned `chrome-extension://<id>` origins it can NEVER be
+  allowlisted. Symptom (2026-09-08, prod): `GET /v1/client` 200 (fetch sends no Origin on a GET),
+  `POST /v1/client/sessions/:id/tokens` 400 → no session JWT → no device token → live server 401s
+  → the popup's Live-tabs toggle flips straight back off. Fix: a blocking
+  `webRequest.onBeforeSendHeaders` listener filtered to the FAPI host that DROPS the `Origin`
+  header (Clerk then treats the call as native and answers 200; CORS never applies to an
+  extension request covered by `host_permissions`, so nothing reads the ACAO reply). Registered
+  at background boot next to the manifest shim; `permissions` gains `webRequest` +
+  `webRequestBlocking` on the FIREFOX build only (Chrome's id is allowlisted, Safari mints via
+  the bridge). Both FAPI calls now log Clerk's error `code` on a non-2xx, so a regression names
+  itself in the background console.
 - **All browsers run on a long-lived device token** (`lib/device-token.ts`) — a 90-day
   `bkd_` token minted from `POST /api/device-token`, persisted in `storage.local`, attached as
   `Authorization: Bearer` to every API and live-server call, and self-renewing (≤1 attempt/24h

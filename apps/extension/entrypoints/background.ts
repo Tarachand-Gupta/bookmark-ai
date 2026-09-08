@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { setDeviceTokenReminter } from "@/lib/auth-refresh";
 import { CLERK_PUBLISHABLE_KEY, CLERK_SYNC_HOST } from "@/lib/clerk";
+import { registerClerkOriginStrip } from "@/lib/clerk-origin-strip";
 import { detectSource } from "@/lib/detect";
 import {
   clearDeviceToken,
@@ -28,7 +29,12 @@ import { fullName } from "@/lib/identity";
 import { reportAuthState } from "@/lib/native-auth-report";
 import { patchGetManifest } from "@/lib/manifest-shim";
 import { MintGate } from "@/lib/mint-gate";
-import { getNativeSession, getNativeSessionToken, nativeSignOut } from "@/lib/native-session";
+import {
+  fapiOrigin,
+  getNativeSession,
+  getNativeSessionToken,
+  nativeSignOut,
+} from "@/lib/native-session";
 import { fetchWithTimeout } from "@/lib/net";
 import { PerfTrace } from "@/lib/perf";
 import {
@@ -979,6 +985,21 @@ export default defineBackground(() => {
     const runtime = (globalThis as { browser?: { runtime?: Parameters<typeof patchGetManifest>[0] } })
       .browser?.runtime;
     diag("bg", "clerk manifest shim", { outcome: patchGetManifest(runtime) });
+    // FIREFOX (MV2) ONLY, and BEFORE any Clerk FAPI call: Firefox attaches
+    // `Origin: moz-extension://<per-install UUID>` to every non-GET background
+    // fetch, and Clerk's FAPI answers 400 to an un-allowlisted Origin — fatally
+    // so when an `Authorization` header is also present, which is exactly what
+    // the production native path in lib/native-session.ts sends
+    // (`origin_authorization_headers_conflict`). The UUID is regenerated per
+    // install, so it can never be allowlisted the way the Chrome ids are; the
+    // only fix is to send no Origin at all. See lib/clerk-origin-strip.ts.
+    diag("bg", "clerk origin strip", {
+      outcome: registerClerkOriginStrip(
+        (globalThis as { browser?: { webRequest?: Parameters<typeof registerClerkOriginStrip>[0] } })
+          .browser?.webRequest,
+        fapiOrigin(),
+      ),
+    });
   }
   setAuthTokenProvider(getSessionToken);
   // The fresh-mint rung of the 401 recovery ladder (lib/auth-refresh.ts). Every
