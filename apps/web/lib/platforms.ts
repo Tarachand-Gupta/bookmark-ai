@@ -6,14 +6,14 @@ import type { AppPlatform, AppReleaseMap } from "@bookmark-ai/types";
  * in-app "Get the extension" card and `extension-links.ts`.
  *
  * Status vocabulary (never say more than is true):
- * - `available` — a working download or URL exists today.
+ * - `available` — a working download or store listing exists today.
  * - `review`    — a store listing has been SUBMITTED and is under review. The
  *                 store URL is known but 404s until approval, so nothing links
  *                 to it while the status is `review`; sideload/source instead.
  * - `soon`      — not submitted anywhere yet. Build from source or wait.
  *
  * Native downloads are GitHub Release assets on a per-platform tag
- * (`macos-v0.1.0`, `android-v1.0.1`, `extension-v0.1.2`). The `/releases/latest`
+ * (`macos-v0.1.0`, `android-v1.0.1`, `extension-v0.1.3`). The `/releases/latest`
  * alias is NOT used: "latest" is whichever platform shipped last, so a fixed
  * tag is the only stable form. When `GET /api/app/releases` carries a record for
  * a platform, `resolveDownload` prefers that record — so downloads can be
@@ -38,17 +38,20 @@ export function releaseAssetUrl(tag: string, file: string): string {
 export const RELEASE_TAGS = {
   macos: "macos-v0.1.0",
   android: "android-v1.0.1",
-  extension: "extension-v0.1.2",
+  extension: "extension-v0.1.3",
 } as const;
 
 /**
  * The Chrome Web Store item id is pinned (the extension's manifest `key`), so
- * the listing URL is known before approval — but it answers 404 until then.
- * Kept here so nothing has to guess it later; NOT linked while status is
- * `review` (see `storeUrlFor`).
+ * the listing URL is stable. LIVE since 2026-09-13.
  */
 export const CHROME_WEB_STORE_ID = "ffhbgpgebpmofjkehpjcemepbgcmoelp";
 export const CHROME_WEB_STORE_URL = `https://chromewebstore.google.com/detail/${CHROME_WEB_STORE_ID}`;
+
+/**
+ * The live Firefox Add-ons (AMO) listing, add-on id `bookmark-ai@purecode.ai`.
+ */
+export const FIREFOX_ADDONS_URL = "https://addons.mozilla.org/firefox/addon/bookmark-ai/";
 
 export const WEB_APP_URL = "https://www.bookmark-ai.cloud/app";
 export const SIGN_UP_URL = "https://www.bookmark-ai.cloud/sign-up";
@@ -133,49 +136,49 @@ export const PLATFORMS: readonly PlatformEntry[] = [
     id: "chrome",
     name: "Chrome, Edge & Arc",
     kind: "extension",
-    status: "review",
+    status: "available",
     icon: "chrome",
     blurb: "One-click save from the toolbar, whole-window sessions, live tabs.",
-    badge: BADGE.review,
+    badge: null,
     requires: "Any Chromium browser (Chrome, Edge, Arc, Brave, Vivaldi)",
-    action: { type: "none" },
+    action: { type: "open", url: CHROME_WEB_STORE_URL, label: "Add to Chrome" },
     sideload: {
-      url: releaseAssetUrl(RELEASE_TAGS.extension, "bookmark-aiextension-0.1.2-chrome.zip"),
-      fileName: "bookmark-aiextension-0.1.2-chrome.zip",
-      version: "0.1.2",
+      url: releaseAssetUrl(RELEASE_TAGS.extension, "bookmark-aiextension-0.1.3-chrome.zip"),
+      fileName: "bookmark-aiextension-0.1.3-chrome.zip",
+      version: "0.1.3",
     },
     steps: [
-      "The Chrome Web Store listing has been submitted and is under review — it will be available shortly.",
-      "Until then, download the extension zip below and unzip it.",
-      "Open chrome://extensions (edge://extensions in Edge), turn on Developer mode, click Load unpacked and choose the unzipped folder.",
+      "Click Add to Chrome above — the Chrome Web Store opens in a new tab.",
+      "Click Add extension and confirm the permissions prompt.",
+      "Pin Bookmark AI from the extensions menu and click its icon to save the current tab.",
       "Sign in at bookmark-ai.cloud in the same browser — the extension mirrors that session; there is no separate sign-in.",
     ],
     source: null,
-    note: "A sideloaded extension does not auto-update. Switch to the store listing once it is approved.",
+    note: "The store version auto-updates. Where the Web Store is blocked, download the zip below and load it unpacked via chrome://extensions.",
   },
   {
     id: "firefox",
     name: "Firefox",
     kind: "extension",
-    status: "review",
+    status: "available",
     icon: "firefox",
     blurb: "Save and search without leaving Firefox.",
-    badge: BADGE.review,
+    badge: null,
     requires: "Firefox 140 or later",
-    action: { type: "none" },
+    action: { type: "open", url: FIREFOX_ADDONS_URL, label: "Add to Firefox" },
     sideload: {
-      url: releaseAssetUrl(RELEASE_TAGS.extension, "bookmark-aiextension-0.1.2-firefox.zip"),
-      fileName: "bookmark-aiextension-0.1.2-firefox.zip",
-      version: "0.1.2",
+      url: releaseAssetUrl(RELEASE_TAGS.extension, "bookmark-aiextension-0.1.3-firefox.zip"),
+      fileName: "bookmark-aiextension-0.1.3-firefox.zip",
+      version: "0.1.3",
     },
     steps: [
-      "The Firefox Add-ons listing has been submitted and is under review — it will be available shortly.",
-      "Until then, download the extension zip below.",
-      "Open about:debugging#/runtime/this-firefox, click Load Temporary Add-on… and pick the zip.",
+      "Click Add to Firefox above — the Firefox Add-ons page opens in a new tab.",
+      "Click Add to Firefox on the listing and confirm the permissions prompt.",
+      "Click the Bookmark AI icon in the toolbar to save the current tab.",
       "Sign in at bookmark-ai.cloud in the same browser — the extension mirrors that session.",
     ],
     source: null,
-    note: "Temporary add-ons are removed when Firefox quits — reload the zip next session, or wait for the store listing.",
+    note: "The store version is permanent and auto-updates. The zip below loads as a temporary add-on that Firefox removes on quit — for testing only.",
   },
   {
     id: "safari",
@@ -345,14 +348,14 @@ export function badgeForStatus(status: PlatformStatus): string | null {
 
 /**
  * The store listing to link for an extension platform: only once it is
- * `available`. While under review the listing 404s, so callers get null and
- * should send people to /download#<id> instead.
+ * `available`. Only Safari's Mac App Store URL is still unknown — Safari is
+ * `soon`, so callers get null and should send people to /download#safari.
  */
 export function storeUrlFor(id: PlatformId): string | null {
   const entry = getPlatform(id);
   if (entry.kind !== "extension" || entry.status !== "available") return null;
   if (id === "chrome") return CHROME_WEB_STORE_URL;
-  // Firefox (AMO slug) and Safari (Mac App Store) URLs are not known yet.
+  if (id === "firefox") return FIREFOX_ADDONS_URL;
   return null;
 }
 

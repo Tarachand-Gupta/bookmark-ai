@@ -16,6 +16,8 @@ import {
  * While a listing is under review (it 404s until approval) or not submitted
  * yet, the link goes to the platform's card on /download, which carries the
  * status, the sideload zip and the build-from-source path instead.
+ * Chrome (Web Store) and Firefox (AMO) are live; unknown browsers still get
+ * /download to pick from.
  */
 
 type ExtensionPlatform = Extract<PlatformId, "chrome" | "firefox" | "safari">;
@@ -100,11 +102,11 @@ export function extensionTargetForBrowser(browser: Browser): ExtensionTarget {
 export const GENERIC_EXTENSION_TARGET: ExtensionTarget = {
   store: "all",
   platform: null,
-  status: "review",
+  status: "available",
   url: EXTENSION_STORE_URLS.all,
   external: false,
   label: BROWSER_TARGETS.other.label,
-  statusNote: "Store listings under review — sideload or build from source meanwhile.",
+  statusNote: null,
 };
 
 /**

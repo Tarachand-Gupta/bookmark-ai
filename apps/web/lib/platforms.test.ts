@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AppReleaseMap } from "@bookmark-ai/types";
 import {
   CHROME_WEB_STORE_URL,
+  FIREFOX_ADDONS_URL,
   PLATFORMS,
   RELEASE_TAGS,
   badgeForStatus,
@@ -57,15 +58,15 @@ describe("platform list", () => {
     expect(badgeForStatus("available")).toBeNull();
   });
 
-  it("copy never claims a store listing is available or submitted where it is not", () => {
+  it("copy never claims a store listing is in review or coming where it is not", () => {
     const text = (id: PlatformId) => {
       const e = getPlatform(id);
       return [e.blurb, e.note ?? "", ...e.steps, ...(e.source?.notes ?? [])].join(" ").toLowerCase();
     };
-    // Submitted → "under review", never "available now".
+    // Live on their stores → "available", never an "under review" claim.
     for (const id of ["chrome", "firefox"] as const) {
-      expect(getPlatform(id).status).toBe("review");
-      expect(text(id)).toContain("under review");
+      expect(getPlatform(id).status).toBe("available");
+      expect(text(id)).not.toContain("under review");
     }
     // Not submitted → "coming soon", and never the word "submitted" as a claim.
     for (const id of ["safari", "ios"] as const) {
@@ -93,10 +94,10 @@ describe("platform list", () => {
       url: `https://github.com/Tarachand-Gupta/bookmark-ai/releases/download/${RELEASE_TAGS.android}/bookmark-ai-1.0.1-android.apk`,
     });
     expect(getPlatform("chrome").sideload?.url).toBe(
-      releaseAssetUrl(RELEASE_TAGS.extension, "bookmark-aiextension-0.1.2-chrome.zip"),
+      releaseAssetUrl(RELEASE_TAGS.extension, "bookmark-aiextension-0.1.3-chrome.zip"),
     );
     expect(getPlatform("firefox").sideload?.url).toBe(
-      releaseAssetUrl(RELEASE_TAGS.extension, "bookmark-aiextension-0.1.2-firefox.zip"),
+      releaseAssetUrl(RELEASE_TAGS.extension, "bookmark-aiextension-0.1.3-firefox.zip"),
     );
     expect(releaseTagUrl("macos-v0.1.0")).toBe(
       "https://github.com/Tarachand-Gupta/bookmark-ai/releases/tag/macos-v0.1.0",
@@ -126,12 +127,12 @@ describe("platform list", () => {
 });
 
 describe("store URLs", () => {
-  it("withholds the Chrome Web Store URL while the listing is under review", () => {
+  it("links the live Chrome Web Store and Firefox Add-ons listings", () => {
     expect(CHROME_WEB_STORE_URL).toBe(
       "https://chromewebstore.google.com/detail/ffhbgpgebpmofjkehpjcemepbgcmoelp",
     );
-    expect(storeUrlFor("chrome")).toBeNull();
-    expect(storeUrlFor("firefox")).toBeNull();
+    expect(storeUrlFor("chrome")).toBe(CHROME_WEB_STORE_URL);
+    expect(storeUrlFor("firefox")).toBe(FIREFOX_ADDONS_URL);
     expect(storeUrlFor("safari")).toBeNull();
     expect(storeUrlFor("macos")).toBeNull();
   });
@@ -193,24 +194,28 @@ describe("extension-links derives from platforms", () => {
     }
   });
 
-  it("sends Chromium browsers to the Chrome entry, under review → /download#chrome", () => {
+  it("sends Chromium browsers to the Chrome Web Store listing", () => {
     for (const browser of ["chrome", "edge", "arc"] as const) {
       const t = extensionTargetForBrowser(browser);
       expect(t.platform).toBe("chrome");
-      expect(t.status).toBe("review");
-      expect(t.url).toBe("/download#chrome");
-      expect(t.external).toBe(false);
+      expect(t.status).toBe("available");
+      expect(t.url).toBe(CHROME_WEB_STORE_URL);
+      expect(t.external).toBe(true);
+      expect(t.label).toBe(
+        browser === "chrome" ? "Add to Chrome" : browser === "edge" ? "Add to Edge" : "Add to Arc",
+      );
     }
-    // Under review, the label is honest rather than "Add to Edge" pointing at a 404.
-    expect(extensionTargetForBrowser("edge").label).toBe("Install options");
-    expect(extensionTargetForBrowser("firefox").url).toBe("/download#firefox");
+    expect(extensionTargetForBrowser("firefox").status).toBe("available");
+    expect(extensionTargetForBrowser("firefox").url).toBe(FIREFOX_ADDONS_URL);
+    expect(extensionTargetForBrowser("firefox").label).toBe("Add to Firefox");
     expect(extensionTargetForBrowser("safari").status).toBe("soon");
     expect(GENERIC_EXTENSION_TARGET.url).toBe("/download");
     expect(extensionTargetForBrowser("other")).toEqual(GENERIC_EXTENSION_TARGET);
   });
 
   it("carries a human status line for the in-app card", () => {
-    expect(extensionTargetForBrowser("chrome").statusNote).toMatch(/under review/i);
+    expect(extensionTargetForBrowser("chrome").statusNote).toBeNull();
+    expect(extensionTargetForBrowser("firefox").statusNote).toBeNull();
     expect(extensionTargetForBrowser("safari").statusNote).toMatch(/coming soon/i);
   });
 });

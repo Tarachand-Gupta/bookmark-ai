@@ -63,6 +63,14 @@ export default defineConfig({
   manifest: ({ browser, manifestVersion, mode }) => ({
     name: targetFor(mode).name,
     icons: iconsFor(mode),
+    // WXT generates the toolbar action from the popup entrypoint with only
+    // default_title/default_popup; these explicit sizes are the AMO
+    // listing-icon fix (Bugzilla 1842447 — no default_icon, no listing icon).
+    // MV2 (Firefox) keys it browser_action, MV3 action — same split as
+    // `commands` below.
+    ...(manifestVersion === 2
+      ? { browser_action: { default_icon: iconsFor(mode) } }
+      : { action: { default_icon: iconsFor(mode) } }),
     description:
       "Save the current tab to Bookmark AI for automatic categorization and tagging.",
     // No `incognito` key on purpose — the default ("spanning") stands, and

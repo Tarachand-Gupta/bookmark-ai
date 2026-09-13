@@ -13,12 +13,12 @@ import { cn } from "@/lib/utils";
 export const metadata: Metadata = {
   title: "Download Bookmark AI — Mac, Android, browser extensions, web",
   description:
-    "Get Bookmark AI on every screen: download the Mac app and the Android APK, sideload the Chrome and Firefox extensions while the store listings are under review, add the web app to your phone, or build Safari and iOS from source.",
+    "Get Bookmark AI on every screen: download the Mac app and the Android APK, install the Chrome and Firefox extensions from their stores, add the web app to your phone, or build Safari and iOS from source.",
   alternates: { canonical: "https://www.bookmark-ai.cloud/download" },
   openGraph: {
     title: "Download Bookmark AI",
     description:
-      "Mac app and Android APK today. Chrome and Firefox listings under review; Safari and iOS coming soon — or build them from source.",
+      "Mac app and Android APK download directly; Chrome and Firefox install from their stores. Safari and iOS coming soon — or build them from source.",
     type: "website",
     siteName: "Bookmark AI",
     url: "https://www.bookmark-ai.cloud/download",
@@ -61,8 +61,8 @@ export default function DownloadPage() {
               Get Bookmark AI on every screen.
             </h1>
             <p className="mt-5 max-w-xl text-muted-foreground sm:text-lg">
-              The Mac app and the Android APK download directly. The browser-store
-              listings are under review, and Safari and iOS are coming soon — build them
+              The Mac app and the Android APK download directly, Chrome and Firefox
+              install from their stores, and Safari and iOS are coming soon — build them
               from source, or use the web app on any device in the meantime.
             </p>
           </header>
@@ -74,12 +74,14 @@ export default function DownloadPage() {
                 "mt-10 flex flex-col gap-3 rounded-2xl px-5 py-4 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-8",
               )}
             >
-              <p>
-                <span className={cn(mono, "mr-2 text-[11px] uppercase tracking-[0.18em] text-foreground")}>
-                  under review
-                </span>
-                {status.review.join(" · ")} — available shortly.
-              </p>
+              {status.review.length > 0 && (
+                <p>
+                  <span className={cn(mono, "mr-2 text-[11px] uppercase tracking-[0.18em] text-foreground")}>
+                    under review
+                  </span>
+                  {status.review.join(" · ")} — available shortly.
+                </p>
+              )}
               <p>
                 <span className={cn(mono, "mr-2 text-[11px] uppercase tracking-[0.18em] text-foreground")}>
                   coming soon
@@ -96,8 +98,8 @@ export default function DownloadPage() {
           </ReleasesProvider>
 
           <p className="mx-auto mt-8 max-w-2xl text-center text-xs leading-relaxed text-muted-foreground">
-            Store versions will replace the direct downloads once they are approved. The
-            Mac and Android apps check for new builds when they launch and show an update
+            The Chrome and Firefox extensions install and auto-update from their stores.
+            The Mac and Android apps check for new builds when they launch and show an update
             banner with a download link, so you never have to come back here to find out.
           </p>
 

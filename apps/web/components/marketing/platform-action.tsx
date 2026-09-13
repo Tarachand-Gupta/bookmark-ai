@@ -19,7 +19,10 @@ const DOWNLOAD_LABELS: Partial<Record<PlatformEntry["id"], string>> = {
  * A platform's primary control, with the release record folded in:
  * - download → the published record's URL (Settings → Releases) when there is
  *   one, else the static tag asset; the version it hands over sits underneath.
- * - open → a plain link (web app; the PWA path on iOS).
+ * - open → a plain link (web app; the store listings for Chrome/Firefox). On
+ *   the download page (`onDownloadPage`), an entry with a sideload zip also
+ *   gets the outline "Download zip to sideload" block under the primary —
+ *   store-first, sideload-second.
  * - none → on the homepage, "Install options" into the /download card; on the
  *   download page itself (`onDownloadPage`) the sideload zip, if any, takes
  *   the outline slot and no primary is drawn.
@@ -93,6 +96,30 @@ export function PlatformActionButton({
           )}
         </a>
         {entry.requires && <p className={caption}>{entry.requires}</p>}
+        {/* Store-first, sideload-second: on the download page a live store
+            listing keeps the zip as a fallback for blocked networks. */}
+        {onDownloadPage && entry.sideload && (
+          <>
+            <a
+              href={entry.sideload.url}
+              download
+              rel="noreferrer noopener"
+              className={cn(btnOutline, size)}
+            >
+              <Download className="size-4" aria-hidden />
+              Download zip to sideload
+            </a>
+            {/* The filename gets its own line on narrow screens and may break
+                anywhere — a mid-filename wrap is fine when it is deliberate. */}
+            <p className={caption}>
+              v{entry.sideload.version}
+              <span aria-hidden className="mx-1.5 hidden text-border sm:inline">
+                /
+              </span>
+              <span className="block break-all sm:inline">{entry.sideload.fileName}</span>
+            </p>
+          </>
+        )}
       </div>
     );
   }

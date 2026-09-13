@@ -134,8 +134,8 @@ export default function SupportPage() {
             <Link href="/download#android" className={linkClass}>
               Android APK
             </Link>{" "}
-            download directly; the Chrome and Firefox extension listings are under review
-            (sideload the zip meanwhile); the Safari extension and the iOS app are coming
+            download directly; the Chrome and Firefox extensions install from their
+            stores; the Safari extension and the iOS app are coming
             soon — build them from source, or add the{" "}
             <Link href="/download#web" className={linkClass}>
               web app

@@ -31,7 +31,7 @@ export function Platforms() {
             <SectionHead
               eyebrow="one library, every screen"
               title="Save here, find it there."
-              sub="The same bookmarks and the same search, wherever you save or look them up. The Mac and Android apps download today; the store listings are on their way."
+              sub="The same bookmarks and the same search, wherever you save or look them up. The Mac and Android apps download today; Chrome and Firefox install from their stores."
             />
             <a
               href="/download"
