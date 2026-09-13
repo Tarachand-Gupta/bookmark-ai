@@ -66,19 +66,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The pure decision `applicationShouldHandleReopen` delegates to —
-    /// unit-tested. Returns whether macOS's default handling suffices: yes
-    /// when a window is already visible, and yes after we've re-shown the
-    /// captured main window (returning true stops the framework from
-    /// creating an extra one). With no captured window yet (dock click in
-    /// the instant before first paint) there is nothing to re-show; true
-    /// keeps the framework's own handling.
+    /// unit-tested. Returning true tells AppKit "handled, don't create a
+    /// window"; returning false lets AppKit's default handling recreate the
+    /// WindowGroup's window. So: visible windows → true (nothing to do); a
+    /// live captured window → re-show it and return true; NO live window →
+    /// false. That last case is the one that matters: closing the red button
+    /// DESTROYS a SwiftUI WindowGroup's NSWindow, so by reopen time a weak
+    /// reference is nil and only "false" gets a window back on screen.
     static func reopen(hasVisibleWindows: Bool, window: NSWindow?) -> Bool {
         guard !hasVisibleWindows else { return true }
-        if let window {
+        if let window, window.isVisible {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            return true
         }
-        return true
+        return false
     }
 }
 

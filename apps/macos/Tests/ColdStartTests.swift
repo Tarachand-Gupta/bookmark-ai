@@ -332,11 +332,12 @@ final class ColdStartTests: XCTestCase {
         XCTAssertTrue(AppDelegate.reopen(hasVisibleWindows: true, window: nil))
     }
 
-    func testReopenWithoutWindowsReturnsTrueAfterRestoring() {
-        // No real NSWindow in a unit test: nil exercises the "nothing to
-        // restore" branch, which still reports handled so no extra window
-        // gets created.
-        XCTAssertTrue(AppDelegate.reopen(hasVisibleWindows: false, window: nil))
+    func testReopenWithoutWindowsReturnsFalseSoAppKitRecreatesIt() {
+        // Closing a SwiftUI WindowGroup window DESTROYS its NSWindow, so after
+        // a close the weak capture is nil (or hidden): reopen must report NOT
+        // handled so AppKit's default recreates the group's window. Returning
+        // true here was the original bug — dock click did nothing.
+        XCTAssertFalse(AppDelegate.reopen(hasVisibleWindows: false, window: nil))
     }
 
     // MARK: - Plumbing
