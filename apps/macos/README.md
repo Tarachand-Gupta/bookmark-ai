@@ -372,6 +372,10 @@ apps/macos/
 │   │   └── AccountSettingsTab.swift  plan card, then Status → identity row (avatar, name, email) → Sign Out
 │   └── Support/
 │       ├── Preferences.swift       UserDefaults-backed server target + layout (injectable defaults)
+│       ├── LibraryCache.swift      `Application Support/<bundle>/cache/library.json` — the last session's
+│       │                           library + meta + sessions snapshot; written through after every
+│       │                           refresh, read once at launch so the window renders LAST SESSION'S
+│       │                           data before the first network round-trip (the cold-start cache)
 │       ├── AppUpdateModel.swift    release poll (gate open + 6 h), bundle version, banner state, 24 h per-version snooze
 │       ├── InitialsAvatar.swift    initials on a tinted disc, symbol fallback (footer 28pt, Account 36pt)
 │       ├── Interaction.swift       pointingHandCursor, SurfaceCard, HoverHighlight
@@ -393,6 +397,7 @@ apps/macos/
     ├── ChatHistoryTests.swift      4 tests — day buckets, relative-time copy, title filter, seed hook
     ├── TranscriptLayoutTests.swift 2 tests — empty-stream failure row + Retry, server `error` chunk on an empty turn (fixture streams via `turnStarter`)
     ├── SignedOutResetTests.swift   2 tests — handleSignedOut() empties every model (incl. plan, identity, window state); a post-retry 401 flushes through AuthController
+    ├── ColdStartTests.swift        19 tests — cache round-trip; hydration (target-stamped, empty rejected); diff-in-place reconcile (identity kept, appended, removed); refresh failure keeps cached rows; pill arms on hydrate + settles with the first refresh; cached content opens the gate while Clerk is quiet; definitive sign-out still flushes; write-through incl. the UNFILTERED-snapshot rule (a filtered ⌘R never overwrites it); snapshot wiped on sign-out; dock-reopen decision
     ├── AuthStateTests.swift        11 tests — refresh-tick no-session flushes; unavailable keeps session + data; restore → signedIn / signedOut / connecting; Retry confirms; backoff + stall constants; gate per target; initials; identity kept on /api/me failure
     ├── SessionLoadTests.swift      4 tests — stubbed /api/me: sign-in completed inside the sheet's CANCELLED task still loads the identity; finishSignIn hands off; one load per transition (restore, tick, sign-out, sign-in again); on-demand mint while connecting confirms + loads
     ├── AccountFooterTests.swift    4 tests — footer copy: name over host with the email as tooltip, email/status fallbacks, "Loading…" placeholder, Local + gate states
@@ -410,6 +415,30 @@ apps/macos/
 
 ## Mac-native behaviours implemented
 
+- **Instant cold start** (Tara's spec): at launch the app reads
+  `Application Support/<bundle id>/cache/library.json` — last session's
+  All-Bookmarks list + facets + saved sessions, written through after every
+  successful refresh — and renders it BEFORE any network round-trip, with a
+  small "Syncing…" pill in the sidebar while the background refresh
+  reconciles. The refresh diffs in place (same ids keep their rows, additions
+  appear at the front, deletions disappear — no teardown, no flash of a
+  loading state over rendered content); a failed refresh leaves the cached
+  rows on screen. On Cloud, cached content also keeps the gate OPEN while
+  Clerk is still answering: the connecting spinner never blanks an
+  already-rendered window, and only a definitive "no session" flushes to the
+  sign-in screen. The snapshot is target-stamped (Local never renders Cloud's)
+  and account data (sign-out wipes it). A true first run keeps the plain
+  loading look. The pill's condition is derived, not stored:
+  `launchSyncPending` (armed by `hydrateFromCache`, cleared when the first
+  `loadEverything` settles) AND a hydrated model still showing cache-derived
+  rows.
+- **Dock reopen** (Tara's spec): closing the window (red button) keeps the app
+  running; clicking the Dock icon re-shows THE SAME window via
+  `applicationShouldHandleReopen` → `AppDelegate.reopen`
+  (`makeKeyAndOrderFront` + activate). The window is captured by
+  `MainWindowReader`, an invisible anchor view that lives only in the
+  `WindowGroup`'s hierarchy — so the Settings window (its own scene) can never
+  hijack the reopen target the way an app-wide `didBecomeKey` listener would.
 - `NavigationSplitView` with `.listStyle(.sidebar)` → system translucent material,
   resizable dividers; `.windowToolbarStyle(.unified)` so it meets the title bar.
 - `.searchable(placement: .toolbar)` → native toolbar search field, debounced

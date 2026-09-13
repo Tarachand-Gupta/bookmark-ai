@@ -33,6 +33,26 @@ final class AppEnvironment {
     /// The update banner's brain — polls `/api/app/releases` while the gate is open.
     let updates: AppUpdateModel
 
+    /// The last session's library on disk, written through on every successful
+    /// refresh and read once at launch so the window renders real content
+    /// before the first network round-trip. Injectable for tests.
+    let cache: LibraryCache
+
+    /// Set when a disk snapshot actually hydrates the models (`hydrateFromCache`)
+    /// and cleared the moment the launch refresh settles (`loadEverything`, in
+    /// its `defer`) or the sign-out flush runs. The pill's LATCH, never re-armed
+    /// by later refreshes — the models' own `isSyncingFromCache` flags carry the
+    /// "the rendered rows are still cache" half of the condition.
+    private var launchSyncPending = false
+
+    /// The syncing pill's condition: the launch refresh is in flight AND at
+    /// least one hydrated model still shows cache-derived rows. Derived, so the
+    /// pill can't desynchronize from the data it describes. A true first run
+    /// (nothing hydrated) keeps the current full-window loading look.
+    var isSyncing: Bool {
+        launchSyncPending && (library.isSyncingFromCache || sessions.isSyncingFromCache)
+    }
+
     /// `GET /api/health` for the Settings diagnostics row.
     private(set) var health: HealthResponse?
 
@@ -51,15 +71,18 @@ final class AppEnvironment {
     /// `UserDefaults` suite instead of the app's real one (the unit-test host
     /// IS the app, so `.standard` would be Tara's actual settings); `session`
     /// so they can answer the API from a stubbed `URLProtocol` instead of the
-    /// network.
-    init(preferences: Preferences? = nil, session: URLSession? = nil) {
+    /// network; `cache` so tests use a throwaway folder instead of the app's
+    /// real snapshot (the test host IS the app).
+    init(preferences: Preferences? = nil, session: URLSession? = nil, cache: LibraryCache? = nil) {
         let preferences = preferences ?? Preferences()
         let api = ApiClient(target: preferences.serverTarget, session: session)
         let auth = AuthController(origin: preferences.serverTarget.authOrigin)
+        let cache = cache ?? LibraryCache.shared
 
         self.preferences = preferences
         self.api = api
         self.auth = auth
+        self.cache = cache
         self.library = LibraryModel(api: api)
         self.chat = ChatModel(api: api)
         self.sessions = SessionsModel(api: api)
@@ -88,17 +111,44 @@ final class AppEnvironment {
         // A chat tool that creates/installs a skill refreshes the Skills sheet.
         let skills = self.skills
         self.chat.onSkillsChanged = { Task { await skills.load() } }
+
+        // Show LAST SESSION'S data before any network work: hydrate the models
+        // the main window renders at rest. A snapshot from another target is
+        // dropped; the pill only arms if something actually hydrated.
+        hydrateFromCache(cache.read())
+    }
+
+    /// Render LAST SESSION'S data before any network work: hydrate the models
+    /// the main window renders at rest and arm the pill's latch when something
+    /// actually applied. Kept on `AppEnvironment` (not just the models) because
+    /// arming app-level state — the pill, and through it the gate — is an
+    /// app-level decision the models must not be able to trigger from the
+    /// outside. Tests call this instead of the models' own hydrators.
+    @discardableResult
+    func hydrateFromCache(_ state: LibraryCacheState?) -> Bool {
+        let target = preferences.serverTarget.rawValue
+        let libraryApplied = library.hydrateFromCache(state, serverTarget: target)
+        let sessionsApplied = sessions.hydrateFromCache(state, serverTarget: target)
+        launchSyncPending = libraryApplied || sessionsApplied
+        return launchSyncPending
     }
 
     // MARK: - Gate
 
-    /// See `AccessGate`. Local never gates; cloud follows the auth status.
+    /// See `AccessGate`. Local never gates; cloud follows the auth status —
+    /// EXCEPT when the window is already showing last session's data from the
+    /// disk cache: then the connecting stretch does NOT blank the window with
+    /// the spinner (Tara's cold-start spec). The cached library renders, the
+    /// restore keeps retrying underneath, and a definitive "no session" still
+    /// flushes everything to the sign-in screen through `onSignedOut`. If
+    /// Clerk can't be reached, the cached rows simply stay.
     var gate: AccessGate {
         guard preferences.serverTarget.requiresAuth else { return .ready }
         switch auth.status {
         case .signedIn: return .ready
         case .signedOut: return .signedOut
-        case .unknown, .unreachable: return .connecting
+        case .unknown, .unreachable:
+            return isSyncing ? .ready : .connecting
         }
     }
 
@@ -153,14 +203,32 @@ final class AppEnvironment {
     /// Refresh the library plus the side reads that decorate the UI: who is
     /// signed in (footer, Settings ▸ Account) and the server's health. Also the
     /// moment the update poll starts — every gate opening passes through here
-    /// (via `gateOpened`), and so does ⌘R.
+    /// (via `gateOpened`), and so does ⌘R. Every successful refresh is
+    /// written through to the disk cache, so the NEXT launch can render this
+    /// state immediately.
     func loadEverything() async {
         guard canUseData else { return }
+        // The launch refresh has settled (answered or not): the pill goes away
+        // whatever happened — cached rows stay either way. `defer`, so even an
+        // early return through `guard` can't leave the pill latched.
+        defer { launchSyncPending = false }
         updates.start()
         async let identity: Void = auth.loadAccount(using: api)
         async let rows: Void = library.refresh()
         _ = await (identity, rows)
         health = try? await api.health()
+        persistSnapshot()
+    }
+
+    /// The snapshot to write through: the All-Bookmarks state (what the app
+    /// always opens on) stamped with the current target, plus the Sessions
+    /// list. Written after every successful refresh, so the NEXT launch
+    /// renders this exact state instantly.
+    func persistSnapshot() {
+        cache.write(library.cacheState(
+            serverTarget: preferences.serverTarget.rawValue,
+            sessions: sessions.sessions
+        ))
     }
 
     /// The sign-in sheet saw a token. Adopts the session in a task of its own
@@ -201,6 +269,11 @@ final class AppEnvironment {
         skills.reset()
         mcpTokens.reset()
         health = nil
+        // The snapshot is account data: a signed-out window (or the next
+        // account / server target) must never render the previous one's rows
+        // from disk, exactly as if they had never been fetched.
+        cache.delete()
+        launchSyncPending = false
         // The gate is closing (or the target is changing): stop polling; the
         // next `loadEverything` restarts it against the current server. The
         // last answer is not account data and stays.

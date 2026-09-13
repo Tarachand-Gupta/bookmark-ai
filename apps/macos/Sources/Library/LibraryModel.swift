@@ -67,6 +67,17 @@ final class LibraryModel {
     private(set) var isSearching = false
     private(set) var errorMessage: String?
     private(set) var errorHint: String?
+    /// True while the rows on screen came from the last session's disk cache
+    /// and a network refresh is still in flight — the "syncing" pill's state.
+    /// Flips false the moment the refresh settles (answers or fails).
+    private(set) var isSyncingFromCache = false
+
+    /// The last UNFILTERED All-Bookmarks list the server returned — what the
+    /// disk snapshot persists, so a ⌘R pressed on a filtered view never writes
+    /// the filtered slice over it. Nil until the first unfiltered refresh of
+    /// the session lands; `cacheState` then falls back to the live rows.
+    private var unfilteredBookmarks: [Bookmark]?
+    private var unfilteredTotal: Int?
 
     private let api: ApiClient
     private var loadTask: Task<Void, Never>?
@@ -106,6 +117,9 @@ final class LibraryModel {
     // MARK: - Loading
 
     /// Reload the facets and the current filter's rows. Cancels any in-flight load.
+    /// While the screen still shows cached rows (`isSyncingFromCache`), a refresh
+    /// must not raise the full-window loading state — the pill is the loading UI
+    /// for that path.
     func refresh() async {
         loadTask?.cancel()
         let task = Task { @MainActor in
@@ -115,9 +129,27 @@ final class LibraryModel {
         await task.value
     }
 
+    /// True when the visible content is cached data awaiting its first network
+    /// refresh — the pill's condition, checked by the view.
+    var showingCachedLibrary: Bool { isSyncingFromCache }
+
     private func performRefresh() async {
-        isLoading = true
-        defer { isLoading = false }
+        let fromCache = isSyncingFromCache
+        if fromCache {
+            // The window already shows last session's library: keep it on
+            // screen and let the pill carry the progress. Never flash the
+            // whole-window spinner over rendered content.
+            isLoading = false
+        } else {
+            isLoading = true
+        }
+        defer {
+            isLoading = false
+            // The pill rides exactly one background refresh: from launch until
+            // the network answers (or gives up). Later refreshes (⌘R, a filter
+            // change) have live rows on screen and don't re-arm it.
+            isSyncingFromCache = false
+        }
         clearError()
 
         // The facets and the list are independent reads — fetch them together so
@@ -135,14 +167,86 @@ final class LibraryModel {
             let (fetchedMeta, fetchedList) = try await (metaResult, listResult)
             guard !Task.isCancelled else { return }
             meta = fetchedMeta
-            bookmarks = fetchedList.bookmarks
+            // The snapshot persists the UNFILTERED All-Bookmarks state (what
+            // the app always opens on) — capture it while the answer IS that
+            // state, so a ⌘R pressed on a filtered view can never replace the
+            // disk snapshot with the filtered slice.
+            if selection == .allBookmarks && browserFilter == nil && deviceFilter == nil {
+                unfilteredBookmarks = fetchedList.bookmarks
+                unfilteredTotal = fetchedList.total
+            }
+            reconcile(rows: fetchedList.bookmarks)
             total = fetchedList.total
         } catch is CancellationError {
             return
         } catch {
             guard !Task.isCancelled else { return }
+            // From cache or not, the error surfaces the same way: the overlay
+            // only replaces an EMPTY list, so rows already on screen (cached
+            // or live) stay there under the message.
             present(error)
         }
+    }
+
+    /// Swap in the freshly fetched rows WITHOUT tearing down the collection:
+    /// bookmarks that survive keep their identity (same ids → same rows, so
+    /// SwiftUI's lazy grid/list keeps its scroll position and cell state), new
+    /// ones appear at the front (the API returns newest-first), removed ones
+    /// disappear. Identical content is a no-op, so an unchanged library never
+    /// re-renders at all.
+    private func reconcile(rows fetched: [Bookmark]) {
+        guard fetched != bookmarks else { return }
+        // 1. Cached rows the server still carries, in their cached order —
+        //    updated in place from the fetched copy.
+        var fetchedById = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
+        var surviving: [Bookmark] = []
+        surviving.reserveCapacity(min(fetched.count, bookmarks.count))
+        for cached in bookmarks {
+            if let updated = fetchedById.removeValue(forKey: cached.id) {
+                surviving.append(updated)
+            }
+        }
+        // 2. Everything else is new — at the FRONT, in the API's own order
+        //    (newest-first), matching where the server would have put them.
+        //    (`fetchedById` now maps only fetched rows the cache didn't have.)
+        let fresh = fetched.filter { fetchedById[$0.id] != nil }
+        bookmarks = fresh + surviving
+    }
+
+    /// Tests: the same in-place merge the refresh performs, without a server.
+    func reconcileForTesting(rows fetched: [Bookmark]) {
+        reconcile(rows: fetched)
+    }
+
+    /// Hydrate from the last session's disk snapshot BEFORE any network work,
+    /// so the window's first paint shows real content. Returns whether a
+    /// snapshot was applied (drives the pill). A snapshot from another server
+    /// target is dropped, not shown.
+    @discardableResult
+    func hydrateFromCache(_ state: LibraryCacheState?, serverTarget: String) -> Bool {
+        guard let state, state.serverTarget == serverTarget else { return false }
+        guard !state.bookmarks.isEmpty || state.total > 0 || !state.meta.categories.isEmpty || !state.meta.tags.isEmpty
+        else { return false }
+        meta = state.meta
+        bookmarks = state.bookmarks
+        total = state.total
+        isSyncingFromCache = true
+        return true
+    }
+
+    /// The state worth persisting — the last UNFILTERED All-Bookmarks answer
+    /// (the state the app always opens on), falling back to the live rows when
+    /// no unfiltered refresh has happened yet this session (e.g. straight after
+    /// a hydrate). `target` stamps the snapshot so a Local snapshot is never
+    /// shown on Cloud; `sessions` fills in the Sessions page's part.
+    func cacheState(serverTarget target: String, sessions: [Session]) -> LibraryCacheState {
+        LibraryCacheState(
+            serverTarget: target,
+            bookmarks: unfilteredBookmarks ?? bookmarks,
+            total: unfilteredTotal ?? total,
+            meta: meta,
+            sessions: sessions
+        )
     }
 
     /// Change the sidebar selection. For library filters this reloads and clears
@@ -229,6 +333,9 @@ final class LibraryModel {
         meta = .empty
         searchText = ""
         selection = .allBookmarks
+        isSyncingFromCache = false
+        unfilteredBookmarks = nil
+        unfilteredTotal = nil
         clearError()
     }
 

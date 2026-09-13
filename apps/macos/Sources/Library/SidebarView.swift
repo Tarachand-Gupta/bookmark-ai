@@ -19,6 +19,7 @@ struct SidebarView: View {
 
         VStack(spacing: 0) {
             brandingHeader
+            syncPill
 
             List(selection: selectionBinding) {
                 Section {
@@ -89,6 +90,28 @@ struct SidebarView: View {
         .padding(.horizontal, 14)
         .padding(.top, 4)
         .padding(.bottom, 8)
+    }
+
+    /// The quiet "syncing" pill (Tara's cold-start spec): shown ONLY while the
+    /// rendered content came from the last session's disk cache and the
+    /// background refresh that reconciles it is still in flight. A refresh
+    /// failure leaves the cached rows on screen; the pill just goes away.
+    @ViewBuilder
+    private var syncPill: some View {
+        if appEnvironment.isSyncing {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Syncing…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 6)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("sync-pill")
+        }
     }
 
     /// Tour · MCP · Settings — the same three rows the web sidebar keeps at its

@@ -11,10 +11,17 @@ final class SignedOutResetTests: XCTestCase {
     /// `session` lets a test answer the API from a stubbed `URLProtocol`.
     @MainActor
     static func makeCloudEnvironment(session: URLSession? = nil) -> AppEnvironment {
+        AppEnvironment(preferences: makeDefaults(target: .cloud), session: session)
+    }
+
+    /// Throwaway `UserDefaults` for the given target — shared with the
+    /// cold-start tests so both build environments the same way.
+    @MainActor
+    static func makeDefaults(target: ServerTarget) -> Preferences {
         let defaults = UserDefaults(suiteName: "SignedOutResetTests-\(UUID().uuidString)")!
         let preferences = Preferences(defaults: defaults)
-        preferences.serverTarget = .cloud
-        return AppEnvironment(preferences: preferences, session: session)
+        preferences.serverTarget = target
+        return preferences
     }
 
     @MainActor

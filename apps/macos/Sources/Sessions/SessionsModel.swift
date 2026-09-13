@@ -94,6 +94,9 @@ final class SessionsModel {
     private(set) var errorHint: String?
     /// At least one successful load — distinguishes "empty" from "not asked yet".
     private(set) var loaded = false
+    /// True while the list on screen came from the disk cache and the network
+    /// refresh is still in flight (the sidebar pill's condition for sessions).
+    private(set) var isSyncingFromCache = false
 
     private let api: ApiClient
     private var loadTask: Task<Void, Never>?
@@ -102,27 +105,61 @@ final class SessionsModel {
         self.api = api
     }
 
+    /// Hydrate the list from the last session's snapshot before any network
+    /// work. Marks the model as cache-backed (not "loaded") so the empty-state
+    /// overlay stays out of the way while the pill rides the first refresh.
+    @discardableResult
+    func hydrateFromCache(_ state: LibraryCacheState?, serverTarget: String) -> Bool {
+        guard let state, state.serverTarget == serverTarget, !state.sessions.isEmpty else { return false }
+        sessions = state.sessions
+        isSyncingFromCache = true
+        return true
+    }
+
     func load() async {
         loadTask?.cancel()
         let task = Task { @MainActor in
-            self.isLoading = true
-            defer { self.isLoading = false }
+            let fromCache = self.isSyncingFromCache
+            self.isLoading = fromCache ? false : true
+            defer {
+                self.isLoading = false
+                self.isSyncingFromCache = false
+            }
             self.errorMessage = nil
             self.errorHint = nil
             do {
                 let response = try await self.api.listSessions()
                 guard !Task.isCancelled else { return }
-                self.sessions = response.sessions
+                self.reconcile(rows: response.sessions)
                 self.loaded = true
             } catch is CancellationError {
                 return
             } catch {
                 guard !Task.isCancelled else { return }
+                // Cached rows stay on screen under the message; the overlay
+                // only replaces an EMPTY list.
                 self.present(error)
             }
         }
         loadTask = task
         await task.value
+    }
+
+    /// Diff-in-place: sessions keep their identity by id, new ones land at the
+    /// front (the API returns newest-first), removed ones disappear — the same
+    /// rule the library's reconcile applies. Identical content is a no-op.
+    private func reconcile(rows fetched: [Session]) {
+        guard fetched != sessions else { return }
+        var fetchedById = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
+        var surviving: [Session] = []
+        surviving.reserveCapacity(min(fetched.count, sessions.count))
+        for cached in sessions {
+            if let updated = fetchedById.removeValue(forKey: cached.id) {
+                surviving.append(updated)
+            }
+        }
+        let fresh = fetched.filter { fetchedById[$0.id] != nil }
+        sessions = fresh + surviving
     }
 
     func delete(_ session: Session) async {
@@ -182,6 +219,7 @@ final class SessionsModel {
         sessions = []
         loaded = false
         isLoading = false
+        isSyncingFromCache = false
         errorMessage = nil
         errorHint = nil
     }
