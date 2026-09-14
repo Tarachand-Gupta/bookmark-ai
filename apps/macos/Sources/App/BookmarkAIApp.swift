@@ -13,7 +13,10 @@ struct BookmarkAIApp: App {
     @State private var appEnvironment = AppEnvironment()
 
     var body: some Scene {
-        WindowGroup {
+        // The id lets the dock-reopen path ask for THIS scene by name via
+        // the `openWindow` environment action → OpenWindowAction has no
+        // no-argument call, so the scene must be addressable.
+        WindowGroup(id: "main") {
             ContentView()
                 .environment(appEnvironment)
                 .frame(minWidth: 760, minHeight: 480)
@@ -27,6 +30,11 @@ struct BookmarkAIApp: App {
                 // touches it, so ⌘, can't hijack the reopen target the way an
                 // app-wide didBecomeKey listener would.
                 .background(MainWindowReader { AppDelegate.mainWindow = $0 })
+                // Reopen bridge: give the app delegate the scene's openWindow
+                // action so a dock click can create a fresh window after the
+                // red button destroyed the old one. The delegate is
+                // AppKit-side and can't read the SwiftUI environment itself.
+                .background(ReopenBridge { AppDelegate.reopenNewWindow = $0 })
         }
         .defaultSize(width: 1120, height: 760)
         // Title and toolbar share one bar, so the sidebar's material runs
@@ -61,26 +69,91 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// decision helper can be exercised by unit tests without NSApp.
     static weak var mainWindow: NSWindow?
 
-    func applicationShouldHandleReopen(_ application: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        Self.reopen(hasVisibleWindows: hasVisibleWindows, window: Self.mainWindow)
+    /// The scene-registered way to create a fresh main window after the old
+    /// one was destroyed by the red close button. Set from the WindowGroup's
+    /// content via `ReopenBridge`; nil in unit tests. Returning `false`
+    /// from `applicationShouldHandleReopen` does NOT make SwiftUI recreate
+    /// the window (disproven empirically 2026-09-14: after close + reopen the
+    /// only windows left were SwiftUI's hidden alpha-0 template at
+    /// (-30000, 30477) and an off-screen helper — no main window appeared),
+    /// so the delegate must call this itself.
+    static var reopenNewWindow: (() -> Void)?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        // Diagnostics for the dock-reopen path: DEBUG builds log every close
+        // and reopen with the full window list, so a repro can be read from
+        // the log instead of guessed at.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: nil, queue: .main
+        ) { notification in
+            guard let window = notification.object as? NSWindow else { return }
+            Self.log("willClose \(Self.describe(window))")
+        }
+        // Autonomous repro hook: BMAI_AUTOTEST_CLOSE=1 closes the main window
+        // 10 s after launch so the reopen path can be exercised headlessly —
+        // an AppleScript `reopen` then stands in for the dock click.
+        if ProcessInfo.processInfo.environment["BMAI_AUTOTEST_CLOSE"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                Self.log("autotest closing \(Self.mainWindow.map(Self.describe) ?? "<nil>")")
+                Self.mainWindow?.close()
+            }
+        }
+        #endif
     }
+
+    func applicationShouldHandleReopen(_ application: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        #if DEBUG
+        Self.log("event flag=\(flag) windows=[\(application.windows.map(Self.describe).joined(separator: ", "))]")
+        #endif
+        let handled = Self.reopen(hasVisibleWindows: flag, window: Self.mainWindow)
+        #if DEBUG
+        Self.log("decision handled=\(handled) windowsAfter=[\(application.windows.map(Self.describe).joined(separator: ", "))]")
+        #endif
+        return handled
+    }
+
+    #if DEBUG
+    private static func log(_ message: String) {
+        FileHandle.standardError.write(Data("[bmai-reopen] \(message)\n".utf8))
+    }
+
+    private static func describe(_ window: NSWindow) -> String {
+        let title = window.title.isEmpty ? "<untitled>" : window.title
+        return "<\(title) visible=\(window.isVisible) mini=\(window.isMiniaturized) key=\(window.isKeyWindow)>\(window == mainWindow ? " [main]" : "")"
+    }
+    #endif
 
     /// The pure decision `applicationShouldHandleReopen` delegates to —
     /// unit-tested. Returning true tells AppKit "handled, don't create a
     /// window"; returning false lets AppKit's default handling recreate the
-    /// WindowGroup's window. So: visible windows → true (nothing to do); a
-    /// live captured window → re-show it and return true; NO live window →
-    /// false. That last case is the one that matters: closing the red button
-    /// DESTROYS a SwiftUI WindowGroup's NSWindow, so by reopen time a weak
-    /// reference is nil and only "false" gets a window back on screen.
+    /// WindowGroup's window. The decision trusts ONLY the captured main
+    /// window: a live one → re-show it and return true; a DEAD one
+    /// → the delegate opens a fresh window itself via the scene's
+    /// openWindow action (returning false does NOT recreate it — empirically
+    /// disproven 2026-09-14). The hasVisibleWindows flag is
+    /// deliberately ignored: after the red button destroys the main window,
+    /// phantom leftovers can still report "visible", which made the flag
+    /// branch return true and dock clicks do nothing (bmai-reopen logs,
+    /// 2026-09-14).
     static func reopen(hasVisibleWindows: Bool, window: NSWindow?) -> Bool {
-        guard !hasVisibleWindows else { return true }
-        if let window, window.isVisible {
+        // A live window in ANY state → visible, minimized, or hidden → is
+        // the reopen target; only a destroyed one (weak ref nil) needs a
+        // fresh window. Minimized (yellow button) is the trap: isVisible
+        // is FALSE while the window sits in the Dock, so testing visibility
+        // instead of existence made the delegate mistake it for dead and
+        // openWindow(id:) clone a SECOND window (found by Tara 2026-09-14:
+        // two identical windows, the original still minimized in the Dock).
+        if let window {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return true
         }
-        return false
+        Self.reopenNewWindow?()
+        return Self.reopenNewWindow != nil
     }
 }
 
@@ -110,6 +183,29 @@ private struct MainWindowReader: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             if let window { onWindow?(window) }
+        }
+    }
+}
+
+
+/// A zero-size view whose only job is to hand the scene's `openWindow`
+/// action to the app delegate. Environment values reach SwiftUI views,
+/// never NSViews — this is the bridge across that boundary.
+private struct ReopenBridge: View {
+    let onCapture: (@escaping @MainActor () -> Void) -> Void
+
+    var body: some View {
+        ReopenBridgeContent(onCapture: onCapture)
+    }
+
+    private struct ReopenBridgeContent: View {
+        let onCapture: (@escaping @MainActor () -> Void) -> Void
+        @Environment(\.openWindow) private var openWindow
+
+        var body: some View {
+            Color.clear
+                .frame(width: 0, height: 0)
+                .onAppear { onCapture { openWindow(id: "main") } }
         }
     }
 }

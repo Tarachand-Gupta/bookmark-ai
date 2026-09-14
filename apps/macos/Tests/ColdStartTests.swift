@@ -8,6 +8,16 @@ import XCTest
 @MainActor
 final class ColdStartTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        AppDelegate.reopenNewWindow = nil
+    }
+
+    override func tearDown() {
+        AppDelegate.reopenNewWindow = nil
+        super.tearDown()
+    }
+
     // MARK: - Fixtures
 
     private func makeBookmark(id: String, title: String = "Example") -> Bookmark {
@@ -328,15 +338,31 @@ final class ColdStartTests: XCTestCase {
 
     // MARK: - Reopen (Bug 2)
 
-    func testReopenWithVisibleWindowsLetsMacOSHandleIt() {
+    func testReopenIgnoresPhantomVisibleWindowsAfterAClose() {
+        // 2026-09-14 regression: after the red button destroys the main
+        // window, hidden/zero-size helper windows can still make macOS pass
+        // hasVisibleWindows=true. Trusting the flag returned true ("nothing
+        // to do") and dock clicks did nothing. With no captured window the
+        // answer must stay false no matter what the flag says, so AppKit
+        // recreates the group's window.
+        XCTAssertFalse(AppDelegate.reopen(hasVisibleWindows: true, window: nil))
+    }
+
+    func testReopenWithTheSceneBridgeOpensAFreshWindow() {
+        // With the bridge present (the real app after first paint), a dead
+        // captured window means the delegate opens a new window itself and
+        // reports the event handled.
+        AppDelegate.reopenNewWindow = { }
         XCTAssertTrue(AppDelegate.reopen(hasVisibleWindows: true, window: nil))
+        AppDelegate.reopenNewWindow = nil
     }
 
     func testReopenWithoutWindowsReturnsFalseSoAppKitRecreatesIt() {
-        // Closing a SwiftUI WindowGroup window DESTROYS its NSWindow, so after
-        // a close the weak capture is nil (or hidden): reopen must report NOT
-        // handled so AppKit's default recreates the group's window. Returning
-        // true here was the original bug — dock click did nothing.
+        // The scene's openWindow bridge is nil in unit tests (and on first
+        // launch before the content view exists): reopen must say NOT handled
+        // so AppKit's default handling can show SOMETHING. With a live bridge
+        // (the real app after first paint) the answer is true because the
+        // delegate opened a fresh window itself.
         XCTAssertFalse(AppDelegate.reopen(hasVisibleWindows: false, window: nil))
     }
 
