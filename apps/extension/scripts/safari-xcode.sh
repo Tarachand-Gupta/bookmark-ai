@@ -19,7 +19,7 @@
 #   7. --build    xcodebuild Debug, signed with the "Apple Development" identity in the keychain
 #                 (manual signing so no Xcode account/session is needed; ad-hoc if none)
 #   8. --archive  xcodebuild archive, Release → safari-app/build/BookmarkAISafari.xcarchive
-#   9. --install  quit the running app, ditto the Debug product over /Applications/Bookmark AI.app
+#   9. --install  quit the running app, ditto the Debug product over /Applications/Bookmark AI for Safari.app
 #                 (keeps it the ONLY registered copy), relaunch, print pluginkit row + extension state
 #
 # Never calls `xcrun safari-web-extension-converter` — safari-app/project.yml replaced it.
@@ -41,7 +41,12 @@ APPEX_NAME="Bookmark AI Extension.appex"
 APP_BUNDLE_ID="ai.bookmark.safari"
 EXT_BUNDLE_ID="ai.bookmark.safari.Extension"
 DEVELOPMENT_TEAM_ID="L3PP7DQZWS"   # = project.yml DEVELOPMENT_TEAM; prefixes the App Group
-INSTALL_DEST="/Applications/$APP_NAME.app"
+# NOT "/Applications/$APP_NAME.app": apps/macos (ai.purecode.bookmarkai.macos,
+# display name "Bookmark AI") owns that path, and the two products silently
+# clobber each other if the companion installs there too. This app's display
+# name (App/Info.plist) and Mac App Store listing name are both
+# "Bookmark AI for Safari", so the bundle name matches.
+INSTALL_DEST="/Applications/Bookmark AI for Safari.app"
 
 SKIP_WEB_BUILD=0; ALLOW_DEV=0; DO_BUILD=0; DO_ARCHIVE=0; UNSIGNED=0; DO_INSTALL=0; DO_OPEN=0
 for arg in "$@"; do
