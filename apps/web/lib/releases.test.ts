@@ -101,7 +101,7 @@ describe("drafts", () => {
   it("emptyReleaseDraft prefills the platform's download URL", () => {
     expect(emptyReleaseDraft("macos").downloadUrl).toBe("https://github.com/Tarachand-Gupta/bookmark-ai/releases");
     expect(emptyReleaseDraft("android").downloadUrl).toBe(
-      "https://play.google.com/store/apps/details?id=ai.purecode.bookmarkai",
+      "https://play.google.com/store/apps/details?id=ai.bookmarkai",
     );
     expect(emptyReleaseDraft("ios")).toMatchObject({ version: "", build: "", releaseNotes: "" });
   });

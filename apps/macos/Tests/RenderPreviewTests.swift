@@ -252,8 +252,8 @@ final class RenderPreviewTests: XCTestCase {
             ProcessInfo.processInfo.environment["RENDER_PREVIEWS"] == "1",
             "visual harness — set RENDER_PREVIEWS=1 to produce the PNG"
         )
-        let tara = AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@purecode.ai")
-        let emailOnly = AccountInfo(signedIn: true, name: nil, email: "tara@purecode.ai")
+        let tara = AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@bookmark-ai.cloud")
+        let emailOnly = AccountInfo(signedIn: true, name: nil, email: "tara@bookmark-ai.cloud")
         // No name, so the long address is what the footer actually renders.
         let longEmail = AccountInfo(signedIn: true, name: nil, email: "tarachandragupta2784@gmail.com")
         let settings = UserSettings(
@@ -339,7 +339,7 @@ final class RenderPreviewTests: XCTestCase {
             let sheetTask = await SessionLoadTests.completeSignInFromTheSheetsTask(justSignedIn)
             XCTAssertTrue(sheetTask.isCancelled)
             await justSignedIn.sessionLoad?.value
-            XCTAssertEqual(justSignedIn.auth.account?.email, "tara@purecode.ai")
+            XCTAssertEqual(justSignedIn.auth.account?.email, "tara@bookmark-ai.cloud")
             justSignedIn.settings.seed(settings, plan: .free)
             try render(AccountFooter().environment(justSignedIn).frame(width: 250).background(sidebar),
                        width: 250, appearance: appearance, name: "auth-footer-after-sign-in-\(suffix)")

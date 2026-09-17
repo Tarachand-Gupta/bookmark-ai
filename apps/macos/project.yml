@@ -7,7 +7,7 @@ name: BookmarkAI
 # ─────────────────────────────────────────────────────────────────────────────
 
 options:
-  bundleIdPrefix: ai.purecode.bookmarkai
+  bundleIdPrefix: ai.bookmarkai
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
@@ -46,7 +46,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: BookmarkAI
-        PRODUCT_BUNDLE_IDENTIFIER: ai.purecode.bookmarkai.macos
+        PRODUCT_BUNDLE_IDENTIFIER: ai.bookmarkai.macos
         INFOPLIST_FILE: Resources/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: Resources/BookmarkAI.entitlements
@@ -76,7 +76,7 @@ targets:
       - target: BookmarkAI
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.purecode.bookmarkai.macos.tests
+        PRODUCT_BUNDLE_IDENTIFIER: ai.bookmarkai.macos.tests
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/BookmarkAI.app/Contents/MacOS/BookmarkAI"
         BUNDLE_LOADER: "$(TEST_HOST)"

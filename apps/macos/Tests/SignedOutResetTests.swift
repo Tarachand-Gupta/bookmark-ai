@@ -47,7 +47,7 @@ final class SignedOutResetTests: XCTestCase {
             from: Data(#"{"provider":"google","apiKeySet":true,"apiKeyLast4":"0000","aiMode":"own","ownKeyReady":true}"#.utf8)
         )
         env.settings.seed(settings, plan: .free)
-        env.auth.seed(status: .signedIn, account: AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@purecode.ai"))
+        env.auth.seed(status: .signedIn, account: AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@bookmark-ai.cloud"))
         env.requestedSettingsTab = .account
         env.isPresentingTour = true
     }

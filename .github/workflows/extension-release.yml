@@ -289,7 +289,7 @@ jobs:
           | File | Use |
           | --- | --- |
           | \`bookmark-aiextension-$v-chrome.zip\` | Chrome / Edge / Brave (MV3). Unzip, then **chrome://extensions ▸ Developer mode ▸ Load unpacked** and pick the folder. The Chrome Web Store listing is the recommended install when available. |
-          | \`bookmark-aiextension-$v-firefox.zip\` | Firefox (MV2, id \`bookmark-ai@purecode.ai\`). Temporary load via **about:debugging ▸ This Firefox ▸ Load Temporary Add-on**; a permanent install needs the AMO-signed build. |
+          | \`bookmark-aiextension-$v-firefox.zip\` | Firefox (MV2, id \`bookmark-ai@bookmark-ai.cloud\`). Temporary load via **about:debugging ▸ This Firefox ▸ Load Temporary Add-on**; a permanent install needs the AMO-signed build. |
           | \`bookmark-aiextension-$v-sources.zip\` | Reproducible source of the Firefox build (\`BUILD.md\` inside) — what is uploaded to AMO's source-code review. |
 
           Verify: \`shasum -a 256 -c bookmark-aiextension-$v-SHA256SUMS.txt\`.

@@ -23,7 +23,7 @@ final class AppUpdateModel {
 
     static let pollInterval: Duration = .seconds(6 * 3600)
     static let snoozeInterval: TimeInterval = 24 * 3600
-    private static let log = Logger(subsystem: "ai.purecode.bookmarkai", category: "updates")
+    private static let log = Logger(subsystem: "ai.bookmarkai", category: "updates")
 
     /// The running app's version + build.
     private(set) var current: VersionRef

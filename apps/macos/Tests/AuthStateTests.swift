@@ -52,7 +52,7 @@ final class AuthStateTests: XCTestCase {
         XCTAssertNil(token)
         XCTAssertEqual(env.auth.status, .signedIn)
         XCTAssertEqual(env.gate, .ready)
-        XCTAssertEqual(env.auth.account?.email, "tara@purecode.ai")
+        XCTAssertEqual(env.auth.account?.email, "tara@bookmark-ai.cloud")
         XCTAssertEqual(env.library.meta.total, 73, "data must survive a Clerk blip")
         XCTAssertEqual(signOuts, 0)
     }
@@ -173,9 +173,9 @@ final class AuthStateTests: XCTestCase {
     // MARK: - Identity
 
     func testInitialsFromNameThenEmail() {
-        XCTAssertEqual(AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@purecode.ai").initials, "TG")
+        XCTAssertEqual(AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@bookmark-ai.cloud").initials, "TG")
         XCTAssertEqual(AccountInfo(signedIn: true, name: "Tara", email: nil).initials, "T")
-        XCTAssertEqual(AccountInfo(signedIn: true, name: nil, email: "tara@purecode.ai").initials, "T")
+        XCTAssertEqual(AccountInfo(signedIn: true, name: nil, email: "tara@bookmark-ai.cloud").initials, "T")
         XCTAssertEqual(AccountInfo(signedIn: true, name: nil, email: nil).initials, "")
         XCTAssertFalse(AccountInfo(signedIn: true, name: nil, email: nil).hasIdentity)
         XCTAssertTrue(AccountInfo(signedIn: true, name: nil, email: "t@x.io").hasIdentity)
@@ -186,11 +186,11 @@ final class AuthStateTests: XCTestCase {
     @MainActor
     func testLoadAccountKeepsIdentityOnFailure() async {
         let env = makeEnvironment()
-        env.auth.seed(status: .signedIn, account: AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@purecode.ai"))
+        env.auth.seed(status: .signedIn, account: AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@bookmark-ai.cloud"))
         env.auth.mintOverride = { _ in .unavailable } // no token ⇒ /api/me fails locally
 
         await env.auth.loadAccount(using: env.api)
 
-        XCTAssertEqual(env.auth.account?.email, "tara@purecode.ai")
+        XCTAssertEqual(env.auth.account?.email, "tara@bookmark-ai.cloud")
     }
 }

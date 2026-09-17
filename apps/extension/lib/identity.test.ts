@@ -3,7 +3,7 @@ import { displayIdentity, maskAccountEmail, maskEmail } from "./identity";
 
 describe("maskEmail", () => {
   it("keeps the first three local-part chars and the full domain", () => {
-    expect(maskEmail("tarachand@purecode.ai")).toBe("tar**@purecode.ai");
+    expect(maskEmail("tarachand@bookmark-ai.cloud")).toBe("tar**@bookmark-ai.cloud");
     expect(maskEmail("bob@gmail.com")).toBe("bob**@gmail.com");
   });
 
@@ -33,7 +33,7 @@ describe("maskAccountEmail", () => {
   });
 
   it("trims surrounding whitespace before masking", () => {
-    expect(maskAccountEmail("  tarachand@purecode.ai  ")).toBe("tar****.ai");
+    expect(maskAccountEmail("  tarachand@bookmark-ai.cloud  ")).toBe("tar****oud");
   });
 });
 
@@ -47,7 +47,7 @@ describe("displayIdentity", () => {
   it("falls back to a masked email when a name part is missing", () => {
     expect(displayIdentity({ firstName: "Ada", email: "ada@example.com" })).toBe("ada**@example.com");
     expect(displayIdentity({ lastName: "Lovelace", email: "ada@example.com" })).toBe("ada**@example.com");
-    expect(displayIdentity({ email: "tarachand@purecode.ai" })).toBe("tar**@purecode.ai");
+    expect(displayIdentity({ email: "tarachand@bookmark-ai.cloud" })).toBe("tar**@bookmark-ai.cloud");
   });
 
   it("treats whitespace-only name parts as absent", () => {

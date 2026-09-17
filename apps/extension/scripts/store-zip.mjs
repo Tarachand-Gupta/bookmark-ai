@@ -244,7 +244,7 @@ function firefoxOutputTable() {
 
 function buildMd() {
   const firefoxZipName = path.basename(FIREFOX_ZIP);
-  return `# Building Bookmark AI (Firefox add-on \`bookmark-ai@purecode.ai\`) v${VERSION} from source
+  return `# Building Bookmark AI (Firefox add-on \`bookmark-ai@bookmark-ai.cloud\`) v${VERSION} from source
 
 This archive is the complete, self-contained source for the add-on package uploaded to
 addons.mozilla.org. It is a trimmed copy of the open-source monorepo
@@ -321,7 +321,7 @@ Build-time only: \`wxt\`, \`vite\`, \`@wxt-dev/module-react\`, \`tailwindcss\` +
 
 ## Contact
 
-Tara — tara@purecode.ai · https://www.bookmark-ai.cloud
+Tara — tara@bookmark-ai.cloud · https://www.bookmark-ai.cloud
 `;
 }
 

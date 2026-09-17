@@ -150,7 +150,7 @@ export default defineConfig({
     ...(browser === "firefox" && {
       browser_specific_settings: {
         gecko: {
-          id: "bookmark-ai@purecode.ai",
+          id: "bookmark-ai@bookmark-ai.cloud",
           // Firefox 140 introduced the built-in data-consent UI that renders
           // `data_collection_permissions`; AMO asks new submissions declaring
           // any collection to require it.

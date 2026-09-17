@@ -126,7 +126,7 @@ The keystore lives at the repo root, gitignored and Vercel-ignored (`/.keys/` in
 `**/.keys` in `.vercelignore` — check with `git check-ignore -v .keys/android-release.keystore`):
 
 - `.keys/android-release.keystore` — PKCS12, RSA 2048, alias `bookmark-ai`, `CN=Bookmark AI,
-  O=purecode.ai`, valid 10,000 days. PKCS12 keystores use ONE password for store and key.
+  O=Bookmark AI`, valid 10,000 days. PKCS12 keystores use ONE password for store and key.
 - `.keys/android-release.env` — the four `ANDROID_*` variables (`set -a; . .keys/android-release.env;
   set +a` before a local release build). The GitHub secrets carry the same values;
   `ANDROID_KEYSTORE_BASE64` is `base64 < .keys/android-release.keystore`.

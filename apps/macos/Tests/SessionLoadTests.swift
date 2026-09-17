@@ -9,7 +9,7 @@ import XCTest
 /// and a load awaited inside it never lands.
 final class SessionLoadTests: XCTestCase {
 
-    private static let meJSON = Data(#"{"signedIn":true,"name":"Tara Gupta","email":"tara@purecode.ai"}"#.utf8)
+    private static let meJSON = Data(#"{"signedIn":true,"name":"Tara Gupta","email":"tara@bookmark-ai.cloud"}"#.utf8)
 
     /// A cloud environment whose API is answered by the stub protocol:
     /// `/api/me` with Tara's identity, everything else 404 (the library shows
@@ -67,7 +67,7 @@ final class SessionLoadTests: XCTestCase {
 
         let load = try XCTUnwrap(env.sessionLoad, "a confirmed session must start the app's own load")
         await load.value
-        XCTAssertEqual(env.auth.account?.email, "tara@purecode.ai", "identity must load right after an in-app sign-in")
+        XCTAssertEqual(env.auth.account?.email, "tara@bookmark-ai.cloud", "identity must load right after an in-app sign-in")
         XCTAssertEqual(env.auth.account?.name, "Tara Gupta")
         XCTAssertEqual(identityRequests(), 1, "one confirmation, one /api/me")
     }
@@ -89,7 +89,7 @@ final class SessionLoadTests: XCTestCase {
         XCTAssertEqual(env.auth.status, .signedIn)
         await env.sessionLoad?.value
 
-        XCTAssertEqual(env.auth.account?.email, "tara@purecode.ai")
+        XCTAssertEqual(env.auth.account?.email, "tara@bookmark-ai.cloud")
         XCTAssertEqual(identityRequests(), 1)
     }
 
@@ -107,7 +107,7 @@ final class SessionLoadTests: XCTestCase {
         await env.auth.restore(requiresAuth: true)
         await env.sessionLoad?.value
         XCTAssertEqual(confirmations, 1)
-        XCTAssertEqual(env.auth.account?.email, "tara@purecode.ai", "the launch restore loads the identity")
+        XCTAssertEqual(env.auth.account?.email, "tara@bookmark-ai.cloud", "the launch restore loads the identity")
         XCTAssertEqual(identityRequests(), 1)
 
         let launchLoad = env.sessionLoad
@@ -125,7 +125,7 @@ final class SessionLoadTests: XCTestCase {
         XCTAssertTrue(sheetTask.isCancelled)
         await env.sessionLoad?.value
         XCTAssertEqual(confirmations, 2)
-        XCTAssertEqual(env.auth.account?.email, "tara@purecode.ai", "signing in again loads it again")
+        XCTAssertEqual(env.auth.account?.email, "tara@bookmark-ai.cloud", "signing in again loads it again")
         XCTAssertEqual(identityRequests(), 2)
     }
 
@@ -149,7 +149,7 @@ final class SessionLoadTests: XCTestCase {
         XCTAssertEqual(env.auth.status, .signedIn)
         XCTAssertFalse(env.auth.restoreStalled)
         await env.sessionLoad?.value
-        XCTAssertEqual(env.auth.account?.email, "tara@purecode.ai")
+        XCTAssertEqual(env.auth.account?.email, "tara@bookmark-ai.cloud")
 
         // The backoff retry that was scheduled (1 s) must find nothing to do.
         try await Task.sleep(for: .milliseconds(1300))

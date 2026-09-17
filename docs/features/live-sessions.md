@@ -952,7 +952,7 @@ session save, and the same card in the web app. Opt-in does not mean hard to tur
 
 ```js
 browser_specific_settings: {
-  gecko: { id: "bookmark-ai@purecode.ai", data_collection_permissions: { required: ["none"] } },
+  gecko: { id: "bookmark-ai@bookmark-ai.cloud", data_collection_permissions: { required: ["none"] } },
 },
 ```
 
@@ -1511,7 +1511,7 @@ These change decisions recorded above; the superseded reasoning is retained in p
 
 8. **Popup shows who's signed in — DONE 2026-07-17.** Independent of Stage 1, shipped in the
    working tree: the extension popup renders the signed-in identity under the wordmark — full
-   name when both names are set, else a masked email (`tar**@purecode.ai`). Pure logic in
+   name when both names are set, else a masked email (`tar**@bookmark-ai.cloud`). Pure logic in
    `apps/extension/lib/identity.ts` with tests.
 
 ### 9.2.1 Still open after batch 2

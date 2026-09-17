@@ -108,7 +108,7 @@ pre-existing, unrelated sign-up change from before this work. Do not stage it wi
   `wxt.config.ts` (+`alarms`), `background.ts`, `lib/messages.ts` (`LIVE_SET_ENABLED`), `lib/api.ts`
   (export `authHeaders`), `popup/App.tsx`.
 - **Also here (`2373ca0`, separate feature):** the popup now shows the signed-in identity under
-  the wordmark — full name if both names set, else masked email (`tar**@purecode.ai`). Logic in
+  the wordmark — full name if both names set, else masked email (`tar**@bookmark-ai.cloud`). Logic in
   `lib/identity.ts` (+ 7 tests), `components/HeaderIdentity.tsx`.
 
 ### Mobile (`c204380`) — all under `apps/mobile`

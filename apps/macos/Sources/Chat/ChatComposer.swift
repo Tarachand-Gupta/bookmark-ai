@@ -4,8 +4,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Debug-level trail for paste/drop handling (`log stream --predicate
-/// 'subsystem == "ai.purecode.bookmarkai"'`); nothing at default level.
-let composerLog = Logger(subsystem: "ai.purecode.bookmarkai", category: "composer")
+/// 'subsystem == "ai.bookmarkai"'`); nothing at default level.
+let composerLog = Logger(subsystem: "ai.bookmarkai", category: "composer")
 
 /// The composer: a REAL input container — rounded surface, hairline border,
 /// focus tint (drop tint while a file hovers) — with the paperclip and the

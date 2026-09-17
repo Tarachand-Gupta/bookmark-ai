@@ -67,7 +67,7 @@ Ordered so that items later in the list depend on items earlier in it.
 
 - [ ] Developer account: free.
 - [x] Package (2026-09-07): `pnpm --filter @bookmark-ai/extension release:zip` →
-      `.output/bookmark-aiextension-<v>-firefox.zip` (MV2; gecko id `bookmark-ai@purecode.ai`;
+      `.output/bookmark-aiextension-<v>-firefox.zip` (MV2; gecko id `bookmark-ai@bookmark-ai.cloud`;
       `strict_min_version: "140.0"`; TRUTHFUL `data_collection_permissions.required` =
       `authenticationInfo` + `bookmarksInfo` + `browsingActivity` — AMO rejects a wrong
       declaration, and `technicalAndInteraction` may only ever be optional so it is not

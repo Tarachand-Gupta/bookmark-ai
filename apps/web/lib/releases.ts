@@ -47,7 +47,7 @@ export const PLATFORM_LABELS: Record<AppPlatform, string> = {
 export const DEFAULT_DOWNLOAD_URLS: Record<AppPlatform, string> = {
   macos: "https://github.com/Tarachand-Gupta/bookmark-ai/releases",
   ios: "https://apps.apple.com/app/id<FILL_IN>",
-  android: "https://play.google.com/store/apps/details?id=ai.purecode.bookmarkai",
+  android: "https://play.google.com/store/apps/details?id=ai.bookmarkai",
 };
 
 export function isSemver(value: string): boolean {

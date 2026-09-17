@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: "How to get help with Bookmark AI, and answers to the most common questions.",
 };
 
-const CONTACT_EMAIL = "tara@purecode.ai";
+const CONTACT_EMAIL = "tara@bookmark-ai.cloud";
 
 const linkClass =
   "font-medium text-foreground underline underline-offset-4 transition-colors hover:text-foreground/80";
@@ -109,7 +109,7 @@ export default function SupportPage() {
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-foreground">Contact</h2>
           <p>
-            Bookmark AI is made by Tarachand Gupta (PureCode). Email{" "}
+            Bookmark AI is made by Tarachand Gupta. Email{" "}
             <a href={`mailto:${CONTACT_EMAIL}`} className={linkClass}>
               {CONTACT_EMAIL}
             </a>{" "}

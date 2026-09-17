@@ -15,10 +15,10 @@ prebuild.
 | Thing | Value |
 | --- | --- |
 | App name | Bookmark AI |
-| iOS bundle id | `ai.purecode.bookmarkai` |
-| iOS share-extension bundle id | `ai.purecode.bookmarkai.ShareExtension` |
-| iOS App Group | `group.ai.purecode.bookmarkai` (both targets) |
-| Android package | `ai.purecode.bookmarkai` |
+| iOS bundle id | `ai.bookmarkai` |
+| iOS share-extension bundle id | `ai.bookmarkai.ShareExtension` |
+| iOS App Group | `group.ai.bookmarkai` (both targets) |
+| Android package | `ai.bookmarkai` |
 | Marketing version | `app.json` → `expo.version` (`1.0.0`) |
 | iOS build number | `app.json` → `expo.ios.buildNumber` (`"1"`) |
 | Android versionCode | `app.json` → `expo.android.versionCode` (`1`) |
@@ -168,7 +168,7 @@ cd android && JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Content
   ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew assembleRelease
 # → android/app/build/outputs/apk/release/app-release.apk  (74 MB)
 adb install -r android/app/build/outputs/apk/release/app-release.apk
-adb shell am start -n ai.purecode.bookmarkai/.MainActivity
+adb shell am start -n ai.bookmarkai/.MainActivity
 ```
 
 `BUILD SUCCESSFUL in 4m 9s`. **No keystore needed**: the Expo bare template's `release` build
@@ -228,14 +228,14 @@ cd apps/mobile && eas init   # creates the EAS project, writes extra.eas.project
 
 ### 7.2 iOS credentials + App Store Connect
 
-1. Apple Developer Program membership ($99/yr) on the account that owns `ai.purecode.bookmarkai`.
-2. Register **two** App IDs (or let EAS do it): `ai.purecode.bookmarkai` and
-   `ai.purecode.bookmarkai.ShareExtension`. Both must have the **App Groups** capability
-   enabled and be members of `group.ai.purecode.bookmarkai` — the share extension passes the
+1. Apple Developer Program membership ($99/yr) on the account that owns `ai.bookmarkai`.
+2. Register **two** App IDs (or let EAS do it): `ai.bookmarkai` and
+   `ai.bookmarkai.ShareExtension`. Both must have the **App Groups** capability
+   enabled and be members of `group.ai.bookmarkai` — the share extension passes the
    shared URL to the app through that group, so a missing group breaks sharing at runtime, not
    at build time.
 3. Create the app record in App Store Connect (name, primary language, bundle id
-   `ai.purecode.bookmarkai`, SKU). Note its numeric **Apple ID** → that is `ascAppId`.
+   `ai.bookmarkai`, SKU). Note its numeric **Apple ID** → that is `ascAppId`.
 4. Fill the three placeholders in `eas.json` → `submit.production.ios`: `appleId` (your Apple
    account email), `ascAppId`, `appleTeamId` (10-char team id).
 5. Optional but recommended: add `"appleTeamId": "<TEAM_ID>"` to `app.json` → `ios`. Prebuild
@@ -254,7 +254,7 @@ cd apps/mobile && eas init   # creates the EAS project, writes extra.eas.project
 ### 7.3 Android / Play Console
 
 1. Google Play Developer account (one-time $25).
-2. Create the app in Play Console with package `ai.purecode.bookmarkai`. Leave **Play App
+2. Create the app in Play Console with package `ai.bookmarkai`. Leave **Play App
    Signing** on (the default): EAS holds the *upload* key, Google holds the app-signing key.
 3. Create a Google Cloud service account with the *Service Account User* role, grant it
    Play Console access (Release manager), download its JSON key to

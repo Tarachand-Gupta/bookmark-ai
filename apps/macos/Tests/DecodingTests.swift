@@ -153,10 +153,10 @@ final class DecodingTests: XCTestCase {
 
     func testAccountInfoPrefersNameAndKeepsEmailAsDetail() throws {
         let account = try decode(
-            AccountInfo.self, #"{"signedIn":true,"name":"Tara","email":"tara@purecode.ai"}"#
+            AccountInfo.self, #"{"signedIn":true,"name":"Tara","email":"tara@bookmark-ai.cloud"}"#
         )
         XCTAssertEqual(account.displayName, "Tara")
-        XCTAssertEqual(account.displayDetail, "tara@purecode.ai")
+        XCTAssertEqual(account.displayDetail, "tara@bookmark-ai.cloud")
     }
 
     func testHealthResponse() throws {

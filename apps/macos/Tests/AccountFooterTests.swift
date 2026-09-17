@@ -6,13 +6,13 @@ import XCTest
 /// spelled out in Settings ▸ Account).
 final class AccountFooterTests: XCTestCase {
 
-    private let tara = AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@purecode.ai")
+    private let tara = AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@bookmark-ai.cloud")
 
     func testCloudSignedInShowsNameOverHostWithEmailTooltip() {
         let lines = AccountFooter.lines(target: .cloud, status: .signedIn, account: tara)
         XCTAssertEqual(
             lines,
-            .init(primary: "Tara Gupta", secondary: "bookmark-ai.cloud", tooltip: "tara@purecode.ai")
+            .init(primary: "Tara Gupta", secondary: "bookmark-ai.cloud", tooltip: "tara@bookmark-ai.cloud")
         )
 
         // Surrounding whitespace is trimmed off both, and a long name is the
@@ -30,15 +30,15 @@ final class AccountFooterTests: XCTestCase {
     }
 
     func testCloudSignedInWithoutNameFallsBackToEmailThenStatus() {
-        let emailOnly = AccountInfo(signedIn: true, name: nil, email: "tara@purecode.ai")
+        let emailOnly = AccountInfo(signedIn: true, name: nil, email: "tara@bookmark-ai.cloud")
         XCTAssertEqual(
             AccountFooter.lines(target: .cloud, status: .signedIn, account: emailOnly),
-            .init(primary: "tara@purecode.ai", secondary: "bookmark-ai.cloud", tooltip: "tara@purecode.ai")
+            .init(primary: "tara@bookmark-ai.cloud", secondary: "bookmark-ai.cloud", tooltip: "tara@bookmark-ai.cloud")
         )
-        let blankName = AccountInfo(signedIn: true, name: "   ", email: "tara@purecode.ai")
+        let blankName = AccountInfo(signedIn: true, name: "   ", email: "tara@bookmark-ai.cloud")
         XCTAssertEqual(
             AccountFooter.lines(target: .cloud, status: .signedIn, account: blankName).primary,
-            "tara@purecode.ai"
+            "tara@bookmark-ai.cloud"
         )
 
         // No email to hover: the name still gets the untruncated tooltip.

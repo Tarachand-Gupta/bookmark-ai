@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ai.purecode.bookmarkai",
+      "bundleIdentifier": "ai.bookmarkai",
       "appleTeamId": "L3PP7DQZWS",
       "buildNumber": "1",
       "usesAppleSignIn": true,
@@ -77,7 +77,7 @@
       }
     },
     "android": {
-      "package": "ai.purecode.bookmarkai",
+      "package": "ai.bookmarkai",
       "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#171717",
@@ -118,7 +118,7 @@
         "expo-share-intent",
         {
           "iosShareExtensionName": "Save to Bookmark AI",
-          "iosShareExtensionBundleIdentifier": "ai.purecode.bookmarkai.ShareExtension",
+          "iosShareExtensionBundleIdentifier": "ai.bookmarkai.ShareExtension",
           "iosActivationRules": {
             "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
             "NSExtensionActivationSupportsWebPageWithMaxCount": 1,

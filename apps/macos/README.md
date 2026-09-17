@@ -76,7 +76,7 @@ publishing downloads".
 | --- | --- | --- |
 | Deployment target | **macOS 14.0** | The floor that gives `@Observable`, `ContentUnavailableView`, and `.alternatingRowBackgrounds()` without gating. Everything newer (`.toolbar(removing:)`, `SearchToolbarBehavior`, `Tab`-based `TabView`) is deliberately avoided so the app runs on Sonoma, not just this machine's macOS 26. |
 | Swift language mode | 5 (`SWIFT_STRICT_CONCURRENCY: minimal`) | All model/UI types are `@MainActor`-isolated by design; Swift 6 mode is a clean follow-up, not a Phase 1 prerequisite. |
-| Bundle id | `ai.purecode.bookmarkai.macos` | |
+| Bundle id | `ai.bookmarkai.macos` | |
 | Sandbox | `app-sandbox` + `network.client` + `files.user-selected.read-write` | Outbound HTTP, plus read access to files the user explicitly picks, drops, or pastes as chat attachments (security-scoped, released after encoding). No server sockets. |
 | Accent colour | **none defined** | With no `AccentColor` asset the app adopts the *user's system accent*, which is what a Mac-native app should do. Every other colour is semantic (`.secondary`, `.tint`, `.quaternary`, `.bar`), so light/dark is automatic with zero hardcoded values. |
 | App icon | generated from `apps/desktop/assets/icon.png` (1024²) | Same brand mark as the other clients, resampled into a proper 10-slot macOS `AppIcon.appiconset`. |
@@ -212,7 +212,7 @@ disagree about whether account data may be on screen:
   truncates instead of moving them. A transient `/api/me` failure keeps the last
   identity of the same session; sign-out clears it.
 - Breadcrumbs for every transition are in the unified log:
-  `log show --last 2d --predicate 'subsystem == "ai.purecode.bookmarkai" AND category == "auth"'`.
+  `log show --last 2d --predicate 'subsystem == "ai.bookmarkai" AND category == "auth"'`.
 - Tests drive the state machine without a webview through
   `AuthController.mintOverride` (DEBUG) and `refreshTick()` — the same code
   the 45 s loop runs (`AuthStateTests`).
@@ -561,7 +561,7 @@ the web app:
    composer and as QuickLook-able thumbnails / document pills in the
    transcript. Server rejections (400/413/415 vocabulary) map to readable
    banners. Paste/drop diagnostics: `log stream --level debug --predicate
-   'subsystem == "ai.purecode.bookmarkai"'`.
+   'subsystem == "ai.bookmarkai"'`.
 5. **Settings ▸ AI** — segmented *Included free AI* ⇄ *Your own key* (PUTs
    `{aiMode}` alone), saved-key summary with a confirmed *Remove key…* (the ONLY
    sender of `apiKey: ""`), provider/model picker fed by "Verify Key & List

@@ -277,7 +277,7 @@ embedded browser — links open in Safari). Parental controls / kids category: *
 
 ### 4.4 App Review Information
 
-Contact: Tarachand Gupta · `tara@purecode.ai` · phone (Tara). Sign-in required: **Yes** →
+Contact: Tarachand Gupta · `tara@bookmark-ai.cloud` · phone (Tara). Sign-in required: **Yes** →
 *Username* `test@bookmark-ai.cloud` · *Password* **(Tara pastes it here — never in the repo)**.
 
 **Notes** (paste):
@@ -355,7 +355,7 @@ for the Mac App Store (they show a Chrome popup / "Chrome on Mac").
 
 | # | Action | Where | Notes |
 | --- | --- | --- | --- |
-| 1 | **Decide the bundle ids, then register two explicit App IDs** — default `ai.bookmark.safari` (app) + `ai.bookmark.safari.Extension` (appex), no capabilities. Alternative for consistency with iOS/macOS (`ai.purecode.bookmarkai.*`): `ai.purecode.bookmarkai.safari` + `ai.purecode.bookmarkai.safari.extension` — change the two `PRODUCT_BUNDLE_IDENTIFIER` lines in `safari-app/project.yml`, `extensionBundleIdentifier` in `App/CompanionModel.swift`, the ids in `safari-app.test.ts`/`safari-xcode.sh`, re-run `safari:xcode -- --install` and re-tick the extension in Safari once (it appears as a new extension; the stored device token is lost until an app tab re-mints it). **Permanent once step 3 exists.** | developer.apple.com → Certificates, Identifiers & Profiles → Identifiers | Team `L3PP7DQZWS` is pre-filled in `project.yml`; if the paid enrolment created a different team (Organization enrolments do), edit that one line. |
+| 1 | **Decide the bundle ids, then register two explicit App IDs** — default `ai.bookmark.safari` (app) + `ai.bookmark.safari.Extension` (appex), no capabilities. Alternative for consistency with iOS/macOS (`ai.bookmarkai.*`): `ai.bookmarkai.safari` + `ai.bookmarkai.safari.extension` — change the two `PRODUCT_BUNDLE_IDENTIFIER` lines in `safari-app/project.yml`, `extensionBundleIdentifier` in `App/CompanionModel.swift`, the ids in `safari-app.test.ts`/`safari-xcode.sh`, re-run `safari:xcode -- --install` and re-tick the extension in Safari once (it appears as a new extension; the stored device token is lost until an app tab re-mints it). **Permanent once step 3 exists.** | developer.apple.com → Certificates, Identifiers & Profiles → Identifiers | Team `L3PP7DQZWS` is pre-filled in `project.yml`; if the paid enrolment created a different team (Organization enrolments do), edit that one line. |
 | 2 | **Xcode ▸ Settings ▸ Accounts** — sign in with the enrolled Apple ID so automatic signing can issue the "Apple Distribution" / Mac App Store certificate and the two provisioning profiles on first archive. | Xcode | No manual profiles; nothing to download. |
 | 3 | **Create the App Store Connect record** — macOS app, name `Bookmark AI for Safari`, bundle id from #1, SKU `bookmark-ai-safari`, English (U.S.). | appstoreconnect.apple.com → My Apps → + | Names are unique store-wide; if taken, `Bookmark AI: Save & Search` (26). |
 | 4 | **Deploy the web app** (`vercel deploy --prod` from the repo root) so `/support` is live and the updated privacy policy text (`52a797b`) is what reviewers read. Verify `curl -I https://www.bookmark-ai.cloud/support` → 200. | terminal | Blocks saving the version's URLs (S30). |

@@ -64,7 +64,7 @@ library.
   second run of the same question with the dock at its narrowest docked width (0.3), scrolled
   back to the top so it starts at the question.
 - **Mac app**: an isolated copy of the Debug `BookmarkAI.app` (`CFBundleIdentifier` changed to
-  `ai.purecode.bookmarkai.macos.shoot`, entitlements extracted with `codesign -d --entitlements
+  `ai.bookmarkai.macos.shoot`, entitlements extracted with `codesign -d --entitlements
   :-` and re-signed ad hoc with `codesign --force --deep --sign -`), so it has its own sandbox
   container/UserDefaults and never touches a real install. Prefs written into that container
   (`serverTarget=local`, `appearanceMode=light`, `libraryLayout=grid`), window sized to 1200×760

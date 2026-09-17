@@ -23,7 +23,7 @@ import WebKit
 /// `onSessionConfirmed` so the app loads that account's data (identity,
 /// library, health) from one place, whichever path confirmed the session.
 ///
-/// Breadcrumbs: `log show --predicate 'subsystem == "ai.purecode.bookmarkai" AND category == "auth"'`.
+/// Breadcrumbs: `log show --predicate 'subsystem == "ai.bookmarkai" AND category == "auth"'`.
 @MainActor
 @Observable
 final class AuthController {
@@ -74,7 +74,7 @@ final class AuthController {
     /// How long the connecting state may last before it admits it can't reach
     /// the cloud (the sum of the backoff schedule).
     static let stallAfter: TimeInterval = 60
-    private static let log = Logger(subsystem: "ai.purecode.bookmarkai", category: "auth")
+    private static let log = Logger(subsystem: "ai.bookmarkai", category: "auth")
 
     private let web: ClerkWebAuth
     private var cachedToken: String?

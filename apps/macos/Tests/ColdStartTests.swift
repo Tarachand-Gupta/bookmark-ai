@@ -156,6 +156,13 @@ final class ColdStartTests: XCTestCase {
             session: Self.stubbedSession { _ in (500, Data("{}".utf8)) },
             cache: makeCache()
         )
+        // Isolate the auth path: without this, the ApiClient's token mint goes
+        // through the REAL WKWebView (stubbed URLSession sessions never see
+        // it), so the test answered differently depending on whether the test
+        // host's WebKit container happened to carry a live Clerk session —
+        // "passed" on the old bundle id only because that container had one.
+        env.auth.mintOverride = { _ in .token("jwt-cold") }
+        env.auth.seed(status: .signedIn)
         env.hydrateFromCache(
             makeCacheState(bookmarks: [makeBookmark(id: "b1")], sessions: [makeSession(id: "s1")])
         )

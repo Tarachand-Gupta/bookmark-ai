@@ -124,7 +124,7 @@ describe("parseReleasesResponse", () => {
       platform: "android",
       version: "1.2.0",
       build: null,
-      downloadUrl: "https://play.google.com/store/apps/details?id=ai.purecode.bookmarkai",
+      downloadUrl: "https://play.google.com/store/apps/details?id=ai.bookmarkai",
     });
     const parsed = parseReleasesResponse({ releases: { ios, android } });
     assert.ok(parsed);

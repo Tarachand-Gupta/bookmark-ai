@@ -41,7 +41,7 @@ APPEX_NAME="Bookmark AI Extension.appex"
 APP_BUNDLE_ID="ai.bookmark.safari"
 EXT_BUNDLE_ID="ai.bookmark.safari.Extension"
 DEVELOPMENT_TEAM_ID="L3PP7DQZWS"   # = project.yml DEVELOPMENT_TEAM; prefixes the App Group
-# NOT "/Applications/$APP_NAME.app": apps/macos (ai.purecode.bookmarkai.macos,
+# NOT "/Applications/$APP_NAME.app": apps/macos (ai.bookmarkai.macos,
 # display name "Bookmark AI") owns that path, and the two products silently
 # clobber each other if the companion installs there too. This app's display
 # name (App/Info.plist) and Mac App Store listing name are both

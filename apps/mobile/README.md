@@ -25,7 +25,7 @@ ever adopt `@clerk/expo/native`.
 
 Sign in with Apple needs, per Clerk instance: the Apple social connection enabled, and the
 iOS app registered under **Native applications** (App ID Prefix = Team ID `L3PP7DQZWS`,
-Bundle ID `ai.purecode.bookmarkai`). The native flow needs no Services ID or `.p8` key — those
+Bundle ID `ai.bookmarkai`). The native flow needs no Services ID or `.p8` key — those
 are only for Apple login on the web. On the Apple side the App ID needs the *Sign in with
 Apple* capability (the `com.apple.developer.applesignin` entitlement comes from
 `ios.usesAppleSignIn` + the `expo-apple-authentication` plugin in `app.json`). Account
@@ -81,7 +81,7 @@ Any app that can share a link can save to Bookmark AI — Chrome/Safari, chat ap
 anything that emits `ACTION_SEND text/*` (Android) or a web URL/page (iOS).
 
 Native plumbing: the `expo-share-intent` plugin block in `app.json` (iOS share-extension
-target `ai.purecode.bookmarkai.ShareExtension`, Android `ACTION_SEND` filters on
+target `ai.bookmarkai.ShareExtension`, Android `ACTION_SEND` filters on
 MainActivity) plus `plugins/withAndroidShareLabel.js`, which puts
 `android:label="Save to Bookmark AI"` on the SEND intent filter — Android resolves a share
 target's name from the filter first, so this names the action **without** renaming the

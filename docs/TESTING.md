@@ -211,7 +211,7 @@ Live test — by hand (needs a real browser via computer use / chrome MCP):
      ```bash
      UUID=5f3a9d2e-7c1b-4e6f-9a8d-0b1c2d3e4f50   # any UUID — pins the moz-extension:// origin
      pnpm dlx web-ext run --source-dir apps/extension/.output/firefox-mv2-dev \
-       --pref "extensions.webextensions.uuids={\"bookmark-ai@purecode.ai\":\"$UUID\"}" \
+       --pref "extensions.webextensions.uuids={\"bookmark-ai@bookmark-ai.cloud\":\"$UUID\"}" \
        --start-url http://localhost:3000/app --no-reload --no-input
      ```
      The `uuids` pref makes the popup reachable as a normal tab at

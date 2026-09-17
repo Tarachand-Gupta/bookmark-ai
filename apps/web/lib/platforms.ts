@@ -49,7 +49,7 @@ export const CHROME_WEB_STORE_ID = "ffhbgpgebpmofjkehpjcemepbgcmoelp";
 export const CHROME_WEB_STORE_URL = `https://chromewebstore.google.com/detail/${CHROME_WEB_STORE_ID}`;
 
 /**
- * The live Firefox Add-ons (AMO) listing, add-on id `bookmark-ai@purecode.ai`.
+ * The live Firefox Add-ons (AMO) listing, add-on id `bookmark-ai@bookmark-ai.cloud`.
  */
 export const FIREFOX_ADDONS_URL = "https://addons.mozilla.org/firefox/addon/bookmark-ai/";
 
