@@ -1,0 +1,17 @@
+diff --git a/dist/hooks/useSignInWithApple.ios.js b/dist/hooks/useSignInWithApple.ios.js
+index 64c9bd356f175f79c1e0bed44e65bca9ed7b7b62..2e57a8c210de50e1340db50fa1a96f211f7e57df 100644
+--- a/dist/hooks/useSignInWithApple.ios.js
++++ b/dist/hooks/useSignInWithApple.ios.js
+@@ -106,12 +106,6 @@ function useSignInWithApple() {
+ 				signUp
+ 			};
+ 		} catch (error) {
+-			if (error && typeof error === "object" && "code" in error && error.code === "ERR_REQUEST_CANCELED") return {
+-				createdSessionId: null,
+-				setActive,
+-				signIn,
+-				signUp
+-			};
+ 			throw error;
+ 		}
+ 	}

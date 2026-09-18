@@ -104,6 +104,7 @@
       ],
       "expo-web-browser",
       "expo-apple-authentication",
+      "./plugins/withSourceExpoModules",
       [
         "expo-image-picker",
         {

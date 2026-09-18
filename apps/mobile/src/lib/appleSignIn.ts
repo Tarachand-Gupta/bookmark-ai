@@ -6,10 +6,10 @@
  * runs `expo-apple-authentication`'s `signInAsync` (the system sheet), hands the
  * identity token to Clerk as `strategy: "oauth_token_apple"`, and resolves the
  * sign-up ↔ sign-in transfer itself. What it hands back is a plain result
- * object, and a CANCEL is not an error — the hook swallows Apple's
- * `ERR_REQUEST_CANCELED` and resolves with `createdSessionId: null` and the
- * untouched resources. `resolveAppleFlow` below turns that result into the one
- * thing the screen has to do next.
+ * object. Bookmark AI's pinned SDK patch preserves Apple's explicit
+ * `ERR_REQUEST_CANCELED` rejection so the screen can handle cancellation without
+ * inspecting persistent Clerk resource state. `resolveAppleFlow` remains
+ * defensive for a no-session/no-progress result from an unloaded hook.
  */
 
 /** Native Sign in with Apple is an iOS feature; Android keeps Google + email. */

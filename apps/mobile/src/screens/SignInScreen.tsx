@@ -335,9 +335,10 @@ export function SignInScreen() {
    * Clerk's hook posts it straight to FAPI (`strategy: "oauth_token_apple"`),
    * resolving the sign-up ↔ sign-in transfer itself — so none of the SSO
    * watcher machinery above applies. What is left for this screen: activate the
-   * session, finish a first sign-up that has nothing missing, stay silent on a
-   * cancel, and turn everything else into a message (resolveAppleFlow /
-   * describeAppleSignInError, unit-tested in src/lib/appleSignIn.test.ts).
+   * session, finish a first sign-up that has nothing missing, stay silent on the
+   * patched hook's explicit cancel rejection, and turn everything else into a
+   * message (resolveAppleFlow / describeAppleSignInError, unit-tested in
+   * src/lib/appleSignIn.test.ts and src/lib/clerkApplePatch.test.ts).
    */
   const signInWithApple = async () => {
     if (!isLoaded || !signUpLoaded) return;
