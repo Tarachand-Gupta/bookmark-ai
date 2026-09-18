@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: "How to get help with Bookmark AI, and answers to the most common questions.",
 };
 
-const CONTACT_EMAIL = "tara@bookmark-ai.cloud";
+const CONTACT_EMAIL = "admin@bookmark-ai.cloud";
 
 const linkClass =
   "font-medium text-foreground underline underline-offset-4 transition-colors hover:text-foreground/80";

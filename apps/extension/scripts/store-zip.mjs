@@ -321,7 +321,7 @@ Build-time only: \`wxt\`, \`vite\`, \`@wxt-dev/module-react\`, \`tailwindcss\` +
 
 ## Contact
 
-Tara — tara@bookmark-ai.cloud · https://www.bookmark-ai.cloud
+Tara — admin@bookmark-ai.cloud · https://www.bookmark-ai.cloud
 `;
 }
 

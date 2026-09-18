@@ -159,7 +159,7 @@ mobile via Clerk Expo. The route handlers delegate to `packages/engine` — chan
    `ai.bookmarkai.*` — iOS `ai.bookmarkai`, appex `ai.bookmarkai.ShareExtension`, macOS
    `ai.bookmarkai.macos`), package names (`ai.bookmarkai`), App Groups
    (`group.ai.bookmarkai`), the Firefox gecko id (`bookmark-ai@bookmark-ai.cloud`), contact
-   email (`tara@bookmark-ai.cloud`), keystores (`O=Bookmark AI`, never `O=purecode.ai`), docs,
+   email (`admin@bookmark-ai.cloud`), keystores (`O=Bookmark AI`, never `O=purecode.ai`), docs,
    store listings, and code comments. If a new identifier is needed, it must NOT reuse any
    PureCode namespace. 2026-09-17: the whole repo was purged — any "purecode" hit in a diff
    is a regression. The one deliberate exception: the gitignored scratchpad

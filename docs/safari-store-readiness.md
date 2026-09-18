@@ -12,6 +12,13 @@ App Store Connect rules (September 2026). Statuses:
   account owner can do. Ordered list in §6.
 - **RISK** — passes the rule as written but has a realistic chance of a store-side objection.
 
+> **2026-09-19 continuity update (not a fresh store audit):** the current local tree contains the
+> public `/support` route and expanded privacy policy, and the public support mailbox is now
+> `admin@bookmark-ai.cloud`. Recovered deployment history reports `/support` and `/privacy`
+> returning 200 after a production deploy, but that live state was not reverified during recovery.
+> The 2026-09-07 404/deployment observations below remain historical evidence; use the current
+> mailbox and `https://www.bookmark-ai.cloud/support` in App Store Connect.
+
 Companion docs: `apps/extension/RELEASING.md` §5 (release commands), `docs/TESTING.md` §3
 (local install + headless checks), `apps/extension/CLAUDE.md` → `safari-app/` (file map),
 `STORE-LISTING.md` / `AMO-LISTING.md` (the Chrome/Firefox declarations this listing mirrors).
@@ -277,7 +284,7 @@ embedded browser — links open in Safari). Parental controls / kids category: *
 
 ### 4.4 App Review Information
 
-Contact: Tarachand Gupta · `tara@bookmark-ai.cloud` · phone (Tara). Sign-in required: **Yes** →
+Contact: Tarachand Gupta · `admin@bookmark-ai.cloud` · phone (Tara). Sign-in required: **Yes** →
 *Username* `test@bookmark-ai.cloud` · *Password* **(Tara pastes it here — never in the repo)**.
 
 **Notes** (paste):

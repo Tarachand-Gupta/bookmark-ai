@@ -14,7 +14,7 @@ import * as WebBrowser from "expo-web-browser";
 export const WEB_URL = "https://www.bookmark-ai.cloud";
 export const PRIVACY_URL = `${WEB_URL}/privacy`;
 export const TERMS_URL = `${WEB_URL}/terms`;
-export const SUPPORT_EMAIL = "tara@bookmark-ai.cloud";
+export const SUPPORT_EMAIL = "admin@bookmark-ai.cloud";
 
 /**
  * Open a web page in the in-app browser sheet (SFSafariViewController / Chrome

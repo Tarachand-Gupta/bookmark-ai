@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 };
 
 const UPDATED = "September 7, 2026";
-const CONTACT_EMAIL = "tara@bookmark-ai.cloud";
+const CONTACT_EMAIL = "admin@bookmark-ai.cloud";
 
 export default function PrivacyPage() {
   return (

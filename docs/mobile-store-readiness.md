@@ -11,6 +11,13 @@ the CURRENT store rules (September 2026) — sources are linked inline. Statuses
 - **RISK** — passes the rule as written but has a realistic chance of a store-side rejection;
   verify at first upload.
 
+> **2026-09-19 continuity update (not a fresh store audit):** the current local tree now contains
+> the public `/support` route, the expanded privacy policy and deletion anchor described below,
+> and `admin@bookmark-ai.cloud` as the public support mailbox. Recovered deployment history reports
+> `/support` and `/privacy` returning 200 after a production deploy, but that live state was not
+> reverified during recovery. The 2026-09-07 404 observations and screenshots below remain historical
+> evidence; use the current mailbox and URLs in every new store/dashboard field.
+
 Companion doc: `docs/features/store-release.md` (EAS profiles, credentials flow, allowlist
 decision). This file supersedes its §7.5 "store-listing assets and questionnaires".
 
@@ -87,7 +94,7 @@ paid account to exist first, or the Google button has to be hidden on iOS for v1
 | --- | --- | --- | --- |
 | B1 | Privacy + Terms pages exist | PASS | `https://www.bookmark-ai.cloud/privacy` and `/terms` → 200 `text/html` (apex too). Public routes in `apps/web/middleware.ts:13-19`. |
 | B2 | Linked from inside the app | **FIXED** | `10549f2` (Settings) + `c4ecfe1` (sign-in consent line). |
-| B3 | **Support URL / email** | **NEEDS-TARA** | Apple requires a public Support URL with a way to contact you; Google wants a contact email. `tara@bookmark-ai.cloud` is now in the app (Settings → Contact Support). There is NO public support page: `/support` 404s; the homepage is public (200) but is a marketing page with only a GitHub link. Options: (a) add `apps/web/app/support/page.tsx` (public route; copy in §4.5) and use `https://www.bookmark-ai.cloud/support`; (b) once the repo is public, `https://github.com/Tarachand-Gupta/bookmark-ai/issues`. (a) is the safer reviewer experience. |
+| B3 | **Support URL / email** | **NEEDS-TARA** | At audit time, the now-superseded mailbox was in the app and `/support` returned 404. The 2026-09-19 continuity note above records the later local implementation and recovered deployment history. Use `admin@bookmark-ai.cloud` and `https://www.bookmark-ai.cloud/support` for every new listing; live reachability still needs a current check before submission. |
 | B4 | Update banner vs prod's current 404 on `/api/app/releases` | PASS | Prod returns a **404 HTML page** until the next deploy (curl, §3). `src/api.ts:324-333` throws on `!res.ok` before touching the body (a JSON parse of HTML never happens), `src/hooks/useAppUpdate.ts:86-97` swallows every failure ("silent by contract"). Observed: both Release builds ran ≥ 90 s against prod with no banner, no red screen, no `ReactNativeJS` errors (§3). |
 | B5 | Marketing URL | NEEDS-TARA | `https://www.bookmark-ai.cloud` (public, 200). |
 
@@ -164,7 +171,7 @@ Both builds were made with `EXPO_PUBLIC_SERVER_TARGET=production` (also the `__D
 - Build: **BUILD SUCCESSFUL in 4m 18s**, 404 tasks (`android-release-build.log`). Installed and opened. 75.7 MB APK, debug-keystore signed (QA only, G8).
 - Built artifact checks (`aapt2 dump badging`): `versionCode 1`, `versionName 1.0.0`, `targetSdkVersion 36`, `compileSdkVersion 36`, permissions as in G6, 4 ABIs, `application-debuggable` absent; merged release manifest has no `usesCleartextTraffic`; `zipalign -P 16` PASS (G16).
 - Cold launch (`am force-stop` → `am start -W`): **TotalTime 788 ms** to first frame; **0.3 s** splash twin with spinner (`android-01-cold-launch.png`), **2 s / 6 s** sign-in screen, light theme, stable (`android-02-after-2s.png`, `android-03-after-6s.png`). `logcat`: `ReactNativeJS: Running "main"` and nothing else — no `AndroidRuntime`/`FATAL`/JS errors. Update banner: none, silent, as on iOS.
-- **Settings verified in Release configuration** (Release variant, embedded bundle, pointed at the LOCAL target so a dev-instance test account could sign in — `storeqa+clerk_test@example.com`, OTP-less test email; created on the DEV Clerk instance only): Settings → **About: Open web app, Version 1.0.0 (1) — no Server row** (`android-local-05-settings-bottom.png`); **Legal & Support: Privacy Policy, Terms of Service, Contact Support tara@bookmark-ai.cloud** (`android-local-10-settings-icons.png`, icons rendering after `2241ddb`); **Account: Sign Out, Delete Account + footnote** (`android-local-06-settings-account.png`). Tapping Privacy Policy opened a Chrome Custom Tab on `bookmark-ai.cloud/privacy` (`android-local-07-privacy-customtab.png`; `topResumedActivity = CustomTabActivity`), Back returned to Settings (`android-local-08-back-in-settings.png`).
+- **Settings verified in Release configuration** (Release variant, embedded bundle, pointed at the LOCAL target so a dev-instance test account could sign in — `storeqa+clerk_test@example.com`, OTP-less test email; created on the DEV Clerk instance only): Settings → **About: Open web app, Version 1.0.0 (1) — no Server row** (`android-local-05-settings-bottom.png`); **Legal & Support: Privacy Policy, Terms of Service, Contact Support showed the now-superseded mailbox** (`android-local-10-settings-icons.png`, icons rendering after `2241ddb`; the current source uses `admin@bookmark-ai.cloud`); **Account: Sign Out, Delete Account + footnote** (`android-local-06-settings-account.png`). Tapping Privacy Policy opened a Chrome Custom Tab on `bookmark-ai.cloud/privacy` (`android-local-07-privacy-customtab.png`; `topResumedActivity = CustomTabActivity`), Back returned to Settings (`android-local-08-back-in-settings.png`).
 - Side observation from that run: the Ask AI group showed "fetch failed: CLEARTEXT communication to 10.0.2.2 not permitted by network security policy" — the expected proof that release builds refuse http (G7); a shipped build never targets 10.0.2.2.
 
 ### Final artifacts (all four commits, production target)
@@ -252,7 +259,7 @@ No in-app purchases, no ads, no tracking. Sign in with Apple: <state Option A/B/
 | Full description (≤4000) | reuse the App Store description above, replacing the SAVE FROM ANYWHERE paragraph's first sentence with: `Tap Share in Chrome or any app → "Save to Bookmark AI".` and "iPhone, iPad" with "Android, iPhone, iPad". |
 | App category | Productivity |
 | Tags | Bookmarks, Read later, Productivity |
-| Email (public) | `tara@bookmark-ai.cloud` |
+| Email (public) | `admin@bookmark-ai.cloud` |
 | Website | `https://www.bookmark-ai.cloud` |
 | Privacy policy | `https://www.bookmark-ai.cloud/privacy` |
 | Contains ads | No |
@@ -261,7 +268,7 @@ No in-app purchases, no ads, no tracking. Sign in with Apple: <state Option A/B/
 | News app | No · Financial features: No · Health: No · Government: No |
 | Data safety | §4.4 |
 | Content rating | §4.4 |
-| Store listing contact | `tara@bookmark-ai.cloud` |
+| Store listing contact | `admin@bookmark-ai.cloud` |
 
 ### 4.3 Apple — App Privacy label + age rating answers
 
@@ -331,18 +338,18 @@ Tracking (ATT): **No**. Privacy nutrition "Data Linked to You": all of the above
   <ul>
     <li><b>In the iOS or Android app</b>: Home → gear (Settings) → Account → Delete Account → type DELETE.</li>
     <li><b>On the web</b>: sign in at bookmark-ai.cloud → Settings → Account → Delete account.</li>
-    <li><b>By email</b>: write to tara@bookmark-ai.cloud from the address on your account and we will delete it within 30 days.</li>
+    <li><b>By email</b>: write to admin@bookmark-ai.cloud from the address on your account and we will delete it within 30 days.</li>
   </ul>
   <p>Deletion is immediate and irreversible. Deleting the app alone does not delete your account.</p>
 </section>
 ```
 
-Also: "Last updated September 2026", a **Retention** line ("We keep your data until you delete it or your account; server backups age out within 30 days.") and a **Contact** line (`tara@bookmark-ai.cloud`). Then the Play deletion URL is `https://www.bookmark-ai.cloud/privacy#delete-account`.
+Also: "Last updated September 2026", a **Retention** line ("We keep your data until you delete it or your account; server backups age out within 30 days.") and a **Contact** line (`admin@bookmark-ai.cloud`). Then the Play deletion URL is `https://www.bookmark-ai.cloud/privacy#delete-account`.
 
 **New `apps/web/app/support/page.tsx`** (add `"/support"` to `isPublicRoute` in `apps/web/middleware.ts:13-19`):
 
 > # Support
-> Bookmark AI is made by Tarachand Gupta . Email **tara@bookmark-ai.cloud** — replies within two business days. Include the app version from Settings → About.
+> Bookmark AI is made by Tarachand Gupta. Email **admin@bookmark-ai.cloud** — replies within two business days. Include the app version from Settings → About.
 > Common questions: *How do I save a page?* (Share → Save to Bookmark AI) · *How do I delete my account?* (link to `/privacy#delete-account`) · *Where's the browser extension?* (links) · *Is it open source?* (GitHub link).
 
 ---
