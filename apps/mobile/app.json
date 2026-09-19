@@ -78,7 +78,7 @@
     },
     "android": {
       "package": "ai.bookmarkai",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#171717",
         "foregroundImage": "./assets/android-icon-foreground.png",
