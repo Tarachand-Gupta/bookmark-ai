@@ -154,16 +154,15 @@ mobile via Clerk Expo. The route handlers delegate to `packages/engine` — chan
 
 ## Hard-won gotchas (do not rediscover these)
 
-0. **Never use the "PureCode" name anywhere in this product.** Tara works AT PureCode AI;
-   the company has no association with Bookmark AI. This applies to bundle IDs (use
+0. **Never use an employer name or employer-derived namespace anywhere in this product.**
+   Tara's employer has no association with Bookmark AI. This applies to bundle IDs (use
    `ai.bookmarkai.*` — iOS `ai.bookmarkai`, appex `ai.bookmarkai.ShareExtension`, macOS
    `ai.bookmarkai.macos`), package names (`ai.bookmarkai`), App Groups
    (`group.ai.bookmarkai`), the Firefox gecko id (`bookmark-ai@bookmark-ai.cloud`), contact
-   email (`admin@bookmark-ai.cloud`), keystores (`O=Bookmark AI`, never `O=purecode.ai`), docs,
-   store listings, and code comments. If a new identifier is needed, it must NOT reuse any
-   PureCode namespace. 2026-09-17: the whole repo was purged — any "purecode" hit in a diff
-   is a regression. The one deliberate exception: the gitignored scratchpad
-   `.work/purecode-purge/PLAN.md` documents the old identifiers so nobody reintroduces them.
+   email (`admin@bookmark-ai.cloud`), keystores (`O=Bookmark AI`), docs, store listings, and
+   code comments. If a new identifier is needed, it must use the Bookmark AI namespace and
+   must not reuse any present or former employer namespace. Historical audit scratchpads under
+   `.work/` may record retired identifiers; never copy them into active project files.
 
 1. **No `.js` extensions in relative imports** anywhere in `packages/*` — Next's webpack can't
    resolve `./foo.js` → `foo.tsx`. Extensionless only. tsconfigs use `moduleResolution: Bundler`.
