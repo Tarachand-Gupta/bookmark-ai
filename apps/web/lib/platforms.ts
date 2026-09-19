@@ -1,4 +1,4 @@
-import type { AppPlatform, AppReleaseMap } from "@bookmark-ai/types";
+import { compareVersions, type AppPlatform, type AppReleaseMap } from "@bookmark-ai/types";
 
 /**
  * Every way to get Bookmark AI, with an HONEST availability state — the one
@@ -36,7 +36,7 @@ export function releaseAssetUrl(tag: string, file: string): string {
 /** Release tags the static fallbacks point at. Bump here when a new build ships. */
 export const RELEASE_TAGS = {
   macos: "macos-v0.1.0",
-  android: "android-v1.0.1",
+  android: "android-release-1.0.1-build3",
   extension: "extension-v0.1.3",
 } as const;
 
@@ -89,6 +89,8 @@ export type PlatformAction =
       url: string;
       /** Version the static asset carries — shown next to the button. */
       version: string;
+      /** Build the static asset carries, when it matters within the same version. */
+      build?: string;
       /** The release-record key (`GET /api/app/releases`) that can override `url`. */
       releasePlatform: AppPlatform | null;
       /** File the button hands over, for the caption. */
@@ -279,16 +281,24 @@ export const PLATFORMS: readonly PlatformEntry[] = [
     id: "android",
     name: "Android",
     kind: "app",
-    status: "soon",
+    status: "available",
     icon: "android",
     blurb: "The same library, search and live tabs on Android, plus a share-sheet save.",
-    badge: "Update coming soon",
-    requires: "Android 8 or later",
-    action: { type: "none" },
+    badge: null,
+    requires: "Android 7.0 or later",
+    action: {
+      type: "download",
+      url: releaseAssetUrl(RELEASE_TAGS.android, "BookmarkAI-Android-1.0.1-3.apk"),
+      version: "1.0.1",
+      build: "3",
+      releasePlatform: "android",
+      fileName: "BookmarkAI-Android-1.0.1-3.apk",
+    },
     sideload: null,
     steps: [
-      "An updated Android download is being prepared; the Google Play listing has not been submitted yet.",
-      "Use the web app in Chrome in the meantime and add it to your home screen for app-like access.",
+      "Download the signed Bookmark AI APK above.",
+      "Open the downloaded file. If Android asks, allow installs from this browser or file manager, then confirm Install.",
+      "Open Bookmark AI and sign in; shared links and text can be saved from Android's share sheet.",
     ],
     source: {
       requirements: "Node 22, Android Studio with SDK 36 and JDK 17",
@@ -300,7 +310,7 @@ export const PLATFORMS: readonly PlatformEntry[] = [
       notes: ["Installs onto the connected device or running emulator."],
       docsUrl: SOURCE_DOCS.mobile,
     },
-    note: "The previous APK is no longer offered. The replacement will appear here when it is ready.",
+    note: "The direct APK is available now. The Google Play listing is still being prepared.",
   },
   {
     id: "web",
@@ -372,7 +382,12 @@ export function resolveDownload(
 ): ResolvedDownload | null {
   if (action.type !== "download") return null;
   const record = action.releasePlatform && releases ? releases[action.releasePlatform] : undefined;
-  if (record && isHttps(record.downloadUrl)) {
+  const staticRelease = { version: action.version, build: action.build ?? null };
+  if (
+    record &&
+    isHttps(record.downloadUrl) &&
+    compareVersions({ version: record.version, build: record.build }, staticRelease) >= 0
+  ) {
     return { url: record.downloadUrl, version: record.version || null, source: "release" };
   }
   return { url: action.url, version: action.version, source: "static" };

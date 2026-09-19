@@ -74,12 +74,13 @@ describe("platform list", () => {
       expect(text(id)).toContain("coming soon");
       expect(text(id)).not.toMatch(/has been submitted|was submitted/);
     }
-    for (const id of ["macos", "android"] as const) {
-      expect(getPlatform(id).status).toBe("soon");
-      expect(getPlatform(id).badge).toBe("Update coming soon");
-      expect(getPlatform(id).action).toEqual({ type: "none" });
-      expect(text(id)).toContain("updated");
-    }
+    expect(getPlatform("macos").status).toBe("soon");
+    expect(getPlatform("macos").badge).toBe("Update coming soon");
+    expect(getPlatform("macos").action).toEqual({ type: "none" });
+    expect(text("macos")).toContain("updated");
+    expect(getPlatform("android").status).toBe("available");
+    expect(getPlatform("android").badge).toBeNull();
+    expect(text("android")).toContain("google play listing is still being prepared");
   });
 
   it("keeps published extension assets on fixed release tags", () => {
@@ -92,11 +93,18 @@ describe("platform list", () => {
     );
   });
 
-  it("keeps unavailable native downloads gated while retaining compatibility facts", () => {
+  it("keeps unavailable Mac downloads gated and exposes only the verified Android APK", () => {
     expect(getPlatform("macos").action).toEqual({ type: "none" });
-    expect(getPlatform("android").action).toEqual({ type: "none" });
     expect(getPlatform("macos").requires).toContain("macOS 14");
-    expect(getPlatform("android").requires).toContain("Android 8");
+    expect(getPlatform("android").requires).toContain("Android 7.0");
+    expect(getPlatform("android").action).toEqual({
+      type: "download",
+      url: releaseAssetUrl(RELEASE_TAGS.android, "BookmarkAI-Android-1.0.1-3.apk"),
+      version: "1.0.1",
+      build: "3",
+      releasePlatform: "android",
+      fileName: "BookmarkAI-Android-1.0.1-3.apk",
+    });
   });
 
   it("offers build-from-source for Safari and iOS with the real commands", () => {
@@ -168,11 +176,29 @@ describe("resolveDownload", () => {
     expect(resolveDownload(action, bad)).toMatchObject({ source: "static" });
   });
 
+  it("does not let an older release record override a newer static build", () => {
+    const android = getPlatform("android").action;
+    const stale: AppReleaseMap = {
+      android: {
+        ...releases.macos!,
+        platform: "android",
+        version: "1.0.1",
+        build: "2",
+        downloadUrl:
+          "https://github.com/Tarachand-Gupta/bookmark-ai/releases/download/android-v1.0.1/bookmark-ai-1.0.1-android.apk",
+      },
+    };
+    expect(resolveDownload(android, stale)).toMatchObject({ source: "static", version: "1.0.1" });
+  });
+
   it("is null for open/none actions", () => {
     expect(resolveDownload(getPlatform("web").action, releases)).toBeNull();
     expect(resolveDownload(getPlatform("safari").action, releases)).toBeNull();
     expect(resolveDownload(getPlatform("macos").action, releases)).toBeNull();
-    expect(resolveDownload(getPlatform("android").action, releases)).toBeNull();
+    expect(resolveDownload(getPlatform("android").action, releases)).toMatchObject({
+      source: "static",
+      version: "1.0.1",
+    });
   });
 
   it("isHttps", () => {
