@@ -15,6 +15,7 @@
         "NEXT_PUBLIC_API_URL",
         "NEXT_PUBLIC_LIVE_API_URL",
         "CLERK_ALLOWED_USER_IDS",
+        "MACOS_AUTH_APP_ORIGIN",
         "CRON_SECRET",
         "DATABASE_URL",
         "DATABASE_AUTH_TOKEN",

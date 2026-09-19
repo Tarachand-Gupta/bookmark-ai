@@ -132,3 +132,16 @@ export {
   type UpsertDeviceSnapshot,
   type LiveDeviceRow,
 } from "./queries/live";
+export {
+  createMacAuthFlow,
+  getMacAuthFlow,
+  issueMacAuthCsrf,
+  authorizeMacAuthFlow,
+  consumeMacAuthFlow,
+  purgeMacAuthFlows,
+  type MacAuthFlow,
+  type MacAuthFlowState,
+  type CreateMacAuthFlow,
+  type AuthorizeMacAuthFlowResult,
+  type ConsumeMacAuthFlowResult,
+} from "./queries/macos-auth";

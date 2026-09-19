@@ -118,6 +118,37 @@ export const MASTER_MIGRATIONS: Migration[] = [
       `,
     ],
   },
+  // One-time default-browser handoff for the native macOS app. The verifier
+  // itself never reaches this database: only its S256 challenge is stored.
+  // Rows are deliberately durable so polling and the one-use exchange remain
+  // correct across serverless instances. Old terminal rows are retained long
+  // enough to classify replay attempts before opportunistic garbage collection.
+  {
+    version: 6,
+    name: "macos-browser-auth",
+    statements: [
+      `
+        CREATE TABLE IF NOT EXISTS macos_auth_flows (
+          flow_id           TEXT PRIMARY KEY,
+          code_challenge    TEXT NOT NULL,
+          verification_code TEXT NOT NULL,
+          csrf_hash         TEXT,
+          csrf_user_id      TEXT,
+          csrf_session_id   TEXT,
+          clerk_user_id     TEXT,
+          state             TEXT NOT NULL DEFAULT 'pending'
+                            CHECK (state IN ('pending', 'approved', 'canceled', 'consumed')),
+          created_at        INTEGER NOT NULL,
+          expires_at        INTEGER NOT NULL,
+          consumed_at       INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_macos_auth_flows_expiry
+          ON macos_auth_flows (expires_at);
+        CREATE INDEX IF NOT EXISTS idx_macos_auth_flows_state_expiry
+          ON macos_auth_flows (state, expires_at);
+      `,
+    ],
+  },
 ];
 
 /** Read a single platform_config value by key, or null if unset. */

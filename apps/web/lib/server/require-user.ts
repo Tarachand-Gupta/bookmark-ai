@@ -29,6 +29,19 @@ export function clientKey(h: Headers): string {
   return h.get("x-real-ip") ?? "unknown";
 }
 
+/**
+ * Security-sensitive public flows use only the platform-owned Vercel header in
+ * production. Arbitrary `x-forwarded-for`/`x-real-ip` headers are client
+ * spoofable unless a trusted proxy strips them. Local development may use
+ * x-real-ip to keep route tests and multi-client dev practical.
+ */
+export function trustedClientKey(h: Headers): string {
+  const vercel = h.get("x-vercel-forwarded-for");
+  if (vercel) return vercel.split(",")[0].trim() || "unknown";
+  if (process.env.NODE_ENV !== "production") return h.get("x-real-ip") ?? "local";
+  return "unknown";
+}
+
 // Serving the API without auth is a deliberate mode, but a silent one is a
 // footgun — warn exactly once per process so it can't happen by accident.
 let openModeWarned = false;

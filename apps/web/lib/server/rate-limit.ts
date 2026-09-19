@@ -8,15 +8,31 @@ const MAX_KEYS = 10_000;
 
 const hits = new Map<string, number[]>();
 
-/** Returns true if the key is under the limit (request allowed), false if over. */
-export function checkRateLimit(key: string): boolean {
-  const now = Date.now();
-  const cutoff = now - WINDOW_MS;
+export interface RateLimitResult {
+  allowed: boolean;
+  retryAfterSeconds: number;
+}
+
+/**
+ * A namespaced sliding window used by public flows with their own legitimate
+ * cadence. Callers own the namespace in `key`; the shared bounded map keeps the
+ * same per-instance abuse-protection behavior as the general API limiter.
+ */
+export function checkRateLimitWindow(
+  key: string,
+  maxRequests: number,
+  windowMs: number,
+  now = Date.now(),
+): RateLimitResult {
+  const cutoff = now - windowMs;
 
   const timestamps = (hits.get(key) ?? []).filter((t) => t > cutoff);
-  if (timestamps.length >= MAX_REQUESTS) {
+  if (timestamps.length >= maxRequests) {
     hits.set(key, timestamps);
-    return false;
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((timestamps[0] + windowMs - now) / 1_000)),
+    };
   }
 
   timestamps.push(now);
@@ -31,5 +47,10 @@ export function checkRateLimit(key: string): boolean {
     }
   }
 
-  return true;
+  return { allowed: true, retryAfterSeconds: 0 };
+}
+
+/** Returns true if the key is under the general API limit. */
+export function checkRateLimit(key: string): boolean {
+  return checkRateLimitWindow(key, MAX_REQUESTS, WINDOW_MS).allowed;
 }
