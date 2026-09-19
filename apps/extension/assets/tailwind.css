@@ -4,11 +4,14 @@
    class-like tokens. The Safari wrapper (Swift/YAML/plists) and the Safari
    pipeline scripts never render popup markup, yet a comment saying "container
    app" once added a dead `.container` utility to the popup CSS and moved every
-   chunk hash. Keep exactly those NEW files out of the scan — not all of
+   chunk hash. Store listing assets likewise never render in the extension and
+   are intentionally absent from the AMO reviewer source archive. Keep exactly
+   those files out of the scan — not all of
    scripts/, whose pre-existing files already contribute to the shipped CSS
    (a dead `.rounded` from generate-icons.mjs) and must keep the store zips
    byte-identical. */
 @source not "../safari-app";
+@source not "../store-assets";
 @source not "../scripts/safari-xcode.sh";
 @source not "../scripts/safari-version.mjs";
 @source not "../scripts/safari-version.d.mts";

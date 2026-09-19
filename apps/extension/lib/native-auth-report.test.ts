@@ -49,13 +49,13 @@ describe("native-auth-report: Safari only", () => {
 describe("native-auth-report: dedupe", () => {
   it("sends once per boot, then skips identical state", async () => {
     const { send, calls } = recordingSender();
-    const state = { signedIn: true, email: "tara@example.com", name: "Tara" };
+    const state = { signedIn: true, email: "alex@example.com", name: "Alex" };
     expect(await reportAuthState(state, {}, { ...SAFARI, send })).toBe("sent");
     expect(await reportAuthState(state, {}, { ...SAFARI, send })).toBe("skipped");
     expect(await reportAuthState({ ...state, name: "T." }, {}, { ...SAFARI, send })).toBe("skipped"); // name alone is not a state change
     expect(calls).toHaveLength(1);
     expect(calls[0]?.app).toBe(NATIVE_APP_ID);
-    expect(calls[0]?.msg).toMatchObject({ type: "authState", signedIn: true, email: "tara@example.com", name: "Tara" });
+    expect(calls[0]?.msg).toMatchObject({ type: "authState", signedIn: true, email: "alex@example.com", name: "Alex" });
   });
 
   it("re-sends when the state or the e-mail changes", async () => {

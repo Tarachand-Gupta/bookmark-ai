@@ -3,8 +3,8 @@ import { displayIdentity, maskAccountEmail, maskEmail } from "./identity";
 
 describe("maskEmail", () => {
   it("keeps the first three local-part chars and the full domain", () => {
-    expect(maskEmail("tarachand@bookmark-ai.cloud")).toBe("tar**@bookmark-ai.cloud");
-    expect(maskEmail("bob@gmail.com")).toBe("bob**@gmail.com");
+    expect(maskEmail("alexander@bookmark-ai.cloud")).toBe("ale**@bookmark-ai.cloud");
+    expect(maskEmail("bob@example.com")).toBe("bob**@example.com");
   });
 
   it("uses whatever local-part chars exist when it's shorter than three", () => {
@@ -22,7 +22,7 @@ describe("maskEmail", () => {
 
 describe("maskAccountEmail", () => {
   it("shows the first three and last three chars with **** between", () => {
-    expect(maskAccountEmail("tarachandragupta2784@gmail.com")).toBe("tar****com");
+    expect(maskAccountEmail("alexander.longname@example.com")).toBe("ale****com");
     expect(maskAccountEmail("bob.smith@company.io")).toBe("bob****.io");
   });
 
@@ -33,7 +33,7 @@ describe("maskAccountEmail", () => {
   });
 
   it("trims surrounding whitespace before masking", () => {
-    expect(maskAccountEmail("  tarachand@bookmark-ai.cloud  ")).toBe("tar****oud");
+    expect(maskAccountEmail("  alexander@bookmark-ai.cloud  ")).toBe("ale****oud");
   });
 });
 
@@ -47,12 +47,12 @@ describe("displayIdentity", () => {
   it("falls back to a masked email when a name part is missing", () => {
     expect(displayIdentity({ firstName: "Ada", email: "ada@example.com" })).toBe("ada**@example.com");
     expect(displayIdentity({ lastName: "Lovelace", email: "ada@example.com" })).toBe("ada**@example.com");
-    expect(displayIdentity({ email: "tarachand@bookmark-ai.cloud" })).toBe("tar**@bookmark-ai.cloud");
+    expect(displayIdentity({ email: "alexander@bookmark-ai.cloud" })).toBe("ale**@bookmark-ai.cloud");
   });
 
   it("treats whitespace-only name parts as absent", () => {
-    expect(displayIdentity({ firstName: "  ", lastName: "  ", email: "bob@gmail.com" })).toBe(
-      "bob**@gmail.com",
+    expect(displayIdentity({ firstName: "  ", lastName: "  ", email: "bob@example.com" })).toBe(
+      "bob**@example.com",
     );
   });
 

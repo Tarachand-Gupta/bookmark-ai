@@ -97,7 +97,7 @@ final class CompanionModel {
         refreshLoginItem()
     }
 
-    /// "Signed in as tara@example.com" (falls back to the name, then a generic
+    /// "Signed in as alex@example.com" (falls back to the name, then a generic
     /// line) — nil unless signed in. Callers truncate for one-line contexts.
     var signedInLabel: String? {
         guard case let .signedIn(email, name) = authState else { return nil }

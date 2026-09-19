@@ -250,9 +250,12 @@ This archive is the complete, self-contained source for the add-on package uploa
 addons.mozilla.org. It is a trimmed copy of the open-source monorepo
 (https://github.com/Tarachand-Gupta/bookmark-ai): the extension app, its only workspace
 dependency (\`packages/types\`, the shared Zod API contract), and the root workspace
-files (\`package.json\`, \`pnpm-workspace.yaml\`, \`pnpm-lock.yaml\`, \`tsconfig.base.json\`).
+files (\`package.json\`, \`pnpm-workspace.yaml\`, \`pnpm-lock.yaml\`, \`tsconfig.base.json\`),
+including any workspace patch files referenced by that configuration.
 Everything else in the archive is referenced by the lockfile and comes from the public
-npm registry, unmodified. No code is fetched at runtime; there is no \`eval\`/remote script.
+npm registry. pnpm applies the workspace patches listed in \`pnpm-workspace.yaml\` during
+the locked install; those patch files are included under \`patches/\`. No code is fetched
+at runtime; there is no \`eval\`/remote script.
 
 ## Toolchain (the exact versions our CI pins in \`.github/workflows/extension-release.yml\`)
 
@@ -312,12 +315,16 @@ Chunk names carry a Rollup content hash, so identical inputs yield identical nam
 
 ${firefoxOutputTable()}
 
-## Third-party code (all unmodified, from the lockfile)
+## Third-party code (locked, with declared workspace patches)
 
 Runtime: \`react\`, \`react-dom\`, \`@clerk/chrome-extension\` (session mirroring), \`zod\`
 (via \`packages/types\`), plus WXT's small runtime helpers (\`wxt/browser\`, \`@wxt-dev/storage\`).
 Build-time only: \`wxt\`, \`vite\`, \`@wxt-dev/module-react\`, \`tailwindcss\` + \`@tailwindcss/vite\`,
 \`typescript\`, \`vitest\`.
+
+All registry versions are pinned by \`pnpm-lock.yaml\`. Any local dependency patch is declared
+under \`patchedDependencies\` in \`pnpm-workspace.yaml\` and its referenced file is included in
+this archive.
 
 ## Contact
 
@@ -329,6 +336,7 @@ function buildSourcesZip() {
   const files = [
     ...collect(path.join(EXT_DIR), EXTENSION_SKIP),
     ...collect(path.join(REPO_ROOT, "packages", "types")),
+    ...(existsSync(path.join(REPO_ROOT, "patches")) ? collect(path.join(REPO_ROOT, "patches")) : []),
     ...["package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", "tsconfig.base.json", ".npmrc"].filter((f) =>
       existsSync(path.join(REPO_ROOT, f)),
     ),
@@ -339,9 +347,30 @@ function buildSourcesZip() {
       fail(`refusing to package ${f} into the sources zip.`);
     }
   }
+  const workspaceText = readFileSync(path.join(REPO_ROOT, "pnpm-workspace.yaml"), "utf8");
+  const patchPaths = [];
+  let inPatchedDependencies = false;
+  for (const line of workspaceText.split(/\r?\n/)) {
+    if (/^patchedDependencies:\s*(?:#.*)?$/.test(line)) {
+      inPatchedDependencies = true;
+      continue;
+    }
+    if (!inPatchedDependencies) continue;
+    if (/^[^\s#]/.test(line)) break;
+    if (!line.trim() || /^\s*#/.test(line)) continue;
+    const match = line.match(/^\s+(?:"[^"]+"|'[^']+'|[^:]+):\s+(?:"([^"]+)"|'([^']+)'|([^\s#]+))(?:\s+#.*)?$/);
+    if (!match) fail(`cannot parse patchedDependencies entry: ${line.trim()}`);
+    const referencedPath = match[1] ?? match[2] ?? match[3];
+    if (path.isAbsolute(referencedPath) || referencedPath.split("/").includes("..")) {
+      fail(`patchedDependencies references a path outside the source archive: ${referencedPath}`);
+    }
+    patchPaths.push(referencedPath);
+  }
+
   for (const required of ["pnpm-lock.yaml", "pnpm-workspace.yaml", "package.json", "tsconfig.base.json",
     "apps/extension/package.json", "apps/extension/wxt.config.ts", "apps/extension/.env.production",
-    "apps/extension/scripts/wxt-run.mjs", "packages/types/package.json", "packages/types/src/index.ts"]) {
+    "apps/extension/scripts/wxt-run.mjs", "packages/types/package.json", "packages/types/src/index.ts",
+    ...patchPaths]) {
     if (!files.includes(required)) fail(`sources zip would be missing ${required}.`);
   }
 

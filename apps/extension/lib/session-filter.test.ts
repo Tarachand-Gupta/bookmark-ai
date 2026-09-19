@@ -60,7 +60,7 @@ describe("isRestorableUrl", () => {
       "chrome://extensions",
       "about:blank",
       "moz-extension://abc/page.html",
-      "file:///Users/tara/notes.txt",
+      "file:///Users/example/notes.txt",
       "data:text/html,hi",
       "",
       undefined,

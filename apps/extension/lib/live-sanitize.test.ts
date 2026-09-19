@@ -29,7 +29,7 @@ describe("sanitizeLiveUrl", () => {
     for (const url of [
       "chrome://extensions",
       "about:blank",
-      "file:///Users/tara/notes.txt",
+      "file:///Users/example/notes.txt",
       "moz-extension://abc/page.html",
       "view-source:https://example.com",
     ]) {

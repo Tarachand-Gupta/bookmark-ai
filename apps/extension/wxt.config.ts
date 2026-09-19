@@ -151,9 +151,10 @@ export default defineConfig({
       browser_specific_settings: {
         gecko: {
           id: "bookmark-ai@bookmark-ai.cloud",
-          // Firefox 140 introduced the built-in data-consent UI that renders
-          // `data_collection_permissions`; AMO asks new submissions declaring
-          // any collection to require it.
+          // Firefox 140 introduced the desktop built-in data-consent UI that
+          // renders `data_collection_permissions`; AMO asks new submissions
+          // declaring any collection to require it. Android gained the same UI
+          // in 142, so its separate floor below must not inherit 140.
           strict_min_version: "140.0",
           // TRUTHFUL declaration — AMO rejects a new add-on whose declaration
           // understates what it does (mandatory since Nov 2025). Each category
@@ -180,6 +181,9 @@ export default defineConfig({
           data_collection_permissions: {
             required: ["authenticationInfo", "bookmarksInfo", "browsingActivity"],
           },
+        },
+        gecko_android: {
+          strict_min_version: "142.0",
         },
       },
     }),
