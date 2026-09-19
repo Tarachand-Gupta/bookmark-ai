@@ -17,7 +17,7 @@ export function Footer() {
       <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-6 px-6 py-10 sm:flex-row">
         {/* The footer carries the full production URL — it's where people look
             to confirm what site they're actually on. */}
-        <a href="/" className="flex items-center gap-2" aria-label="Bookmark AI home">
+        <a href="/?view=website" className="flex items-center gap-2" aria-label="Bookmark AI home">
           <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <BookmarkMark className="size-3.5" />
           </span>

@@ -11,6 +11,7 @@ import { Platforms } from "@/components/marketing/platforms";
 import { Pricing } from "@/components/marketing/pricing";
 import { OpenSource } from "@/components/marketing/open-source";
 import { Footer } from "@/components/marketing/footer";
+import { signedInRootDestination } from "@/lib/marketing-route";
 
 export const metadata: Metadata = {
   title: "Bookmark AI — your tabs and bookmarks, everywhere",
@@ -33,9 +34,10 @@ export const metadata: Metadata = {
 };
 
 /**
- * Public marketing home. Signed-in users never see it — they're bounced to the
- * app, preserving any query string so the extension's `/?section=sessions`
- * bare-origin deep link still lands on the right view.
+ * Public marketing home. Signed-in users normally continue to the app,
+ * preserving any query string so the extension's `/?section=sessions`
+ * bare-origin deep link still lands on the right view. Marketing navigation
+ * uses the explicit `view=website` intent to keep this page visible.
  *
  * Stays a fast server component; the only client islands are the chaos→order
  * hero field, the platform marquee, and the scroll reveals. Marketing fonts are
@@ -49,13 +51,8 @@ export default async function MarketingPage({
   const { userId } = await auth();
   if (userId) {
     const params = await searchParams;
-    const qs = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (Array.isArray(value)) for (const v of value) qs.append(key, v);
-      else if (value != null) qs.set(key, value);
-    }
-    const query = qs.toString();
-    redirect(query ? `/app?${query}` : "/app");
+    const destination = signedInRootDestination(params);
+    if (destination) redirect(destination);
   }
 
   return (
