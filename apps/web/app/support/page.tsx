@@ -126,22 +126,21 @@ export default function SupportPage() {
             <Link href="/download" className={linkClass}>
               download page
             </Link>
-            . In short: the{" "}
+            . The{" "}
             <Link href="/download#macos" className={linkClass}>
               Mac app
             </Link>{" "}
             and the{" "}
             <Link href="/download#android" className={linkClass}>
-              Android APK
+              Android app
             </Link>{" "}
-            download directly; the Chrome and Firefox extensions install from their
-            stores; the Safari extension and the iOS app are coming
-            soon — build them from source, or add the{" "}
+            are being refreshed. Chrome installs from the Chrome Web Store, the replacement
+            Firefox listing is under review, and Safari and iOS marketplace releases are coming
+            soon. Until then, use the{" "}
             <Link href="/download#web" className={linkClass}>
               web app
             </Link>{" "}
-            to your home screen. The Mac and Android apps show an update banner when a
-            new build is out.
+            in any browser or add it to your home screen.
           </p>
         </section>
 

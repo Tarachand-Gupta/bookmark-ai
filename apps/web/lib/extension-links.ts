@@ -15,9 +15,9 @@ import {
  * Rule: a store listing is linked only when that platform is `available`.
  * While a listing is under review (it 404s until approval) or not submitted
  * yet, the link goes to the platform's card on /download, which carries the
- * status, the sideload zip and the build-from-source path instead.
- * Chrome (Web Store) and Firefox (AMO) are live; unknown browsers still get
- * /download to pick from.
+ * status and available alternatives instead. Chrome is live in the Web Store;
+ * Firefox's replacement AMO listing is under review. Unknown browsers still
+ * get /download to pick from.
  */
 
 type ExtensionPlatform = Extract<PlatformId, "chrome" | "firefox" | "safari">;
@@ -70,8 +70,8 @@ const BROWSER_TARGETS: Record<Browser, { store: ExtensionStore; label: string }>
 
 const STATUS_NOTES: Record<PlatformStatus, (storeName: string) => string | null> = {
   available: () => null,
-  review: (store) => `${store} listing under review — available shortly. Sideload it meanwhile.`,
-  soon: (store) => `${store} version coming soon — build from source, or use the web app.`,
+  review: (store) => `${store} listing under review — use the web app in the meantime.`,
+  soon: (store) => `${store} version coming soon — use the web app in the meantime.`,
 };
 
 const STORE_NAMES: Record<ExtensionPlatform, string> = {

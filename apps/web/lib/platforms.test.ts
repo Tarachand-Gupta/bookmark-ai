@@ -14,6 +14,7 @@ import {
   resolveDownload,
   storeUrlFor,
   urlsOf,
+  type PlatformAction,
   type PlatformId,
 } from "./platforms";
 import {
@@ -51,7 +52,7 @@ describe("platform list", () => {
   it("gives every non-available entry a status badge and no primary download", () => {
     for (const entry of PLATFORMS) {
       if (entry.status === "review") expect(entry.badge).toBe("Under review");
-      if (entry.status === "soon") expect(entry.badge).toBe("Coming soon");
+      if (entry.status === "soon") expect(entry.badge).toBeTruthy();
       if (entry.status !== "available") expect(entry.action.type).not.toBe("download");
       expect(entry.steps.length).toBeGreaterThan(0);
     }
@@ -63,55 +64,38 @@ describe("platform list", () => {
       const e = getPlatform(id);
       return [e.blurb, e.note ?? "", ...e.steps, ...(e.source?.notes ?? [])].join(" ").toLowerCase();
     };
-    // Live on their stores → "available", never an "under review" claim.
-    for (const id of ["chrome", "firefox"] as const) {
-      expect(getPlatform(id).status).toBe("available");
-      expect(text(id)).not.toContain("under review");
-    }
+    expect(getPlatform("chrome").status).toBe("available");
+    expect(text("chrome")).not.toContain("under review");
+    expect(getPlatform("firefox").status).toBe("review");
+    expect(text("firefox")).toContain("awaiting review");
     // Not submitted → "coming soon", and never the word "submitted" as a claim.
     for (const id of ["safari", "ios"] as const) {
       expect(getPlatform(id).status).toBe("soon");
       expect(text(id)).toContain("coming soon");
       expect(text(id)).not.toMatch(/has been submitted|was submitted/);
     }
-    expect(text("macos")).not.toContain("notarized by apple ");
-    expect(text("macos")).toContain("not notarized");
+    for (const id of ["macos", "android"] as const) {
+      expect(getPlatform(id).status).toBe("soon");
+      expect(getPlatform(id).badge).toBe("Update coming soon");
+      expect(getPlatform(id).action).toEqual({ type: "none" });
+      expect(text(id)).toContain("updated");
+    }
   });
 
-  it("points the native downloads at the fixed release tags", () => {
-    const macos = getPlatform("macos");
-    const android = getPlatform("android");
-    expect(macos.action).toMatchObject({
-      type: "download",
-      releasePlatform: "macos",
-      version: "0.1.0",
-      url: `https://github.com/Tarachand-Gupta/bookmark-ai/releases/download/${RELEASE_TAGS.macos}/BookmarkAI-0.1.0-macos.zip`,
-    });
-    expect(android.action).toMatchObject({
-      type: "download",
-      releasePlatform: "android",
-      version: "1.0.1",
-      url: `https://github.com/Tarachand-Gupta/bookmark-ai/releases/download/${RELEASE_TAGS.android}/bookmark-ai-1.0.1-android.apk`,
-    });
+  it("keeps published extension assets on fixed release tags", () => {
     expect(getPlatform("chrome").sideload?.url).toBe(
       releaseAssetUrl(RELEASE_TAGS.extension, "bookmark-aiextension-0.1.3-chrome.zip"),
     );
-    expect(getPlatform("firefox").sideload?.url).toBe(
-      releaseAssetUrl(RELEASE_TAGS.extension, "bookmark-aiextension-0.1.3-firefox.zip"),
-    );
+    expect(getPlatform("firefox").sideload).toBeNull();
     expect(releaseTagUrl("macos-v0.1.0")).toBe(
       "https://github.com/Tarachand-Gupta/bookmark-ai/releases/tag/macos-v0.1.0",
     );
   });
 
-  it("documents the macOS first-launch path and the Android unknown-sources path", () => {
-    const mac = getPlatform("macos").steps.join(" ");
-    expect(mac).toContain("Open Anyway");
-    expect(mac).toContain("Privacy & Security");
+  it("keeps unavailable native downloads gated while retaining compatibility facts", () => {
+    expect(getPlatform("macos").action).toEqual({ type: "none" });
+    expect(getPlatform("android").action).toEqual({ type: "none" });
     expect(getPlatform("macos").requires).toContain("macOS 14");
-    const android = getPlatform("android").steps.join(" ");
-    expect(android).toContain("Install unknown apps");
-    expect(android).toContain("bookmark-ai.cloud");
     expect(getPlatform("android").requires).toContain("Android 8");
   });
 
@@ -127,12 +111,15 @@ describe("platform list", () => {
 });
 
 describe("store URLs", () => {
-  it("links the live Chrome Web Store and Firefox Add-ons listings", () => {
+  it("links only public marketplace listings", () => {
     expect(CHROME_WEB_STORE_URL).toBe(
       "https://chromewebstore.google.com/detail/ffhbgpgebpmofjkehpjcemepbgcmoelp",
     );
     expect(storeUrlFor("chrome")).toBe(CHROME_WEB_STORE_URL);
-    expect(storeUrlFor("firefox")).toBe(FIREFOX_ADDONS_URL);
+    expect(FIREFOX_ADDONS_URL).toBe(
+      "https://addons.mozilla.org/firefox/addon/bookmark-ai-cloud/",
+    );
+    expect(storeUrlFor("firefox")).toBeNull();
     expect(storeUrlFor("safari")).toBeNull();
     expect(storeUrlFor("macos")).toBeNull();
   });
@@ -143,6 +130,13 @@ describe("store URLs", () => {
 });
 
 describe("resolveDownload", () => {
+  const downloadable: PlatformAction = {
+    type: "download",
+    url: "https://github.com/Tarachand-Gupta/bookmark-ai/releases/download/macos-v0.1.0/BookmarkAI-0.1.0-macos.zip",
+    version: "0.1.0",
+    releasePlatform: "macos",
+    fileName: "BookmarkAI-0.1.0-macos.zip",
+  };
   const releases: AppReleaseMap = {
     macos: {
       platform: "macos",
@@ -157,7 +151,7 @@ describe("resolveDownload", () => {
   };
 
   it("prefers the published release record", () => {
-    expect(resolveDownload(getPlatform("macos").action, releases)).toEqual({
+    expect(resolveDownload(downloadable, releases)).toEqual({
       url: releases.macos!.downloadUrl,
       version: "0.2.0",
       source: "release",
@@ -165,8 +159,8 @@ describe("resolveDownload", () => {
   });
 
   it("falls back to the static tag URL without a record, or with a non-https one", () => {
-    const action = getPlatform("android").action;
-    expect(resolveDownload(action, releases)).toMatchObject({ version: "1.0.1", source: "static" });
+    const action = { ...downloadable, releasePlatform: "android" as const };
+    expect(resolveDownload(action, releases)).toMatchObject({ version: "0.1.0", source: "static" });
     expect(resolveDownload(action, null)).toMatchObject({ source: "static" });
     const bad: AppReleaseMap = {
       android: { ...releases.macos!, platform: "android", downloadUrl: "http://evil.example" },
@@ -177,6 +171,8 @@ describe("resolveDownload", () => {
   it("is null for open/none actions", () => {
     expect(resolveDownload(getPlatform("web").action, releases)).toBeNull();
     expect(resolveDownload(getPlatform("safari").action, releases)).toBeNull();
+    expect(resolveDownload(getPlatform("macos").action, releases)).toBeNull();
+    expect(resolveDownload(getPlatform("android").action, releases)).toBeNull();
   });
 
   it("isHttps", () => {
@@ -205,9 +201,9 @@ describe("extension-links derives from platforms", () => {
         browser === "chrome" ? "Add to Chrome" : browser === "edge" ? "Add to Edge" : "Add to Arc",
       );
     }
-    expect(extensionTargetForBrowser("firefox").status).toBe("available");
-    expect(extensionTargetForBrowser("firefox").url).toBe(FIREFOX_ADDONS_URL);
-    expect(extensionTargetForBrowser("firefox").label).toBe("Add to Firefox");
+    expect(extensionTargetForBrowser("firefox").status).toBe("review");
+    expect(extensionTargetForBrowser("firefox").url).toBe("/download#firefox");
+    expect(extensionTargetForBrowser("firefox").label).toBe("Install options");
     expect(extensionTargetForBrowser("safari").status).toBe("soon");
     expect(GENERIC_EXTENSION_TARGET.url).toBe("/download");
     expect(extensionTargetForBrowser("other")).toEqual(GENERIC_EXTENSION_TARGET);
@@ -215,7 +211,8 @@ describe("extension-links derives from platforms", () => {
 
   it("carries a human status line for the in-app card", () => {
     expect(extensionTargetForBrowser("chrome").statusNote).toBeNull();
-    expect(extensionTargetForBrowser("firefox").statusNote).toBeNull();
+    expect(extensionTargetForBrowser("firefox").statusNote).toMatch(/under review/i);
+    expect(extensionTargetForBrowser("firefox").statusNote).toMatch(/web app/i);
     expect(extensionTargetForBrowser("safari").statusNote).toMatch(/coming soon/i);
   });
 });

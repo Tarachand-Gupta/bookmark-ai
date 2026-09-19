@@ -3,22 +3,20 @@ import { marketingFontVars } from "@/components/marketing/fonts";
 import { Backdrop } from "@/components/marketing/backdrop";
 import { Nav } from "@/components/marketing/nav";
 import { Footer } from "@/components/marketing/footer";
-import { Eyebrow, display, glass, mono } from "@/components/marketing/primitives";
+import { Eyebrow, display } from "@/components/marketing/primitives";
 import { ReleasesProvider } from "@/components/marketing/releases-provider";
-import { PlatformCard } from "@/components/marketing/download/platform-card";
-import { BuildFromSource } from "@/components/marketing/download/build-from-source";
-import { PLATFORMS } from "@/lib/platforms";
+import { DownloadColumns } from "@/components/marketing/download/download-columns";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Download Bookmark AI — Mac, Android, browser extensions, web",
+  title: "Download Bookmark AI — Apps and browser extensions",
   description:
-    "Get Bookmark AI on every screen: download the Mac app and the Android APK, install the Chrome and Firefox extensions from their stores, add the web app to your phone, or build Safari and iOS from source.",
+    "Get Bookmark AI on every screen. Use the installable web app or add the browser extension from your marketplace.",
   alternates: { canonical: "https://www.bookmark-ai.cloud/download" },
   openGraph: {
     title: "Download Bookmark AI",
     description:
-      "Mac app and Android APK download directly; Chrome and Firefox install from their stores. Safari and iOS coming soon — or build them from source.",
+      "Use Bookmark AI as an installable web app or add the browser extension from your marketplace.",
     type: "website",
     siteName: "Bookmark AI",
     url: "https://www.bookmark-ai.cloud/download",
@@ -26,20 +24,14 @@ export const metadata: Metadata = {
 };
 
 /**
- * Public download page — the marketing shell (same nav, footer, backdrop and
- * fonts as the homepage), every platform from lib/platforms.ts with its real
- * status and inline install steps, then the build-from-source recipes.
- * Static; the only client bits are the release-record fetch behind the
- * Download buttons and the copy buttons on the command blocks.
+ * Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4
+ * Public download page — the existing marketing shell with two compact,
+ * factual availability columns. Detailed PWA guidance stays folded until it
+ * is useful; platform status continues to come from lib/platforms.ts.
  */
 export default function DownloadPage() {
-  const status = {
-    review: PLATFORMS.filter((p) => p.status === "review").map((p) => p.name),
-    soon: PLATFORMS.filter((p) => p.status === "soon").map((p) => p.name),
-  };
-
   return (
-    <div className={marketingFontVars}>
+    <div className={cn(marketingFontVars, "overflow-x-clip")}>
       <style
         dangerouslySetInnerHTML={{
           __html:
@@ -49,63 +41,28 @@ export default function DownloadPage() {
       <Backdrop />
       <div className="relative z-10">
         <Nav />
-        <main className="mx-auto w-full max-w-6xl px-6 pb-24 pt-14 sm:pt-20">
-          <header className="max-w-2xl">
+        <main className="mx-auto w-full max-w-6xl px-5 pb-24 pt-12 sm:px-6 sm:pt-16">
+          <header className="max-w-3xl">
             <Eyebrow>downloads</Eyebrow>
             <h1
               className={cn(
                 display,
-                "mt-5 text-balance text-4xl font-semibold leading-[1.02] tracking-[-0.025em] sm:text-5xl md:text-[3.5rem]",
+                "mt-5 min-w-0 [overflow-wrap:anywhere] text-balance text-4xl font-semibold leading-[1.02] tracking-[-0.025em] sm:text-5xl md:text-[3.5rem]",
               )}
             >
-              Get Bookmark AI on every screen.
+              Bookmark AI, where you need it.
             </h1>
-            <p className="mt-5 max-w-xl text-muted-foreground sm:text-lg">
-              The Mac app and the Android APK download directly, Chrome and Firefox
-              install from their stores, and Safari and iOS are coming soon — build them
-              from source, or use the web app on any device in the meantime.
+            <p className="mt-5 max-w-2xl text-muted-foreground sm:text-lg">
+              Choose an app or add the extension to your browser. Every option connects
+              to the same account, library and live tabs.
             </p>
           </header>
 
           <ReleasesProvider>
-            <div
-              className={cn(
-                glass,
-                "mt-10 flex flex-col gap-3 rounded-2xl px-5 py-4 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-8",
-              )}
-            >
-              {status.review.length > 0 && (
-                <p>
-                  <span className={cn(mono, "mr-2 text-[11px] uppercase tracking-[0.18em] text-foreground")}>
-                    under review
-                  </span>
-                  {status.review.join(" · ")} — available shortly.
-                </p>
-              )}
-              <p>
-                <span className={cn(mono, "mr-2 text-[11px] uppercase tracking-[0.18em] text-foreground")}>
-                  coming soon
-                </span>
-                {status.soon.join(" · ")} — build from source or wait.
-              </p>
-            </div>
-
-            <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {PLATFORMS.map((p) => (
-                <PlatformCard key={p.id} entry={p} wide={p.kind === "web"} />
-              ))}
+            <div className="mt-10 sm:mt-12">
+              <DownloadColumns />
             </div>
           </ReleasesProvider>
-
-          <p className="mx-auto mt-8 max-w-2xl text-center text-xs leading-relaxed text-muted-foreground">
-            The Chrome and Firefox extensions install and auto-update from their stores.
-            The Mac and Android apps check for new builds when they launch and show an update
-            banner with a download link, so you never have to come back here to find out.
-          </p>
-
-          <div className="mt-24">
-            <BuildFromSource />
-          </div>
         </main>
         <Footer />
       </div>

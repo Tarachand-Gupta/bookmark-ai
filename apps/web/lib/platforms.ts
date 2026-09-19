@@ -12,8 +12,7 @@ import type { AppPlatform, AppReleaseMap } from "@bookmark-ai/types";
  *                 to it while the status is `review`; sideload/source instead.
  * - `soon`      — not submitted anywhere yet. Build from source or wait.
  *
- * Native downloads are GitHub Release assets on a per-platform tag
- * (`macos-v0.1.0`, `android-v1.0.1`, `extension-v0.1.3`). The `/releases/latest`
+ * Native downloads are GitHub Release assets on a per-platform tag. The `/releases/latest`
  * alias is NOT used: "latest" is whichever platform shipped last, so a fixed
  * tag is the only stable form. When `GET /api/app/releases` carries a record for
  * a platform, `resolveDownload` prefers that record — so downloads can be
@@ -49,9 +48,11 @@ export const CHROME_WEB_STORE_ID = "ffhbgpgebpmofjkehpjcemepbgcmoelp";
 export const CHROME_WEB_STORE_URL = `https://chromewebstore.google.com/detail/${CHROME_WEB_STORE_ID}`;
 
 /**
- * The live Firefox Add-ons (AMO) listing, add-on id `bookmark-ai@bookmark-ai.cloud`.
+ * Replacement Firefox Add-ons (AMO) listing for add-on id
+ * `bookmark-ai@bookmark-ai.cloud`. Version 0.1.4 is awaiting review; the URL is
+ * known but is not linked until AMO makes the listing public.
  */
-export const FIREFOX_ADDONS_URL = "https://addons.mozilla.org/firefox/addon/bookmark-ai/";
+export const FIREFOX_ADDONS_URL = "https://addons.mozilla.org/firefox/addon/bookmark-ai-cloud/";
 
 export const WEB_APP_URL = "https://www.bookmark-ai.cloud/app";
 export const SIGN_UP_URL = "https://www.bookmark-ai.cloud/sign-up";
@@ -69,7 +70,16 @@ export const SOURCE_DOCS = {
 export type PlatformId = "chrome" | "firefox" | "safari" | "macos" | "ios" | "android" | "web";
 export type PlatformKind = "extension" | "app" | "web";
 export type PlatformStatus = "available" | "review" | "soon";
-export type PlatformIcon = "chrome" | "firefox" | "safari" | "macos" | "ios" | "android" | "web";
+export type PlatformIcon =
+  | "chrome"
+  | "firefox"
+  | "safari"
+  | "macos"
+  | "ios"
+  | "android"
+  | "windows"
+  | "linux"
+  | "web";
 
 /** What the primary button does. */
 export type PlatformAction =
@@ -160,25 +170,20 @@ export const PLATFORMS: readonly PlatformEntry[] = [
     id: "firefox",
     name: "Firefox",
     kind: "extension",
-    status: "available",
+    status: "review",
     icon: "firefox",
     blurb: "Save and search without leaving Firefox.",
-    badge: null,
+    badge: BADGE.review,
     requires: "Firefox 140 or later",
-    action: { type: "open", url: FIREFOX_ADDONS_URL, label: "Add to Firefox" },
-    sideload: {
-      url: releaseAssetUrl(RELEASE_TAGS.extension, "bookmark-aiextension-0.1.3-firefox.zip"),
-      fileName: "bookmark-aiextension-0.1.3-firefox.zip",
-      version: "0.1.3",
-    },
+    action: { type: "none" },
+    sideload: null,
     steps: [
-      "Click Add to Firefox above — the Firefox Add-ons page opens in a new tab.",
-      "Click Add to Firefox on the listing and confirm the permissions prompt.",
-      "Click the Bookmark AI icon in the toolbar to save the current tab.",
-      "Sign in at bookmark-ai.cloud in the same browser — the extension mirrors that session.",
+      "The replacement Firefox Add-ons listing is awaiting review.",
+      "Once it is public, install version 0.1.4 from Firefox Add-ons and confirm the permissions prompt.",
+      "Sign in at bookmark-ai.cloud in Firefox — the extension mirrors that session.",
     ],
     source: null,
-    note: "The store version is permanent and auto-updates. The zip below loads as a temporary add-on that Firefox removes on quit — for testing only.",
+    note: "The previous public listing is intentionally not linked. This page will point to the replacement listing after approval.",
   },
   {
     id: "safari",
@@ -216,24 +221,16 @@ export const PLATFORMS: readonly PlatformEntry[] = [
     id: "macos",
     name: "macOS app",
     kind: "app",
-    status: "available",
+    status: "soon",
     icon: "macos",
     blurb: "A native Mac app for your library, search and live tabs.",
-    badge: "Beta",
+    badge: "Update coming soon",
     requires: "macOS 14 (Sonoma) or later, Apple silicon or Intel",
-    action: {
-      type: "download",
-      url: releaseAssetUrl(RELEASE_TAGS.macos, "BookmarkAI-0.1.0-macos.zip"),
-      version: "0.1.0",
-      releasePlatform: "macos",
-      fileName: "BookmarkAI-0.1.0-macos.zip",
-    },
+    action: { type: "none" },
     sideload: null,
     steps: [
-      "Download the zip and double-click it — Bookmark AI.app appears next to it. Drag it into Applications.",
-      "Open it once. macOS says “Apple could not verify Bookmark AI is free of malware” — click Done (not Move to Trash).",
-      "Open System Settings ▸ Privacy & Security, scroll to Security, and click Open Anyway next to Bookmark AI, then confirm.",
-      "Sign in with the same account you use on the web. The app checks for new builds at launch and shows a banner when one is out.",
+      "An updated Mac download is being prepared.",
+      "Use the web app in Safari, Chrome or Edge in the meantime; it has the same library and search.",
     ],
     source: {
       requirements: "macOS 14+, Xcode 16 or later, XcodeGen",
@@ -245,7 +242,7 @@ export const PLATFORMS: readonly PlatformEntry[] = [
       notes: ["Build and run the BookmarkAI scheme in Xcode (⌘R)."],
       docsUrl: SOURCE_DOCS.macos,
     },
-    note: "This build is signed but not notarized by Apple, which is why the first launch needs Open Anyway. Later launches open normally.",
+    note: "The previous download is no longer offered. The replacement will appear here when it is ready.",
   },
   {
     id: "ios",
@@ -282,24 +279,16 @@ export const PLATFORMS: readonly PlatformEntry[] = [
     id: "android",
     name: "Android",
     kind: "app",
-    status: "available",
+    status: "soon",
     icon: "android",
     blurb: "The same library, search and live tabs on Android, plus a share-sheet save.",
-    badge: "Beta",
+    badge: "Update coming soon",
     requires: "Android 8 or later",
-    action: {
-      type: "download",
-      url: releaseAssetUrl(RELEASE_TAGS.android, "bookmark-ai-1.0.1-android.apk"),
-      version: "1.0.1",
-      releasePlatform: "android",
-      fileName: "bookmark-ai-1.0.1-android.apk",
-    },
+    action: { type: "none" },
     sideload: null,
     steps: [
-      "Download the APK on your phone (or copy it over) and tap it in your Files or Downloads app.",
-      "If Android says the install is blocked, tap Settings in that dialog and allow installs from this source (Settings ▸ Apps ▸ Special app access ▸ Install unknown apps ▸ your browser or Files app).",
-      "Go back and tap Install, then open Bookmark AI and sign in with the same account you use on the web.",
-      "The app talks to bookmark-ai.cloud and checks for new builds at launch — a banner tells you when one is out. Google Play version coming soon.",
+      "An updated Android download is being prepared; the Google Play listing has not been submitted yet.",
+      "Use the web app in Chrome in the meantime and add it to your home screen for app-like access.",
     ],
     source: {
       requirements: "Node 22, Android Studio with SDK 36 and JDK 17",
@@ -311,7 +300,7 @@ export const PLATFORMS: readonly PlatformEntry[] = [
       notes: ["Installs onto the connected device or running emulator."],
       docsUrl: SOURCE_DOCS.mobile,
     },
-    note: "Installed outside Google Play, so Play Protect may ask you to confirm. New builds are announced by the in-app update banner, not by the store.",
+    note: "The previous APK is no longer offered. The replacement will appear here when it is ready.",
   },
   {
     id: "web",

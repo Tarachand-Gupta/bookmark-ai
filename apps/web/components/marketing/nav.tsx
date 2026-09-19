@@ -7,7 +7,7 @@ export function Nav() {
   return (
     <header className="sticky top-0 z-50 border-b border-border/50 bg-background/60 backdrop-blur-xl">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-3 px-6">
-        <a href="/" className="flex items-center gap-2.5" aria-label="Bookmark AI home">
+        <a href="/" className="flex shrink-0 items-center gap-2.5 whitespace-nowrap" aria-label="Bookmark AI home">
           <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <BookmarkMark className="size-4" />
           </span>
@@ -58,7 +58,7 @@ export function Nav() {
             target="_blank"
             rel="noreferrer noopener"
             aria-label="GitHub repository"
-            className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="hidden size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:inline-flex"
           >
             <Github className="size-[1.15rem]" aria-hidden />
           </a>
