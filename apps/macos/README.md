@@ -79,7 +79,29 @@ publishing downloads".
 | Bundle id | `ai.bookmarkai.macos` | |
 | Sandbox | `app-sandbox` + `network.client` + `files.user-selected.read-write` | Outbound HTTP, plus read access to files the user explicitly picks, drops, or pastes as chat attachments (security-scoped, released after encoding). No server sockets. |
 | Accent colour | **none defined** | With no `AccentColor` asset the app adopts the *user's system accent*, which is what a Mac-native app should do. Every other colour is semantic (`.secondary`, `.tint`, `.quaternary`, `.bar`), so light/dark is automatic with zero hardcoded values. |
-| App icon | generated from `apps/desktop/assets/icon.png` (1024²) | Same brand mark as the other clients, resampled into a proper 10-slot macOS `AppIcon.appiconset`. |
+| App icon | configuration-specific `AppIcon` / `AppIconDev` assets | Release keeps the white bookmark mark. Debug uses the same geometry and dark plate with a yellow (`#FACC15`) mark, so a local build is recognizable beside the installed app. |
+
+### App icon variants
+
+The committed production artwork is the source of truth. `Resources/AppIcon.icon`
+contains the modern Icon Composer document and `Resources/Assets.xcassets/AppIcon.appiconset`
+contains the seven pre-macOS-26 fallback PNG sizes. Do not edit or regenerate those
+files when changing the development treatment.
+
+Generate the yellow development variants with Apple's system ImageIO/CoreGraphics
+stack (no image package or AI redraw):
+
+```bash
+cd apps/macos
+xcrun swift scripts/generate-dev-app-icon.swift
+```
+
+The generator preserves the production glyph's alpha and geometry, and recolors
+only its neutral white pixels. It writes `AppIconDev.icon` plus the 16, 32, 64,
+128, 256, 512, and 1024 px images in `AppIconDev.appiconset`. `project.yml`
+selects `AppIconDev` for Debug and `AppIcon` for Release through
+`ASSETCATALOG_COMPILER_APPICON_NAME`; the product name, display name, and bundle
+identifier remain the same in both configurations.
 
 `NSAppTransportSecurity` allows insecure loads for `localhost`/`127.0.0.1` only
 (local dev server); cloud is https-only.
@@ -149,7 +171,7 @@ disagree about whether account data may be on screen:
 | Local · any | `.ready` | full app (no sign-in concept) | tabs | enabled |
 | Cloud · `.signedIn` | `.ready` | full app | tabs | enabled |
 | Cloud · `.unknown` / `.unreachable` | `.connecting` | `ConnectingView` — spinner, "Connecting to your account…"; after 60 s "Can't reach bookmark-ai.cloud" + Retry | `SettingsGatePanel` (same message) | disabled (Open Web App stays) |
-| Cloud · `.signedOut` | `.signedOut` | `SignedOutView` — app mark, "Sign in to Bookmark AI", Sign In…, server picker footer. **No sidebar, no toolbar items.** | `SettingsGatePanel` — Sign In… + server picker, **no tabs** | disabled (Open Web App stays) |
+| Cloud · `.signedOut` | `.signedOut` | `SignedOutView` — app mark, "Sign in to Bookmark AI", Sign In…, server picker footer. **No sidebar, no toolbar items.** | `SettingsGatePanel` — Sign In…, **no tabs or server picker** | disabled (Open Web App stays) |
 
 - **`signedOut` is definitive** — Clerk loaded and reported no session (at
   launch, or from the 45 s refresh loop when the session expired under an idle
@@ -205,7 +227,7 @@ disagree about whether account data may be on screen:
   tooltip; the email takes the line only when the account has no name — the
   server host on the second,
   "Loading…" while `/api/me` is in flight, a Local/Cloud glyph badge, ⋯ ▸
-  Account Settings… / Sign Out; `AccountFooter.lines` is the pure, tested
+  Account Settings… (plus Sign Out on Cloud); `AccountFooter.lines` is the pure, tested
   derivation) and in Settings ▸ Account (Status, then the identity row with
   name + email, then Sign Out — the plan card above). The footer's text column
   takes exactly what the badge and menu leave, so a long name or address
@@ -274,9 +296,9 @@ curl -X PUT localhost:3000/api/admin/releases/macos -H 'content-type: applicatio
 
 | Mode | Base | Auth |
 | --- | --- | --- |
-| **Local** (default) | `http://localhost:3000` | **none** — expects `DEV_OPEN_API=1` |
+| **Local** | `http://localhost:3000` | **none** — expects `DEV_OPEN_API=1` |
 | **Local + sign-in** (`BOOKMARKAI_LOCAL_AUTH=1` in the app's environment) | `http://localhost:3000` | `Bearer` minted by the sign-in sheet on `localhost:3000/sign-in` (the dev-instance Clerk) |
-| **Cloud** | `https://www.bookmark-ai.cloud` | `Authorization: Bearer <Clerk session JWT>` |
+| **Cloud** (default) | `https://www.bookmark-ai.cloud` | `Authorization: Bearer <Clerk session JWT>` |
 
 The cloud base **must** be the `www` host. The apex 308-redirects `/api/*` to
 `www`, and URLSession — like every HTTP stack — strips `Authorization` across an
@@ -291,9 +313,8 @@ live token from) never resolve in open mode. Launch with
 `BOOKMARKAI_LOCAL_AUTH=1` (an Xcode scheme env var, or
 `BOOKMARKAI_LOCAL_AUTH=1 build/…/BookmarkAI.app/Contents/MacOS/BookmarkAI`)
 and the Local target signs in exactly like Cloud, against `localhost:3000`
-(`ServerTarget.localSignIn` / `authOrigin`). Add `-serverTarget local` to the
-launch arguments to pick the target for that run without touching the saved
-preference.
+(`ServerTarget.localSignIn` / `authOrigin`). Choose Local on the login screen or
+in Settings ▸ Account; that explicit choice persists across launches.
 
 ---
 
@@ -346,7 +367,7 @@ apps/macos/
 │   ├── Auth/
 │   │   ├── ClerkWebAuth.swift      the two webviews, JS token minting, sign-out
 │   │   ├── AuthController.swift    @Observable auth state (unknown/signedOut/signedIn/unreachable), token cache + refresh, backoff restore + stall, the one sign-out path + the one sign-in path (onSessionConfirmed), identity
-│   │   ├── AuthGate.swift          AuthGateScaffold (glass + centred column + server picker footer), AppMark, GateActionButton
+│   │   ├── AuthGate.swift          AuthGateScaffold (glass + centred column; optional login server picker), AppMark, GateActionButton
 │   │   ├── SignedOutView.swift     the whole window while signed out on Cloud
 │   │   ├── ConnectingView.swift    the whole window while the session is unconfirmed (spinner → "Can't reach" + Retry)
 │   │   └── SignInSheet.swift       sheet + NSViewRepresentable host
@@ -364,12 +385,12 @@ apps/macos/
 │   │   └── SidebarItem.swift       selection enum + PlannedFeature rows
 │   ├── Settings/
 │   │   ├── SettingsView.swift      ⌘, — tabs (General/AI/MCP/Sync/Live/Data/Account) behind the gate, else SettingsGatePanel
-│   │   ├── SettingsGatePanel.swift  signed-out / connecting panel: message + Sign In… or Retry + server picker, no tabs
+│   │   ├── SettingsGatePanel.swift  signed-out / connecting panel: message + Sign In… or Retry, no tabs
 │   │   ├── SettingsModel.swift     GET/PUT /api/settings, aiMode switch, removeKey, plan (nil until loaded)
 │   │   ├── AiSettingsTab.swift     Included ⇄ Own key, saved-key summary, provider/model, Remove key…
 │   │   ├── McpSettingsTab.swift    endpoint + client setup snippets, tool toggles, token mint/reveal/revoke
 │   │   ├── McpTokensModel.swift    /api/mcp/tokens list/create/revoke
-│   │   └── AccountSettingsTab.swift  plan card, then Status → identity row (avatar, name, email) → Sign Out
+│   │   └── AccountSettingsTab.swift  Local/Cloud connection, plan card, then Status → identity row → Sign Out
 │   └── Support/
 │       ├── Preferences.swift       UserDefaults-backed server target + layout (injectable defaults)
 │       ├── LibraryCache.swift      `Application Support/<bundle>/cache/library.json` — the last session's
@@ -407,8 +428,8 @@ apps/macos/
     ├── MarkdownBlockTests.swift    6 tests — block parser fixtures
     ├── FilteringTests.swift        5 tests — sessions/live search matching
     ├── StreamingLayoutTests.swift  1 test — streaming layout
-    ├── PreferencesTests.swift      2 tests — layout default + persistence
-    └── RenderPreviewTests.swift    9 previews — light+dark PNGs incl. the auth gate (signed-out window + Settings panel, connecting + stalled, footer name / email-only (long address) at 250 + 200 / loading / local, Account tab loading + resolved, and both footer + Account tab straight after a sign-in run through the real cancelled-sheet path) and both update-banner variants (TEST_RUNNER_RENDER_PREVIEWS=1)
+    ├── PreferencesTests.swift      target migration/default plus layout persistence
+    └── RenderPreviewTests.swift    light+dark PNGs incl. the auth gate (signed-out window + Settings panel, connecting + stalled, footer name / email-only (long address) at 250 + 200 / loading / local, Cloud + Local Account tabs, and both footer + Account tab straight after a sign-in run through the real cancelled-sheet path) and both update-banner variants (TEST_RUNNER_RENDER_PREVIEWS=1)
 ```
 
 ---
@@ -470,9 +491,10 @@ apps/macos/
 - Menu bar: **Library ▸ Refresh (⌘R)**, **Open Web App (⇧⌘O)**, `SidebarCommands()`
   for the View-menu sidebar toggle. File ▸ New Window is *removed* — Phase 1 is a
   single-window app, so shipping a window that mirrors state would be a bug.
-- Standard **Settings** scene (⌘,) carrying the Local/Cloud switch and health readout —
-  gated like the main window: signed out / connecting on Cloud shows only the
-  `SettingsGatePanel` (the unit-test host shares the app's sandbox container, so
+- Standard **Settings** scene (⌘,) carrying the Local/Cloud switch in Account
+  and a health readout in General — gated like the main window: signed out /
+  connecting on Cloud shows only the `SettingsGatePanel`; server selection
+  stays on the main login screen (the unit-test host shares the app's sandbox container, so
   tests never call `signOut()` — it would wipe the real `WKWebsiteDataStore` —
   and always build `AppEnvironment` on a throwaway `UserDefaults` suite).
 - `ContentUnavailableView` for empty / no-search-results / error states, overlaid

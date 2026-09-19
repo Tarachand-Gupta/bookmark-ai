@@ -1,11 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// Shared chrome for the full-window auth states (signed out, connecting):
-/// the window's glass, a centred column for the message, and the one piece of
-/// chrome that must survive the gate — the Local/Cloud server picker. Without
-/// it Local mode would be unreachable while signed out (Settings is gated too).
+/// Shared chrome for the full-window auth states (signed out, connecting).
+/// Only the signed-out login screen opts into the Local/Cloud picker.
 struct AuthGateScaffold<Content: View>: View {
+    var showsServerPicker = false
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -17,8 +16,10 @@ struct AuthGateScaffold<Content: View>: View {
                     .frame(maxWidth: 440)
                     .multilineTextAlignment(.center)
                 Spacer(minLength: 24)
-                ServerPickerFooter()
-                    .padding(.bottom, 18)
+                if showsServerPicker {
+                    ServerPickerFooter()
+                        .padding(.bottom, 18)
+                }
             }
             .padding(.horizontal, 32)
         }

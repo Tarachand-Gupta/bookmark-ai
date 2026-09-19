@@ -322,8 +322,11 @@ final class RenderPreviewTests: XCTestCase {
             local.auth.seed(status: .signedOut, account: AccountInfo(signedIn: true, name: nil, email: nil))
             try render(AccountFooter().environment(local).frame(width: 250).background(sidebar),
                        width: 250, appearance: appearance, name: "auth-footer-local-\(suffix)")
+            local.settings.seed(settings, plan: .free)
             try render(AccountSettingsTab().environment(signedIn).tint(.blue),
                        width: 500, appearance: appearance, name: "auth-account-tab-\(suffix)")
+            try render(AccountSettingsTab().environment(local).tint(.blue),
+                       width: 500, appearance: appearance, name: "auth-account-tab-local-\(suffix)")
             let loadingIdentity = gateEnvironment(target: .cloud)
             loadingIdentity.auth.seed(status: .signedIn, account: nil)
             try render(AccountSettingsTab().environment(loadingIdentity).tint(.blue),

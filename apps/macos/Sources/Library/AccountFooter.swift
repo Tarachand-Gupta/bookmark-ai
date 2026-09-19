@@ -4,9 +4,9 @@ import SwiftUI
 /// first line (the email only when there is no name; middle-truncated when the
 /// sidebar is narrow, with the EMAIL as the tooltip so the address stays
 /// discoverable), the server host on the second, a small badge for the
-/// Local/Cloud target, and the ⋯ menu (Account Settings…, Sign Out). It only
-/// renders behind an open gate, so on Cloud there is always a session; the
-/// email is also spelled out in Settings ▸ Account, under the name.
+/// Local/Cloud target, and the ⋯ menu (Account Settings…, plus Sign Out on
+/// Cloud). It only renders behind an open gate, so on Cloud there is always a
+/// session; the email is also spelled out in Settings ▸ Account, under the name.
 struct AccountFooter: View {
     @Environment(AppEnvironment.self) private var appEnvironment
     @Environment(\.openSettings) private var openSettings
@@ -43,28 +43,28 @@ struct AccountFooter: View {
 
             TargetBadge(target: target)
 
-            if target.requiresAuth {
-                Menu {
-                    // The full target line lives here; the badge is the glance.
-                    Text("\(target.displayName) · \(target.baseURL.host() ?? target.hostLabel)")
-                    Divider()
-                    Button("Account Settings…") {
-                        appEnvironment.requestedSettingsTab = .account
-                        openSettings()
-                    }
+            Menu {
+                // The full target line lives here; the badge is the glance.
+                Text("\(target.displayName) · \(target.baseURL.host() ?? target.hostLabel)")
+                Divider()
+                Button("Account Settings…") {
+                    appEnvironment.requestedSettingsTab = .account
+                    openSettings()
+                }
+                if target.requiresAuth {
                     Button("Sign Out") {
                         Task { await appEnvironment.signOut() }
                     }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .pointingHandCursor()
-                .help("Account")
-                .accessibilityIdentifier("account-menu")
+            } label: {
+                Image(systemName: "ellipsis.circle")
             }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .pointingHandCursor()
+            .help("Account")
+            .accessibilityIdentifier("account-menu")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

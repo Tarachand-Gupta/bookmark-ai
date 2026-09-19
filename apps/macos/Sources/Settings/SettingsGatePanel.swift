@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// What the Settings window (⌘,) shows while the gate is closed: no tabs, no
-/// account data — just the sign-in (or connecting) message and the server
-/// picker, so Local mode stays reachable. Mirrors the main window's gate.
+/// What the Settings window (⌘,) shows while the gate is closed: no tabs and no
+/// account data, just the sign-in (or connecting) message. Server selection is
+/// available on the main login screen and in an open Account settings tab.
 struct SettingsGatePanel: View {
     @Environment(AppEnvironment.self) private var appEnvironment
 
@@ -64,38 +64,9 @@ struct SettingsGatePanel: View {
             .padding(.horizontal, 32)
             .padding(.vertical, 28)
 
-            Divider()
-
-            HStack(spacing: 10) {
-                Text("Server")
-                Picker("Server", selection: targetBinding) {
-                    ForEach(ServerTarget.allCases) { target in
-                        Text(target.displayName).tag(target)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .pointingHandCursor()
-                Spacer()
-                Text(appEnvironment.preferences.serverTarget.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
         }
         .frame(width: 500)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings-gate-panel")
-    }
-
-    private var targetBinding: Binding<ServerTarget> {
-        Binding(
-            get: { appEnvironment.preferences.serverTarget },
-            set: { newValue in Task { await appEnvironment.changeTarget(newValue) } }
-        )
     }
 }

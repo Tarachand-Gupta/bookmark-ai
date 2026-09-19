@@ -150,7 +150,9 @@ final class AuthStateTests: XCTestCase {
     @MainActor
     func testLocalTargetIsAlwaysReady() async {
         let defaults = UserDefaults(suiteName: "AuthStateTests-\(UUID().uuidString)")!
-        let env = AppEnvironment(preferences: Preferences(defaults: defaults))
+        let preferences = Preferences(defaults: defaults)
+        preferences.serverTarget = .local
+        let env = AppEnvironment(preferences: preferences)
         XCTAssertEqual(env.preferences.serverTarget, .local)
         XCTAssertEqual(env.auth.status, .unknown)
         XCTAssertEqual(env.gate, .ready)

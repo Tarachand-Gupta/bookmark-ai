@@ -39,6 +39,9 @@ targets:
       # "white border" Tara rejected. The appiconset remains the pre-26
       # fallback.
       - path: Resources/AppIcon.icon
+      # Same geometry and dark plate, with a yellow bookmark glyph so local
+      # Debug builds remain visually distinct from installed production builds.
+      - path: Resources/AppIconDev.icon
       - path: Resources/Info.plist
         buildPhase: none
       - path: Resources/BookmarkAI.entitlements
@@ -55,13 +58,17 @@ targets:
         #   xcodebuild … CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=-
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: L3PP7DQZWS
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # No AccentColor asset on purpose: with none defined the app adopts the
         # user's SYSTEM accent colour, which is what a Mac-native app should do.
         # `.tint` in the UI therefore follows System Settings ▸ Appearance.
         COMBINE_HIDPI_IMAGES: YES
         ENABLE_PREVIEWS: YES
         LD_RUNPATH_SEARCH_PATHS: ["$(inherited)", "@executable_path/../Frameworks"]
+      configs:
+        Debug:
+          ASSETCATALOG_COMPILER_APPICON_NAME: AppIconDev
+        Release:
+          ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     scheme:
       testTargets:
         - BookmarkAITests

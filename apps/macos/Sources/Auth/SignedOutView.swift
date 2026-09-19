@@ -10,7 +10,7 @@ struct SignedOutView: View {
     var body: some View {
         let auth = appEnvironment.auth
 
-        AuthGateScaffold {
+        AuthGateScaffold(showsServerPicker: true) {
             VStack(spacing: 0) {
                 AppMark(size: 88)
 

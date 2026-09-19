@@ -9,21 +9,22 @@ enum SettingsTab: String, Hashable {
 }
 
 /// The standard Settings scene (⌘,), mirroring the web app's settings dialog:
-/// General (server), AI (mode switch + own key — `AiSettingsTab.swift`), MCP
+/// General (appearance + status), AI (mode switch + own key — `AiSettingsTab.swift`), MCP
 /// (tools + tokens — `McpSettingsTab.swift`), Sync (native bookmark
 /// mirroring), Live (server URL), Data (export/import), Account (plan +
 /// identity + sign-out — `AccountSettingsTab.swift`).
 ///
 /// Every tab holds account data, so the tabs exist only behind an open gate.
 /// Signed out / connecting on Cloud, the window is the `SettingsGatePanel`:
-/// sign-in (or the spinner) plus the server picker, and nothing else.
+/// sign-in (or the spinner), and nothing else.
 struct SettingsView: View {
     @Environment(AppEnvironment.self) private var appEnvironment
+    @State private var selection: SettingsTab = .general
 
     var body: some View {
         Group {
             if appEnvironment.canUseData {
-                SettingsTabs()
+                SettingsTabs(selection: $selection)
             } else {
                 SettingsGatePanel()
             }
@@ -35,8 +36,7 @@ struct SettingsView: View {
 /// The tabbed Settings — see `SettingsView`.
 private struct SettingsTabs: View {
     @Environment(AppEnvironment.self) private var appEnvironment
-
-    @State private var selection: SettingsTab = .general
+    @Binding var selection: SettingsTab
 
     var body: some View {
         TabView(selection: $selection) {
@@ -79,7 +79,7 @@ private struct SettingsTabs: View {
     }
 }
 
-/// The Local/Cloud switch, plus a live read of the chosen server's health.
+/// Appearance plus a live read of the chosen server's health.
 struct GeneralSettingsTab: View {
     @Environment(AppEnvironment.self) private var appEnvironment
 
@@ -96,25 +96,6 @@ struct GeneralSettingsTab: View {
                 .pickerStyle(.segmented)
             } footer: {
                 Text("System follows the Mac's appearance setting.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Picker("Server", selection: targetBinding) {
-                    ForEach(ServerTarget.allCases) { target in
-                        Text(target.displayName).tag(target)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                LabeledContent("Endpoint") {
-                    Text(appEnvironment.preferences.serverTarget.baseURL.absoluteString)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-            } footer: {
-                Text(appEnvironment.preferences.serverTarget.subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -142,14 +123,6 @@ struct GeneralSettingsTab: View {
         .frame(height: 320)
     }
 
-    private var targetBinding: Binding<ServerTarget> {
-        Binding(
-            get: { appEnvironment.preferences.serverTarget },
-            set: { newValue in
-                Task { await appEnvironment.changeTarget(newValue) }
-            }
-        )
-    }
 }
 
 /// Native browser-bookmark mirroring (extension → Bookmark AI). Two toggles,

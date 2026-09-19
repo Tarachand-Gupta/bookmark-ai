@@ -1,10 +1,9 @@
 import SwiftUI
 
-/// Settings ▸ Account: the plan (badge + what it includes) on top, then the
-/// account itself — status, WHO is signed in (initials, name, email), and the
-/// Sign Out button directly beneath. Only rendered behind an open gate, so on
-/// Cloud there is a session; everything here belongs to that account and is
-/// cleared with it.
+/// Settings ▸ Account: the current connection, plan, and account itself —
+/// status, WHO is signed in (initials, name, email), and Sign Out. Only rendered
+/// behind an open gate, so on Cloud there is a session; everything here belongs
+/// to that account and is cleared with it.
 struct AccountSettingsTab: View {
     @Environment(AppEnvironment.self) private var appEnvironment
 
@@ -13,6 +12,7 @@ struct AccountSettingsTab: View {
         let auth = appEnvironment.auth
 
         Form {
+            connectionSection
             planSection
 
             if target.requiresAuth {
@@ -63,7 +63,7 @@ struct AccountSettingsTab: View {
                 Section {
                     Label("Local mode needs no sign-in", systemImage: "laptopcomputer")
                 } footer: {
-                    Text("The local dev server is expected to run with DEV_OPEN_API=1, which bypasses Clerk entirely. Switch to Cloud in General to sign in.")
+                    Text("Local mode connects to your own Bookmark AI server. Choose Cloud above to sign in to Bookmark AI Cloud.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -71,6 +71,41 @@ struct AccountSettingsTab: View {
         }
         .formStyle(.grouped)
         .frame(height: 540)
+    }
+
+    /// The only in-app server switch after the gate opens. Keeping it with the
+    /// current account makes an explicit backend change deliberate and visible.
+    private var connectionSection: some View {
+        Section {
+            Picker("Server", selection: targetBinding) {
+                ForEach(ServerTarget.allCases) { target in
+                    Text(target.displayName).tag(target)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("account-server-picker")
+
+            LabeledContent("Endpoint") {
+                Text(appEnvironment.preferences.serverTarget.baseURL.absoluteString)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+        } header: {
+            Text("Connection")
+        } footer: {
+            Text(appEnvironment.preferences.serverTarget.subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var targetBinding: Binding<ServerTarget> {
+        Binding(
+            get: { appEnvironment.preferences.serverTarget },
+            set: { newValue in
+                Task { await appEnvironment.changeTarget(newValue) }
+            }
+        )
     }
 
     /// The plan card — drawn only once `GET /api/account` has answered for
