@@ -6,12 +6,19 @@ import XCTest
 /// the definitive auth transitions drive it.
 final class SignedOutResetTests: XCTestCase {
 
-    /// An environment on the CLOUD target with its own throwaway defaults —
+    /// An environment on the CLOUD target with its own throwaway defaults and
+    /// cache —
     /// the test host is the real app, so `.standard` is Tara's actual settings.
     /// `session` lets a test answer the API from a stubbed `URLProtocol`.
     @MainActor
     static func makeCloudEnvironment(session: URLSession? = nil) -> AppEnvironment {
-        AppEnvironment(preferences: makeDefaults(target: .cloud), session: session)
+        let cacheDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SignedOutResetTests-\(UUID().uuidString)", isDirectory: true)
+        return AppEnvironment(
+            preferences: makeDefaults(target: .cloud),
+            session: session,
+            cache: LibraryCache(directory: cacheDirectory)
+        )
     }
 
     /// Throwaway `UserDefaults` for the given target — shared with the

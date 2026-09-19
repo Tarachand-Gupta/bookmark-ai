@@ -61,6 +61,27 @@ final class BrowserSignInTests: XCTestCase {
         return BrowserSignInClient(origin: Self.origin, session: URLSession(configuration: configuration))
     }
 
+    /// Foundation may represent a streamed upload as `httpBodyStream` by the
+    /// time a URLProtocol observes it, even when production assigned
+    /// `URLRequest.httpBody`. Inspect either representation so this test still
+    /// verifies the production request bytes delivered to the protocol handler.
+    private static func bodyData(from request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+
+        stream.open()
+        defer { stream.close() }
+
+        var body = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while true {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count >= 0 else { return nil }
+            guard count > 0 else { return body }
+            body.append(contentsOf: buffer.prefix(count))
+        }
+    }
+
     @MainActor
     private func evaluate(_ script: String, in webView: WKWebView) async throws -> Any? {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
@@ -137,10 +158,18 @@ final class BrowserSignInTests: XCTestCase {
         var response = 0
         StubURLProtocol.handler = { request in
             response += 1
+            XCTAssertEqual(request.url, Self.origin.appendingPathComponent("api/macos-auth/exchange"))
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Cache-Control"), "no-store")
             XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
-            XCTAssertNotNil(request.httpBody)
+            if let body = Self.bodyData(from: request),
+               let json = try? JSONSerialization.jsonObject(with: body) as? [String: String] {
+                XCTAssertEqual(json, ["flowId": Self.flow, "verifier": Self.flow])
+            } else {
+                XCTFail("exchange request must carry its JSON body as data or a body stream")
+            }
             switch response {
             case 1:
                 return (202, ["Content-Type": "application/json", "Retry-After": "3"], Data(#"{"status":"pending","retryAfterSeconds":2}"#.utf8))

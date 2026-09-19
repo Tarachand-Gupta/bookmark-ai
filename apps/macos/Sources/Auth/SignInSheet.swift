@@ -66,7 +66,9 @@ struct SignInSheet: View {
                     Text(code)
                         .font(.system(size: 30, weight: .bold, design: .monospaced))
                         .textSelection(.enabled)
-                        .accessibilityLabel("Verification code \(code)")
+                        // Keep the selectable text's native accessibility label.
+                        // On macOS 27, overriding it recursively asks AppKit for
+                        // the same label when an AX client copies the hierarchy.
 
                     Text("Choose the account in your browser, make sure the same code appears there, then approve the sign-in.")
                         .multilineTextAlignment(.center)
