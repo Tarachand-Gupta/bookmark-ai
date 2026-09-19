@@ -14,16 +14,10 @@ import WebKit
 /// simply renders whatever that origin serves.
 ///
 /// ── How it works ────────────────────────────────────────────────────────────
-/// Two webviews share `WKWebsiteDataStore.default()`, so the Clerk cookies one
-/// obtains are immediately visible to the other AND persist across launches
-/// (silent re-auth, no re-typing):
-///
-///   1. A **sign-in webview**, presented in a sheet, loads `<base>/sign-in`.
-///      It is polled for a token; the first non-nil one means sign-in finished.
-///   2. A **token webview**, parked off-screen for the app's lifetime, is what
-///      later re-mints from. Unlike the Zig desktop SDK, WKWebView can evaluate
-///      JavaScript, so `window.Clerk.session.getToken()` is reachable directly —
-///      no web-app change is needed to expose one.
+/// A token webview is parked off-screen for the app's lifetime. Browser sign-in
+/// hands it a one-time Clerk ticket through structured JavaScript arguments;
+/// after redemption it continues to mint the same short-lived session JWTs the
+/// API already expects. OAuth pages are never shown inside this webview.
 ///
 /// Nothing durable is stored by this app: session JWTs (~60s TTL) live in memory
 /// only, and the Clerk cookies live in the WKWebsiteDataStore inside the app's
@@ -39,6 +33,11 @@ enum MintOutcome: Equatable {
     case noSession
     /// Couldn't reach a state where Clerk could answer. Transient.
     case unavailable
+}
+
+enum TicketRedemptionOutcome: Equatable {
+    case success
+    case failure
 }
 
 @MainActor
@@ -69,7 +68,7 @@ final class ClerkWebAuth: NSObject {
         teardownTokenWebView()
     }
 
-    var signInURL: URL { origin.appendingPathComponent("sign-in") }
+    private var sessionPageURL: URL { origin.appendingPathComponent("sign-in") }
 
     // MARK: - Token minting
 
@@ -90,19 +89,9 @@ final class ClerkWebAuth: NSObject {
         if case .token = first { return first }
         guard allowReload else { return first }
 
-        load(signInURL, in: webView)
+        load(sessionPageURL, in: webView)
         await waitForLoad(webView)
         return await evaluateOutcome(on: webView, fresh: fresh)
-    }
-
-    /// Ask a specific webview (used for the sign-in sheet's own view) for a token.
-    /// Returns nil while the user is still on Clerk's own domain — `window.Clerk`
-    /// only exists on the app's origin, which is exactly the signal we want.
-    func evaluateToken(on webView: WKWebView) async -> String? {
-        if case .token(let token) = await evaluateOutcome(on: webView, fresh: false) {
-            return token
-        }
-        return nil
     }
 
     /// The sentinel keeps the script's return a plain string-or-null while still
@@ -141,21 +130,75 @@ final class ClerkWebAuth: NSObject {
         return value == Self.noSessionSentinel ? .noSession : .token(value)
     }
 
-    // MARK: - Sign-in sheet
+    // MARK: - Browser ticket handoff
 
-    /// A fresh webview for the sign-in sheet. It shares the default data store,
-    /// so whatever session it establishes is instantly usable by the token webview.
-    func makeSignInWebView() -> WKWebView {
-        let webView = makeWebView()
-        load(signInURL, in: webView)
-        return webView
+    /// Kept separate from the ticket value so tests can prove no secret is ever
+    /// concatenated into JavaScript source. `ticket` arrives only through the
+    /// structured `arguments` dictionary below.
+    static let ticketRedemptionScript = """
+    try {
+      const clerk = window.Clerk;
+      if (!clerk || !clerk.client || !clerk.client.signIn) { return null; }
+      const result = await clerk.client.signIn.create({ strategy: 'ticket', ticket: ticket });
+      if (!result || result.status !== 'complete' || !result.createdSessionId) { return null; }
+      await clerk.setActive({ session: result.createdSessionId });
+      return '__TICKET_REDEEMED__';
+    } catch (e) {
+      return null;
+    }
+    """
+
+    func redeemTicket(_ ticket: String) async -> TicketRedemptionOutcome {
+        let webView = ensureTokenWebView()
+        await waitForLoad(webView)
+        guard await waitForClerkClient(on: webView) else { return .failure }
+
+        let result: Any? = await withCheckedContinuation { continuation in
+            webView.callAsyncJavaScript(
+                Self.ticketRedemptionScript,
+                arguments: ["ticket": ticket],
+                in: nil,
+                in: .page
+            ) { outcome in
+                switch outcome {
+                case .success(let value): continuation.resume(returning: value)
+                case .failure: continuation.resume(returning: nil)
+                }
+            }
+        }
+        return (result as? String) == "__TICKET_REDEEMED__" ? .success : .failure
     }
 
-    /// Re-park the token webview so it picks up the session the sheet just made.
-    func refreshAfterSignIn() async {
-        let webView = ensureTokenWebView()
-        load(signInURL, in: webView)
-        await waitForLoad(webView)
+    /// Navigation completion can precede ClerkJS hydration. Wait a bounded ten
+    /// seconds for the actual resource used by ticket redemption rather than
+    /// racing the page's first paint.
+    private func waitForClerkClient(on webView: WKWebView) async -> Bool {
+        let script = """
+        try {
+          const clerk = window.Clerk;
+          if (!clerk) { return false; }
+          return !!(clerk.loaded && clerk.client && clerk.client.signIn && clerk.setActive);
+        } catch (e) {
+          return false;
+        }
+        """
+
+        for attempt in 0..<40 {
+            let ready: Bool = await withCheckedContinuation { continuation in
+                webView.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { outcome in
+                    let value = try? outcome.get()
+                    continuation.resume(returning: value as? Bool == true)
+                }
+            }
+            if ready { return true }
+            guard attempt < 39 else { break }
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+            } catch {
+                return false
+            }
+        }
+        return false
     }
 
     // MARK: - Sign-out
@@ -218,7 +261,7 @@ final class ClerkWebAuth: NSObject {
         window.orderFrontRegardless()
         offscreenWindow = window
 
-        load(signInURL, in: webView)
+        load(sessionPageURL, in: webView)
         return webView
     }
 

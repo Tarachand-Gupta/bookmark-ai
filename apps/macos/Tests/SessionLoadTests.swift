@@ -3,10 +3,7 @@ import XCTest
 @testable import BookmarkAI
 
 /// Loading the account's data — the identity above all — on EVERY transition
-/// to signed-in, in a task the app owns (`AppEnvironment.gateOpened`). Pins the
-/// bug behind "Status: Signed in, identity stuck on Loading your account…":
-/// the sign-in sheet's `.task` is cancelled the instant the sheet dismisses,
-/// and a load awaited inside it never lands.
+/// to signed-in, in a task the app owns (`AppEnvironment.gateOpened`).
 final class SessionLoadTests: XCTestCase {
 
     private static let meJSON = Data(#"{"signedIn":true,"name":"Tara Gupta","email":"tara@bookmark-ai.cloud"}"#.utf8)
@@ -30,37 +27,35 @@ final class SessionLoadTests: XCTestCase {
         ApiClientAuthTests.StubURLProtocol.requests.filter { $0.url?.path == "/api/me" }.count
     }
 
-    /// Complete a sign-in the way the sheet does — from inside a task SwiftUI
-    /// cancels the moment `isPresentingSignIn` flips false — and return that
-    /// task, so a test can prove the fixture really was cancelled.
     @MainActor
-    static func completeSignInFromTheSheetsTask(_ env: AppEnvironment) async -> Task<Void, Never> {
-        env.auth.beginSignIn()
-        let sheetTask = Task { @MainActor in await env.auth.completeSignIn() }
-        withObservationTracking {
-            _ = env.auth.isPresentingSignIn
-        } onChange: {
-            sheetTask.cancel()
+    static func completeBrowserSignIn(_ env: AppEnvironment, token: String = "jwt-browser") async {
+        let flow = String(repeating: "A", count: 43)
+        env.auth.browserStartOverride = { _ in
+            BrowserSignInStart(
+                flowId: flow,
+                browserUrl: "https://www.bookmark-ai.cloud/macos-auth?flow=\(flow)",
+                verificationCode: "ABCD-EFGH",
+                expiresAt: Date().addingTimeInterval(600).timeIntervalSince1970 * 1_000,
+                expiresInSeconds: 600
+            )
         }
-        await sheetTask.value
-        return sheetTask
+        env.auth.browserExchangeOverride = { _, _ in
+            .complete(ticket: "one-time-ticket", expiresAt: Date().addingTimeInterval(60))
+        }
+        env.auth.browserOpenOverride = { _ in true }
+        env.auth.browserSleepOverride = { _ in }
+        env.auth.redeemTicketOverride = { _ in .success }
+        env.auth.mintOverride = { _ in .token(token) }
+        env.auth.beginSignIn()
+        await env.auth.waitForBrowserAttempt()
     }
 
-    /// THE bug. `SignInSheet` polls for a token inside its `.task`; on success
-    /// it used to await the whole completion from there. `completeSignIn()`
-    /// dismisses the sheet first thing, SwiftUI cancels that task at the next
-    /// suspension, and URLSession fails with `.cancelled` inside a cancelled
-    /// task — so the token (minted in its own task) arrived while `/api/me`
-    /// (awaited as a child) never did: "Signed in" with no identity until a
-    /// relaunch. Now the confirmed session loads in a task the app owns.
     @MainActor
-    func testSignInCompletedInsideTheDismissedSheetsTaskStillLoadsIdentity() async throws {
+    func testBrowserSignInLoadsIdentityAfterTheSheetDismisses() async throws {
         let env = Self.makeStubbedEnvironment()
         env.auth.seed(status: .signedOut)
-        env.auth.mintOverride = { _ in .token("jwt-sheet") }
 
-        let sheetTask = await Self.completeSignInFromTheSheetsTask(env)
-        XCTAssertTrue(sheetTask.isCancelled, "the fixture must reproduce the dismissed sheet")
+        await Self.completeBrowserSignIn(env)
         XCTAssertFalse(env.auth.isPresentingSignIn)
         XCTAssertEqual(env.auth.status, .signedIn)
         XCTAssertEqual(env.gate, .ready)
@@ -72,19 +67,12 @@ final class SessionLoadTests: XCTestCase {
         XCTAssertEqual(identityRequests(), 1, "one confirmation, one /api/me")
     }
 
-    /// The sheet's entry point hands off to a task of its own and returns at
-    /// once; awaiting it (as tests do) ends with the session adopted and the
-    /// identity in.
     @MainActor
-    func testFinishSignInHandsOffAndLoadsIdentity() async throws {
+    func testTicketRedemptionConfirmsSessionAndLoadsIdentity() async throws {
         let env = Self.makeStubbedEnvironment()
         env.auth.seed(status: .signedOut)
-        env.auth.beginSignIn()
-        env.auth.mintOverride = { _ in .token("jwt-sheet") }
 
-        let signIn = env.finishSignIn()
-        XCTAssertTrue(env.auth.isPresentingSignIn, "returns before its task has even dismissed the sheet")
-        await signIn.value
+        await Self.completeBrowserSignIn(env)
         XCTAssertFalse(env.auth.isPresentingSignIn)
         XCTAssertEqual(env.auth.status, .signedIn)
         await env.sessionLoad?.value
@@ -121,8 +109,7 @@ final class SessionLoadTests: XCTestCase {
         XCTAssertNil(env.auth.account)
         XCTAssertNil(env.sessionLoad, "the flush drops the load handle")
 
-        let sheetTask = await Self.completeSignInFromTheSheetsTask(env)
-        XCTAssertTrue(sheetTask.isCancelled)
+        await Self.completeBrowserSignIn(env, token: "jwt-2")
         await env.sessionLoad?.value
         XCTAssertEqual(confirmations, 2)
         XCTAssertEqual(env.auth.account?.email, "tara@bookmark-ai.cloud", "signing in again loads it again")

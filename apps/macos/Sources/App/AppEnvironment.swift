@@ -179,23 +179,17 @@ final class AppEnvironment {
         // Auth points at the CLOUD origin — the Clerk-backed one — unless the
         // local target was started with sign-in on (`ServerTarget.authOrigin`).
         // Plain Local mode simply never attaches the token.
-        auth.updateOrigin(target.authOrigin)
+        await auth.updateOrigin(target.authOrigin)
         await auth.restore(requiresAuth: target.requiresAuth)
         if !target.requiresAuth { gateOpened() }
     }
 
     /// The gate just opened — load everything, in a task of ITS OWN. Every
     /// opening passes through here: a confirmed cloud session (whichever path
-    /// confirmed it) and the Local target. Owning the task is the point: the
-    /// trigger may be running inside a task somebody else is about to cancel.
-    /// The sign-in sheet's `.task` is the case that bit — SwiftUI cancels it
-    /// the instant the sheet dismisses (the first thing `completeSignIn` does),
-    /// and inside a cancelled task URLSession fails with `.cancelled` before
-    /// any response is read. The token survived (its mint runs in its own
-    /// task), so the app read "Signed in" while `/api/me` — awaited as a child
-    /// of that task — never landed, and the identity sat on "Loading your
-    /// account…" until a relaunch. The library, which hops into its own task,
-    /// loaded fine, which is why only the identity looked broken.
+    /// confirmed it) and the Local target. Owning the task keeps identity and
+    /// model loading independent from the restore or browser-handoff task that
+    /// opened the gate; dismissing or canceling its source UI cannot cancel the
+    /// account load after the session has been adopted.
     private func gateOpened() {
         sessionLoad = Task { @MainActor [weak self] in await self?.loadEverything() }
     }
@@ -229,15 +223,6 @@ final class AppEnvironment {
             serverTarget: preferences.serverTarget.rawValue,
             sessions: sessions.sessions
         ))
-    }
-
-    /// The sign-in sheet saw a token. Adopts the session in a task of its own
-    /// — the sheet's `.task` dies with the sheet, which `completeSignIn()`
-    /// dismisses first thing — and the confirmed session then loads through
-    /// `onSessionConfirmed` → `gateOpened()`. Returned so tests can await it.
-    @discardableResult
-    func finishSignIn() -> Task<Void, Never> {
-        Task { @MainActor [auth] in await auth.completeSignIn() }
     }
 
     /// Account menu / Settings ▸ Sign Out. The flush happens through `auth.onSignedOut`.

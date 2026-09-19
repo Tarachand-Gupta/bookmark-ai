@@ -54,6 +54,7 @@ skills-lock.json
 # Safari appex resource staging copy). Never part of the web build, and the two
 # macOS build dirs alone were 420 MB of the 556 MB upload on 2026-09-07.
 apps/macos/build
+apps/macos/build-*
 apps/macos/build-history
 apps/macos/*.xcodeproj
 apps/extension/safari-app/build

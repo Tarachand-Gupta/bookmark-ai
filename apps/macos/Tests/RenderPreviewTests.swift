@@ -332,15 +332,12 @@ final class RenderPreviewTests: XCTestCase {
             try render(AccountSettingsTab().environment(loadingIdentity).tint(.blue),
                        width: 500, appearance: appearance, name: "auth-account-tab-loading-\(suffix)")
 
-            // Right after an in-app sign-in, through the REAL path — the sheet's
-            // cancelled task and all (`SessionLoadTests`), `/api/me` answered by
-            // the stub: the footer and the Account tab must both show the
-            // identity, not the placeholder.
+            // Right after the real browser-ticket adoption path, with `/api/me`
+            // answered by the stub: the footer and Account tab must both show
+            // the identity, not the placeholder.
             let justSignedIn = SessionLoadTests.makeStubbedEnvironment()
             justSignedIn.auth.seed(status: .signedOut)
-            justSignedIn.auth.mintOverride = { _ in .token("jwt-preview") }
-            let sheetTask = await SessionLoadTests.completeSignInFromTheSheetsTask(justSignedIn)
-            XCTAssertTrue(sheetTask.isCancelled)
+            await SessionLoadTests.completeBrowserSignIn(justSignedIn, token: "jwt-preview")
             await justSignedIn.sessionLoad?.value
             XCTAssertEqual(justSignedIn.auth.account?.email, "tara@bookmark-ai.cloud")
             justSignedIn.settings.seed(settings, plan: .free)

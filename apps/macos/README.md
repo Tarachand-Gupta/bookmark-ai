@@ -24,14 +24,15 @@ xcodegen generate                # writes BookmarkAI.xcodeproj
 xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
            -configuration Debug -derivedDataPath build build
 
-# Test (163 tests: URL construction, error mapping, response decoding,
+# Test (200 tests: URL construction, error mapping, response decoding,
 # chat stream assembly, attachment classification/downscaling, skills/MCP
 # contracts, the SKILL.md import parser, history grouping, the empty-reply
 # guard, the chat tool cards (output decoding, fold/filter/regroup, the
 # client-side pagers), the auth state machine + sign-out flush + the load
-# every confirmed session starts (incl. from the sign-in sheet's cancelled
-# task) + stubbed-transport 401 rules, the footer copy, release version
-# arithmetic + the update-banner rules; the 9 RenderPreviewTests are skipped
+# every confirmed session starts (including browser-ticket sign-in) +
+# stubbed-transport 401 rules, the footer copy, release version arithmetic,
+# the browser handoff state machine + the update-banner rules; the 10
+# RenderPreviewTests are skipped
 # unless TEST_RUNNER_RENDER_PREVIEWS=1 — a plain env var is NOT forwarded to
 # the test host)
 xcodebuild -project BookmarkAI.xcodeproj -scheme BookmarkAI \
@@ -110,45 +111,50 @@ identifier remain the same in both configurations.
 
 ## Auth architecture
 
-### Why WKWebView and not Clerk's native Apple SDK
+### Default-browser sign-in, hidden-webview tokens
 
-`clerk-ios` (ClerkKit) **does** support macOS — its `Package.swift` declares
-`.macOS(.v14)`, so the native route was genuinely on the table. It was rejected
-for one hard reason and one soft one:
+Cloud sign-in opens `https://www.bookmark-ai.cloud/macos-auth` with
+`NSWorkspace.shared.open`, so the user can reuse the account already signed in
+to their default browser. OAuth, provider selection, MFA and consent remain in
+that browser; the native sheet contains no visible webview.
 
-1. **It needs Clerk *dashboard* configuration this task is not permitted to make.**
-   ClerkKit talks to the Clerk Native API, which requires the instance's
-   **Native API toggle** to be ON, plus a native application / redirect-scheme
-   registration for OAuth. Writing Clerk config was explicitly out of scope.
-2. It would add four SPM dependencies (Nuke, PhoneNumberKit, Mocker,
-   swift-concurrency-extras) to an otherwise dependency-free app.
+The browser's cookies are intentionally inaccessible to the sandboxed app. A
+short server-mediated handoff bridges the clients without placing a credential
+in a URL:
 
-The webview route needs **zero** dashboard changes: it renders the web app's own
-`/sign-in` page, so it works against the dev and prod Clerk instances
-interchangeably, and inherits every auth method the website already supports
-(including Google SSO) for free.
+1. The app creates a random 32-byte PKCE verifier in memory and sends only its
+   SHA-256 challenge to `POST /api/macos-auth/start`.
+2. It validates the returned browser URL against the selected auth origin,
+   opens it, shows the same human-readable code in the native sheet, and polls
+   `POST /api/macos-auth/exchange` with the opaque flow ID and verifier.
+3. After the browser explicitly confirms the account and code, the server
+   atomically consumes the flow and returns a roughly 60-second Clerk sign-in
+   ticket in a no-store JSON response. The ticket never appears in a URL, log,
+   clipboard, notification, or process argument.
+4. The app passes that ticket to its existing off-screen `WKWebView` only via
+   `callAsyncJavaScript(arguments:)`. ClerkJS runs
+   `clerk.client.signIn.create({strategy: "ticket", ticket})`, then
+   `clerk.setActive`. The ticket is never concatenated into script source.
+5. From that point on, the existing hidden-webview session mints full Clerk
+   session JWTs and the API client behaves exactly as before.
 
-**Tradeoff:** sign-in is a web page in a sheet rather than native Clerk UI, and
-token minting depends on `window.Clerk` being present on the app origin. If Tara
-later enables the Native API toggle and registers a native app, swapping in
-ClerkKit is a contained change behind `AuthController`.
+Start/exchange use a cookie-free ephemeral `URLSession`, reject redirects and
+oversized or malformed success responses, and allow HTTPS for Cloud (plus the
+existing `http://localhost:3000` development target). Polling starts after two
+seconds, backs off to five seconds, honors `Retry-After`, and stops at the
+earlier of the server expiry and ten minutes. A `502` after ticket-mint failure
+is terminal because the flow was already consumed; Try Again starts a new flow.
 
-### How it works
+Every attempt has a generation owned by `AuthController`. Cancel, retry,
+target change and sign-out invalidate it after every suspension. Ticket
+redemption is serialized across attempts; if a stale redemption returns — even
+with a failure sentinel — the app clears its hidden Clerk session before a new
+attempt may redeem. App sign-out clears only the app's `WKWebsiteDataStore`; it
+does not sign the external browser out.
 
-Two `WKWebView`s share `WKWebsiteDataStore.default()`, so cookies set by one are
-instantly visible to the other **and persist across launches** (silent re-auth):
-
-1. **Sign-in webview** — presented in a sheet at `https://www.bookmark-ai.cloud/sign-in`.
-   Polled every 1.2s; the first non-nil token means sign-in finished. Completion
-   is detected by *polling for a token*, not by watching for a navigation to
-   `/app`, because Clerk finishes some flows entirely client-side.
-2. **Token webview** — parked in a transparent, click-through, off-screen window
-   for the app's lifetime. Unlike the Zig desktop SDK, WKWebView **can** evaluate
-   JavaScript, so `window.Clerk.session.getToken()` is reachable directly and
-   **no web-app change was needed**.
-
-Minting runs `callAsyncJavaScript` (macOS 11+) in the `.page` content world —
-`window.Clerk` is page JavaScript and is invisible from an isolated world.
+The off-screen webview is still required for session restoration and token
+refresh. It waits for ClerkJS hydration, redeems the ticket, and calls
+`window.Clerk.session.getToken()` in the `.page` content world.
 
 Token lifecycle:
 - Clerk session JWTs live ~60s. Cached for **40s**, re-minted by a background
@@ -196,23 +202,13 @@ disagree about whether account data may be on screen:
   (a backoff tick, Retry, or an on-demand mint) fires `onSessionRestored`, which
   runs the data load the launch skipped.
 - **Every transition to `signedIn` is ONE path too** — `setSignedIn()` (the
-  mirror of `setSignedOut()`, reached from the launch restore, a backoff retry
-  or Retry, the sign-in sheet, or an on-demand mint that confirmed the session)
-  → `onSessionConfirmed` → `AppEnvironment.gateOpened()`, which runs
-  `loadEverything()` (identity, library, health, the update poll) **in a task
-  the app owns**. Owning the task is the point: the sign-in sheet finds its
-  token inside its own `.task`, and `completeSignIn()` dismisses the sheet
-  first thing — SwiftUI cancels that task at the next suspension, and inside
-  a cancelled task URLSession fails with `.cancelled` before any response is
-  read. The token still arrived (its mint runs in its own task), so the app
-  read "Signed in" while `/api/me`, awaited as a child of the dead task, never
-  landed: the identity sat on "Loading your account…" until a relaunch (the
-  library, which hops into its own task, loaded fine — which is why only the
-  identity looked broken). `SignInSheet` now hands off (`finishSignIn()`
-  returns a task) and every load goes through `gateOpened()`; the 45 s tick
-  is not a transition and loads nothing. `SessionLoadTests` reproduces the
-  cancelled sheet task and asserts the identity loads anyway, exactly once
-  per confirmation.
+  mirror of `setSignedOut()`, reached from launch restore, a backoff retry,
+  default-browser ticket redemption, or an on-demand mint) →
+  `onSessionConfirmed` → `AppEnvironment.gateOpened()`. It runs
+  `loadEverything()` (identity, library, health and update poll) in a task the
+  app owns, so source-task or sheet cancellation cannot interrupt the account
+  load after a session is adopted. The 45 s tick is not a transition and loads
+  nothing. `SessionLoadTests` asserts one identity load per confirmation.
 - **Mid-session, a transient mint failure keeps the session.** The status stays
   `.signedIn`, the data stays on screen, and `AuthController.token` returns nil.
   `ApiClient.send` / `startChatTurn` then throw `ApiError.noToken` **before any
@@ -249,8 +245,8 @@ signed-out; only the detail column was gated (the sidebar rendered regardless);
 401-replayed into a false sign-out; and `SettingsModel.plan` defaulted to Free,
 so it could never be empty. All five are fixed by the gate above. A sixth
 followed: signing in to an already-running app showed **"Signed in" with the
-identity stuck on "Loading your account…"** until a relaunch — the load ran
-inside the sign-in sheet's cancelled `.task` (see the `signedIn` bullet).
+identity stuck on "Loading your account…"** until a relaunch. Session loads now
+belong to `AppEnvironment`, independently of the task that confirms the gate.
 
 **Nothing durable is stored by this app**, which is why there is no Keychain
 entry: session JWTs are memory-only, and the Clerk cookies live in the
@@ -297,7 +293,7 @@ curl -X PUT localhost:3000/api/admin/releases/macos -H 'content-type: applicatio
 | Mode | Base | Auth |
 | --- | --- | --- |
 | **Local** | `http://localhost:3000` | **none** — expects `DEV_OPEN_API=1` |
-| **Local + sign-in** (`BOOKMARKAI_LOCAL_AUTH=1` in the app's environment) | `http://localhost:3000` | `Bearer` minted by the sign-in sheet on `localhost:3000/sign-in` (the dev-instance Clerk) |
+| **Local + sign-in** (`BOOKMARKAI_LOCAL_AUTH=1` in the app's environment) | `http://localhost:3000` | Default-browser handoff through `localhost:3000/macos-auth`, then a full dev-instance Clerk JWT |
 | **Cloud** (default) | `https://www.bookmark-ai.cloud` | `Authorization: Bearer <Clerk session JWT>` |
 
 The cloud base **must** be the `www` host. The apex 308-redirects `/api/*` to
@@ -365,12 +361,13 @@ apps/macos/
 │   │   ├── ApiError.swift          typed errors + status→error mapping (+ `.noToken`)
 │   │   └── ServerTarget.swift      local/cloud base URLs, hostLabel
 │   ├── Auth/
-│   │   ├── ClerkWebAuth.swift      the two webviews, JS token minting, sign-out
+│   │   ├── BrowserSignIn.swift     PKCE, strict browser URL validation, ephemeral no-redirect start/exchange transport
+│   │   ├── ClerkWebAuth.swift      hidden ticket redemption, JS token minting, app-only sign-out
 │   │   ├── AuthController.swift    @Observable auth state (unknown/signedOut/signedIn/unreachable), token cache + refresh, backoff restore + stall, the one sign-out path + the one sign-in path (onSessionConfirmed), identity
 │   │   ├── AuthGate.swift          AuthGateScaffold (glass + centred column; optional login server picker), AppMark, GateActionButton
 │   │   ├── SignedOutView.swift     the whole window while signed out on Cloud
 │   │   ├── ConnectingView.swift    the whole window while the session is unconfirmed (spinner → "Can't reach" + Retry)
-│   │   └── SignInSheet.swift       sheet + NSViewRepresentable host
+│   │   └── SignInSheet.swift       native code/progress/retry sheet; no embedded OAuth UI
 │   ├── Library/
 │   │   ├── ContentView.swift       gate switch: NavigationSplitView / ConnectingView / SignedOutView; sign-in sheet at the root
 │   │   ├── SidebarView.swift       facets with counts (hidden at 0) + account footer
@@ -420,7 +417,8 @@ apps/macos/
     ├── SignedOutResetTests.swift   2 tests — handleSignedOut() empties every model (incl. plan, identity, window state); a post-retry 401 flushes through AuthController
     ├── ColdStartTests.swift        19 tests — cache round-trip; hydration (target-stamped, empty rejected); diff-in-place reconcile (identity kept, appended, removed); refresh failure keeps cached rows; pill arms on hydrate + settles with the first refresh; cached content opens the gate while Clerk is quiet; definitive sign-out still flushes; write-through incl. the UNFILTERED-snapshot rule (a filtered ⌘R never overwrites it); snapshot wiped on sign-out; dock-reopen decision
     ├── AuthStateTests.swift        11 tests — refresh-tick no-session flushes; unavailable keeps session + data; restore → signedIn / signedOut / connecting; Retry confirms; backoff + stall constants; gate per target; initials; identity kept on /api/me failure
-    ├── SessionLoadTests.swift      4 tests — stubbed /api/me: sign-in completed inside the sheet's CANCELLED task still loads the identity; finishSignIn hands off; one load per transition (restore, tick, sign-out, sign-in again); on-demand mint while connecting confirms + loads
+    ├── BrowserSignInTests.swift    PKCE, origin/redirect/response guards, polling/backoff/rate limits, ticket JS, cancel/retry/target-change cleanup
+    ├── SessionLoadTests.swift      4 tests — stubbed /api/me: browser-ticket sign-in loads identity; one load per transition (restore, tick, sign-out, sign-in again); on-demand mint while connecting confirms + loads
     ├── AccountFooterTests.swift    4 tests — footer copy: name over host with the email as tooltip, email/status fallbacks, "Loading…" placeholder, Local + gate states
     ├── ApiClientAuthTests.swift    4 tests — stubbed URLProtocol: no token ⇒ no request + `.noToken`; expired token recovers on the replay; fresh token rejected ⇒ onUnauthorized once; Local sends no header
     ├── AppReleaseTests.swift       12 tests — segments/compareVersions/updateState vs releases.ts, live + empty JSON shapes, bundle version
@@ -429,7 +427,7 @@ apps/macos/
     ├── FilteringTests.swift        5 tests — sessions/live search matching
     ├── StreamingLayoutTests.swift  1 test — streaming layout
     ├── PreferencesTests.swift      target migration/default plus layout persistence
-    └── RenderPreviewTests.swift    light+dark PNGs incl. the auth gate (signed-out window + Settings panel, connecting + stalled, footer name / email-only (long address) at 250 + 200 / loading / local, Cloud + Local Account tabs, and both footer + Account tab straight after a sign-in run through the real cancelled-sheet path) and both update-banner variants (TEST_RUNNER_RENDER_PREVIEWS=1)
+    └── RenderPreviewTests.swift    light+dark PNGs incl. the auth gate (signed-out window + Settings panel, connecting + stalled, footer name / email-only (long address) at 250 + 200 / loading / local, Cloud + Local Account tabs, and both footer + Account tab straight after a browser-ticket sign-in) and both update-banner variants (TEST_RUNNER_RENDER_PREVIEWS=1)
 ```
 
 ---

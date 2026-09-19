@@ -1,7 +1,15 @@
+import AppKit
 import Foundation
 import Observation
 import OSLog
-import WebKit
+
+enum BrowserSignInState: Equatable {
+    case idle
+    case starting
+    case waiting(code: String, browserURL: URL, expiresAt: Date, openError: String?)
+    case redeeming(code: String)
+    case failed(message: String)
+}
 
 /// Owns the app's authentication state and hands `ApiClient` its bearer tokens.
 ///
@@ -47,6 +55,9 @@ final class AuthController {
     var lastError: String?
     /// Drives the sign-in sheet.
     var isPresentingSignIn = false
+    /// The native sheet never hosts OAuth UI. It reports progress while the
+    /// default browser confirms the account and this app polls for the handoff.
+    private(set) var browserSignInState: BrowserSignInState = .idle
     /// True once the connecting state has lasted `stallAfter` without Clerk
     /// answering — the UI switches from a spinner to "Can't reach …" + Retry.
     /// Retries continue regardless.
@@ -77,6 +88,7 @@ final class AuthController {
     private static let log = Logger(subsystem: "ai.bookmarkai", category: "auth")
 
     private let web: ClerkWebAuth
+    private let browserClient: BrowserSignInClient
     private var cachedToken: String?
     private var cachedAt: Date?
     private var mintTask: Task<MintOutcome, Never>?
@@ -88,19 +100,39 @@ final class AuthController {
     private var restoreRetry: Task<Void, Never>?
     /// When the current connecting stretch began — drives `restoreStalled`.
     private var restoreBeganAt: Date?
+    /// Every browser attempt gets a generation. Any suspension that resumes for
+    /// an older generation may clean up, but may never adopt a session or alter
+    /// the newer sheet.
+    private var browserAttemptID: UUID?
+    private var browserAttemptTask: Task<Void, Never>?
+    /// Invalidates token-mint results that began before a browser attempt,
+    /// even if that attempt has already finished by the time the mint resumes.
+    private var authOperationGeneration: UInt64 = 0
 
     #if DEBUG
     /// Tests: stand in for the webview. Receives `fresh`; returns the outcome.
     var mintOverride: ((Bool) async -> MintOutcome)?
+    var browserStartOverride: ((String) async throws -> BrowserSignInStart)?
+    var browserExchangeOverride: ((String, String) async throws -> BrowserSignInExchange)?
+    var browserOpenOverride: ((URL) -> Bool)?
+    var browserSleepOverride: ((TimeInterval) async throws -> Void)?
+    var browserNowOverride: (() -> Date)?
+    var redeemTicketOverride: ((String) async -> TicketRedemptionOutcome)?
+    var webSignOutOverride: (() async -> Void)?
     #endif
 
     init(origin: URL) {
         self.web = ClerkWebAuth(origin: origin)
+        self.browserClient = BrowserSignInClient(origin: origin)
+        self.currentAuthOrigin = origin
     }
 
     /// The Local/Cloud switch changed. Auth is only meaningful for cloud.
-    func updateOrigin(_ origin: URL) {
+    func updateOrigin(_ origin: URL) async {
+        await invalidateBrowserAttemptAndWait(dismissSheet: true)
         web.updateOrigin(origin)
+        browserClient.updateOrigin(origin)
+        currentAuthOrigin = origin
         invalidateToken()
         cancelRestoreRetry()
     }
@@ -131,6 +163,18 @@ final class AuthController {
     /// are idempotent, so whoever triggered the mint — the restore, the sheet,
     /// the 45 s tick, a request — needs no bookkeeping of its own.
     private func mint(forceRefresh: Bool) async -> MintOutcome {
+        guard browserAttemptID == nil else { return .unavailable }
+        let generation = authOperationGeneration
+        let outcome = await performMint(forceRefresh: forceRefresh)
+        guard browserAttemptID == nil, authOperationGeneration == generation else { return .unavailable }
+        applyMintOutcome(outcome)
+        return outcome
+    }
+
+    /// Runs the single-flight webview operation without adopting its result.
+    /// Browser sign-in uses this split so an attempt canceled while the webview
+    /// is suspended cannot become `.signedIn` when it resumes.
+    private func performMint(forceRefresh: Bool) async -> MintOutcome {
         // Coalesce concurrent mints: an in-flight mint satisfies this call unless
         // we need a guaranteed-fresh token and the in-flight one isn't. Never run
         // two mints at once — they'd race evaluations on the same webview.
@@ -142,8 +186,8 @@ final class AuthController {
         }
 
         // Its own task on purpose: the caller may be running inside a task
-        // SwiftUI is about to cancel (the sign-in sheet's), and the webview
-        // evaluation must still complete.
+        // whose UI or request is about to cancel, and the webview evaluation
+        // must still settle before another operation uses it.
         let task = Task { @MainActor [web] in
             #if DEBUG
             if let mintOverride { return await mintOverride(forceRefresh) }
@@ -155,6 +199,10 @@ final class AuthController {
         let outcome = await task.value
         if mintTask == task { mintTask = nil }
 
+        return outcome
+    }
+
+    private func applyMintOutcome(_ outcome: MintOutcome) {
         switch outcome {
         case .token(let token):
             cachedToken = token
@@ -179,7 +227,6 @@ final class AuthController {
             cachedAt = nil
             Self.log.info("token mint unavailable (status \(String(describing: self.status), privacy: .public)) — keeping state")
         }
-        return outcome
     }
 
     private func invalidateToken() {
@@ -263,51 +310,302 @@ final class AuthController {
     }
 
     func beginSignIn() {
-        lastError = nil
         isPresentingSignIn = true
+        startBrowserAttempt()
     }
 
-    /// The sign-in sheet saw a token — adopt the session for the whole app.
-    /// Dismissing the sheet is the FIRST thing this does, which is why the
-    /// caller must not run it inside the sheet's own `.task`: SwiftUI cancels
-    /// that task with the sheet (see `AppEnvironment.finishSignIn`).
-    func completeSignIn() async {
-        isPresentingSignIn = false
-        cancelRestoreRetry()
-        await reloadTokenPageAfterSignIn()
-        let outcome = await mint(forceRefresh: true)
-        if case .token = outcome {
-            // `mint` made the transition and announced it (`onSessionConfirmed`).
-            Self.log.notice("sign-in completed")
-        } else {
-            lastError = "Sign-in finished but no session token could be minted. Try again."
-            Self.log.error("sign-in finished without a token: \(String(describing: outcome), privacy: .public)")
-            setSignedOut(force: true)
-        }
+    func retrySignIn() {
+        guard isPresentingSignIn else { return }
+        startBrowserAttempt()
     }
 
-    /// Re-park the token webview on the session the sheet just made. Tests
-    /// stand in for the webview through `mintOverride`, so they skip it — the
-    /// test host shares the app's website data store, and a real load here
-    /// would hit the cloud sign-in page with the app's own cookies.
-    private func reloadTokenPageAfterSignIn() async {
-        #if DEBUG
-        if mintOverride != nil { return }
-        #endif
-        await web.refreshAfterSignIn()
+    func openBrowserAgain() {
+        guard case .waiting(let code, let url, let expiresAt, _) = browserSignInState else { return }
+        let opened = openBrowser(url)
+        browserSignInState = .waiting(
+            code: code,
+            browserURL: url,
+            expiresAt: expiresAt,
+            openError: opened ? nil : "Couldn't open the default browser. Open it again to continue."
+        )
     }
 
     func cancelSignIn() {
+        authOperationGeneration &+= 1
+        browserAttemptID = nil
+        browserAttemptTask?.cancel()
         isPresentingSignIn = false
+        browserSignInState = .idle
+    }
+
+    private func startBrowserAttempt() {
+        let previous = browserAttemptTask
+        previous?.cancel()
+        authOperationGeneration &+= 1
+        let attemptID = UUID()
+        browserAttemptID = attemptID
+        lastError = nil
+        browserSignInState = .starting
+        cancelRestoreRetry()
+
+        let task = Task { @MainActor [weak self] in
+            // Retry never overlaps a late ticket redemption. The older attempt
+            // gets first chance to clear any session it created after cancel.
+            if let previous { await previous.value }
+            guard let self, self.isCurrentBrowserAttempt(attemptID) else { return }
+            await self.runBrowserAttempt(attemptID)
+        }
+        browserAttemptTask = task
+    }
+
+    private func runBrowserAttempt(_ attemptID: UUID) async {
+        do {
+            let verifier = try BrowserSignInPKCE.generateVerifier()
+            let challenge = BrowserSignInPKCE.challenge(for: verifier)
+            let startedAt = browserNow()
+            let start = try await startBrowserFlow(challenge: challenge)
+            guard isCurrentBrowserAttempt(attemptID) else { return }
+            guard let browserURL = start.browserURL,
+                  BrowserSignInWireValidator.isOpaque43(start.flowId),
+                  BrowserSignInWireValidator.isVerificationCode(start.verificationCode),
+                  BrowserSignInURLValidator.validate(browserURL, flowId: start.flowId, origin: currentAuthOrigin),
+                  start.expirationDate > browserNow()
+            else { throw BrowserSignInError.invalidBrowserURL }
+
+            let deadline = min(start.expirationDate, startedAt.addingTimeInterval(BrowserSignInPollPolicy.maximumLifetime))
+            let opened = openBrowser(browserURL)
+            browserSignInState = .waiting(
+                code: start.verificationCode,
+                browserURL: browserURL,
+                expiresAt: deadline,
+                openError: opened ? nil : "Couldn't open the default browser. Open it again to continue."
+            )
+
+            guard await sleepForBrowserPoll(
+                BrowserSignInPollPolicy.initialDelay,
+                until: deadline,
+                attemptID: attemptID
+            ) else {
+                expireBrowserAttempt(attemptID)
+                return
+            }
+
+            var retry = 0
+            while isCurrentBrowserAttempt(attemptID) {
+                do {
+                    let exchange = try await exchangeBrowserFlow(flowId: start.flowId, verifier: verifier)
+                    guard isCurrentBrowserAttempt(attemptID) else { return }
+
+                    switch exchange {
+                    case .complete(let ticket, let ticketExpiresAt):
+                        guard ticketExpiresAt > browserNow() else {
+                            failBrowserAttempt(attemptID, message: "The secure sign-in handoff expired. Try again.")
+                            return
+                        }
+                        browserSignInState = .redeeming(code: start.verificationCode)
+
+                        // Do not race ticket redemption with a silent-restore
+                        // token evaluation that was already using the webview.
+                        if let existingMint = mintTask {
+                            _ = await existingMint.value
+                            if mintTask == existingMint { mintTask = nil }
+                        }
+                        guard isCurrentBrowserAttempt(attemptID) else { return }
+                        guard ticketExpiresAt > browserNow() else {
+                            failBrowserAttempt(attemptID, message: "The secure sign-in handoff expired. Try again.")
+                            return
+                        }
+
+                        let redemption = await redeemBrowserTicket(ticket)
+                        guard isCurrentBrowserAttempt(attemptID) else {
+                            // The JS may have created a session and then failed
+                            // before returning its sentinel. Once redemption
+                            // began, stale cleanup is unconditional.
+                            await signOutWebSession()
+                            return
+                        }
+                        guard redemption == .success else {
+                            await signOutWebSession()
+                            failBrowserAttempt(
+                                attemptID,
+                                message: "The secure handoff couldn't be completed in the app. Try again."
+                            )
+                            return
+                        }
+
+                        cachedToken = nil
+                        cachedAt = nil
+                        let outcome = await performMint(forceRefresh: true)
+                        guard isCurrentBrowserAttempt(attemptID) else {
+                            await signOutWebSession()
+                            return
+                        }
+                        guard case .token = outcome else {
+                            await signOutWebSession()
+                            failBrowserAttempt(
+                                attemptID,
+                                message: "Sign-in completed, but a session token couldn't be created. Try again."
+                            )
+                            return
+                        }
+
+                        applyMintOutcome(outcome)
+                        browserAttemptID = nil
+                        browserSignInState = .idle
+                        isPresentingSignIn = false
+                        lastError = nil
+                        Self.log.notice("default-browser sign-in completed")
+                        return
+
+                    case .pending(let serverDelay):
+                        let delay = min(
+                            BrowserSignInPollPolicy.maximumDelay,
+                            max(serverDelay, BrowserSignInPollPolicy.backoff(afterRetry: retry))
+                        )
+                        retry += 1
+                        guard await sleepForBrowserPoll(delay, until: deadline, attemptID: attemptID) else {
+                            expireBrowserAttempt(attemptID)
+                            return
+                        }
+
+                    case .rateLimited(let retryAfter):
+                        // Rate limiting is not an auth failure. Honor the server
+                        // while bounding the wait by this flow's hard deadline.
+                        guard await sleepForBrowserPoll(retryAfter, until: deadline, attemptID: attemptID) else {
+                            expireBrowserAttempt(attemptID)
+                            return
+                        }
+                    }
+                } catch is CancellationError {
+                    return
+                } catch BrowserSignInError.temporary {
+                    let delay = BrowserSignInPollPolicy.backoff(afterRetry: retry)
+                    retry += 1
+                    guard await sleepForBrowserPoll(delay, until: deadline, attemptID: attemptID) else {
+                        expireBrowserAttempt(attemptID)
+                        return
+                    }
+                } catch let error as BrowserSignInError {
+                    failBrowserAttempt(attemptID, message: error.localizedDescription)
+                    return
+                } catch {
+                    failBrowserAttempt(attemptID, message: "Sign-in couldn't be completed. Try again.")
+                    return
+                }
+            }
+        } catch is CancellationError {
+            return
+        } catch let error as BrowserSignInError {
+            failBrowserAttempt(attemptID, message: error.localizedDescription)
+        } catch {
+            failBrowserAttempt(attemptID, message: "Sign-in couldn't be started. Try again.")
+        }
+    }
+
+    private var currentAuthOrigin = ServerTarget.cloud.authOrigin
+
+    private func startBrowserFlow(challenge: String) async throws -> BrowserSignInStart {
+        #if DEBUG
+        if let browserStartOverride { return try await browserStartOverride(challenge) }
+        #endif
+        return try await browserClient.start(codeChallenge: challenge)
+    }
+
+    private func exchangeBrowserFlow(flowId: String, verifier: String) async throws -> BrowserSignInExchange {
+        #if DEBUG
+        if let browserExchangeOverride { return try await browserExchangeOverride(flowId, verifier) }
+        #endif
+        return try await browserClient.exchange(flowId: flowId, verifier: verifier)
+    }
+
+    private func openBrowser(_ url: URL) -> Bool {
+        #if DEBUG
+        if let browserOpenOverride { return browserOpenOverride(url) }
+        #endif
+        return NSWorkspace.shared.open(url)
+    }
+
+    private func browserNow() -> Date {
+        #if DEBUG
+        if let browserNowOverride { return browserNowOverride() }
+        #endif
+        return Date()
+    }
+
+    private func sleepForBrowserPoll(_ delay: TimeInterval, until deadline: Date, attemptID: UUID) async -> Bool {
+        guard isCurrentBrowserAttempt(attemptID) else { return false }
+        let remaining = deadline.timeIntervalSince(browserNow())
+        guard remaining > 0 else { return false }
+        do {
+            #if DEBUG
+            if let browserSleepOverride {
+                try await browserSleepOverride(min(max(0, delay), remaining))
+            } else {
+                try await Task.sleep(for: .seconds(min(max(0, delay), remaining)))
+            }
+            #else
+            try await Task.sleep(for: .seconds(min(max(0, delay), remaining)))
+            #endif
+        } catch {
+            return false
+        }
+        return isCurrentBrowserAttempt(attemptID) && browserNow() < deadline
+    }
+
+    private func redeemBrowserTicket(_ ticket: String) async -> TicketRedemptionOutcome {
+        #if DEBUG
+        if let redeemTicketOverride { return await redeemTicketOverride(ticket) }
+        #endif
+        return await web.redeemTicket(ticket)
+    }
+
+    private func signOutWebSession() async {
+        cachedToken = nil
+        cachedAt = nil
+        #if DEBUG
+        if let webSignOutOverride {
+            await webSignOutOverride()
+            return
+        }
+        #endif
+        await web.signOut()
+    }
+
+    private func isCurrentBrowserAttempt(_ attemptID: UUID) -> Bool {
+        browserAttemptID == attemptID
+    }
+
+    private func expireBrowserAttempt(_ attemptID: UUID) {
+        failBrowserAttempt(attemptID, message: "This sign-in request expired. Try again.")
+    }
+
+    private func failBrowserAttempt(_ attemptID: UUID, message: String) {
+        guard isCurrentBrowserAttempt(attemptID) else { return }
+        browserAttemptID = nil
+        browserSignInState = .failed(message: message)
+        lastError = message
+    }
+
+    private func invalidateBrowserAttemptAndWait(dismissSheet: Bool) async {
+        authOperationGeneration &+= 1
+        browserAttemptID = nil
+        browserAttemptTask?.cancel()
+        if dismissSheet {
+            isPresentingSignIn = false
+            browserSignInState = .idle
+        }
+        await browserAttemptTask?.value
+        browserAttemptTask = nil
     }
 
     func signOut() async {
         Self.log.notice("explicit sign-out")
+        await invalidateBrowserAttemptAndWait(dismissSheet: true)
         cancelRestoreRetry()
         refreshLoop?.cancel()
         refreshLoop = nil
         invalidateToken()
-        await web.signOut()
+        await signOutWebSession()
         setSignedOut(force: true)
     }
 
@@ -315,6 +613,7 @@ final class AuthController {
     /// whatever Clerk thinks, this account can't use the API — signed out.
     func handleUnauthorized() {
         guard status == .signedIn || status == .unreachable else { return }
+        cancelSignIn()
         Self.log.error("401 after a forced re-mint — treating as signed out")
         lastError = "The server rejected the session. Sign in again."
         setSignedOut()
@@ -387,17 +686,10 @@ final class AuthController {
     }
     #endif
 
-    // MARK: - Sign-in sheet plumbing
-
-    func makeSignInWebView() -> WKWebView {
-        web.makeSignInWebView()
+    #if DEBUG
+    /// Lets lifecycle tests await the whole attempt without guessing at timing.
+    func waitForBrowserAttempt() async {
+        await browserAttemptTask?.value
     }
-
-    /// Polled by the sign-in sheet: non-nil means Clerk has a session on the
-    /// app's origin and the sheet can close.
-    func probeSignInWebView(_ webView: WKWebView) async -> String? {
-        await web.evaluateToken(on: webView)
-    }
-
-    var signInURL: URL { web.signInURL }
+    #endif
 }

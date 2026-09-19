@@ -1,78 +1,125 @@
 import SwiftUI
-import WebKit
 
-/// Clerk sign-in, hosted in a sheet-presented `WKWebView` pointed at the web
-/// app's own `/sign-in` page.
-///
-/// Completion is detected by POLLING for a token rather than by watching for a
-/// navigation to `/app`: Clerk finishes some flows entirely client-side, so a
-/// URL change is not a reliable signal, whereas `window.Clerk.session` becoming
-/// non-null is exactly the condition we care about.
+/// Native progress for the default-browser handoff. OAuth and account choice
+/// stay in the user's browser; this sheet shows only the matching code and the
+/// state of the one-time handoff.
 struct SignInSheet: View {
     @Environment(AppEnvironment.self) private var appEnvironment
 
-    @State private var webView: WKWebView?
-
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
+        let auth = appEnvironment.auth
 
-            if let webView {
-                WebViewHost(webView: webView)
-            } else {
-                ProgressView()
-                    .controlSize(.large)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+        VStack(spacing: 0) {
+            header(auth)
+            Divider()
+            content(auth)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(32)
         }
-        .frame(width: 540, height: 660)
-        .task { await runSignInFlow() }
+        .frame(width: 500, height: 460)
+        .interactiveDismissDisabled()
+        .accessibilityIdentifier("browser-sign-in-sheet")
     }
 
-    private var header: some View {
+    private func header(_ auth: AuthController) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Sign in to Bookmark AI")
                     .font(.headline)
-                Text(appEnvironment.auth.signInURL.host() ?? "bookmark-ai.cloud")
+                Text("Continue in your default browser")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Cancel") { appEnvironment.auth.cancelSignIn() }
+            Button("Cancel") { auth.cancelSignIn() }
                 .keyboardShortcut(.cancelAction)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
 
-    private func runSignInFlow() async {
-        let view = appEnvironment.auth.makeSignInWebView()
-        webView = view
+    @ViewBuilder
+    private func content(_ auth: AuthController) -> some View {
+        switch auth.browserSignInState {
+        case .idle, .starting:
+            VStack(spacing: 18) {
+                ProgressView()
+                    .controlSize(.large)
+                Text("Preparing secure sign-in…")
+                    .font(.headline)
+                Text("Bookmark AI will open your browser so you can reuse an existing Google, Apple, or Bookmark AI session.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: 390)
+            }
 
-        // Poll until the sheet is dismissed (which cancels this task).
-        while !Task.isCancelled {
-            try? await Task.sleep(for: .milliseconds(1200))
-            guard !Task.isCancelled else { return }
+        case .waiting(let code, _, _, let openError):
+            ScrollView {
+                VStack(spacing: 18) {
+                    Image(systemName: "globe")
+                        .font(.system(size: 38, weight: .medium))
+                        .foregroundStyle(.secondary)
 
-            if let token = await appEnvironment.auth.probeSignInWebView(view), !token.isEmpty {
-                // Hand off, don't await: completing the sign-in dismisses this
-                // sheet, and SwiftUI cancels this task with it — anything still
-                // awaited here (the token page reload, `/api/me`) would die too.
-                appEnvironment.finishSignIn()
-                return
+                    Text("Confirm this code in your browser")
+                        .font(.title3.weight(.semibold))
+
+                    Text(code)
+                        .font(.system(size: 30, weight: .bold, design: .monospaced))
+                        .textSelection(.enabled)
+                        .accessibilityLabel("Verification code \(code)")
+
+                    Text("Choose the account in your browser, make sure the same code appears there, then approve the sign-in.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: 390)
+
+                    ProgressView("Waiting for browser confirmation…")
+                        .controlSize(.small)
+
+                    Button("Open Browser Again") { auth.openBrowserAgain() }
+                        .accessibilityIdentifier("reopen-sign-in-browser")
+
+                    if let openError {
+                        Label(openError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+            }
+            .scrollIndicators(.hidden)
+
+        case .redeeming(let code):
+            VStack(spacing: 18) {
+                ProgressView()
+                    .controlSize(.large)
+                Text("Finishing sign-in…")
+                    .font(.title3.weight(.semibold))
+                Text(code)
+                    .font(.system(.body, design: .monospaced, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text("Keep this window open while Bookmark AI creates the app session.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+            }
+
+        case .failed(let message):
+            VStack(spacing: 18) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 34))
+                    .foregroundStyle(.orange)
+                Text("Sign-in didn't finish")
+                    .font(.title3.weight(.semibold))
+                Text(message)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: 390)
+                Button("Try Again") { auth.retrySignIn() }
+                    .keyboardShortcut(.defaultAction)
+                    .accessibilityIdentifier("retry-browser-sign-in")
             }
         }
     }
-}
-
-/// Hosts an already-configured `WKWebView`. The view is created and owned by
-/// `ClerkWebAuth` so its data store — and therefore the session it establishes —
-/// outlives this sheet.
-struct WebViewHost: NSViewRepresentable {
-    let webView: WKWebView
-
-    func makeNSView(context: Context) -> WKWebView { webView }
-    func updateNSView(_ nsView: WKWebView, context: Context) {}
 }
