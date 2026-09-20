@@ -69,6 +69,12 @@ describe("safari-app: every outbound URL opens in Safari", () => {
     }
     expect(setupView).toContain("OpenURLAction");
     expect(setupView).toContain('Button("Open Bookmark AI in Safari") { model.open(CompanionModel.webAppURL) }');
+    expect(companionModel).toContain(
+      'static let accountSettingsURL = URL(string: "https://www.bookmark-ai.cloud/app?settings=account")!',
+    );
+    expect(setupView).toMatch(
+      /Button\("Delete Account…", role: \.destructive\)\s*\{\s*model\.open\(CompanionModel\.accountSettingsURL\)/,
+    );
     expect(appDelegate).toContain('actionItem("Open Bookmark AI in Safari"');
   });
 });

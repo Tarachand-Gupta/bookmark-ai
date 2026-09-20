@@ -156,6 +156,12 @@ struct SetupView: View {
                     Button("Sign In") { model.open(CompanionModel.signInURL) }
                         .controlSize(.large)
                         .help("Opens the sign-in page in Safari — the extension picks up that session.")
+                } else {
+                    Button("Delete Account…", role: .destructive) {
+                        model.open(CompanionModel.accountSettingsURL)
+                    }
+                    .controlSize(.large)
+                    .help("Opens Account settings in Safari, where deletion requires a second confirmation.")
                 }
                 Spacer()
             }

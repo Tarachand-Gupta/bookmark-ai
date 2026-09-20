@@ -8,8 +8,9 @@
  *   MARKETING_VERSION       = package.json `version` (semver, e.g. 0.1.2)
  *   CURRENT_PROJECT_VERSION = major·1 000 000 + minor·10 000 + patch·100 + suffix
  *                             (0.1.2 → 10200; monotonic across versions; the
- *                             two-digit `suffix` — env SAFARI_BUILD_SUFFIX, default
- *                             0 — is for re-uploading the SAME version, which App
+ *                             two-digit `suffix` — env SAFARI_BUILD_SUFFIX, or
+ *                             the version-keyed override below — is for re-uploading
+ *                             the SAME version, which App
  *                             Store Connect only accepts with a higher build number)
  *
  *   node scripts/safari-version.mjs           # print {version, build}
@@ -24,6 +25,15 @@ import { fileURLToPath } from "node:url";
 
 const EXT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const XCCONFIG_PATH = join(EXT_DIR, "safari-app", "Version.xcconfig");
+
+/** Committed Safari-only re-upload counters. A new marketing version falls back to 0. */
+export const REUPLOAD_SUFFIXES = Object.freeze({
+  "0.1.4": 1,
+});
+
+export function resolveBuildSuffix(version, env = process.env) {
+  return env.SAFARI_BUILD_SUFFIX ?? REUPLOAD_SUFFIXES[version] ?? 0;
+}
 
 /** Strict `major.minor.patch` (no pre-release/build metadata — Apple rejects them). */
 export function parseVersion(version) {
@@ -68,7 +78,7 @@ export function parseXcconfig(text) {
 export function currentValues(env = process.env) {
   const pkg = JSON.parse(readFileSync(join(EXT_DIR, "package.json"), "utf8"));
   const version = pkg.version;
-  const build = deriveBuildNumber(version, env.SAFARI_BUILD_SUFFIX ?? 0);
+  const build = deriveBuildNumber(version, resolveBuildSuffix(version, env));
   return { version, build };
 }
 

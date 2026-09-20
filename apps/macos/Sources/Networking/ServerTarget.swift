@@ -22,6 +22,15 @@ enum ServerTarget: String, CaseIterable, Identifiable, Codable, Sendable {
         }
     }
 
+    /// Public web sign-in with an explicit return to Account settings. Native
+    /// authentication is not shared with the default browser, so opening the
+    /// protected `/app` destination directly can show Clerk's signed-out 404.
+    var accountSettingsSignInURL: URL {
+        var components = URLComponents(url: baseURL.appendingPathComponent("sign-in"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "redirect_url", value: "/app?settings=account")]
+        return components.url!
+    }
+
     /// The dedicated Live Sessions server (a DIFFERENT origin — no `/api`
     /// prefix). Default only: a user-pinned `settings.liveServerUrl` overrides
     /// it (see `LiveModel.resolveBase`). Parity with `apps/mobile/src/api.ts`.

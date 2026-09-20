@@ -1,11 +1,13 @@
 import SwiftUI
 
 /// Settings ▸ Account: the current connection, plan, and account itself —
-/// status, WHO is signed in (initials, name, email), and Sign Out. Only rendered
+/// status, WHO is signed in (initials, name, email), and account actions. Only
+/// rendered
 /// behind an open gate, so on Cloud there is a session; everything here belongs
 /// to that account and is cleared with it.
 struct AccountSettingsTab: View {
     @Environment(AppEnvironment.self) private var appEnvironment
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         let target = appEnvironment.preferences.serverTarget
@@ -41,6 +43,12 @@ struct AccountSettingsTab: View {
                         }
                         .pointingHandCursor()
                         .accessibilityIdentifier("sign-out-button")
+
+                        Button("Delete Account…", role: .destructive) {
+                            openURL(target.accountSettingsSignInURL)
+                        }
+                        .pointingHandCursor()
+                        .accessibilityIdentifier("delete-account-link")
                     } else {
                         Button("Sign In…") { auth.beginSignIn() }
                             .buttonStyle(.borderedProminent)
@@ -55,7 +63,9 @@ struct AccountSettingsTab: View {
                 } header: {
                     Text("Account")
                 } footer: {
-                    Text("Sign-in opens the web app's Clerk page in a secure window. The session is kept in this app's own sandboxed website storage — no password or token is written anywhere else.")
+                    Text(auth.status == .signedIn
+                        ? "Delete Account opens web Account settings, where deletion requires a second confirmation."
+                        : "Sign-in opens in your default browser.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

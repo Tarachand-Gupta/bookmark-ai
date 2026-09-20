@@ -182,8 +182,9 @@ Layout (keep multi-file — the user explicitly banned monolith files):
   (top-level files + folder references, so `icon/16.png` etc. keep their paths).
   `Shared/AuthStateStore.swift` (group id, the four stored keys, parse/read/write, redaction,
   middle-truncation) is compiled into BOTH targets. `Version.xcconfig` is GENERATED from `package.json` by
-  `scripts/safari-version.mjs` (0.1.2 → `CURRENT_PROJECT_VERSION` 10200; `SAFARI_BUILD_SUFFIX` for
-  same-version re-uploads) and feeds BOTH targets (App Store Connect rejects appex/app version
+  `scripts/safari-version.mjs` (0.1.2 → `CURRENT_PROJECT_VERSION` 10200; its version-keyed
+  re-upload suffix, overridable with `SAFARI_BUILD_SUFFIX`, increments same-version uploads) and
+  feeds BOTH targets (App Store Connect rejects appex/app version
   mismatches). Bundle ids `ai.bookmark.safari` / `ai.bookmark.safari.Extension` and
   `DEVELOPMENT_TEAM: L3PP7DQZWS` live in project.yml only (the appex id is mirrored in
   CompanionModel.swift; `safari-app/safari-app.test.ts` + `scripts/safari-version.test.ts` pin

@@ -19,6 +19,19 @@ final class ApiClientTests: XCTestCase {
         XCTAssertEqual(ServerTarget.local.baseURL.absoluteString, "http://localhost:3000")
     }
 
+    func testAccountSettingsSignInURLPreservesDeletionDestination() throws {
+        let components = try XCTUnwrap(URLComponents(
+            url: ServerTarget.cloud.accountSettingsSignInURL,
+            resolvingAgainstBaseURL: false
+        ))
+        XCTAssertEqual(components.scheme, "https")
+        XCTAssertEqual(components.host, "www.bookmark-ai.cloud")
+        XCTAssertEqual(components.path, "/sign-in")
+        XCTAssertEqual(components.queryItems, [
+            URLQueryItem(name: "redirect_url", value: "/app?settings=account"),
+        ])
+    }
+
     /// Only cloud gets a bearer token; local relies on DEV_OPEN_API.
     func testOnlyCloudRequiresAuth() {
         XCTAssertTrue(ServerTarget.cloud.requiresAuth)

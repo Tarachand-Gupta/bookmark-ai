@@ -44,6 +44,7 @@ final class CompanionModel {
     static let safariBundleIdentifier = "com.apple.Safari"
 
     static let webAppURL = URL(string: "https://www.bookmark-ai.cloud/app")!
+    static let accountSettingsURL = URL(string: "https://www.bookmark-ai.cloud/app?settings=account")!
     static let signInURL = URL(string: "https://www.bookmark-ai.cloud/sign-in")!
     static let privacyURL = URL(string: "https://www.bookmark-ai.cloud/privacy")!
     static let supportURL = URL(string: "https://www.bookmark-ai.cloud/support")!

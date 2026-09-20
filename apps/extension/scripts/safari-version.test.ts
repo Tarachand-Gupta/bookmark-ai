@@ -3,9 +3,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   deriveBuildNumber,
+  currentValues,
   parseVersion,
   parseXcconfig,
   renderXcconfig,
+  resolveBuildSuffix,
   XCCONFIG_PATH,
 } from "./safari-version.mjs";
 
@@ -49,6 +51,13 @@ describe("safari-version: the committed Version.xcconfig matches package.json", 
     const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf8")) as { version: string };
     const onDisk = parseXcconfig(readFileSync(XCCONFIG_PATH, "utf8"));
     expect(onDisk.version).toBe(pkg.version);
-    expect(onDisk.build).toBe(deriveBuildNumber(pkg.version, 0));
+    expect(onDisk.build).toBe(currentValues({}).build);
+  });
+
+  it("uses a committed Safari-only suffix for this re-upload and resets for later versions", () => {
+    expect(currentValues({})).toEqual({ version: "0.1.4", build: 10401 });
+    expect(resolveBuildSuffix("0.1.4", {})).toBe(1);
+    expect(resolveBuildSuffix("0.1.5", {})).toBe(0);
+    expect(resolveBuildSuffix("0.1.4", { SAFARI_BUILD_SUFFIX: "7" })).toBe("7");
   });
 });
