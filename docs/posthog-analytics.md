@@ -89,7 +89,11 @@ isolated check, use `POSTHOG_ALLOW_NON_PRODUCTION=true`; routine tests use fake
 tokens, mock HTTP and temporary local SQLite. `POSTHOG_ENABLED=false` is the kill
 switch. Both kill switch and limit changes require a server restart/redeployment.
 
-The code and local configuration do not deploy or update installed clients.
+Production configuration and the web/API deployment were completed September 22,
+2026. Real `export_completed` events were observed in PostHog from the deployed
+web app and the new Mac build, attributed to `web` and `macos` respectively.
+See [rollout status](analytics-rollout-status.md) for remaining client/store work.
+Deploying the server does not update installed clients.
 Verify an actual save/search/chat after the server and relevant client releases
 are deployed. In PostHog, filter by event name and platform; distinguish any
 explicit setup verification event from real product traffic.

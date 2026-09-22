@@ -161,23 +161,33 @@ describe("safari-app: privacy manifests (5.1.1) agree with the store declaration
     "NSPrivacyCollectedDataTypeUserID",
     "NSPrivacyCollectedDataTypeBrowsingHistory",
     "NSPrivacyCollectedDataTypeOtherUserContent",
+    "NSPrivacyCollectedDataTypeDeviceID",
+    "NSPrivacyCollectedDataTypeProductInteraction",
   ];
 
   for (const [name, xml] of [
     ["app", appPrivacy],
     ["appex", extPrivacy],
   ] as const) {
-    it(`${name}: no tracking, every declared type linked + AppFunctionality`, () => {
+    it(`${name}: linked functional data and bounded server analytics, no tracking`, () => {
       expect(plistHas(xml, "NSPrivacyTracking", "<false/>")).toBe(true);
       expect(xml).toMatch(/<key>NSPrivacyTrackingDomains<\/key>\s*<array\/>/);
       const declared = [...xml.matchAll(/<key>NSPrivacyCollectedDataType<\/key>\s*<string>([^<]+)<\/string>/g)].map(
         (m) => m[1],
       );
       expect(declared.sort()).toEqual([...REQUIRED_TYPES].sort());
-      // No entry may claim tracking or a non-functional purpose.
+      // Account-derived analytics stays linked; only User ID and Product Interaction use Analytics.
       expect(xml).not.toMatch(/<key>NSPrivacyCollectedDataTypeTracking<\/key>\s*<true\/>/);
       expect(xml.match(/NSPrivacyCollectedDataTypePurposeAppFunctionality/g)?.length).toBe(REQUIRED_TYPES.length);
-      expect(xml).not.toMatch(/Purpose(Analytics|ProductPersonalization|ThirdPartyAdvertising|DeveloperAdvertising)/);
+      expect(xml.match(/NSPrivacyCollectedDataTypePurposeAnalytics/g)?.length).toBe(2);
+      for (const block of xml.match(/<dict>\s*<key>NSPrivacyCollectedDataType<\/key>[\s\S]*?<\/dict>/g) ?? []) {
+        expect(plistHas(block, "NSPrivacyCollectedDataTypeLinked", "<true/>")).toBe(true);
+        const type = /<key>NSPrivacyCollectedDataType<\/key>\s*<string>([^<]+)<\/string>/.exec(block)?.[1];
+        expect(block.includes("NSPrivacyCollectedDataTypePurposeAnalytics")).toBe(
+          type === "NSPrivacyCollectedDataTypeUserID" || type === "NSPrivacyCollectedDataTypeProductInteraction",
+        );
+      }
+      expect(xml).not.toMatch(/Purpose(ProductPersonalization|ThirdPartyAdvertising|DeveloperAdvertising)/);
     });
   }
 

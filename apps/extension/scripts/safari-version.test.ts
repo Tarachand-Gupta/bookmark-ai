@@ -54,8 +54,8 @@ describe("safari-version: the committed Version.xcconfig matches package.json", 
     expect(onDisk.build).toBe(currentValues({}).build);
   });
 
-  it("uses a committed Safari-only suffix for this re-upload and resets for later versions", () => {
-    expect(currentValues({})).toEqual({ version: "0.1.4", build: 10401 });
+  it("uses the current release version and retains historical re-upload suffixes", () => {
+    expect(currentValues({})).toEqual({ version: "0.1.5", build: 10500 });
     expect(resolveBuildSuffix("0.1.4", {})).toBe(1);
     expect(resolveBuildSuffix("0.1.5", {})).toBe(0);
     expect(resolveBuildSuffix("0.1.4", { SAFARI_BUILD_SUFFIX: "7" })).toBe("7");

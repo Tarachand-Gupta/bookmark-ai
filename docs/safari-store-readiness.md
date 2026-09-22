@@ -19,6 +19,12 @@ App Store Connect rules (September 2026). Statuses:
 > The 2026-09-07 404/deployment observations below remain historical evidence; use the current
 > mailbox and `https://www.bookmark-ai.cloud/support` in App Store Connect.
 
+> **2026-09-22 artifact update:** Safari 0.1.5 (10500) has a signed archive and
+> package with the revised privacy manifests. The historical 0.1.2 audit and
+> old NEEDS-TARA labels below are not a current rollout checklist. See
+> [analytics release status](analytics-rollout-status.md) and
+> [privacy mapping](analytics-privacy.md) before updating the store record.
+
 Companion docs: `apps/extension/RELEASING.md` §5 (release commands), `docs/TESTING.md` §3
 (local install + headless checks), `apps/extension/CLAUDE.md` → `safari-app/` (file map),
 `STORE-LISTING.md` / `AMO-LISTING.md` (the Chrome/Firefox declarations this listing mirrors).
@@ -53,7 +59,7 @@ the reviewer password) plus **one web deploy** so the Support URL stops 404-ing 
 | S11 | **5.1.1(ii)/(iii) Purpose strings / data minimization** | PASS (N/A) | No camera, contacts, location, photos, microphone, Bluetooth, local-network or automation entitlements; no TCC-gated API is called. The Info.plist has no `NS*UsageDescription` because none is needed. |
 | S12 | **5.1.1(v) Account deletion** | PASS (N/A) | The Mac app/extension neither create accounts nor sign users in; accounts are created and deleted on the website (Settings → Account → Delete, `DELETE /api/account` → 202; the webhook tears down the tenant). Mention in the review notes (§4.4). |
 | S13 | **5.1.2 Data use and sharing** | PASS | The production manifest's `host_permissions` are exactly the four first-party origins (`lib/app-origins.ts` `PROD_HOST_PERMISSIONS`; `scripts/safari-xcode.sh` step 2 refuses to embed anything else); no third-party SDK in the native binary (AppKit/SwiftUI/SafariServices/ServiceManagement only); the appex is WebKit + our JS. Server-side processors are named in the privacy policy (Clerk, Turso, Gemini, Langfuse, Vercel). |
-| S14 | **Privacy manifest (`PrivacyInfo.xcprivacy`)** | **FIXED** | Both bundles ship one (`App/PrivacyInfo.xcprivacy`, `Extension/PrivacyInfo.xcprivacy`, present in the built `Contents/Resources`). `NSPrivacyTracking=false`, no tracking domains, collected types Email / Name / User ID / Browsing History / Other User Content — all linked, not tracking, App Functionality — i.e. the CWS "PII + authentication info + web history" and the Firefox `authenticationInfo/bookmarksInfo/browsingActivity` declarations in Apple's taxonomy. Required-reason APIs: the app declares `UserDefaults` `CA92.1` (the has-launched flag + the state mirror); the appex declares none. Pinned by `safari-app.test.ts`. |
+| S14 | **Privacy manifest (`PrivacyInfo.xcprivacy`)** | **FIXED** | Both bundles ship one (`App/PrivacyInfo.xcprivacy`, `Extension/PrivacyInfo.xcprivacy`, present in the built `Contents/Resources`). `NSPrivacyTracking=false`, no tracking domains, collected types Email / Name / User ID / Browsing History / Other User Content / Device ID / Product Interaction — all linked, not tracking, App Functionality; User ID and Product Interaction also declare Analytics for server-side PostHog — i.e. the CWS "PII + authentication info + web history" and the Firefox `authenticationInfo/bookmarksInfo/browsingActivity` declarations in Apple's taxonomy. Required-reason APIs: the app declares `UserDefaults` `CA92.1` (the has-launched flag + the state mirror); the appex declares none. Pinned by `safari-app.test.ts`. |
 | S15 | **App Privacy "nutrition label"** | NEEDS-TARA | Answers in §4.3 — must match S14 and the policy. |
 | S16 | **Third-party SDKs on Apple's privacy-manifest list** | PASS | None. `otool -L` of the app/appex binaries shows only system frameworks; no CocoaPods/SPM dependencies exist in `project.yml`. |
 | S17 | **Export compliance** | **FIXED** | `ITSAppUsesNonExemptEncryption=false` in `App/Info.plist` (no network calls in the app; HTTPS only through WebKit in the extension) — App Store Connect skips the questionnaire per upload. |
@@ -263,20 +269,22 @@ They are evidence, not store assets (§5 has the recipe).
 ### 4.3 App Privacy label + age rating answers
 
 **App Privacy** ("Do you or your third-party partners collect data from this app?" → **Yes**). Every
-type below: *Linked to the user* — **Yes**, *Used for tracking* — **No**, purpose **App Functionality**
-only. Matches both `PrivacyInfo.xcprivacy` files (S14) and the CWS/AMO declarations.
+type below: *Linked to the user* — **Yes**, *Used for tracking* — **No**, purpose **App Functionality**.
+**User ID** and **Product Interaction** additionally use **Analytics**. Matches both `PrivacyInfo.xcprivacy` files (S14) and the CWS/AMO declarations.
 
 | Category | Data type | Why |
 | --- | --- | --- |
 | Contact Info | Email Address | the signed-in account, shown in the popup's account chip |
 | Contact Info | Name | same |
-| Identifiers | User ID | Clerk user id / the scoped `bkd_` device token that authenticates saves |
+| Identifiers | User ID | Clerk account identity and project-scoped account HMAC for PostHog (App Functionality + Analytics) |
 | Browsing History | Browsing History | URL, title, icon of pages the user saves; a window's tabs when saving a session; opt-in live tabs (≤ 7 days, private windows never sent) |
 | User Content | Other User Content | user-typed session names and the device label ("Safari on Mac") attached to saves |
+| Identifiers | Device ID | durable per-install live-sync UUID; App Functionality only |
+| Usage Data | Product Interaction | quota counters and one PostHog event per explicit save/session; App Functionality + Analytics |
 
-Everything else (Location, Contacts, Financial, Health, Purchases, Search History, Diagnostics,
-Usage Data, Sensitive Info, Photos, Audio, …): **Not collected**. Tracking: **No** — no ATT, no
-ads/analytics SDK, `NSPrivacyTracking=false`.
+Location, Contacts, Financial, Health, Purchases, Search History, Sensitive Info, Photos and Audio are **not collected by the Safari extension**. Its save/session PostHog events contain counts, not performance timings. Operational server logs are a separate disclosure assessment, not client crash reports. See [the analytics privacy mapping](analytics-privacy.md).
+
+Tracking: **No** — no advertising/data-broker use; `NSPrivacyTracking=false`. The absence of a client analytics SDK does not mean the server collects no usage data.
 
 **Age rating (2026 questionnaire)**: Violence / Sexual content / Profanity / Horror / Alcohol-
 tobacco-drugs / Gambling / Contests / Medical: **None**. Unrestricted Web Access: **No** (no

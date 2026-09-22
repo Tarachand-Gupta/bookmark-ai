@@ -1,8 +1,10 @@
 # Store release — iOS TestFlight + Google Play (`apps/mobile`)
 
-Status: CONFIGURED, NOT SUBMITTED. Written 2026-08-11. Everything in this repo that a store
-release needs is in place and locally verified (§6); what remains is credential/dashboard work
-that only the account owner can do (§7 is the checklist of exactly that).
+This guide was written 2026-08-11. For the current built versions, analytics
+privacy declarations, and remaining submission work, see
+[analytics release status](../analytics-rollout-status.md) and
+[analytics privacy mapping](../analytics-privacy.md). Older audit and release
+examples below are historical unless updated explicitly.
 
 Read `apps/mobile/AGENTS.md` first: the native `ios/` and `android/` directories are
 **generated** by `expo prebuild` and gitignored — never edit them, edit `app.json` and re-run
@@ -19,9 +21,9 @@ prebuild.
 | iOS share-extension bundle id | `ai.bookmarkai.ShareExtension` |
 | iOS App Group | `group.ai.bookmarkai` (both targets) |
 | Android package | `ai.bookmarkai` |
-| Marketing version | `app.json` → `expo.version` (`1.0.0`) |
-| iOS build number | `app.json` → `expo.ios.buildNumber` (`"1"`) |
-| Android versionCode | `app.json` → `expo.android.versionCode` (`1`) |
+| Marketing version | `app.json` → `expo.version` (`1.0.1`) |
+| iOS build number | `app.json` → `expo.ios.buildNumber` (`"2"`) |
+| Android versionCode | `app.json` → `expo.android.versionCode` (`4`) |
 | Backend a release build talks to | `https://bookmark-ai.cloud` + prod Clerk (`pk_live_…`) — see §2 |
 
 A **release** build (`__DEV__ === false`) resolves `SERVER_TARGET = "production"` in
@@ -87,7 +89,7 @@ Notes:
 | App icon | `assets/icon.png`, 1024×1024, **no alpha channel** (PNG color type 2) — Apple's marketing-icon rule. Prebuild copies it to `AppIcon.appiconset`. |
 | Android adaptive icon | foreground + background + monochrome (Android 13 themed icons) at 512×512. |
 | Export compliance | `ios.infoPlist.ITSAppUsesNonExemptEncryption = false` — removes the export-compliance question on **every** TestFlight upload. Correct for this app: it uses only HTTPS/ATS platform crypto, which is exempt. |
-| iOS privacy manifest | `ios.privacyManifests` declares `NSPrivacyTracking: false`, no collected-data types, and the three required-reason API categories React Native itself touches: `FileTimestamp` (`C617.1`), `UserDefaults` (`CA92.1`), `SystemBootTime` (`35F9.1`). Prebuild writes `ios/BookmarkAI/PrivacyInfo.xcprivacy`; the share extension gets its own. |
+| iOS privacy manifest | `ios.privacyManifests` declares `NSPrivacyTracking: false`, linked collected data for account, library, search traces and bounded product analytics, and the three required-reason API categories React Native itself touches: `FileTimestamp` (`C617.1`), `UserDefaults` (`CA92.1`), `SystemBootTime` (`35F9.1`). The exact data types and purposes are in [the privacy mapping](../analytics-privacy.md). Prebuild writes `ios/BookmarkAI/PrivacyInfo.xcprivacy`; the share extension gets its own. |
 | Android permissions | Only `INTERNET` + `VIBRATE` (expo-haptics) survive. `android.blockedPermissions` strips `SYSTEM_ALERT_WINDOW` (React Native's dev overlay) and `READ_/WRITE_EXTERNAL_STORAGE`, all three merged in by transitive native modules and none of them used. Verify after any dependency change: `grep uses-permission android/app/src/main/AndroidManifest.xml`. |
 | Account deletion | In-app, Settings → Delete Account (§5). Apple guideline 5.1.1(v). |
 
@@ -327,8 +329,8 @@ Verified on both simulators against a real server 403 (allowlist Option A set lo
 - App Privacy questionnaire. For this app the truthful answers are:
   - *Contact Info → Email address*: collected, linked to identity, used for **App
     Functionality** (Clerk account). Not used for tracking.
-  - *Identifiers → User ID*: collected, linked, App Functionality (the Clerk user id keys the
-    tenant DB).
+  - *Identifiers → User ID*: collected, linked, App Functionality + Analytics (Clerk account
+    identity and the project-scoped PostHog HMAC).
   - *Browsing History*: collected, linked, App Functionality — saved bookmark URLs, titles, and
     tab sessions are the product. Say so plainly; this is the answer reviewers check against
     the app's behavior.
@@ -336,6 +338,7 @@ Verified on both simulators against a real server 403 (allowlist Option A set lo
     once server analytics/logging is enabled. PostHog receives limited product
     interactions with a pseudonymous account ID; New Relic receives server
     diagnostics. Review and update the store questionnaire before release using
+    [the platform privacy mapping](../analytics-privacy.md),
     `docs/posthog-analytics.md` and `docs/server-logging.md`. Absence of a client
     SDK does not mean absence of server-side collection.
   - **Tracking: No.** `NSPrivacyTracking` is `false` and there is no ATT prompt.

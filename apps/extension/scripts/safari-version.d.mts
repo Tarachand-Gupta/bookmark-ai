@@ -2,6 +2,7 @@
 // plain ESM so `pnpm safari:xcode` can run it without a TS toolchain).
 export const XCCONFIG_PATH: string;
 export function parseVersion(version: string): { major: number; minor: number; patch: number };
+export function resolveBuildSuffix(version: string, env?: NodeJS.ProcessEnv): string | number;
 export function deriveBuildNumber(version: string, suffix?: number | string): number;
 export function renderXcconfig(version: string, build: number): string;
 export function parseXcconfig(text: string): { version: string | undefined; build: number };

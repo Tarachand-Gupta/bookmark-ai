@@ -32,6 +32,12 @@ paid account to exist first, or the Google button has to be hidden on iOS for v1
 
 ---
 
+The guideline audit below records its original build and portal observations.
+The current mobile artifacts are iOS 1.0.1 (2) and Android 1.0.1 (4), with
+updated privacy declarations. See [analytics release status](analytics-rollout-status.md)
+and [privacy mapping](analytics-privacy.md) before using the questionnaire
+answers; historical NEEDS-TARA labels are not a current assignment of work.
+
 ## 1. Guideline audit
 
 ### 1.1 Apple — App Store Review Guidelines
@@ -278,14 +284,18 @@ No in-app purchases, no ads, no tracking. Sign in with Apple: <state Option A/B/
 | --- | --- | --- | --- | --- |
 | Contact Info → **Email Address** | Yes | Yes | No | App Functionality (account) |
 | Contact Info → **Name** | Yes (when Google/Apple sign-in supplies it) | Yes | No | App Functionality |
-| Identifiers → **User ID** | Yes (Clerk user id keys the tenant DB) | Yes | No | App Functionality |
+| Identifiers → **User ID** | Yes (Clerk account ID and project-scoped HMAC sent to PostHog) | Yes | No | App Functionality, Analytics |
 | **Browsing History** | Yes — saved bookmark URLs/titles, saved tab sessions, live tabs mirrored from the desktop extension | Yes | No | App Functionality |
 | User Content → **Other User Content** | Yes — Ask AI messages/conversations, tags | Yes | No | App Functionality |
 | User Content → **Photos or Videos** | Yes — only photos the user attaches to an Ask AI question | Yes | No | App Functionality |
 | User Content → **Other Data Types**: device type/name + OS attached to each save (`src/api.ts:38-48`) | Yes | Yes | No | App Functionality |
-| Search History | **No** — search queries are processed to answer the request and not stored (ephemeral; excluded by Apple's definition) |
-| Usage Data / Diagnostics / Crash Data | **Review before release** — limited server-side PostHog product interactions and New Relic operational diagnostics are now implemented; no client crash SDK. See `docs/posthog-analytics.md` and `docs/server-logging.md` for exact fields and identity handling. The old blanket "No" answer is obsolete when enabled. |
+| Search History | Yes — enabled Langfuse search traces can retain queries; PostHog never receives query text | Yes | No | App Functionality |
+| Usage Data → **Product Interaction** | Yes — quota counters and limited PostHog outcomes | Yes | No | App Functionality, Analytics |
+| Diagnostics → **Performance Data** | Yes — server search/chat durations in PostHog | Yes | No | Analytics |
+| Crash Data | No client crash reports | No | No | — |
 | Location, Contacts, Health, Financial, Sensitive Info, Purchases, Advertising Data | No |
+
+Operational server diagnostics are separate from client crash data; assess enabled logging processors against [the analytics privacy mapping](analytics-privacy.md).
 
 Tracking (ATT): **No**. Privacy nutrition "Data Linked to You": review each data type above against its actual identity handling; a pseudonym alone should not be assumed to make data unlinked. Third-party processors to name in the policy (not on the label): Clerk, Turso, Google Gemini, Langfuse, Vercel, PostHog, New Relic. Store-console answers have not been updated by this code change.
 
@@ -301,16 +311,19 @@ Tracking (ATT): **No**. Privacy nutrition "Data Linked to You": review each data
 | --- | --- | --- | --- | --- | --- |
 | Personal info → **Email address** | Yes | No* | No | Required | Account management, App functionality |
 | Personal info → **Name** | Yes | No* | No | Optional (only via Google/Apple sign-in) | Account management |
-| Personal info → **User IDs** | Yes | No* | No | Required | Account management, App functionality |
+| Personal info → **User IDs** | Yes, including account-derived PostHog pseudonym | No* | No | Required | Account management, App functionality, Analytics |
 | **Web browsing history** | Yes (saved bookmark URLs/titles, saved tab sessions, live tabs) | No* | No | Required — it is the product | App functionality |
 | App activity → **Other user-generated content** | Yes (Ask AI messages, tags) | No* | No | Optional | App functionality |
 | Photos and videos → **Photos** | Yes (only when attached to an Ask AI question) | No* | No | Optional | App functionality |
 | Files and docs | Yes (only when attached to an Ask AI question) | No* | No | Optional | App functionality |
 | Device or other IDs | **No** (no advertising/device IDs; "iPhone/Android + OS" is not an identifier) |
-| App info and performance (crash logs, diagnostics) | **No** |
+| App activity → **App interactions** | Yes — quota counters and PostHog product outcomes | No* | No | Required (no Android analytics toggle) | App functionality, Analytics |
+| App activity → **In-app search history** | Yes — enabled Langfuse traces | No* | No | Required when using search | App functionality |
+| App info and performance → **Diagnostics** | Yes — search/chat elapsed time in PostHog | No* | No | Required when using those features | Analytics |
+| Crash logs | No client crash reports |
 | Location, Contacts, Calendar, Financial, Health, Messages, Audio, Installed apps | No |
 
-\* "Shared" in Google's definition excludes service providers processing on your behalf (Clerk, Turso, Gemini, Langfuse, Vercel) — answer **No** to sharing, but the privacy policy must name them (A6).
+\* "Shared" in Google's definition excludes service providers processing on your behalf (Clerk, Turso, Gemini, Langfuse, Vercel, PostHog; New Relic when enabled) — answer **No** to sharing, but the privacy policy must name them (A6).
 
 **Content rating (IARC) questionnaire** — category: **Utility, Productivity, Communication, or Other**. Violence/sex/language/controlled substances/gambling → No. User-generated content shared with others → **No** (a user's library is private to that user). Users can communicate with each other → No. Shares location → No. Purchases digital goods → No. Contains ads → No. Unrestricted internet access (in-app browser) → **No** (system browser). Expected: **Everyone / PEGI 3**.
 

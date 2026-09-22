@@ -21,9 +21,12 @@ Langfuse continues to own AI tracing; no second OpenTelemetry provider is added.
 5. Exercise `/api/health`, an ordinary authenticated API request, and a rejected
    request. Open New Relic Logs and verify the service and environment fields.
 
-No credential was supplied as part of implementation, so remote delivery is not
-activated or verified against a real account. Blank key means local structured
-JSON logs only. No account was created and nothing was deployed.
+A US ingest key was supplied and configured in Vercel production on September 22,
+2026. The server was redeployed, but New Relic rejected direct verification probes
+with HTTP 403 from both the Mac and OCI. Ingestion is therefore not verified;
+the OCI live server has not yet been changed. See
+[rollout status](analytics-rollout-status.md). Blank key means local structured
+JSON logs only.
 
 ```sql
 SELECT count(*) FROM Log

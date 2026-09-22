@@ -7,7 +7,9 @@
 	  App Privacy label answers (docs/safari-store-readiness.md §4.3), the Chrome
 	  Web Store data-usage disclosures (STORE-LISTING.md §3: PII, authentication
 	  info, web history) and the Firefox data_collection_permissions
-	  (authenticationInfo, bookmarksInfo, browsingActivity). Apple's taxonomy has
+	  (authenticationInfo, bookmarksInfo, browsingActivity, and optional
+	  technicalAndInteraction). Product outcomes are collected server-side;
+	  the account HMAC is linked data, not anonymous data. Apple's taxonomy has
 	  no "authentication token" type — the signed-in account is covered by
 	  Email/Name/User ID, all linked to the user, none used for tracking.
 	  No third-party SDKs are in the binary; the appex is WebKit + our JS.
@@ -55,6 +57,7 @@
 			<key>NSPrivacyCollectedDataTypePurposes</key>
 			<array>
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
 			</array>
 		</dict>
 		<!-- URL/title/icon of pages the user explicitly saves, the tabs of a
@@ -86,6 +89,32 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeDeviceID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+
 	</array>
 	<!-- Required-reason APIs used by the CONTAINER app: UserDefaults for the
 	     one-time "has launched before" flag (CA92.1 = the app's own defaults). -->
