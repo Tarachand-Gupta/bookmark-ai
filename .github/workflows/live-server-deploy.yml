@@ -4,7 +4,7 @@ name: live-server deploy
 # mirroring the manual systemd/rsync flow (there is NO Docker on that VM). The
 # server is pure-JS (Fastify + ioredis + @clerk/backend, no native bindings), so a
 # CI-built node_modules runs as-is on ARM64. Triggered on pushes that touch the
-# server or its shared contract.
+# server, its shared contract, or its logging transport.
 #
 # Required repo secrets:
 #   VM_HOST     — the VM's IP / hostname (129.146.3.172)
@@ -22,6 +22,7 @@ on:
     paths:
       - "apps/live-server/**"
       - "packages/types/**"
+      - "packages/server-logging/**"
       - ".github/workflows/live-server-deploy.yml"
   workflow_dispatch:
 

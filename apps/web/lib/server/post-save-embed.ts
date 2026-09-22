@@ -1,3 +1,4 @@
+import { serverLogger } from "@/lib/server/observability/server-logs";
 import type { Db } from "@bookmark-ai/db";
 import { embedBookmarkById, embedPending, type GeminiClient } from "@bookmark-ai/engine";
 
@@ -35,11 +36,13 @@ export async function embedAfterSave(
   try {
     await embedBookmarkById(gemini, db, bookmarkId);
   } catch (err) {
+    serverLogger.log("error", "bookmark_embed_failed", { error: err });
     console.warn(`[embed] post-save ${bookmarkId}: ${(err as Error).message}`);
   }
   try {
     await embedPending(gemini, db, STRAGGLER_LIMIT);
   } catch (err) {
+    serverLogger.log("error", "bookmark_embed_sweep_failed", { error: err });
     console.warn(`[embed] post-save straggler sweep failed: ${(err as Error).message}`);
   }
 }

@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { getMcpToken, revokeMcpToken } from "@bookmark-ai/db";
 import { getRequestApiContext } from "@/lib/server/api-context";
@@ -12,7 +13,7 @@ type Params = { params: Promise<{ id: string }> };
  *
  * Clerk session only — see ../route.ts on why a token can't revoke a token.
  */
-export async function DELETE(_req: NextRequest, { params }: Params) {
+async function DELETEHandler(_req: NextRequest, { params }: Params) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -25,3 +26,5 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   await revokeMcpToken(db, id);
   return new NextResponse(null, { status: 204 });
 }
+
+export const DELETE = withRequestLogging("/api/mcp/tokens/[id]", "DELETE", DELETEHandler);

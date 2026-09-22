@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   appPlatformSchema,
@@ -30,7 +31,7 @@ const STORE_UNAVAILABLE = () =>
  * Publishes (inserts or replaces) the platform's latest release; the public
  * GET /api/app/releases serves it within its 5-minute cache window.
  */
-export async function PUT(req: NextRequest, { params }: Params) {
+async function PUTHandler(req: NextRequest, { params }: Params) {
   const gate = await gateAdmin();
   if ("response" in gate) return gate.response;
 
@@ -57,7 +58,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 }
 
 /** DELETE /api/admin/releases/:platform → 204 (idempotent: clearing an absent record is fine). */
-export async function DELETE(_req: NextRequest, { params }: Params) {
+async function DELETEHandler(_req: NextRequest, { params }: Params) {
   const gate = await gateAdmin();
   if ("response" in gate) return gate.response;
 
@@ -73,3 +74,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Could not clear the release" }, { status: 500 });
   }
 }
+
+export const PUT = withRequestLogging("/api/admin/releases/[platform]", "PUT", PUTHandler);
+export const DELETE = withRequestLogging("/api/admin/releases/[platform]", "DELETE", DELETEHandler);

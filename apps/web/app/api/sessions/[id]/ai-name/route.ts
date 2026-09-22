@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { after, NextResponse, type NextRequest } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
 import { embedSession, summarizeSessionById } from "@bookmark-ai/engine";
@@ -17,7 +18,7 @@ type Params = { params: Promise<{ id: string }> };
  * (it started life as AI-rename-only) and adds `description`. Never 500s on an
  * AI failure: the engine degrades to a heuristic name and flags it via `fallback`.
  */
-export async function POST(_req: NextRequest, { params }: Params) {
+async function POSTHandler(_req: NextRequest, { params }: Params) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { userId, db, gemini, ready } = ctx;
@@ -57,3 +58,5 @@ export async function POST(_req: NextRequest, { params }: Params) {
     fallback: result.fallback,
   });
 }
+
+export const POST = withRequestLogging("/api/sessions/[id]/ai-name", "POST", POSTHandler);

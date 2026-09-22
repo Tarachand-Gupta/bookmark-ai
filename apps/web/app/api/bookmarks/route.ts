@@ -1,3 +1,5 @@
+import { serverLogger } from "@/lib/server/observability/server-logs";
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { after, NextResponse, type NextRequest } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
 import { createBookmarkSchema, listBookmarksQuerySchema } from "@bookmark-ai/types";
@@ -7,7 +9,7 @@ import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
 import { embedAfterSave } from "@/lib/server/post-save-embed";
 import { flushObservability } from "@/lib/server/observability/flush";
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -25,7 +27,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(await listBookmarks(db, parsed.data));
 }
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { userId, db, gemini, ready } = ctx;
@@ -53,6 +55,7 @@ export async function POST(req: NextRequest) {
         try {
           await enrichBookmark(db, gemini, bookmark.id, parsed.data);
         } catch (err) {
+          serverLogger.log("error", "bookmark_enrichment_failed", { error: err });
           console.warn(`[enrich] ${bookmark.id}: ${(err as Error).message} — keeping instant-save data`);
         }
         // Embed either way: enrichment cleared the embedding, and even a failed
@@ -67,3 +70,6 @@ export async function POST(req: NextRequest) {
   });
   return NextResponse.json({ bookmark }, { status: 201 });
 }
+
+export const GET = withRequestLogging("/api/bookmarks", "GET", GETHandler);
+export const POST = withRequestLogging("/api/bookmarks", "POST", POSTHandler);

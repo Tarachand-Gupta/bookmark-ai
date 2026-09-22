@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { sseCorsHeaders } from "../cors";
 import type { Deps } from "../deps";
+import type { LiveLogger } from "../logging";
 import { initSse, writeComment, writeEvent, writeFrame } from "../sse";
 
 const KEEPALIVE_MS = 25_000;
@@ -24,7 +25,7 @@ const streamCounts = new Map<string, number>();
  * reconnect self-healing (a viewer that missed events converges on reconnect). A
  * `:keepalive` comment every 25s keeps proxies from idling us out.
  */
-export function registerStream(app: FastifyInstance, { store, config, auth, fanout }: Deps): void {
+export function registerStream(app: FastifyInstance, { store, config, auth, fanout }: Deps, logger?: LiveLogger): void {
   app.get("/live/stream", { preHandler: auth }, async (req, reply) => {
     const userId = req.userId;
 
@@ -45,7 +46,8 @@ export function registerStream(app: FastifyInstance, { store, config, auth, fano
       const enabled = await store.getEnabled(userId);
       const devices = enabled ? await store.listDevices(userId) : [];
       writeEvent(raw, "state", { devices, enabled, ttlHours: config.ttlHours });
-    } catch {
+    } catch (error) {
+      logger?.log("warn", "live.stream.initial_read_failed", { route: "/live/stream", operation: "read_initial_state", error });
       // transient read error — the fanout group's next frame (or reconnect) recovers
     }
 
@@ -75,6 +77,9 @@ export function registerStream(app: FastifyInstance, { store, config, auth, fano
     };
 
     req.raw.on("close", cleanup);
-    req.raw.on("error", cleanup);
+    req.raw.on("error", (error) => {
+      logger?.log("warn", "live.stream.failed", { route: "/live/stream", operation: "stream", error });
+      cleanup();
+    });
   });
 }

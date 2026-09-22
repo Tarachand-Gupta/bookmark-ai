@@ -32,7 +32,11 @@
         "LANGFUSE_PUBLIC_KEY",
         "LANGFUSE_SECRET_KEY",
         "LANGFUSE_BASE_URL",
-        "LANGFUSE_TRACING_ENVIRONMENT"
+        "LANGFUSE_TRACING_ENVIRONMENT",
+        "NEW_RELIC_LICENSE_KEY",
+        "NEW_RELIC_REGION",
+        "NEW_RELIC_LOG_LEVEL",
+        "VERCEL_ENV"
       ]
     },
     "dev": {

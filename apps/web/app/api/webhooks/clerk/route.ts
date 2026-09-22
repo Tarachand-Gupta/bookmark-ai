@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { Webhook } from "svix";
 import { deprovisionTenant, provisionTenant } from "@bookmark-ai/engine";
@@ -24,7 +25,7 @@ interface ClerkWebhookEvent {
   data: { id?: string };
 }
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   const secret = process.env.CLERK_WEBHOOK_SECRET;
   if (!secret) {
     if (!missingSecretWarned) {
@@ -109,3 +110,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Provisioning failed" }, { status: 500 });
   }
 }
+
+export const POST = withRequestLogging("/api/webhooks/clerk", "POST", POSTHandler);

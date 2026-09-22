@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/server/require-user";
@@ -18,7 +19,7 @@ import { mintLiveSessionToken } from "@/lib/server/live-token";
  * lives in lib/server/live-token.ts (shared with the chat `listLiveTabs` tool).
  */
 
-export async function GET() {
+async function GETHandler() {
   const gate = await requireUser();
   if (!gate.ok) return gate.response;
 
@@ -35,3 +36,5 @@ export async function GET() {
 
   return NextResponse.json(await mintLiveSessionToken(sessionId));
 }
+
+export const GET = withRequestLogging("/api/live-token", "GET", GETHandler);

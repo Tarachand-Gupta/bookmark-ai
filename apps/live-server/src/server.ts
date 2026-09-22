@@ -6,6 +6,7 @@ import type { Deps } from "./deps";
 import { makeAuthPreHandler } from "./auth";
 import { LiveFanout } from "./fanout";
 import { LiveStore } from "./live-store";
+import { registerServerLogging } from "./logging";
 import { createRedis, type RedisBundle } from "./redis";
 import { registerForget } from "./routes/forget";
 import { registerHealth } from "./routes/health";
@@ -25,6 +26,7 @@ export async function buildServer(
   redis: RedisBundle = createRedis(config.redisUrl),
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: true, bodyLimit: 2_000_000, trustProxy: true });
+  const logger = registerServerLogging(app);
   const store = new LiveStore(redis, config);
   const fanout = new LiveFanout(store, {
     coalesceMs: config.fanoutCoalesceMs,
@@ -43,7 +45,7 @@ export async function buildServer(
   registerHealth(app, deps);
   registerPush(app, deps);
   registerList(app, deps);
-  registerStream(app, deps);
+  registerStream(app, deps, logger);
   registerForget(app, deps);
   registerRename(app, deps);
   registerSettings(app, deps);

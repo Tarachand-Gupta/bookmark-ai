@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { clerkClient } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimitWindow } from "@/lib/server/rate-limit";
@@ -20,7 +21,7 @@ function json(body: unknown, status: number, extra: Record<string, string> = {})
   return NextResponse.json(body, { status, headers: { ...MAC_AUTH_NO_STORE_HEADERS, ...extra } });
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const ipRate = checkRateLimitWindow(
     `macos-auth:exchange:ip:${trustedClientKey(request.headers)}`,
     600,
@@ -88,3 +89,5 @@ export async function POST(request: NextRequest) {
     return json({ error: "Sign-in service unavailable" }, 503);
   }
 }
+
+export const POST = withRequestLogging("/api/macos-auth/exchange", "POST", POSTHandler);

@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { after, NextResponse, type NextRequest } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
 import { updateSessionSchema } from "@bookmark-ai/types";
@@ -8,7 +9,7 @@ import { flushObservability } from "@/lib/server/observability/flush";
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function GET(_req: NextRequest, { params }: Params) {
+async function GETHandler(_req: NextRequest, { params }: Params) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -19,7 +20,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json({ session });
 }
 
-export async function PATCH(req: NextRequest, { params }: Params) {
+async function PATCHHandler(req: NextRequest, { params }: Params) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { userId, db, gemini, ready } = ctx;
@@ -53,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   return NextResponse.json({ session });
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
+async function DELETEHandler(_req: NextRequest, { params }: Params) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -63,3 +64,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (!deleted) return NextResponse.json({ error: "Session not found" }, { status: 404 });
   return new NextResponse(null, { status: 204 });
 }
+
+export const GET = withRequestLogging("/api/sessions/[id]", "GET", GETHandler);
+export const PATCH = withRequestLogging("/api/sessions/[id]", "PATCH", PATCHHandler);
+export const DELETE = withRequestLogging("/api/sessions/[id]", "DELETE", DELETEHandler);

@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/server/require-user";
@@ -12,7 +13,7 @@ import { requireUser } from "@/lib/server/require-user";
  * A normal protected route: `requireUser()` gates it (rate limit → session/bearer
  * → azp → allowlist), so a signed-out caller gets the standard 401 JSON.
  */
-export async function GET() {
+async function GETHandler() {
   const gate = await requireUser();
   if (!gate.ok) return gate.response;
 
@@ -31,3 +32,5 @@ export async function GET() {
     null;
   return NextResponse.json({ signedIn: true, name, email });
 }
+
+export const GET = withRequestLogging("/api/me", "GET", GETHandler);

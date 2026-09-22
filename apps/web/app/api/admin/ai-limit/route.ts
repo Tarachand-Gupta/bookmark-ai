@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { updateAiLimitSchema } from "@bookmark-ai/types";
 import { gateAdmin } from "@/lib/server/admin-gate";
@@ -7,7 +8,7 @@ import { getFreeAiWeeklyLimit, setFreeAiWeeklyLimit } from "@/lib/server/ai-limi
 export const dynamic = "force-dynamic";
 
 /** GET /api/admin/ai-limit → { limitTokens } (current global free-tier limit). */
-export async function GET() {
+async function GETHandler() {
   const gate = await gateAdmin();
   if ("response" in gate) return gate.response;
 
@@ -21,7 +22,7 @@ export async function GET() {
  * the ~60s read cache (enforcement compares live). 503 when no master DB is
  * configured (admin-adjusting is a control-plane operation).
  */
-export async function PATCH(req: NextRequest) {
+async function PATCHHandler(req: NextRequest) {
   const gate = await gateAdmin();
   if ("response" in gate) return gate.response;
 
@@ -44,3 +45,6 @@ export async function PATCH(req: NextRequest) {
     );
   }
 }
+
+export const GET = withRequestLogging("/api/admin/ai-limit", "GET", GETHandler);
+export const PATCH = withRequestLogging("/api/admin/ai-limit", "PATCH", PATCHHandler);

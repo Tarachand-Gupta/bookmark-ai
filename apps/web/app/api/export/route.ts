@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse } from "next/server";
 import { exportUserData } from "@bookmark-ai/engine";
 import { getRequestApiContext } from "@/lib/server/api-context";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
  * save it directly, while the in-app button reads the JSON and builds its own
  * dated download.
  */
-export async function GET() {
+async function GETHandler() {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -25,3 +26,5 @@ export async function GET() {
     },
   });
 }
+
+export const GET = withRequestLogging("/api/export", "GET", GETHandler);

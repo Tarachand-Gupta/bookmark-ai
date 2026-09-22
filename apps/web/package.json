@@ -48,7 +48,8 @@
     "streamdown": "^2.5.0",
     "svix": "^1.97.0",
     "use-stick-to-bottom": "^1.1.6",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@bookmark-ai/server-logging": "workspace:*"
   },
   "devDependencies": {
     "@ai-sdk/provider": "^4.0.10",

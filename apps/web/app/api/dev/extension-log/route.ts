@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { appendFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { NextResponse } from "next/server";
@@ -27,12 +28,12 @@ function isProd(): boolean {
   return process.env.NODE_ENV === "production";
 }
 
-export function OPTIONS(): NextResponse {
+function OPTIONSHandler(): NextResponse {
   if (isProd()) return new NextResponse(null, { status: 404 });
   return new NextResponse(null, { status: 204, headers: CORS });
 }
 
-export async function POST(req: Request): Promise<NextResponse> {
+async function POSTHandler(req: Request): Promise<NextResponse> {
   if (isProd()) return new NextResponse(null, { status: 404 });
   try {
     // Body is sent as text/plain to avoid a CORS preflight; req.json() parses it
@@ -48,3 +49,6 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
   return new NextResponse(null, { status: 204, headers: CORS });
 }
+
+export const OPTIONS = withRequestLogging("/api/dev/extension-log", "OPTIONS", OPTIONSHandler);
+export const POST = withRequestLogging("/api/dev/extension-log", "POST", POSTHandler);

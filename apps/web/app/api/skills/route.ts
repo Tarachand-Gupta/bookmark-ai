@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { createSkill, listSkills, SkillNameConflictError } from "@bookmark-ai/engine";
 import { createSkillSchema, type ListSkillsResponse, type SkillResponse } from "@bookmark-ai/types";
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
  */
 
 /** GET /api/skills → every skill (enabled or not), newest updated first. */
-export async function GET() {
+async function GETHandler() {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -26,7 +27,7 @@ export async function GET() {
 }
 
 /** POST /api/skills → 201 { skill }; 409 when the name (case-insensitively) exists. */
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -50,3 +51,6 @@ export async function POST(req: NextRequest) {
     throw err;
   }
 }
+
+export const GET = withRequestLogging("/api/skills", "GET", GETHandler);
+export const POST = withRequestLogging("/api/skills", "POST", POSTHandler);

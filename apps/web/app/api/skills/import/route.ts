@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { createSkill, SkillNameConflictError } from "@bookmark-ai/engine";
 import { importSkillSchema, parseSkillMarkdown, type SkillResponse } from "@bookmark-ai/types";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
  * failure (readable message) · 409 on a (case-insensitive) name conflict. Same
  * gate as /api/skills.
  */
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -47,3 +48,5 @@ export async function POST(req: NextRequest) {
     throw err;
   }
 }
+
+export const POST = withRequestLogging("/api/skills/import", "POST", POSTHandler);

@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { after, NextResponse, type NextRequest } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
 import { searchQuerySchema } from "@bookmark-ai/types";
@@ -5,7 +6,7 @@ import { performSearch } from "@bookmark-ai/engine";
 import { enforceQuota, getRequestApiContext } from "@/lib/server/api-context";
 import { flushObservability } from "@/lib/server/observability/flush";
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { userId, db, gemini, ready } = ctx;
@@ -40,3 +41,5 @@ export async function GET(req: NextRequest) {
   );
   return NextResponse.json(response);
 }
+
+export const GET = withRequestLogging("/api/search", "GET", GETHandler);

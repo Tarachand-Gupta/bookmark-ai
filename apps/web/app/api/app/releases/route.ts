@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit } from "@/lib/server/rate-limit";
 import { listPublishedReleases } from "@/lib/server/releases";
@@ -17,10 +18,12 @@ const RELEASES_CACHE_CONTROL = "public, max-age=300";
  * sign-in), but it still pays the per-IP rate limit. `{ releases: {} }` when no
  * master DB is configured (single-tenant / self-host) or the read fails.
  */
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   if (!checkRateLimit(clientKey(req.headers))) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
   const body = await listPublishedReleases();
   return NextResponse.json(body, { headers: { "cache-control": RELEASES_CACHE_CONTROL } });
 }
+
+export const GET = withRequestLogging("/api/app/releases", "GET", GETHandler);

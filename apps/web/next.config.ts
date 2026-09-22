@@ -18,6 +18,7 @@ try {
 
 const nextConfig: NextConfig = {
   transpilePackages: [
+    "@bookmark-ai/server-logging",
     "@bookmark-ai/ui",
     "@bookmark-ai/types",
     "@bookmark-ai/db",

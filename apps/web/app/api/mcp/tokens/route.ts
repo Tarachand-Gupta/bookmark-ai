@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { insertMcpToken, listMcpTokens } from "@bookmark-ai/db";
 import { createMcpTokenSchema, type McpToken } from "@bookmark-ai/types";
@@ -21,7 +22,7 @@ import { mcpSubject } from "@/lib/server/mcp/subject";
  */
 
 /** GET /api/mcp/tokens → the caller's tokens (revoked ones included, as history). */
-export async function GET() {
+async function GETHandler() {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -42,7 +43,7 @@ export async function GET() {
 
 /** POST /api/mcp/tokens → mint one. The response is the ONLY time the value is
  * transmitted; it is not recoverable. */
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready, userId } = ctx;
@@ -82,3 +83,6 @@ export async function POST(req: NextRequest) {
     { status: 201 },
   );
 }
+
+export const GET = withRequestLogging("/api/mcp/tokens", "GET", GETHandler);
+export const POST = withRequestLogging("/api/mcp/tokens", "POST", POSTHandler);

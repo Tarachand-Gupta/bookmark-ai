@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { after, type NextRequest } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
 import { getMcpToken, getUserSettings, touchMcpToken, type Db } from "@bookmark-ai/db";
@@ -107,7 +108,7 @@ async function resolveDb(subject: string): Promise<{ db: Db; ready: Promise<void
  * "last used" line in Settings is worth. */
 const LAST_USED_REFRESH_MS = 60 * 60 * 1000;
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   const version = negotiatedVersion(req);
 
   // Coarse per-IP abuse guard, before any DB work. Shared with the REST API's
@@ -233,5 +234,9 @@ function methodNotAllowed(req: NextRequest): Response {
   );
 }
 
-export const GET = methodNotAllowed;
-export const DELETE = methodNotAllowed;
+const GETHandler = methodNotAllowed;
+const DELETEHandler = methodNotAllowed;
+
+export const POST = withRequestLogging("/api/mcp", "POST", POSTHandler);
+export const GET = withRequestLogging("/api/mcp", "GET", GETHandler);
+export const DELETE = withRequestLogging("/api/mcp", "DELETE", DELETEHandler);

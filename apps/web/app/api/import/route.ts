@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { after, NextResponse, type NextRequest } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
 import { embedPending, importUserData } from "@bookmark-ai/engine";
@@ -23,7 +24,7 @@ const MAX_IMPORT_BYTES = 20 * 1024 * 1024; // 20 MB
  * and preserving original timestamps — so re-importing the same file is a safe
  * no-op. A bad/unknown/newer bundle throws → 400 with the message.
  */
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, gemini, ready, userId } = ctx;
@@ -87,3 +88,5 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ imported });
 }
+
+export const POST = withRequestLogging("/api/import", "POST", POSTHandler);

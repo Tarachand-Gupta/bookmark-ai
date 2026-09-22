@@ -123,6 +123,9 @@ importers:
 
   apps/live-server:
     dependencies:
+      '@bookmark-ai/server-logging':
+        specifier: workspace:*
+        version: link:../../packages/server-logging
       '@bookmark-ai/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -287,6 +290,9 @@ importers:
       '@bookmark-ai/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@bookmark-ai/server-logging':
+        specifier: workspace:*
+        version: link:../../packages/server-logging
       '@bookmark-ai/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -445,6 +451,15 @@ importers:
       undici:
         specifier: ^7.28.0
         version: 7.28.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/server-logging:
     devDependencies:
       '@types/node':
         specifier: ^20.17.0

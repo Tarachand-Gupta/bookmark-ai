@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: "What Bookmark AI collects, how it's used, and the control you have over it.",
 };
 
-const UPDATED = "September 7, 2026";
+const UPDATED = "September 22, 2026";
 const CONTACT_EMAIL = "admin@bookmark-ai.cloud";
 
 export default function PrivacyPage() {
@@ -86,6 +86,12 @@ export default function PrivacyPage() {
             secure storage; photos and files you attach go through the system
             picker, so the apps never get blanket access to your library or files.
             None of our apps include advertising, analytics or tracking SDKs.
+          </p>
+          <p>
+            Server operational diagnostics may be sent to New Relic when enabled.
+            These logs include route templates, response status, duration and error
+            categories; they do not include request contents, bookmark content,
+            chat prompts, authentication credentials or user identifiers.
           </p>
         </section>
 

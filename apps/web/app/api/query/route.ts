@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { chatQueryPageSchema } from "@bookmark-ai/types";
 import { runReadOnlySql } from "@bookmark-ai/engine";
@@ -18,7 +19,7 @@ import { getRequestApiContext } from "@/lib/server/api-context";
  * POST (not GET) because the SQL is a body, not a URL: it keeps a query out of
  * access logs, history and referrers.
  */
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -60,3 +61,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });
   }
 }
+
+export const POST = withRequestLogging("/api/query", "POST", POSTHandler);

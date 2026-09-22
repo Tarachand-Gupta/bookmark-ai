@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
@@ -44,7 +45,7 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb);
 }
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const header = req.headers.get("authorization");
   if (!secret || !header || !safeEqual(header, `Bearer ${secret}`)) {
@@ -116,3 +117,5 @@ export async function GET(req: NextRequest) {
   await flushObservability();
   return NextResponse.json({ embedded: total, tenants: perTenant });
 }
+
+export const GET = withRequestLogging("/api/cron/embed", "GET", GETHandler);

@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import type { AccountResponse } from "@bookmark-ai/types";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
  * for a plan is `PLAN_FEATURES[plan]` in @bookmark-ai/types — clients render
  * from that, not from this response, so it can't drift between surfaces.
  */
-export async function GET() {
+async function GETHandler() {
   const gate = await requireUser();
   if (!gate.ok) return gate.response;
 
@@ -27,7 +28,7 @@ export async function GET() {
  * fires a `user.deleted` webhook, which is what actually tears down the tenant's
  * DB — this route only removes the identity.
  */
-export async function DELETE() {
+async function DELETEHandler() {
   const gate = await requireUser();
   if (!gate.ok) return gate.response;
 
@@ -40,3 +41,6 @@ export async function DELETE() {
   await client.users.deleteUser(gate.userId);
   return NextResponse.json({ ok: true }, { status: 202 });
 }
+
+export const GET = withRequestLogging("/api/account", "GET", GETHandler);
+export const DELETE = withRequestLogging("/api/account", "DELETE", DELETEHandler);

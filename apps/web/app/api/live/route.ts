@@ -1,10 +1,11 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { pushLiveStateSchema } from "@bookmark-ai/types";
 import { applyDeviceSnapshot, listLiveDevices } from "@bookmark-ai/engine";
 import { deleteAllDevices } from "@bookmark-ai/db";
 import { getRequestApiContext } from "@/lib/server/api-context";
 
-export async function GET() {
+async function GETHandler() {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready, userId } = ctx;
@@ -12,7 +13,7 @@ export async function GET() {
   return NextResponse.json(await listLiveDevices(db, userId));
 }
 
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready, userId } = ctx;
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
  * check-in (this is "Forget", not "Stop" — turning the flag off is a separate
  * call to POST /api/live/settings). Per-tenant DB, so the delete is user-scoped.
  */
-export async function DELETE() {
+async function DELETEHandler() {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -56,3 +57,7 @@ export async function DELETE() {
   await deleteAllDevices(db);
   return new NextResponse(null, { status: 204 });
 }
+
+export const GET = withRequestLogging("/api/live", "GET", GETHandler);
+export const POST = withRequestLogging("/api/live", "POST", POSTHandler);
+export const DELETE = withRequestLogging("/api/live", "DELETE", DELETEHandler);

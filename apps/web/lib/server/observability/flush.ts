@@ -1,3 +1,5 @@
+import { serverLogger } from "./server-logs";
+
 /**
  * The live LangfuseSpanProcessor, shared between the instrumentation-time
  * registration (register.ts writes it) and the routes that flush after AI work
@@ -28,10 +30,11 @@ export function setObservabilityProcessor(processor: FlushableProcessor): void {
  */
 export async function flushObservability(): Promise<void> {
   const processor = store.__bookmarkLangfuseProcessor;
-  if (!processor) return;
   try {
-    await processor.forceFlush();
+    await processor?.forceFlush();
   } catch (err) {
-    console.warn("[observability] flush failed:", (err as Error).message);
+    serverLogger.log("warn", "langfuse_flush_failed", { error: err });
+  } finally {
+    await serverLogger.flush();
   }
 }

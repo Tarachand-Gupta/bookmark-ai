@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import {
@@ -21,7 +22,7 @@ import { requireUser } from "@/lib/server/require-user";
  *    only while the chain is younger than 365 days; past that, force a real
  *    Clerk re-auth (401 `code:"reauth"`) so a stolen token can't renew forever.
  */
-export async function POST() {
+async function POSTHandler() {
   const gate = await requireUser();
   if (!gate.ok) return gate.response;
 
@@ -56,3 +57,5 @@ export async function POST() {
   const { token, expiresInSeconds, expiresAtMs } = mintDeviceToken(gate.userId, rootIatSeconds);
   return NextResponse.json({ token, expiresInSeconds, expiresAtMs });
 }
+
+export const POST = withRequestLogging("/api/device-token", "POST", POSTHandler);

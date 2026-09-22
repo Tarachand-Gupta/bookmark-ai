@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { updateObservabilitySchema, type ObservabilityResponse } from "@bookmark-ai/types";
 import { gateAdmin } from "@/lib/server/admin-gate";
@@ -31,7 +32,7 @@ async function payload(): Promise<ObservabilityResponse> {
 }
 
 /** GET /api/admin/observability → { configured, baseUrl, surfaces }. */
-export async function GET() {
+async function GETHandler() {
   const gate = await gateAdmin();
   if ("response" in gate) return gate.response;
   return NextResponse.json(await payload());
@@ -43,7 +44,7 @@ export async function GET() {
  * within the ~60s read cache. 503 when no master DB is configured (mirrors
  * /api/admin/ai-limit).
  */
-export async function PATCH(req: NextRequest) {
+async function PATCHHandler(req: NextRequest) {
   const gate = await gateAdmin();
   if ("response" in gate) return gate.response;
 
@@ -66,3 +67,6 @@ export async function PATCH(req: NextRequest) {
   }
   return NextResponse.json(await payload());
 }
+
+export const GET = withRequestLogging("/api/admin/observability", "GET", GETHandler);
+export const PATCH = withRequestLogging("/api/admin/observability", "PATCH", PATCHHandler);

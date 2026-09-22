@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { dashboardQuerySchema } from "@bookmark-ai/types";
 import { getDashboard } from "@bookmark-ai/engine";
@@ -18,7 +19,7 @@ import { getRequestApiContext } from "@/lib/server/api-context";
  * `?device=<class>` is the caller's own device ("laptop", "mobile", …) and only
  * feeds `otherDeviceBookmarks` (the cross-device continue fallback).
  */
-export async function GET(request: NextRequest) {
+async function GETHandler(request: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -33,3 +34,5 @@ export async function GET(request: NextRequest) {
   await ready;
   return NextResponse.json(await getDashboard(db, { device: parsed.data.device ?? null }));
 }
+
+export const GET = withRequestLogging("/api/dashboard", "GET", GETHandler);

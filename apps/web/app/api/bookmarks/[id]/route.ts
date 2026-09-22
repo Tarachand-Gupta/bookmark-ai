@@ -1,10 +1,11 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { deleteBookmark, getBookmark } from "@bookmark-ai/db";
 import { getRequestApiContext } from "@/lib/server/api-context";
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function GET(_req: NextRequest, { params }: Params) {
+async function GETHandler(_req: NextRequest, { params }: Params) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -15,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json({ bookmark });
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
+async function DELETEHandler(_req: NextRequest, { params }: Params) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -25,3 +26,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (!deleted) return NextResponse.json({ error: "Bookmark not found" }, { status: 404 });
   return new NextResponse(null, { status: 204 });
 }
+
+export const GET = withRequestLogging("/api/bookmarks/[id]", "GET", GETHandler);
+export const DELETE = withRequestLogging("/api/bookmarks/[id]", "DELETE", DELETEHandler);

@@ -60,6 +60,23 @@ docker compose -p live-dev -f apps/live-server/docker-compose.live.dev.yml up
 Point the clients at it: web `NEXT_PUBLIC_LIVE_API_URL=http://localhost:8091`,
 extension popup `local:liveApiUrl=http://localhost:8091`, mobile `serverTarget=local`.
 
+## Server logs
+
+The server emits structured request completion and failure logs, plus initial SSE
+read and socket failures. Records use registered route templates, HTTP method,
+status, duration and sanitized error type. Request bodies, tokens, query strings,
+device IDs and raw error messages are not sent to New Relic. Existing Fastify
+console logs remain local; this integration does not forward arbitrary stdout.
+
+To enable remote ingestion, add `NEW_RELIC_LICENSE_KEY` to the server's `.env`,
+set `NEW_RELIC_REGION` to `US`, `EU` or `JP` for the account, and restart the
+service. `NEW_RELIC_LOG_LEVEL` accepts `info` (default), `warn` or `error`.
+The service name is `bookmark-ai-live`. Without a key, the new structured logs
+still go to stdout but no ingestion requests are made. Logs flush every five
+seconds and on graceful shutdown, with bounded transport requests; delivery is
+best effort, so a process crash can lose buffered logs. Retention and account
+ingestion limits are configured in New Relic, not by this application.
+
 ## Production — systemd + rsync on the OCI ARM VM (no Docker)
 
 Production runs on a shared Oracle Cloud **ARM64** VM (Ubuntu 24.04) alongside other
@@ -77,7 +94,8 @@ the VM's shared instance on **logical DB 2** (`redis://127.0.0.1:6379/2`).
 | Caddy sites | `/etc/caddy/sites/bookmark-live.caddy` → `live.129.146.3.172.sslip.io`; `/etc/caddy/sites/bookmark-live-domain.caddy` → `live.bookmark-ai.cloud` (both `reverse_proxy … { flush_interval -1 }` for SSE) |
 
 **Deploy** is automated by `.github/workflows/live-server-deploy.yml` on pushes to
-`main`/`live-sessions` touching `apps/live-server/**` or `packages/types/**`: it builds,
+`main`/`live-sessions` touching `apps/live-server/**`, `packages/types/**`, or
+`packages/server-logging/**`: it builds,
 runs `pnpm --filter=@bookmark-ai/live-server --legacy deploy --prod out` (copying the
 gitignored `dist/` in), `rsync`s `out/` to the VM (**excluding `.env`** so the VM secret is
 never clobbered), `sudo systemctl restart bookmark-live`, and health-checks the sslip host.

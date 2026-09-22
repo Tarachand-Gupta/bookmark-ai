@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTHORIZED_PARTIES } from "@/lib/authorized-parties";
@@ -28,7 +29,7 @@ function allowedUser(userId: string): boolean {
   return allowed.length === 0 || allowed.includes(userId);
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   try {
     if (!isTrustedMacAuthBrowserRequest(request)) return json({ error: "Invalid request origin" }, 403);
     if (request.headers.has("authorization")) return json({ error: "Browser session required" }, 401);
@@ -85,3 +86,5 @@ export async function POST(request: NextRequest) {
     return json({ error: "Sign-in service unavailable" }, 503);
   }
 }
+
+export const POST = withRequestLogging("/api/macos-auth/authorize", "POST", POSTHandler);

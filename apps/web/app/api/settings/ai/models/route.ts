@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { listModelsInputSchema, type AiModel, type AiProvider } from "@bookmark-ai/types";
 import { getUserSettings } from "@bookmark-ai/db";
@@ -39,7 +40,7 @@ async function guardedGet(url: string, headers: Record<string, string>): Promise
  * to `{ models: [{ id, label }] }`. Uses the posted key, or falls back to the
  * stored one. Never logs or echoes the key.
  */
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready, userId } = ctx;
@@ -164,3 +165,5 @@ async function listCustomModels(apiKey: string, baseUrl: string): Promise<AiMode
     .filter(Boolean)
     .map((id) => ({ id, label: id }));
 }
+
+export const POST = withRequestLogging("/api/settings/ai/models", "POST", POSTHandler);

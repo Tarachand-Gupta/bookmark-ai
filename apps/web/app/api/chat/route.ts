@@ -1,3 +1,5 @@
+import { serverLogger } from "@/lib/server/observability/server-logs";
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
@@ -511,7 +513,7 @@ function runWebSearchTool(gemini: GeminiClient | null, query: string, limit: num
   return webSearchWithFallback(gemini, query, limit);
 }
 
-export async function POST(req: Request) {
+async function POSTHandler(req: Request) {
   const startedAt = performance.now();
   const apiCtx = await getRequestApiContext();
   if ("response" in apiCtx) return apiCtx.response;
@@ -640,6 +642,7 @@ export async function POST(req: Request) {
     if (!history) await createConversationRecord(db, messageTitleText(lastUserMessage), conversationId);
     if (lastUserMessage) await appendChatMessage(db, conversationId, lastUserMessage);
   })().catch((err: unknown) => {
+    serverLogger.log("error", "chat_user_persist_failed", { error: err });
     console.error("[chat] failed to persist user turn:", err);
   });
 
@@ -802,6 +805,7 @@ export async function POST(req: Request) {
         // reaches the client as an `error` chunk with a READABLE, redacted
         // message — not the SDK's default "An error occurred." and a blank turn.
         onError: (error) => {
+          serverLogger.log("error", "chat_stream_failed", { error: error });
           console.warn("[chat] stream error:", (error as Error)?.message ?? error);
           return describeChatError(error, resolved.source);
         },
@@ -823,6 +827,7 @@ export async function POST(req: Request) {
                 parts: responseMessage.parts,
               });
             } catch (err) {
+              serverLogger.log("error", "chat_assistant_persist_failed", { error: err });
               console.error("[chat] failed to persist assistant message:", err);
             }
           }
@@ -833,6 +838,7 @@ export async function POST(req: Request) {
                 usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
               await recordWeeklyUsage(db, total);
             } catch (err) {
+              serverLogger.log("error", "chat_usage_record_failed", { error: err });
               console.error("[chat] failed to record token usage:", err);
             }
           }
@@ -860,3 +866,5 @@ export async function POST(req: Request) {
     },
   );
 }
+
+export const POST = withRequestLogging("/api/chat", "POST", POSTHandler);

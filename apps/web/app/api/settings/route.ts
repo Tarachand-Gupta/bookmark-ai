@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   parseMcpToolAllowlist,
@@ -76,7 +77,7 @@ function toApiSettings(row: UserSettingsRow | null, aiUsage: AiUsage | null): Us
   };
 }
 
-export async function GET() {
+async function GETHandler() {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready, userId } = ctx;
@@ -90,7 +91,7 @@ export async function GET() {
   return NextResponse.json({ settings: toApiSettings(row, aiUsage) });
 }
 
-export async function PUT(req: NextRequest) {
+async function PUTHandler(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready, userId } = ctx;
@@ -144,3 +145,6 @@ export async function PUT(req: NextRequest) {
   // response (the setup card does) keeps a live meter instead of blanking it.
   return NextResponse.json({ settings: toApiSettings(row, await readAiUsage(db)) });
 }
+
+export const GET = withRequestLogging("/api/settings", "GET", GETHandler);
+export const PUT = withRequestLogging("/api/settings", "PUT", PUTHandler);

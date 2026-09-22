@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimitWindow } from "@/lib/server/rate-limit";
 import { trustedClientKey } from "@/lib/server/require-user";
@@ -16,7 +17,7 @@ function json(body: unknown, status: number, extra: Record<string, string> = {})
   return NextResponse.json(body, { status, headers: { ...MAC_AUTH_NO_STORE_HEADERS, ...extra } });
 }
 
-export async function POST(request: NextRequest) {
+async function POSTHandler(request: NextRequest) {
   const rate = checkRateLimitWindow(`macos-auth:start:ip:${trustedClientKey(request.headers)}`, 10, 5 * 60_000);
   if (!rate.allowed) {
     return json({ error: "Too many requests" }, 429, { "retry-after": String(rate.retryAfterSeconds) });
@@ -33,3 +34,5 @@ export async function POST(request: NextRequest) {
     return json({ error: "Sign-in service unavailable" }, 503);
   }
 }
+
+export const POST = withRequestLogging("/api/macos-auth/start", "POST", POSTHandler);

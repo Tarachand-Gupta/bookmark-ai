@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import { updateLiveSettingsSchema } from "@bookmark-ai/types";
 import { setLiveEnabled } from "@bookmark-ai/engine";
@@ -9,7 +10,7 @@ import { getRequestApiContext } from "@/lib/server/api-context";
  * device in the same request (§5.7); the web Settings toggle and the extension
  * both call this.
  */
-export async function POST(req: NextRequest) {
+async function POSTHandler(req: NextRequest) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready, userId } = ctx;
@@ -26,3 +27,5 @@ export async function POST(req: NextRequest) {
   await setLiveEnabled(db, userId, parsed.data.enabled);
   return NextResponse.json({ enabled: parsed.data.enabled });
 }
+
+export const POST = withRequestLogging("/api/live/settings", "POST", POSTHandler);

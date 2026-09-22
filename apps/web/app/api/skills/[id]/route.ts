@@ -1,3 +1,4 @@
+import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   deleteSkill,
@@ -17,7 +18,7 @@ type Params = { params: Promise<{ id: string }> };
 const NOT_FOUND = () => NextResponse.json({ error: "Skill not found" }, { status: 404 });
 
 /** GET /api/skills/:id → { skill } | 404. */
-export async function GET(_req: NextRequest, { params }: Params) {
+async function GETHandler(_req: NextRequest, { params }: Params) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -30,7 +31,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 /** PUT /api/skills/:id — partial update → { skill } | 400 | 404 | 409 (rename collision). */
-export async function PUT(req: NextRequest, { params }: Params) {
+async function PUTHandler(req: NextRequest, { params }: Params) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -57,7 +58,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 }
 
 /** DELETE /api/skills/:id → 204 | 404. */
-export async function DELETE(_req: NextRequest, { params }: Params) {
+async function DELETEHandler(_req: NextRequest, { params }: Params) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
   const { db, ready } = ctx;
@@ -67,3 +68,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (!removed) return NOT_FOUND();
   return new NextResponse(null, { status: 204 });
 }
+
+export const GET = withRequestLogging("/api/skills/[id]", "GET", GETHandler);
+export const PUT = withRequestLogging("/api/skills/[id]", "PUT", PUTHandler);
+export const DELETE = withRequestLogging("/api/skills/[id]", "DELETE", DELETEHandler);
