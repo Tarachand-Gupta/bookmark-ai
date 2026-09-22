@@ -284,10 +284,10 @@ No in-app purchases, no ads, no tracking. Sign in with Apple: <state Option A/B/
 | User Content → **Photos or Videos** | Yes — only photos the user attaches to an Ask AI question | Yes | No | App Functionality |
 | User Content → **Other Data Types**: device type/name + OS attached to each save (`src/api.ts:38-48`) | Yes | Yes | No | App Functionality |
 | Search History | **No** — search queries are processed to answer the request and not stored (ephemeral; excluded by Apple's definition) |
-| Usage Data / Diagnostics / Crash Data | **No** — no analytics or crash SDK |
+| Usage Data / Diagnostics / Crash Data | **Review before release** — limited server-side PostHog product interactions and New Relic operational diagnostics are now implemented; no client crash SDK. See `docs/posthog-analytics.md` and `docs/server-logging.md` for exact fields and identity handling. The old blanket "No" answer is obsolete when enabled. |
 | Location, Contacts, Health, Financial, Sensitive Info, Purchases, Advertising Data | No |
 
-Tracking (ATT): **No**. Privacy nutrition "Data Linked to You": all of the above. Third-party processors to name in the policy (not on the label): Clerk, Turso, Google Gemini, Langfuse, Vercel.
+Tracking (ATT): **No**. Privacy nutrition "Data Linked to You": review each data type above against its actual identity handling; a pseudonym alone should not be assumed to make data unlinked. Third-party processors to name in the policy (not on the label): Clerk, Turso, Google Gemini, Langfuse, Vercel, PostHog, New Relic. Store-console answers have not been updated by this code change.
 
 **Age rating questionnaire (new format)** — every content question (violence, sexual content, profanity, horror, alcohol/tobacco/drugs, gambling, medical/treatment info, contests) → **None**. Unrestricted Web Access → **No** (links open in the system browser). Made for Kids → No. Gambling → No. Social media / user-to-user communication → No. Parental controls / in-app controls → N/A. Expected result: **4+**.
 

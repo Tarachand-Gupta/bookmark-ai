@@ -36,7 +36,7 @@ async function handleMe(): Promise<BridgeMeResult> {
   try {
     const res = await fetchWithTimeout("/api/me", {
       credentials: "include",
-      headers: { accept: "application/json" },
+      headers: { accept: "application/json", "X-Bookmark-Client": "extension-safari" },
     });
     if (res.status === 401) return { ok: true, signedIn: false, name: null, email: null };
     if (!res.ok) return NULL_BODY;
@@ -51,7 +51,8 @@ async function handleFetch(message: BridgeFetchMessage): Promise<BridgeFetchResu
   // Defense in depth: only relative /api/ paths, never an absolute/foreign URL.
   if (!isAllowedBridgePath(message.path)) return { ok: false, status: 0 };
   try {
-    const headers: Record<string, string> = { accept: "application/json" };
+    const headers: Record<string, string> = { accept: "application/json", "X-Bookmark-Client": "extension-safari" };
+    if (message.analyticsDenied === true) headers["X-Bookmark-Analytics-Consent"] = "denied";
     const init: RequestInit = {
       method: message.method ?? "GET",
       credentials: "include",

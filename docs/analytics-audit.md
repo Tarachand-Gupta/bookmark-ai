@@ -1,8 +1,8 @@
 # Analytics coverage and proposed event contract
 
-Audited September 22, 2026 from repository source and dependency manifests. This is not verification of deployed builds, dashboard ingestion, or production credentials. PostHog is **not implemented**; the events below are proposals, not events shipped by this change. New Relic server logging setup is described in [server-logging.md](server-logging.md).
+Initial audit September 22, 2026 from repository source and dependency manifests. The tables below record the pre-integration state and proposed full event inventory. A subsequent implementation added a deliberately smaller set of server-side PostHog events: see [current PostHog coverage and budget controls](posthog-analytics.md). New Relic server logging setup is described in [server-logging.md](server-logging.md). Neither audit alone verifies deployed builds or production ingestion.
 
-## Current client coverage
+## Client coverage at the initial audit
 
 | Platform | Product analytics today | Source checked |
 | --- | --- | --- |

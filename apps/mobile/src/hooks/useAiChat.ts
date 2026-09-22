@@ -18,7 +18,7 @@ import {
 // WinterCG runtime — TextDecoder/TextDecoderStream, structuredClone, URL,
 // ReadableStream (see expo/src/winter/runtime.native.ts) — so no polyfills.
 import { fetch as expoFetch } from "expo/fetch";
-import { authHeaders, getChatApiUrl } from "../api";
+import { apiHeaders, getChatApiUrl } from "../api";
 import { sendPayload } from "../lib/chatAttachments";
 
 interface ErrorBody {
@@ -162,7 +162,7 @@ export function useAiChat({
     async (input, init) => {
       const headers = {
         ...(init?.headers as Record<string, string> | undefined),
-        ...(await authHeaders()),
+        ...(await apiHeaders()),
       };
       const res = (await (expoFetch as unknown as typeof globalThis.fetch)(input, {
         ...init,

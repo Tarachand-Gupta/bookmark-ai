@@ -361,6 +361,7 @@ export interface BridgeFetchMessage {
   method?: string;
   /** Pre-serialized JSON request body (bridge sends it with content-type json). */
   bodyJson?: string;
+  analyticsDenied?: boolean;
 }
 
 /** `status` is the upstream HTTP status (0 = the bridge fetch never completed).
@@ -384,6 +385,7 @@ export function requestBridgeFetch(
   path: string,
   method?: string,
   bodyJson?: string,
+  analyticsDenied = false,
 ): BridgeFetchMessage {
-  return { type: BRIDGE_FETCH, path, method, bodyJson };
+  return { type: BRIDGE_FETCH, path, method, bodyJson, ...(analyticsDenied ? { analyticsDenied: true } : {}) };
 }

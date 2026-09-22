@@ -1,3 +1,4 @@
+import { trackChatOutcome } from "../product-analytics";
 import { serverLogger } from "@/lib/server/observability/server-logs";
 import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { randomUUID } from "node:crypto";
@@ -744,6 +745,8 @@ async function POSTHandler(req: Request) {
   // (serverless instances may freeze right after `after()` callbacks run).
   after(() => flushObservability());
 
+  const analyticsOutcome = trackChatOutcome(req, userId, resolved.usesServerKey ? "included" : "own");
+
   console.debug(`[chat] pre-stream ${Math.round(performance.now() - startedAt)}ms`);
 
   return propagateAttributes(
@@ -779,6 +782,7 @@ async function POSTHandler(req: Request) {
         onFinish: (event) => {
           const { finishReason, text, reasoningText, toolCalls, warnings, providerMetadata, steps } = event;
           const empty = !text?.trim() && !reasoningText?.trim() && !(toolCalls?.length > 0);
+          if (empty || finishReason === "error") analyticsOutcome.fail();
           if (empty || finishReason !== "stop") {
             const usage = (event as { totalUsage?: unknown }).totalUsage ?? event.usage;
             console.warn(
@@ -805,11 +809,14 @@ async function POSTHandler(req: Request) {
         // reaches the client as an `error` chunk with a READABLE, redacted
         // message — not the SDK's default "An error occurred." and a blank turn.
         onError: (error) => {
+          analyticsOutcome.fail();
           serverLogger.log("error", "chat_stream_failed", { error: error });
           console.warn("[chat] stream error:", (error as Error)?.message ?? error);
           return describeChatError(error, resolved.source);
         },
-        onEnd: async ({ responseMessage }) => {
+        onEnd: async ({ responseMessage, isAborted }) => {
+          if (hasMeaningfulParts(responseMessage.parts)) analyticsOutcome.complete({ isAborted });
+          else analyticsOutcome.fail();
           // The user turn was written off the critical path — wait for it so the
           // assistant turn always lands after it, then persist the assistant turn
           // (full parts incl. reasoning + tool calls/results) and, for a metered

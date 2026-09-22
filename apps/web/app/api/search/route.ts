@@ -1,3 +1,4 @@
+import { scheduleProductEvent } from "../product-analytics";
 import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { after, NextResponse, type NextRequest } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
@@ -35,10 +36,17 @@ async function GETHandler(req: NextRequest) {
   // The search trace (when that surface is on) carries the user; spans export
   // after the response.
   after(() => flushObservability());
+  const searchStarted = performance.now();
   const response = await propagateAttributes(
     { userId: userId ?? undefined, metadata: { route: "/api/search" } },
     () => performSearch(db, gemini, parsed.data),
   );
+  if ((parsed.data.offset ?? 0) === 0) {
+    scheduleProductEvent(req, {
+      event: "search_completed", userId,
+      properties: { result_count: response.results.length, search_mode: parsed.data.mode, duration_ms: performance.now() - searchStarted },
+    });
+  }
   return NextResponse.json(response);
 }
 

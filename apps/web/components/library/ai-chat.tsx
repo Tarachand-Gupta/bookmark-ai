@@ -55,7 +55,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  authHeaders,
+  apiHeaders,
   deleteChatConversation,
   getChatConversation,
   getSettings,
@@ -177,7 +177,7 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
     async (input, init) => {
       const headers = {
         ...(init?.headers as Record<string, string> | undefined),
-        ...(await authHeaders()),
+        ...(await apiHeaders()),
       };
       const res = await fetch(input, { ...init, headers });
       const cid = res.headers.get(CONVERSATION_ID_HEADER);

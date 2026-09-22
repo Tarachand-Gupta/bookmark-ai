@@ -91,8 +91,9 @@ Layout (keep multi-file — the user explicitly banned monolith files):
   those targets get the marker content script below instead. Firefox block:
   `browser_specific_settings.gecko` = fixed id + `strict_min_version: "140.0"` + a TRUTHFUL
   `data_collection_permissions.required` (`authenticationInfo`, `bookmarksInfo`,
-  `browsingActivity` — each justified inline; `technicalAndInteraction` may only be optional per
-  Mozilla's schema and is not declared, see the comment). AMO rejects a wrong declaration.
+  `browsingActivity` — each justified inline; optional `technicalAndInteraction` is checked
+  per API request via `permissions.getAll()` and the server honors denied/missing consent).
+  AMO rejects a wrong declaration.
   `zip.zipSources: false` — WXT's own sources zip is useless to AMO; `scripts/store-zip.mjs`
   writes the real one.
 - **Install detection** (the web app's "Get the extension" card hides itself) — two channels,

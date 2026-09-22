@@ -36,7 +36,13 @@
         "NEW_RELIC_LICENSE_KEY",
         "NEW_RELIC_REGION",
         "NEW_RELIC_LOG_LEVEL",
-        "VERCEL_ENV"
+        "VERCEL_ENV",
+        "POSTHOG_PROJECT_TOKEN",
+        "POSTHOG_ENABLED",
+        "POSTHOG_ALLOW_NON_PRODUCTION",
+        "POSTHOG_MONTHLY_EVENT_LIMIT",
+        "POSTHOG_SEARCH_SAMPLE_RATE",
+        "POSTHOG_BILLING_CYCLE_START_DAY"
       ]
     },
     "dev": {

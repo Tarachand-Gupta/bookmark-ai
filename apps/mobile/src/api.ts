@@ -21,6 +21,11 @@ import type {
   UserSettingsResponse,
 } from "@bookmark-ai/types";
 
+/** Only main API calls carry analytics attribution, never the live origin. */
+export async function apiHeaders(): Promise<Record<string, string>> {
+  return { ...(await authHeaders()), "X-Bookmark-Client": Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "unknown" };
+}
+
 /**
  * The device class this build reports — sent with every save (see
  * AddBookmarkSheet) AND to /api/dashboard, so "saved on another device" can
@@ -255,7 +260,7 @@ async function request<T>(
   const res = await fetch(`${getApiUrl()}${path}`, {
     method,
     signal,
-    headers: { "content-type": "application/json", ...(await authHeaders()) },
+    headers: { "content-type": "application/json", ...(await apiHeaders()) },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   if (!res.ok) {
@@ -280,7 +285,7 @@ async function request<T>(
 export async function deleteAccount(): Promise<void> {
   const res = await fetch(`${getApiUrl()}/api/account`, {
     method: "DELETE",
-    headers: await authHeaders(),
+    headers: await apiHeaders(),
   });
   if (res.status === 202) return;
   if (res.status === 400) {

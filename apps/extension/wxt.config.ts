@@ -169,17 +169,12 @@ export default defineConfig({
           // - browsingActivity: whole-window tab snapshots (SAVE_SESSION →
           //   POST /api/sessions) and, opt-in only, streaming the window's open
           //   tabs as a live session (lib/live-*.ts, LIVE_SET_ENABLED).
-          // NOT declared — `technicalAndInteraction`: Mozilla's schema forbids
-          // it under `required` (addons-linter: "must be equal to one of the
-          // allowed values"; the category "must be optional"), and an optional
-          // grant the user can switch off would have to be honored. The
-          // browser/device/OS values we send (lib/detect.ts `detectSource()`)
-          // are not analytics: they are the user-visible "saved from" / device
-          // labels on the user's own bookmark, session and live-tab records,
-          // i.e. part of the bookmarksInfo/browsingActivity data above. The
-          // extension collects no usage, interaction or crash telemetry at all.
+          // Server-observed product counts are optional analytics. The native
+          // install/about:addons control is checked on every main API request;
+          // missing/denied consent disables Firefox product events server-side.
           data_collection_permissions: {
             required: ["authenticationInfo", "bookmarksInfo", "browsingActivity"],
+            optional: ["technicalAndInteraction"],
           },
         },
         gecko_android: {

@@ -300,7 +300,11 @@ Contact: Tarachand Gupta · `admin@bookmark-ai.cloud` · phone (Tara). Sign-in r
 > activeTab/tabs: read the page being saved and list a window's tabs for sessions and (opt-in) live tabs. storage/alarms: local settings and the periodic token renewal / live-tabs heartbeat. cookies: reserved for the website session hand-off (unused on Safari). scripting: re-attach the sign-in bridge to bookmark-ai.cloud tabs opened before installation. nativeMessaging: tells the companion app whether the extension is signed in (account e-mail/name only, never a credential) so its setup window can show the real state. Host permissions are exactly our own domains: bookmark-ai.cloud, www.bookmark-ai.cloud, clerk.bookmark-ai.cloud, live.bookmark-ai.cloud.
 >
 > DATA
-> No third-party SDKs, no analytics, no remote code. Live tabs is off by default. Accounts are created, exported and deleted on the website (Settings → Account). Privacy policy: https://www.bookmark-ai.cloud/privacy
+> No client analytics SDKs or remote code. The server can send limited product usage outcomes to PostHog and operational diagnostics to New Relic; event content and controls are documented in docs/posthog-analytics.md and docs/server-logging.md. Live tabs is off by default. Accounts are created, exported and deleted on the website (Settings → Account). Privacy policy: https://www.bookmark-ai.cloud/privacy
+
+Before submitting a release with analytics enabled, update the store privacy
+questionnaire and reviewer notes to match this collection. Existing store-console
+declarations have not been changed by the code implementation.
 
 ### 4.5 Distribution
 

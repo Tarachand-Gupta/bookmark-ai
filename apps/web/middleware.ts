@@ -48,7 +48,7 @@ function corsHeaders(origin: string | null): Record<string, string> {
   return {
     "access-control-allow-origin": origin,
     "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "access-control-allow-headers": "authorization,content-type",
+    "access-control-allow-headers": "authorization,content-type,x-bookmark-client,x-bookmark-analytics-consent",
     // Response headers a cross-origin caller (the extension) may read: the chat
     // route's conversation id, which key answered, and the optional advisory
     // (`own-key-incomplete`) — see /api/chat.

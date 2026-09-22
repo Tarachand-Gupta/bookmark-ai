@@ -93,6 +93,18 @@ export default function PrivacyPage() {
             categories; they do not include request contents, bookmark content,
             chat prompts, authentication credentials or user identifiers.
           </p>
+          <p>
+            To understand which features work well, our server can send a limited
+            set of product usage events to PostHog in the United States. These
+            cover bookmark and session saves, imports and exports, sampled
+            searches, and chat outcomes. Events use a pseudonymous account
+            identifier, app platform, and counts or outcomes. They do not contain
+            bookmark URLs or titles, search text, chat content, attachments,
+            email addresses, or authentication credentials. We do not record your
+            screen or automatically track clicks or keystrokes. Firefox extension
+            usage analytics is collected only when its optional interaction-data
+            permission is granted.
+          </p>
         </section>
 
         <section className="space-y-3">

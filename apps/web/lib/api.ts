@@ -94,6 +94,15 @@ export async function authHeaders(): Promise<Record<string, string>> {
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
+/** Main API attribution only; live-server requests keep authHeaders(). */
+export async function apiHeaders(): Promise<Record<string, string>> {
+  const standalone = typeof window !== "undefined" && (
+    window.matchMedia?.("(display-mode: standalone)").matches ||
+    (typeof navigator !== "undefined" && (navigator as Navigator & { standalone?: boolean }).standalone === true)
+  );
+  return { ...(await authHeaders()), "X-Bookmark-Client": standalone ? "pwa" : "web" };
+}
+
 /**
  * The account's private DB isn't ready yet (503 `code: "provisioning"`). Not a
  * real failure — provisioning takes a second or two on a fresh signup — so
@@ -146,7 +155,7 @@ function errorFromBody(
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: { "content-type": "application/json", ...(await authHeaders()), ...init?.headers },
+    headers: { "content-type": "application/json", ...(await apiHeaders()), ...init?.headers },
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -260,7 +269,7 @@ export function createBookmark(input: CreateBookmarkInput): Promise<{ bookmark: 
 export async function deleteBookmark(id: string): Promise<void> {
   const res = await fetch(`${API_URL}/api/bookmarks/${id}`, {
     method: "DELETE",
-    headers: await authHeaders(),
+    headers: await apiHeaders(),
   });
   if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
 }
@@ -272,7 +281,7 @@ export function getSessions(signal?: AbortSignal): Promise<ListSessionsResponse>
 export async function deleteSession(id: string): Promise<void> {
   const res = await fetch(`${API_URL}/api/sessions/${id}`, {
     method: "DELETE",
-    headers: await authHeaders(),
+    headers: await apiHeaders(),
   });
   if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
 }
@@ -485,7 +494,7 @@ export function upsertAppRelease(
 export async function deleteAppRelease(platform: AppPlatform): Promise<void> {
   const res = await fetch(`${API_URL}/api/admin/releases/${platform}`, {
     method: "DELETE",
-    headers: await authHeaders(),
+    headers: await apiHeaders(),
   });
   if (!res.ok && res.status !== 404) {
     const body = await res.json().catch(() => null);
@@ -528,7 +537,7 @@ export function createMcpToken(name: string): Promise<CreateMcpTokenResponse> {
 export async function revokeMcpToken(id: string): Promise<void> {
   const res = await fetch(`${API_URL}/api/mcp/tokens/${id}`, {
     method: "DELETE",
-    headers: await authHeaders(),
+    headers: await apiHeaders(),
   });
   if (!res.ok && res.status !== 404) throw new Error(`Revoke failed (${res.status})`);
 }
@@ -592,7 +601,7 @@ export async function getAccount(signal?: AbortSignal): Promise<AccountResponse>
 export async function deleteAccount(): Promise<void> {
   const res = await fetch(`${API_URL}/api/account`, {
     method: "DELETE",
-    headers: await authHeaders(),
+    headers: await apiHeaders(),
   });
   if (res.status === 202) return;
   if (res.status === 400) {
@@ -633,7 +642,7 @@ export function getChatConversation(
 export async function deleteChatConversation(id: string): Promise<void> {
   const res = await fetch(
     `${API_URL}/api/chat/conversations/${encodeURIComponent(id)}`,
-    { method: "DELETE", headers: await authHeaders() },
+    { method: "DELETE", headers: await apiHeaders() },
   );
   if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
 }
@@ -668,7 +677,7 @@ export function updateSkill(id: string, patch: UpdateSkillInput): Promise<SkillR
 export async function deleteSkill(id: string): Promise<void> {
   const res = await fetch(`${API_URL}/api/skills/${encodeURIComponent(id)}`, {
     method: "DELETE",
-    headers: await authHeaders(),
+    headers: await apiHeaders(),
   });
   if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
 }

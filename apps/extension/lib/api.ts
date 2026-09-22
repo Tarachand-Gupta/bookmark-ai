@@ -11,6 +11,7 @@ import { diag } from "./diag";
 import { fetchWithTimeout } from "./net";
 import { tokenFresh, type CachedToken } from "./live-token";
 import { timed } from "./perf";
+import { analyticsHeaders, isMainApiRequest } from "./analytics-headers";
 
 /** The app origin (web UI + its `/api/*` routes — one deployment serves both).
  * Selected at BUILD time per target via WXT's env/mode: `.env.production` →
@@ -158,7 +159,12 @@ async function sendAuthed(url: string, init: RequestInit): Promise<Response> {
   );
   const headers: Record<string, string> = {
     ...(init.headers as Record<string, string> | undefined),
+    ...(isMainApiRequest(url, await getApiBaseUrl()) ? await analyticsHeaders() : {}),
   };
+  // Explicit suppression (automatic native sync) wins over browser consent.
+  if (new Headers(init.headers).get("X-Bookmark-Analytics-Consent") === "denied") {
+    headers["X-Bookmark-Analytics-Consent"] = "denied";
+  }
   if (token) {
     headers.authorization = `Bearer ${token}`;
     return fetchWithTimeout(url, { ...init, headers });
@@ -322,7 +328,7 @@ export async function getLiveToken(forceRefresh = false): Promise<string | null>
   return liveTokenCache?.token ?? null;
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
+async function postJson<T>(path: string, body: unknown, analytics = true): Promise<T> {
   const base = await getApiBaseUrl();
   let res: Response;
   const payload = JSON.stringify(body);
@@ -333,7 +339,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
       () =>
         authFetch(`${base}${path}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(!analytics ? { "X-Bookmark-Analytics-Consent": "denied" } : {}) },
           body: payload,
         }),
       (r) => ({ path, status: r.status, bytes: payload.length }),
@@ -349,8 +355,8 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 /** POST /api/bookmarks — the server scrapes OG data and AI-categorizes. */
-export async function createBookmark(input: CreateBookmarkInput): Promise<Bookmark> {
-  const data = await postJson<{ bookmark: Bookmark }>("/api/bookmarks", input);
+export async function createBookmark(input: CreateBookmarkInput, options: { analytics?: boolean } = {}): Promise<Bookmark> {
+  const data = await postJson<{ bookmark: Bookmark }>("/api/bookmarks", input, options.analytics);
   return data.bookmark;
 }
 

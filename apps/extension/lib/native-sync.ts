@@ -106,7 +106,7 @@ async function sendMirrorAdd(
     title: title || undefined,
     tags,
     ...detectSource(),
-  });
+  }, { analytics: false });
   await rememberUrlId(url, bookmark.id);
   diag("nativeSync", "added", { domain: bookmark.domain, tagged: !!tags });
 }

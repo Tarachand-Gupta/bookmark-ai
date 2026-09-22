@@ -332,7 +332,12 @@ Verified on both simulators against a real server 403 (allowlist Option A set lo
   - *Browsing History*: collected, linked, App Functionality — saved bookmark URLs, titles, and
     tab sessions are the product. Say so plainly; this is the answer reviewers check against
     the app's behavior.
-  - *Usage Data / Diagnostics*: none (no analytics or crash SDK is installed).
+  - *Usage Data / Diagnostics*: the previous "none" answer is no longer accurate
+    once server analytics/logging is enabled. PostHog receives limited product
+    interactions with a pseudonymous account ID; New Relic receives server
+    diagnostics. Review and update the store questionnaire before release using
+    `docs/posthog-analytics.md` and `docs/server-logging.md`. Absence of a client
+    SDK does not mean absence of server-side collection.
   - **Tracking: No.** `NSPrivacyTracking` is `false` and there is no ATT prompt.
   - Account deletion: **Yes**, in-app (§5).
 - Export compliance: already answered in the binary via `ITSAppUsesNonExemptEncryption=false`.

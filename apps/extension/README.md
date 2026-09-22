@@ -14,6 +14,23 @@ that shared session. This requires the extension's ID to be stable — the CRX i
 `ffhbgpgebpmofjkehpjcemepbgcmoelp` is pinned via a public key in the manifest — and the
 id + web origins to be listed in the Clerk instance's `allowed_origins`.
 
+## Product analytics disclosure
+
+When enabled on the Bookmark AI server, PostHog receives limited product usage
+counts for successful bookmark/session saves and other supported API actions.
+The extension identifies its browser family on main API requests. Analytics uses
+an opaque account identifier and operational counts, without bookmark URLs,
+page titles, search text, chat content or authentication tokens. There is no
+client analytics SDK, automatic click capture, or session replay.
+
+Firefox declares optional `technicalAndInteraction` data collection. Enable or
+disable it in Firefox's install prompt or `about:addons` → Permissions and data.
+The extension checks the current permission on every API request; absent or
+denied permission prevents Firefox product events. Saving and sync still work.
+Existing versions without attribution are excluded from product analytics.
+Operational server logs and data needed to provide saving/sync are separate.
+See the [privacy policy](https://www.bookmark-ai.cloud/privacy).
+
 ## Layout
 
 | Path | What |

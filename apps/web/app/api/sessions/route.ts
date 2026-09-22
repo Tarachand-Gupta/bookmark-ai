@@ -1,3 +1,4 @@
+import { scheduleProductEvent } from "../product-analytics";
 import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { after, NextResponse, type NextRequest } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
@@ -38,6 +39,7 @@ async function POSTHandler(req: NextRequest) {
   // path would make the user wait seconds with their window about to close.
   // `enrichSessionSummary` never overwrites a name the user typed.
   const session = await saveSession(db, parsed.data);
+  scheduleProductEvent(req, { event: "session_save_completed", userId, properties: { item_count: parsed.data.tabs.length } });
   after(async () => {
     // Traces (session summary + embed, when those surfaces are on) carry the saver.
     await propagateAttributes(

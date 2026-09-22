@@ -1,3 +1,4 @@
+import { scheduleProductEvent } from "../product-analytics";
 import { serverLogger } from "@/lib/server/observability/server-logs";
 import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { after, NextResponse, type NextRequest } from "next/server";
@@ -47,6 +48,7 @@ async function POSTHandler(req: NextRequest) {
   // Instant save → 201; OG scrape + AI categorization + embedding run after
   // the response is sent (fluid compute keeps the instance alive for it).
   const bookmark = await saveBookmarkFast(db, parsed.data);
+  scheduleProductEvent(req, { event: "bookmark_save_completed", userId, properties: { item_count: 1 } });
   after(async () => {
     // Traces (categorize + embed, when those surfaces are on) carry the saver.
     await propagateAttributes(

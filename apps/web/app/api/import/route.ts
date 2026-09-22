@@ -1,3 +1,4 @@
+import { scheduleProductEvent } from "../product-analytics";
 import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { after, NextResponse, type NextRequest } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
@@ -60,7 +61,7 @@ async function POSTHandler(req: NextRequest) {
   const overQuota = await enforceQuota(userId, "saves");
   if (overQuota) return overQuota;
 
-  let imported: { bookmarks: number; sessions: number; conversations: number };
+  let imported: Awaited<ReturnType<typeof importUserData>>;
   try {
     imported = await importUserData(db, body);
   } catch (err) {
@@ -86,6 +87,10 @@ async function POSTHandler(req: NextRequest) {
     });
   }
 
+  scheduleProductEvent(req, {
+    event: "import_completed", userId,
+    properties: { item_count: imported.bookmarks + imported.sessions + imported.conversations + imported.skills },
+  });
   return NextResponse.json({ imported });
 }
 

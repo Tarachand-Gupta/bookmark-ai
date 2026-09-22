@@ -358,6 +358,7 @@ final class ApiClient {
         }
 
         var request = URLRequest(url: url)
+        request.setValue("macos", forHTTPHeaderField: "X-Bookmark-Client")
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {

@@ -1,3 +1,4 @@
+import { scheduleProductEvent } from "../product-analytics";
 import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { NextResponse } from "next/server";
 import { exportUserData } from "@bookmark-ai/engine";
@@ -13,13 +14,17 @@ export const dynamic = "force-dynamic";
  * save it directly, while the in-app button reads the JSON and builds its own
  * dated download.
  */
-async function GETHandler() {
+async function GETHandler(req: Request) {
   const ctx = await getRequestApiContext();
   if ("response" in ctx) return ctx.response;
-  const { db, ready } = ctx;
+  const { db, ready, userId } = ctx;
   await ready;
 
   const bundle = await exportUserData(db, new Date().toISOString());
+  scheduleProductEvent(req, {
+    event: "export_completed", userId,
+    properties: { item_count: bundle.bookmarks.length + bundle.sessions.length + bundle.conversations.length + bundle.skills.length },
+  });
   return NextResponse.json(bundle, {
     headers: {
       "content-disposition": 'attachment; filename="bookmark-ai-export.json"',

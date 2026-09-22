@@ -145,3 +145,4 @@ export {
   type AuthorizeMacAuthFlowResult,
   type ConsumeMacAuthFlowResult,
 } from "./queries/macos-auth";
+export { reserveAnalyticsBudget } from "./analytics-budget";

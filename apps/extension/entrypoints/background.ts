@@ -362,11 +362,12 @@ async function bridgeFetch(
   path: string,
   method: string,
   bodyJson?: string,
+  analyticsDenied = false,
 ): Promise<Response | null> {
   const ids = await bridgeTabIds();
   diag("bridge", "fetch tabs found", { count: ids.length, path });
   for (const tabId of ids) {
-    const res = await bridgeSend<BridgeFetchResult>(tabId, requestBridgeFetch(path, method, bodyJson));
+    const res = await bridgeSend<BridgeFetchResult>(tabId, requestBridgeFetch(path, method, bodyJson, analyticsDenied));
     if (res && typeof res.status === "number" && res.status > 0) {
       diag("bridge", "BRIDGE_FETCH", { path, status: res.status });
       const body = NULL_BODY_STATUS.has(res.status) ? null : (res.bodyJson ?? null);
@@ -1037,6 +1038,7 @@ export default defineBackground(() => {
           target.pathname + target.search,
           (init.method as string) ?? "GET",
           body,
+          new Headers(init.headers).get("X-Bookmark-Analytics-Consent") === "denied",
         );
         if (bridged) {
           // A working bridge proves an app tab is open and signed in — the moment

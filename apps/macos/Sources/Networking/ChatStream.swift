@@ -173,6 +173,7 @@ extension ApiClient {
         }
 
         var request = URLRequest(url: url)
+        request.setValue("macos", forHTTPHeaderField: "X-Bookmark-Client")
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
