@@ -21,7 +21,7 @@ beforeAll(async()=>{
   await pg.exec(await readFile(new URL('../../../../supabase/roles.sql',import.meta.url),'utf8'));
   await pg.exec(await readFile(new URL('../../../../supabase/migrations/20261004102129_bmai_qa_control_plane.sql',import.meta.url),'utf8'));
   await pg.exec(await readFile(new URL('../../../../supabase/migrations/20261004102534_bmai_qa_security_hardening.sql',import.meta.url),'utf8'));
-  await pg.exec(await readFile(new URL('../../../../supabase/migrations/20261005090000_legacy_master_import_provenance.sql',import.meta.url),'utf8'));
+  await pg.exec(await readFile(new URL('../../../../supabase/migrations/20261004191909_legacy_master_import_provenance.sql',import.meta.url),'utf8'));
   await pg.query('insert into auth.users(id) values($1),($2)',[user,other]);
   master=new PostgresMasterRepository(wrap(pg),new CredentialCipher(Buffer.alloc(32,3).toString('base64')));
   directory=await mkdtemp(join(tmpdir(),'bmai-sbqa-'));

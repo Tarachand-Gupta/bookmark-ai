@@ -16,7 +16,7 @@ create table bmai_qa.identities (
 );
 create table bmai_qa.tenants (
   account_id uuid primary key references bmai_qa.accounts(id),
-  db_name text unique not null check (db_name like 'bmai-sbqa-%'),
+  db_name text unique not null, -- exact QA/import routing guarded by legacy_imports.sql
   db_url text not null,
   credential_ciphertext text not null,
   status text not null default 'active' check (status in ('active','deleting','disabled')),
@@ -28,6 +28,7 @@ create table bmai_qa.usage (
   sessions integer not null default 0 check(sessions >= 0),
   chats integer not null default 0 check(chats >= 0),
   searches integer not null default 0 check(searches >= 0),
+  newtab_templates integer not null default 0 check(newtab_templates >= 0),
   primary key(account_id, day)
 );
 create table bmai_qa.platform_config (key text primary key, value text not null, updated_at timestamptz not null default now());
