@@ -60,9 +60,10 @@ const PATCH_COLUMNS: [keyof UserSettingsPatch, string][] = [
 ];
 
 export async function getUserSettings(db: Db, userId: string): Promise<UserSettingsRow | null> {
+  const legacyOwner = tenantSettingsOwner(db, userId);
   const rs = await db.execute({
-    sql: "SELECT * FROM user_settings WHERE user_id = ?",
-    args: [tenantSettingsOwner(db, userId)],
+    sql: "SELECT * FROM user_settings WHERE user_id IN (?, ?) ORDER BY CASE WHEN user_id = ? THEN 0 ELSE 1 END LIMIT 1",
+    args: [userId, legacyOwner, userId],
   });
   const row = rs.rows[0];
   return row ? { ...rowToSettings(row as unknown as Record<string, unknown>), userId } : null;
@@ -78,6 +79,11 @@ export async function upsertUserSettings(
   userId: string,
   patch: UserSettingsPatch,
 ): Promise<UserSettingsRow> {
+  const legacyOwner = tenantSettingsOwner(db, userId);
+  const canonical = legacyOwner !== userId
+    ? await db.execute({ sql: "SELECT user_id FROM user_settings WHERE user_id = ?", args: [userId] })
+    : null;
+  const settingsOwner = canonical?.rows.length ? userId : legacyOwner;
   const updatedAt = new Date().toISOString();
 
   const cols: string[] = [];
@@ -101,7 +107,7 @@ export async function upsertUserSettings(
     ON CONFLICT(user_id) DO UPDATE SET
       ${["updated_at = excluded.updated_at", ...conflictSets].join(", ")}
   `;
-  await db.execute({ sql, args: [tenantSettingsOwner(db, userId), updatedAt, ...values] });
+  await db.execute({ sql, args: [settingsOwner, updatedAt, ...values] });
 
   const saved = await getUserSettings(db, userId);
   if (!saved) throw new Error("upsertUserSettings: row not found after upsert");

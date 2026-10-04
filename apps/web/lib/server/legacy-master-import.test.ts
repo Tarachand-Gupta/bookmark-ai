@@ -75,6 +75,19 @@ describe('imported settings ownership',()=>{
    expect(()=>fresh.bindTenantSettingsOwner(db,other,'user_foreign')).toThrow('Conflicting');
   }finally{db.close();}
  });
+ it('prefers preserved canonical settings while keeping legacy settings intact',async()=>{
+  const db=createDb('file::memory:');try{
+   await ensureSchema(db);await upsertUserSettings(db,'user_legacyOwner',{aiModel:'legacy',onboardedAt:'2026-01-01'});
+   await upsertUserSettings(db,account,{aiModel:'current',aiMode:'included'});
+   bindTenantSettingsOwner(db,account,'user_legacyOwner');
+   expect(await getUserSettings(db,account)).toMatchObject({userId:account,aiModel:'current',aiMode:'included'});
+   await upsertUserSettings(db,account,{aiModel:'newest'});
+   expect((await getUserSettings(db,account))?.aiModel).toBe('newest');
+   expect((await db.execute({sql:'select ai_model from user_settings where user_id=?',args:['user_legacyOwner']})).rows[0].ai_model).toBe('legacy');
+   expect((await db.execute('select count(*) as n from user_settings')).rows[0].n).toBe(2);
+   await expect(upsertUserSettings(db,other,{aiModel:'attack'})).rejects.toThrow('does not own');
+  }finally{db.close();}
+ });
  it('preserves exact legacy live opt-in but never adopts unrelated local sentinel',async()=>{
   const db=createDb('file::memory:');try{
    await ensureSchema(db);await setLiveSettings(db,'local',true);
