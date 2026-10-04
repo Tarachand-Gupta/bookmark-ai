@@ -1,4 +1,4 @@
-import { Bricolage_Grotesque, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 
 /**
  * Marketing-only typefaces. These expose CSS variables (`--font-display`,
@@ -11,18 +11,20 @@ import { Bricolage_Grotesque, JetBrains_Mono } from "next/font/google";
  * so mono grounds every eyebrow, label, domain, and metadata line in the
  * subject's own material.
  */
-export const displayFont = Bricolage_Grotesque({
-  subsets: ["latin"],
+export const displayFont = localFont({
+  src: "./font-assets/BricolageGrotesque-variable.woff2",
   display: "swap",
   variable: "--font-display",
-  weight: ["400", "500", "600", "700", "800"],
+  weight: "400 800",
+  style: "normal",
 });
 
-export const monoFont = JetBrains_Mono({
-  subsets: ["latin"],
+export const monoFont = localFont({
+  src: "./font-assets/JetBrainsMono-variable.woff2",
   display: "swap",
   variable: "--font-mono-marketing",
-  weight: ["400", "500", "600", "700"],
+  weight: "400 700",
+  style: "normal",
 });
 
 /** Applied to the marketing root so the scoped font variables resolve. */
