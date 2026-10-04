@@ -1,3 +1,4 @@
+import { tenantSettingsOwner } from '../tenant-settings-owner';
 import type { LiveWindow } from "@bookmark-ai/types";
 import type { Db } from "../client";
 import { LIVE_DEVICE_COLUMNS, rowToLiveDevice, type LiveDeviceRow } from "../rows";
@@ -118,7 +119,7 @@ export async function reapExpiredDevices(db: Db, notAfter: string): Promise<void
 export async function getLiveSettings(db: Db, userId: string): Promise<boolean> {
   const rs = await db.execute({
     sql: "SELECT enabled FROM live_settings WHERE user_id = ?",
-    args: [userId],
+    args: [tenantSettingsOwner(db, userId)],
   });
   const row = rs.rows[0];
   return row ? Boolean(Number(row.enabled)) : false;
@@ -131,6 +132,6 @@ export async function setLiveSettings(db: Db, userId: string, enabled: boolean):
           ON CONFLICT(user_id) DO UPDATE SET
             enabled    = excluded.enabled,
             updated_at = excluded.updated_at`,
-    args: [userId, enabled ? 1 : 0, new Date().toISOString()],
+    args: [tenantSettingsOwner(db, userId), enabled ? 1 : 0, new Date().toISOString()],
   });
 }

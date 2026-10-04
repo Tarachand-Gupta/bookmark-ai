@@ -20,6 +20,11 @@ async function release(master:PostgresMasterRepository,id:string,lease:string){a
 export async function provisionQaTenant(master:PostgresMasterRepository,platform:TenantPlatform,id:string):Promise<Tenant>{
   const existing=await master.getTenant(id);
   if(existing?.status==='active'){
+    if (existing.legacyOwnerId) {
+      const active=await master.connection.query("select id from bmai_qa.accounts where id=$1 and state='active'",[id]);
+      if (!active.length) throw new TenantOperationPendingError('Account not active');
+      return existing;
+    }
     // Recover only our exact durable creation receipt. Never adopt an active
     // tenant merely because its URL/name happens to match a QA namespace.
     const {lease,operation}=await claim(master,id,'provision');
@@ -58,6 +63,9 @@ export async function provisionQaTenant(master:PostgresMasterRepository,platform
 /** Mark deletion durably before erasing either provider's records. */
 export async function beginQaAccountDeletion(master:PostgresMasterRepository,id:string,providerSubject?:string){
   return master.connection.transaction(async db=>{
+    await db.query('select id from bmai_qa.accounts where id=$1 for update',[id]);
+    const imported=await db.query('select account_id from bmai_qa.legacy_imports where account_id=$1',[id]);
+    if (imported.length) throw new TenantOperationPendingError('Imported library deletion requires explicit ownership review');
     const rows=await db.query("update bmai_qa.accounts set state='deleting' where id=$1 and state in ('active','deleting') returning id",[id]);
     if(!rows.length)throw new TenantOperationPendingError('Account not active');
     await db.query("update bmai_qa.tenants set status='deleting' where account_id=$1",[id]);

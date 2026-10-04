@@ -48,10 +48,10 @@ export class PostgresMasterRepository implements MasterRepository {
   }
   private tenant(row: Row): Tenant {
     const id=String(row.account_id);
-    return {clerkUserId:id,dbName:String(row.db_name),dbUrl:String(row.db_url),dbAuthToken:this.cipher.decrypt(String(row.credential_ciphertext),id),status:String(row.status),plan:String(row.plan),createdAt:iso(row.created_at)};
+    return {clerkUserId:id,dbName:String(row.db_name),dbUrl:String(row.db_url),dbAuthToken:this.cipher.decrypt(String(row.credential_ciphertext),id),status:String(row.status),plan:String(row.plan),createdAt:iso(row.created_at),...(row.legacy_owner_id?{legacyOwnerId:String(row.legacy_owner_id)}:{})};
   }
   async getTenant(id: string): Promise<Tenant|null> {
-    const rows=await this.connection.query('select * from bmai_qa.tenants where account_id=$1',[id]);
+    const rows=await this.connection.query('select t.*, l.clerk_subject as legacy_owner_id from bmai_qa.tenants t left join bmai_qa.legacy_imports l on l.account_id=t.account_id and l.db_name=t.db_name and l.db_url=t.db_url where t.account_id=$1',[id]);
     return rows[0] ? this.tenant(rows[0]) : null;
   }
   async insertTenant(t: Tenant): Promise<Tenant> {
@@ -60,7 +60,7 @@ export class PostgresMasterRepository implements MasterRepository {
     const saved=await this.getTenant(t.clerkUserId); if(!saved) throw new AccountDisabledError(); return saved;
   }
   async deleteTenant(id:string) {return (await this.connection.query('delete from bmai_qa.tenants where account_id=$1 returning account_id',[id])).length>0;}
-  async listActiveTenants(){return (await this.connection.query("select t.* from bmai_qa.tenants t join bmai_qa.accounts a on a.id=t.account_id where t.status='active' and a.state='active' order by t.created_at")).map(r=>this.tenant(r));}
+  async listActiveTenants(){return (await this.connection.query("select t.*, l.clerk_subject as legacy_owner_id from bmai_qa.tenants t join bmai_qa.accounts a on a.id=t.account_id left join bmai_qa.legacy_imports l on l.account_id=t.account_id and l.db_name=t.db_name and l.db_url=t.db_url where t.status='active' and a.state='active' order by t.created_at")).map(r=>this.tenant(r));}
   async getPlatformConfig(key:string){const r=await this.connection.query('select value from bmai_qa.platform_config where key=$1',[key]);return r[0]?String(r[0].value):null;}
   async setPlatformConfig(key:string,value:string){await this.connection.query('insert into bmai_qa.platform_config(key,value) values($1,$2) on conflict(key) do update set value=excluded.value,updated_at=now()',[key,value]);}
   async bumpUsage(id:string,day:string,field:UsageField,max:number){

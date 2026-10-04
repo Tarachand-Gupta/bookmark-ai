@@ -1,4 +1,5 @@
 import type { Db } from "../client";
+import { tenantSettingsOwner } from '../tenant-settings-owner';
 
 /**
  * A row of the per-user `user_settings` table (AI provider config). Every AI
@@ -61,10 +62,10 @@ const PATCH_COLUMNS: [keyof UserSettingsPatch, string][] = [
 export async function getUserSettings(db: Db, userId: string): Promise<UserSettingsRow | null> {
   const rs = await db.execute({
     sql: "SELECT * FROM user_settings WHERE user_id = ?",
-    args: [userId],
+    args: [tenantSettingsOwner(db, userId)],
   });
   const row = rs.rows[0];
-  return row ? rowToSettings(row as unknown as Record<string, unknown>) : null;
+  return row ? { ...rowToSettings(row as unknown as Record<string, unknown>), userId } : null;
 }
 
 /**
@@ -100,7 +101,7 @@ export async function upsertUserSettings(
     ON CONFLICT(user_id) DO UPDATE SET
       ${["updated_at = excluded.updated_at", ...conflictSets].join(", ")}
   `;
-  await db.execute({ sql, args: [userId, updatedAt, ...values] });
+  await db.execute({ sql, args: [tenantSettingsOwner(db, userId), updatedAt, ...values] });
 
   const saved = await getUserSettings(db, userId);
   if (!saved) throw new Error("upsertUserSettings: row not found after upsert");

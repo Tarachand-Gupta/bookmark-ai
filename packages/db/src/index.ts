@@ -150,3 +150,4 @@ export { reserveAnalyticsBudget } from "./analytics-budget";
 export * from "./master-repository";
 export * from "./postgres-master";
 export * from "./credential-cipher";
+export { bindTenantSettingsOwner, tenantSettingsOwner } from './tenant-settings-owner';

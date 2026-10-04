@@ -1,5 +1,5 @@
 import { resolve, sep } from "node:path";
-import { connectPostgres, PostgresMasterRepository, isPostgresMasterRepository, CredentialCipher, assertQaTenantName, type MasterStore } from "@bookmark-ai/db";
+import { connectPostgres, PostgresMasterRepository, isPostgresMasterRepository, CredentialCipher, assertQaTenantName, bindTenantSettingsOwner, type MasterStore } from "@bookmark-ai/db";
 import {
   createDb,
   ensureMasterSchema,
@@ -231,9 +231,11 @@ function cacheTenant(tenant: Tenant): void {
  */
 export function tenantDbFromRecord(tenant: Tenant): TenantDb {
   if(process.env.AUTH_PROVIDER==='supabase'||process.env.BOOKMARK_BUILD_VARIANT==='supabase-qa'){
-    assertQaTenantName(tenant.dbName);
+    if (!tenant.legacyOwnerId) assertQaTenantName(tenant.dbName);
+    else if (!/^user_[A-Za-z0-9]+$/.test(tenant.legacyOwnerId) || !/^[a-z0-9-]+$/.test(tenant.dbName)) throw new MultiTenantConfigError('Invalid imported tenant provenance');
     const url=new URL(tenant.dbUrl);
     if(url.protocol==='file:'){
+      if (tenant.legacyOwnerId) throw new MultiTenantConfigError('Imported tenant must use its recorded hosted database');
       const directory=process.env.TENANT_DB_DIR;
       if(!directory||!resolve(tenant.dbUrl.slice(5)).startsWith(resolve(directory)+sep))throw new MultiTenantConfigError('Tenant file outside isolated QA directory');
     }else if(url.protocol!=='libsql:'||!url.hostname.endsWith('.turso.io')||!(url.hostname.startsWith(tenant.dbName+'-')||url.hostname.startsWith(tenant.dbName+'.')))throw new MultiTenantConfigError('Tenant URL outside isolated QA namespace');
@@ -248,6 +250,7 @@ export function tenantDbFromRecord(tenant: Tenant): TenantDb {
     tenant.dbUrl,
     tenant.dbUrl.startsWith("file:") ? undefined : tenant.dbAuthToken,
   );
+  if (tenant.legacyOwnerId) bindTenantSettingsOwner(db, tenant.clerkUserId, tenant.legacyOwnerId);
   const entry: TenantDb = {
     db,
     dbUrl:tenant.dbUrl,

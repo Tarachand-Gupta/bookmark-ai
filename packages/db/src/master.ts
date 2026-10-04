@@ -17,6 +17,8 @@ export interface Tenant {
    * column DEFAULT applies — so a DB where the tolerant ALTER was skipped still
    * inserts cleanly. */
   plan: string;
+  /** Set only by an exact, durable legacy import provenance match. */
+  legacyOwnerId?: string;
 }
 
 /** Per-day usage counters a tenant is metered against. */
