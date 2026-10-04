@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "docusaurus-config-setup": {
+      "source": "jeremylongshore/claude-code-plugins-plus-skills",
+      "sourceType": "github",
+      "skillPath": "skills/17-technical-docs/docusaurus-config-setup/SKILL.md",
+      "computedHash": "6392b38740b66dcd7539a5e6df8250e458cbfd9a9b04b1bac075f199486a8883"
+    },
+    "hallmark": {
+      "source": "nutlope/hallmark",
+      "sourceType": "github",
+      "skillPath": "skills/hallmark/SKILL.md",
+      "computedHash": "8a8ecafd613f09e701330b5aa4a591ac539abb2605596df4a2394f03628d1d76"
+    }
+  }
+}

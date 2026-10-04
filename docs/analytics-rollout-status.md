@@ -12,10 +12,15 @@ September 23, 2026. This records observed results, not approval of any store rel
 - Real export actions produced one event each for `web` and `macos`, visibly
   verified in PostHog with platform, item count and sample rate. Export content
   stays in the downloaded file; the library was not changed.
+- Real reviewer saves from Chrome and Safari 0.1.5 produced visible
+  `bookmark_save_completed` events with platforms `extension-chrome` and
+  `extension-safari`, `item_count=1`, and `sample_rate=1` on September 23.
+  No Android save event was visible in the same activity check.
 - Langfuse remains configured in production.
 - New Relic US key was configured and Vercel redeployed. The account UI shows
   the free 100 GB allowance, but US Log API probes from Mac and OCI returned 403.
-  Ingestion and retention are not verified. OCI deployment is prepared but the
+  Ingestion is not verified. A read-only NerdGraph query on September 23 confirmed
+  effective Logging retention of 30 days. OCI deployment is prepared but the
   running live server remains unchanged while this is resolved.
 
 ## New client artifacts
@@ -24,9 +29,9 @@ September 23, 2026. This records observed results, not approval of any store rel
 | --- | --- | --- |
 | Mac | 0.1.0 (4) | 201 tests, 10 skipped, zero failures; signed archive/package; Apple validation passed; real export event reached PostHog; App Store Connect upload succeeded September 23 (processing) |
 | iOS/iPadOS | 1.0.1 (2) | Typecheck, signed archive/IPA, host/share versions, production endpoints and embedded privacy declarations |
-| Android | 1.0.1 (4) | Signed APK/AAB; certificate matches build 3; production endpoints; installed on QA emulator, runtime analytics pending |
-| Chrome/Firefox | 0.1.5 | 207 extension tests and TypeScript pass; ZIPs and Firefox sources audited; runtime analytics pending |
-| Safari | 0.1.5 (10500) | Signed universal app/extension archive/package; versions, IDs, signatures and privacy manifests audited; runtime analytics pending |
+| Android | 1.0.1 (4) | Signed APK/AAB; certificate matches build 3; production endpoints; installed on QA emulator; signed build 4 GitHub draft with verified asset hashes; runtime analytics pending |
+| Chrome/Firefox | 0.1.5 | 207 extension tests and TypeScript pass; ZIPs/sources audited; Chrome reviewer save and PostHog receipt passed; Firefox consent/runtime checks pending |
+| Safari | 0.1.5 (10500) | Signed universal app/extension archive/package; installed 0.1.5; reviewer bookmark save and PostHog receipt passed |
 
 Artifacts and detailed logs are in the gitignored `.work/posthog/` directory.
 The iOS archive passed on an incremental retry after a transient ExpoModulesJSI
@@ -43,10 +48,15 @@ were corrected as part of packaging.
    Existing recording scripts and import fixtures are in
    `.work/release-publishing-20260920/review-videos/recording-kit/`.
 4. Finish Apple processing/build selection, attach reviewed videos, and resubmit.
-   Mac build 4 upload succeeded September 23; iOS build 2 and Safari build 10500
-   uploads are in progress. No new submission has been sent. Last portal review
+   Mac build 4, iOS build 2 and Safari build 10500 uploads succeeded September 23.
+   Apple processing and build selection remain to be verified. Chrome redirected
+   App Store Connect to login with `authResult=FAILED` on September 23 and now
+   requires the owner to sign in again before privacy/build edits can proceed.
+   No new submission has been sent. Last portal review
    status was Rejected for all three; selected builds still require verification.
 5. Publish Chrome/Firefox updates and the Android download update after checks.
+   Android build 4 is staged as a GitHub draft, targeting commit `664496c`, with
+   APK/AAB and verified SHA256 checksums; the public download still points to build 3.
    Prior Android distribution was GitHub APK/AAB; Google Play listing/enrollment
    remains unverified, not assumed complete.
 6. Resolve New Relic key/account rejection and verify both services in Logs.
@@ -55,6 +65,7 @@ were corrected as part of packaging.
    `.work/posthog/newrelic-ingest-diagnostic.md`; it has not been sent.
    OCI service health and deployment readiness were rechecked September 23.
 
-The Mac App Store Connect upload is complete; processing and final submission
-are separate. Keep
+All three Apple uploads are complete; processing and final submission
+are separate. The iOS upload succeeded with a missing Hermes framework dSYM
+warning; this limits symbolication of Hermes crashes, not the upload itself. Keep
 the permanent reviewer account active and preserve personal app sessions/data.

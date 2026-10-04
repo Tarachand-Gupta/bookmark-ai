@@ -279,8 +279,9 @@ describe("strict public request handling", () => {
   });
 
   it("rejects a stale confirmation after the browser account changes", async () => {
-    await seed();
-    await issueMacAuthCsrf(db, FLOW, hashMacAuthValue(CSRF), "user_a", "sess_a", Date.now());
+    const now = Date.now();
+    await seed("pending", now);
+    expect(await issueMacAuthCsrf(db, FLOW, hashMacAuthValue(CSRF), "user_a", "sess_a", now)).toBe(true);
     browserAuth = { userId: "user_b", sessionId: "sess_b" };
 
     const response = await authorizeRoute.POST(
