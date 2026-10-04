@@ -1,3 +1,4 @@
+import { hasValidLangfuseConfig, initializeOptionalTelemetry } from "./optional-config";
 import { context } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
@@ -71,7 +72,7 @@ function register(): void {
   if (store.__bookmarkObservabilityRegistered) return;
   store.__bookmarkObservabilityRegistered = true;
 
-  if (!process.env.LANGFUSE_PUBLIC_KEY || !process.env.LANGFUSE_SECRET_KEY) {
+  if (!hasValidLangfuseConfig(process.env)) {
     return; // unconfigured — tracing stays entirely off
   }
 
@@ -103,4 +104,6 @@ function register(): void {
   console.log(`[observability] Langfuse tracing registered → ${host}`);
 }
 
-register();
+initializeOptionalTelemetry(register, () => {
+  console.warn("[observability] Optional tracing initialization failed; request serving continues");
+});
