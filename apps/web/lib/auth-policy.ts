@@ -10,6 +10,11 @@ export function safeAuthDestination(value: string | null | undefined, fallback =
     return fallback;
   }
 }
+/** Share the same local return destination across email, OAuth, and auth-page links. */
+export function authDestinationFromSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  return safeAuthDestination(params.get("next") ?? params.get("redirect_url"));
+}
 export function displayName(value: unknown): string {
   return typeof value === "string"
     ? value

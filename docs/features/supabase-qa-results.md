@@ -58,6 +58,12 @@ The final Safari source snapshot was development-signed separately at `.work/sup
 
 Detailed current evidence: `.work/supabase-implementation/extension-readiness-oct4.md`, `mobile-readiness-oct4.md`, `readiness-audit-oct4.md`, and their referenced screenshots/logs. After the agent refreshed the shared computer-use connection, it exposed only browser APIs; the owner's screenshot confirmed Any App enabled. macOS/Safari runtime and fresh mobile MFA UI remain explicitly unverified. The running mobile apps still use the earlier immutable snapshot; the latest MFA fixes have export/test evidence, not installed native UI evidence. No claim that all apps are bug-free or ready for release is supported.
 
+## Web authentication presentation
+
+The later web authentication presentation pass reuses the existing marketing `Nav`, scoped font variables, logo and heading style across sign-in, sign-up, recovery, password update, MFA and callback screens. The navbar's existing public-page behavior remains the default. A sanitized shared destination resolver preserves `next` and legacy `redirect_url` across email/OAuth actions and auth-page links. Nine focused auth/policy/consent tests, the isolated typecheck and final production build pass. Browser checks confirmed matching computed brand/heading fonts, both themes, required-field validation, password visibility, keyboard focus, no horizontal overflow at actual CSS widths 320/375/414/768, contextual registration/recovery links, callback error/retry and the unavailable-factor MFA state. A real isolated-account password login reached its requested destination; local sign-out returned 204 and the sign-in page. No account/password creation or changes were needed. Screenshots and independent review are under `.work/auth-ui-refresh/`.
+
+This presentation pass did not repeat completed Google/Apple OAuth exchanges, email delivery, password changes or successful TOTP verification. One account-settings API request timed out with 503 during the local development run; sign-in and local sign-out completed. That observation remains for the broader readiness pass and is not explained away as a visual change.
+
 ## Remaining release gates
 
 - Restore native computer-use access, finish Safari/macOS authenticated runtime journeys, and verify the new mobile MFA challenge on iPhone/iPad/Android. Firefox's former launch/callback blocker is resolved. Safari has signed build proof but no installed extension journey. The earlier Device Hub recovery enabled iOS checks, but native control is currently unavailable again.

@@ -1,10 +1,16 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { CircleAlert, CircleCheck, Eye, EyeOff, Loader2 } from "lucide-react";
 import { getBrowserSupabase } from "@/lib/auth";
-import { safeAuthDestination } from "@/lib/auth-policy";
+import { authDestinationFromSearch, safeAuthDestination } from "@/lib/auth-policy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AuthShell } from "./auth-shell";
+import { AppleIcon, GoogleIcon } from "./provider-icons";
+
+const authLink =
+  "rounded-sm font-medium text-foreground underline underline-offset-4 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 export function AuthForm({
   mode,
 }: {
@@ -13,7 +19,9 @@ export function AuthForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<"form" | "google" | "apple" | null>(null);
+  const busy = busyAction !== null;
+  const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [mfa, setMfa] = useState(mode === "mfa");
@@ -21,14 +29,23 @@ export function AuthForm({
   const [code, setCode] = useState("");
   const [nextQuery, setNextQuery] = useState("");
   useEffect(() => {
-    const destination = safeAuthDestination(new URLSearchParams(location.search).get("next"));
+    const destination = authDestinationFromSearch(window.location.search);
     setNextQuery(`?next=${encodeURIComponent(destination)}`);
   }, []);
   useEffect(() => {
     if (mfa)
       void getBrowserSupabase()
         .auth.mfa.listFactors()
-        .then(({ data }) => setFactor(data?.totp.find((f) => f.status === "verified")?.id ?? ""));
+        .then(({ data, error }) => {
+          if (error) throw error;
+          const verifiedFactor = data?.totp.find((f) => f.status === "verified")?.id ?? "";
+          setFactor(verifiedFactor);
+          if (!verifiedFactor)
+            setError("We could not load your authenticator. Return to sign in and try again.");
+        })
+        .catch(() =>
+          setError("We could not load your authenticator. Return to sign in and try again."),
+        );
   }, [mfa]);
   const title = {
     "sign-in": "Sign in",
@@ -44,15 +61,13 @@ export function AuthForm({
   }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    setBusy(true);
+    if (busy) return;
+    setBusyAction("form");
     setError("");
     setMessage("");
     try {
       const auth = getBrowserSupabase().auth;
-      const next = safeAuthDestination(
-        new URLSearchParams(window.location.search).get("next") ??
-          new URLSearchParams(window.location.search).get("redirect_url"),
-      );
+      const next = authDestinationFromSearch(window.location.search);
       if (mfa) {
         const result = await auth.mfa.challengeAndVerify({ factorId: factor, code });
         if (result.error) throw result.error;
@@ -67,6 +82,7 @@ export function AuthForm({
         const result = await auth.updateUser({ password });
         if (result.error) throw result.error;
         setPassword("");
+        setShowPassword(false);
         setMessage("Password updated. You can return to your library.");
       } else if (mode === "sign-up") {
         const result = await auth.signUp({
@@ -87,19 +103,22 @@ export function AuthForm({
         if (assurance.data?.nextLevel === "aal2" && assurance.data.currentLevel !== "aal2") {
           setMfa(true);
           setPassword("");
+          setShowPassword(false);
         } else window.location.assign(next);
       }
     } catch {
       setError("We could not complete that request. Check your details and try again.");
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
   async function social(provider: "google" | "apple") {
-    setBusy(true);
+    if (busy) return;
+    setBusyAction(provider);
     setError("");
+    setMessage("");
     try {
-      const next = safeAuthDestination(new URLSearchParams(window.location.search).get("next"));
+      const next = authDestinationFromSearch(window.location.search);
       const { error } = await getBrowserSupabase().auth.signInWithOAuth({
         provider,
         options: { redirectTo: callback(next) },
@@ -107,67 +126,181 @@ export function AuthForm({
       if (error) throw error;
     } catch {
       setError("Sign-in is temporarily unavailable. Try again.");
-      setBusy(false);
+      setBusyAction(null);
     }
   }
+  const description = mfa
+    ? "Enter the six-digit code from your authenticator app."
+    : {
+        "sign-in": "Sign in to access your bookmarks and saved sessions.",
+        "sign-up": "Keep your bookmarks and saved sessions together.",
+        recovery: "Enter your email and we’ll send you a reset link.",
+        "update-password": "Choose a new password for your account.",
+        mfa: "Enter the six-digit code from your authenticator app.",
+      }[mode];
+  const action = mfa
+    ? "Verify"
+    : mode === "recovery"
+      ? "Send reset link"
+      : mode === "update-password"
+        ? "Update password"
+        : mode === "sign-up"
+          ? "Create account"
+          : "Sign in";
+  const pendingAction = mfa
+    ? "Verifying…"
+    : mode === "recovery"
+      ? "Sending reset link…"
+      : mode === "update-password"
+        ? "Updating password…"
+        : mode === "sign-up"
+          ? "Creating account…"
+          : "Signing in…";
+  const showProviders = !mfa && (mode === "sign-in" || mode === "sign-up");
+  const passwordUpdated = mode === "update-password" && Boolean(message);
   return (
-    <main className="flex min-h-dvh items-center justify-center p-6">
-      <section className="w-full max-w-sm space-y-5 rounded-xl border bg-card p-6">
-        <Link href="/" className="text-sm font-medium">
-          Bookmark AI
-        </Link>
-        <h1 className="text-2xl font-semibold">{mfa ? "Verify your authenticator" : title}</h1>
-        {!mfa && (mode === "sign-in" || mode === "sign-up") && (
-          <div className="grid gap-2">
-            <Button variant="outline" disabled={busy} onClick={() => void social("google")}>
-              Continue with Google
+    <AuthShell
+      title={mfa ? "Verify your authenticator" : mode === "sign-in" ? "Welcome back" : title}
+      description={description}
+    >
+      {showProviders && (
+        <>
+          <div className="grid gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full"
+              disabled={busy}
+              onClick={() => void social("google")}
+            >
+              {busyAction === "google" ? (
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+              ) : (
+                <GoogleIcon className="size-4" />
+              )}
+              {busyAction === "google" ? "Connecting to Google…" : "Continue with Google"}
             </Button>
-            <Button variant="outline" disabled={busy} onClick={() => void social("apple")}>
-              Continue with Apple
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full"
+              disabled={busy}
+              onClick={() => void social("apple")}
+            >
+              {busyAction === "apple" ? (
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+              ) : (
+                <AppleIcon className="size-4" />
+              )}
+              {busyAction === "apple" ? "Connecting to Apple…" : "Continue with Apple"}
             </Button>
           </div>
-        )}
-        <form onSubmit={submit} className="space-y-3">
+          <div className="relative text-center text-xs text-muted-foreground">
+            <span aria-hidden className="absolute inset-x-0 top-1/2 border-t" />
+            <span className="relative bg-card px-3">Or continue with email</span>
+          </div>
+        </>
+      )}
+      {!passwordUpdated && (
+        <form
+          onSubmit={submit}
+          className="space-y-5"
+          aria-busy={busy}
+          aria-describedby={error ? "auth-error" : message ? "auth-message" : undefined}
+        >
           {!mfa && mode === "sign-up" && (
-            <label className="block text-sm">
-              Name
+            <div className="space-y-2">
+              <label htmlFor="auth-name" className="text-sm font-medium">
+                Name <span className="font-normal text-muted-foreground">(optional)</span>
+              </label>
               <Input
+                id="auth-name"
+                className="h-11"
                 autoComplete="name"
+                placeholder="Your name"
                 maxLength={80}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
-            </label>
+            </div>
           )}
           {!mfa && mode !== "update-password" && (
-            <label className="block text-sm">
-              Email
+            <div className="space-y-2">
+              <label htmlFor="auth-email" className="text-sm font-medium">
+                Email
+              </label>
               <Input
+                id="auth-email"
+                className="h-11"
                 type="email"
                 autoComplete="email"
+                placeholder="you@example.com"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
-            </label>
+            </div>
           )}
           {!mfa && mode !== "recovery" && (
-            <label className="block text-sm">
-              Password
-              <Input
-                type="password"
-                autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-                minLength={8}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="auth-password" className="text-sm font-medium">
+                  {mode === "update-password" ? "New password" : "Password"}
+                </label>
+                {mode === "sign-in" && (
+                  <Link
+                    href={`/auth/recovery${nextQuery}`}
+                    className={`${authLink} -my-2 inline-flex min-h-11 items-center whitespace-nowrap text-xs`}
+                  >
+                    Forgot password?
+                  </Link>
+                )}
+              </div>
+              <div className="relative">
+                <Input
+                  id="auth-password"
+                  className="h-11 pr-12"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+                  placeholder={mode === "sign-in" ? "Enter your password" : "Create a password"}
+                  minLength={8}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  aria-describedby={mode !== "sign-in" ? "auth-password-help" : undefined}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute inset-y-0 right-0 size-11 rounded-l-none text-muted-foreground hover:text-foreground"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  onClick={() => setShowPassword((visible) => !visible)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="size-4" aria-hidden />
+                  ) : (
+                    <Eye className="size-4" aria-hidden />
+                  )}
+                </Button>
+              </div>
+              {mode !== "sign-in" && (
+                <p id="auth-password-help" className="text-xs text-muted-foreground">
+                  Use at least 8 characters.
+                </p>
+              )}
+            </div>
           )}
           {mfa && (
-            <label className="block text-sm">
-              Authenticator code
+            <div className="space-y-2">
+              <label htmlFor="auth-code" className="text-sm font-medium">
+                Authenticator code
+              </label>
               <Input
+                id="auth-code"
+                className="h-11 text-center font-mono tracking-widest"
+                placeholder="000000"
                 required
                 autoComplete="one-time-code"
                 inputMode="numeric"
@@ -176,29 +309,81 @@ export function AuthForm({
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
               />
-            </label>
+            </div>
           )}
-          <Button className="w-full" disabled={busy || (mfa && (!factor || code.length !== 6))}>
-            {busy ? "Please wait…" : mfa ? "Verify" : title}
+          <Button
+            type="submit"
+            className="h-11 w-full"
+            disabled={busy || (mfa && (!factor || code.length !== 6))}
+          >
+            {busyAction === "form" && (
+              <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+            )}
+            {busyAction === "form" ? pendingAction : action}
           </Button>
         </form>
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
-        {message && (
-          <p role="status" className="text-sm">
-            {message}
-          </p>
-        )}
-        <div className="flex flex-wrap gap-3 text-sm underline">
-          <Link href={`/sign-in${nextQuery}`}>Sign in</Link>
-          <Link href={`/sign-up${nextQuery}`}>Create account</Link>
-          <Link href={`/auth/recovery${nextQuery}`}>Forgot password?</Link>
-          {mode === "update-password" && <Link href="/app">Return to library</Link>}
+      )}
+      {error && (
+        <div
+          id="auth-error"
+          role="alert"
+          className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+        >
+          <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <p>{error}</p>
         </div>
-      </section>
-    </main>
+      )}
+      {message && (
+        <div
+          id="auth-message"
+          role="status"
+          className="flex items-start gap-2 rounded-md border bg-muted/50 p-3 text-sm"
+        >
+          <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <p>{message}</p>
+        </div>
+      )}
+      <div className="text-center text-sm text-muted-foreground">
+        {mfa ? (
+          <Link
+            href={`/sign-in${nextQuery}`}
+            className={`${authLink} inline-flex min-h-11 items-center`}
+          >
+            Back to sign in
+          </Link>
+        ) : mode === "sign-in" ? (
+          <p>
+            Don’t have an account?{" "}
+            <Link
+              href={`/sign-up${nextQuery}`}
+              className={`${authLink} inline-flex min-h-11 items-center`}
+            >
+              Sign up
+            </Link>
+          </p>
+        ) : mode === "sign-up" ? (
+          <p>
+            Already have an account?{" "}
+            <Link
+              href={`/sign-in${nextQuery}`}
+              className={`${authLink} inline-flex min-h-11 items-center`}
+            >
+              Sign in
+            </Link>
+          </p>
+        ) : mode === "update-password" ? (
+          <Link href="/app" className={`${authLink} inline-flex min-h-11 items-center`}>
+            Return to library
+          </Link>
+        ) : (
+          <Link
+            href={`/sign-in${nextQuery}`}
+            className={`${authLink} inline-flex min-h-11 items-center`}
+          >
+            Back to sign in
+          </Link>
+        )}
+      </div>
+    </AuthShell>
   );
 }
