@@ -1,6 +1,6 @@
 # Supabase decisions and Clerk rollback
 
-The owner has authorized independent development and QA decisions in the new Supabase environment. The boundary is preserving the working Clerk version and making rollback straightforward. No production migration, DNS cutover, deployment, store submission, or merge is part of this isolated work.
+The owner has authorized independent development and QA decisions in the new Supabase environment. The boundary is preserving the working Clerk version and making rollback straightforward. That original isolated scope was subsequently expanded by explicit owner authorization to the production cutover recorded below. Store submission and existing-user data migration remain excluded.
 
 ## Preserved checkpoint
 
@@ -21,13 +21,13 @@ The owner has authorized independent development and QA decisions in the new Sup
 | Dedicated local Redis at `127.0.0.1:6386` for Live Tabs content | This preserves the existing Live Tabs architecture, using a separate QA encryption key. It is not an authentication cache or token registry. The QA instance is ephemeral and does not use the existing Redis service. |
 | No session/inactivity timeout | Supports the requested multi-week return. Refresh-token replay detection stays enabled. Current QA access JWT expiry is one hour, with online validation on each protected human request. |
 | OAuth Server enabled for extension clients; dynamic registration disabled | Keeps each extension's credential separate and restrictable through its signed client ID. This provider feature is beta and needs review before production adoption. |
-| Default Supabase auth domain and local QA callbacks | The owner subsequently authorized real production Google/Apple credentials in Supabase. Its provider callback was added beside Clerk's existing callbacks; shared credentials were not reset. Google consent is now In production. See [social providers](supabase-social-providers.md). Custom-domain and application deployment cutover remain deferred. |
+| Default Supabase auth domain and local QA callbacks | The owner subsequently authorized real production Google/Apple credentials in Supabase. Its provider callback was added beside Clerk's existing callbacks; shared credentials were not reset. Google consent is now In production. See [social providers](supabase-social-providers.md). The provider custom domain remains deferred; application deployment was later authorized and completed as recorded below. |
 | Runtime PostgreSQL login restricted to the private backend role | Schema administration credentials stay outside app runtime configuration. Certificate verification is required. |
 | Mobile Clerk dependency/patch registration removed on this branch | Switching to the checkpoint and reinstalling its pinned dependencies restores the previous implementation. |
 | Node 22+ and Corepack pnpm 10.34.1 | Required by the pinned Supabase SDK; avoid the host's different global pnpm version. |
 | Hosted breached-password screening is unavailable on Free | The security advisor reports this disabled. Supabase documents it as Pro-only; no paid upgrade was purchased. Review this explicit difference before production password-auth cutover: [password security](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). |
 | Local Docker started for schema generation | Only an isolated shadow database is needed. Record created QA containers before cleaning them up; never remove unrelated Docker data. |
-| Recovery worker at `/api/cron/account-operations` | Requires the separate `CRON_SECRET`. QA invokes it manually; scheduling this endpoint is required before a later production cutover. The existing production cron configuration has not changed. |
+| Recovery worker at `/api/cron/account-operations` | Uses `CRON_SECRET`; production input and Vercel key presence are verified. The deployed configuration initially scheduled only embedding. A separate Hobby-compatible daily recovery schedule (`45 4 * * *`, UTC, imprecise within the hour) is now prepared alongside unchanged embedding; root must deploy it. Authenticated worker invocation mutates pending operations, so no no-change live run is claimed. |
 
 ## Request and extension security decisions
 
@@ -49,4 +49,20 @@ Supabase CLI scratch files from this setup are preserved under `.work/supabase-i
 4. Use the original environment and original apps/build workflows. Do not copy `.env.supabase.local` into `.env` or reuse a Supabase QA output as a Clerk release.
 5. The separately installed QA apps can remain alongside the working apps or be removed later. Do not reset the original app's storage or credentials.
 
-No reverse data migration is needed for this phase because production data and authentication have not been moved. If a later production migration is approved, its rollback procedure must be designed separately before cutover. QA-project cleanup is optional and is not required to return to Clerk.
+Historical QA instructions above describe the retained local Clerk version. The authorized hosted cutover below supersedes the earlier no-production-change status.
+
+## Production cutover — 4 October 2026
+
+The user authorized production promotion. Web/API now use **https://www.bookmark-ai.cloud**, deployment **dpl_5ARcomCsxfC2BihHafwLMKMG9Tzg**; Live uses **https://live.bookmark-ai.cloud**, release **supabase-20261004-a89fea9**. Signed-out health200/protected401 and sign-in200 were verified after promotion. Monitoring registered successfully. Chrome, Firefox and Safari OAuth protocol checks passed (five checks each); these are not browser UI E2E claims.
+
+The original Clerk deployment **dpl_5ZmFA7Daf4BHA4nMChpxJKgzn3iU** remains available. CLI rollback to it was executed and health200/me401/sign-in200 verified during the failed-candidate recovery. Root can run `corepack pnpm dlx vercel@62.2.0 rollback dpl_5ZmFA7Daf4BHA4nMChpxJKgzn3iU --scope team_YrK7IQKCrCxbbuxx94RJEZbK --yes`. The old Live sibling and Redis DB2 are retained; Supabase Live uses DB3. Root's preserved release rollback helper restores the old Live directory/environment and restarts only that service. Existing user data and Clerk credentials were not migrated or deleted.
+
+The Vercel environment export contains literal redactions and **must never be replayed as a restore**. The helper now rejects placeholders before applying or restoring. The known private original environment and preserved old deployment are rollback sources; identical historical secret values have not been reconstructed from the redacted export.
+
+No paid upgrade was purchased. Custom SMTP remains pending, so arbitrary email confirmation/recovery is not ready. Supabase leaked-password screening is Pro-only; its existing free-plan warning remains. Google/Apple provider enablement is separate from email-delivery proof.
+
+Actual hosted browser/extension and native UI checks are blocked by the locked Mac; no alternate UI automation was used. Safari's signed hosted wrapper compiled and its signature verified, but authenticated Safari runtime is unverified. Hosted Android is installed only in the QA emulator; its browser-return runtime is pending. Hosted iPhone artifact is ready but not installed until reconnection. Manual checks remain in [supabase-user-test.md](supabase-user-test.md).
+
+Native provider proof also passed AAL2 import/refresh, independent browser/native session IDs, wrong-code/PKCE/replay rejection and selected/local revocation while retaining browser access. The disposable proof user was cleaned up. This does not prove native OS callback delivery. New Mac QA app is installed at `/Users/tara/Applications/Bookmark AI Supabase QA.app`; transition from the running older QA process awaits unlock. Remaining owner prerequisites are custom SMTP, Mac unlock and iPhone reconnection.
+
+Live logging follow-up completed by root: the three New Relic placeholders were replaced from known private values, only bookmark-live restarted, and public health200/protected401 reverified. Other config, DB3, Redis/Caddy and retained Clerk release were preserved.

@@ -7,12 +7,16 @@ the ignored `.env.supabase.local`. Do not use the legacy commands below for QA
 builds: source, dependencies, native IDs, credential storage, and output paths
 must stay in the `supabase-qa` variant. Node 22+ and Corepack pnpm 10.34.1 apply.
 Supabase owns authentication and the private master database; only new QA content
-databases belong to Turso group `bmai-supabase-qa`. No existing-user migration,
-DNS, deployment, or store submission is authorized by this branch. The owner
-subsequently authorized production Google/Apple credential setup in the new
-Supabase project, preserving Clerk callbacks and credentials; see
-`docs/features/supabase-social-providers.md`. Other production cutover work stays
-deferred. The owner authorizes routine isolated development/QA decisions.
+databases belong to Turso group `bmai-supabase-qa`. The owner subsequently
+authorized promotion to the existing Vercel and OCI production services, hosted
+QA builds, and authentication email DNS configuration. Use the explicit
+`--hosted-production` build option and ignored `.env.supabase.production.local`;
+the canonical API is `https://www.bookmark-ai.cloud`. Preserve Clerk callbacks,
+credentials, deployment backups, and existing user data for rollback. Existing
+user migration, paid-plan purchases, and store submissions remain deferred.
+See `docs/features/supabase-social-providers.md` and the private release recipe
+in `.work/production-cutover/RELEASE.md` for configuration and rollback evidence.
+The owner authorizes routine isolated development/QA decisions.
 
 Read [QA setup](docs/features/supabase-qa-setup.md) and
 [decisions and rollback](docs/features/supabase-decisions-and-rollback.md).
