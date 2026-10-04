@@ -13,7 +13,7 @@ QA builds, and authentication email DNS configuration. Use the explicit
 `--hosted-production` build option and ignored `.env.supabase.production.local`;
 the canonical API is `https://www.bookmark-ai.cloud`. Preserve Clerk callbacks,
 credentials, deployment backups, and existing user data for rollback. Existing
-user migration, paid-plan purchases, and store submissions remain deferred.
+user migration was subsequently authorized on 5 October 2026: move/map the legacy master records to Supabase while retaining existing Turso tenant databases and rollback backups. The reviewed import is complete: nine authoritative legacy accounts now map to retained Turso tenants; the current account kept its canonical UUID and recent Supabase data was merged without deleting either database. Legacy Clerk/device/MCP authentication is not accepted; reauthenticate/reissue credentials. Paid-plan purchases, destructive cleanup, and store submissions remain excluded.
 See `docs/features/supabase-social-providers.md` and the private release recipe
 in `.work/production-cutover/RELEASE.md` for configuration and rollback evidence.
 The owner authorizes routine isolated development/QA decisions.
