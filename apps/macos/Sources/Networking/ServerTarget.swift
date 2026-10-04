@@ -16,7 +16,8 @@ enum ServerTarget: String, CaseIterable, Identifiable, Codable, Sendable {
     var id: String { rawValue }
 
     var baseURL: URL {
-        switch self {
+        if SupabaseConfiguration.isQA { return SupabaseConfiguration.current?.apiURL ?? SupabaseConfiguration.unavailableURL }
+        return switch self {
         case .local: URL(string: "http://localhost:3000")!
         case .cloud: URL(string: "https://www.bookmark-ai.cloud")!
         }
@@ -35,7 +36,8 @@ enum ServerTarget: String, CaseIterable, Identifiable, Codable, Sendable {
     /// prefix). Default only: a user-pinned `settings.liveServerUrl` overrides
     /// it (see `LiveModel.resolveBase`). Parity with `apps/mobile/src/api.ts`.
     var liveBaseURL: URL {
-        switch self {
+        if SupabaseConfiguration.isQA { return SupabaseConfiguration.current?.liveURL ?? SupabaseConfiguration.unavailableURL }
+        return switch self {
         case .local: URL(string: "http://localhost:8091")!
         case .cloud: URL(string: "https://live.bookmark-ai.cloud")!
         }
@@ -51,7 +53,8 @@ enum ServerTarget: String, CaseIterable, Identifiable, Codable, Sendable {
     /// own (dev-instance) Clerk — the sign-in sheet then renders
     /// `localhost:3000/sign-in` and the token it mints is sent to :3000.
     var requiresAuth: Bool {
-        switch self {
+        if SupabaseConfiguration.isQA { return true }
+        return switch self {
         case .cloud: true
         case .local: Self.localSignIn
         }
@@ -80,7 +83,8 @@ enum ServerTarget: String, CaseIterable, Identifiable, Codable, Sendable {
     }
 
     var subtitle: String {
-        switch self {
+        if SupabaseConfiguration.isQA { return "Supabase QA · sign-in required" }
+        return switch self {
         case .local: "localhost:3000 · dev server (DEV_OPEN_API)"
         case .cloud: "www.bookmark-ai.cloud · sign-in required"
         }
@@ -88,7 +92,8 @@ enum ServerTarget: String, CaseIterable, Identifiable, Codable, Sendable {
 
     /// The host, as a short caption (sidebar footer, sign-in screen footer).
     var hostLabel: String {
-        switch self {
+        if SupabaseConfiguration.isQA { return baseURL.host ?? "Configuration unavailable" }
+        return switch self {
         case .local: "localhost:3000"
         case .cloud: "bookmark-ai.cloud"
         }

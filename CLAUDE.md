@@ -1,5 +1,22 @@
 # Bookmark AI — Agent Guide
 
+## Supabase QA branch (4 October 2026)
+
+On `codex/supabase-auth`, use `corepack pnpm qa:supabase <surface> <action>` and
+the ignored `.env.supabase.local`. Do not use the legacy commands below for QA
+builds: source, dependencies, native IDs, credential storage, and output paths
+must stay in the `supabase-qa` variant. Node 22+ and Corepack pnpm 10.34.1 apply.
+Supabase owns authentication and the private master database; only new QA content
+databases belong to Turso group `bmai-supabase-qa`. No existing-user migration,
+production configuration, DNS, deployment, or store submission is authorized by
+this branch. The owner authorizes routine isolated development/QA decisions.
+
+Read [QA setup](docs/features/supabase-qa-setup.md) and
+[decisions and rollback](docs/features/supabase-decisions-and-rollback.md).
+Clerk checkpoint `87f1995` remains on `codex/server-logging-analytics-audit` and
+tag `checkpoint/clerk-before-supabase-2026-10-04`. The legacy descriptions below
+document that preserved setup; they are not a Supabase authentication bypass.
+
 Save bookmarks from any browser → the API (Next.js route handlers in `apps/web` — the same
 code serves local dev on :3000 and the Vercel deployment) scrapes Open Graph data,
 AI-categorizes, embeds → browse/search in the web app, a native (Zig) desktop app, an Expo

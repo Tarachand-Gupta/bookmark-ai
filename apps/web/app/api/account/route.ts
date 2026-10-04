@@ -1,3 +1,5 @@
+import { authMutationOriginAllowed } from "@/lib/server/auth-request-origin";
+import { startAccountDeletion } from "@/lib/server/account-deletion";
 import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -28,7 +30,8 @@ async function GETHandler() {
  * fires a `user.deleted` webhook, which is what actually tears down the tenant's
  * DB — this route only removes the identity.
  */
-async function DELETEHandler() {
+async function DELETEHandler(request:Request) {
+  if(process.env.AUTH_PROVIDER==="supabase"&&!authMutationOriginAllowed(request))return NextResponse.json({error:"Invalid request origin"},{status:403});
   const gate = await requireUser();
   if (!gate.ok) return gate.response;
 
@@ -37,6 +40,11 @@ async function DELETEHandler() {
     return NextResponse.json({ error: "Not available in local mode" }, { status: 400 });
   }
 
+  if (gate.identity) {
+    if (Date.now()/1000 - gate.identity.authenticatedAt > 600) return NextResponse.json({error:"Sign in again before deleting your account",code:"reauth-required"},{status:403});
+    try { await startAccountDeletion(gate.userId,gate.identity.providerUserId,gate.identity.sessionId); return NextResponse.json({ok:true},{status:202}); }
+    catch { return NextResponse.json({error:"Account deletion pending; service temporarily unavailable",code:"deletion-pending"},{status:503}); }
+  }
   const client = await clerkClient();
   await client.users.deleteUser(gate.userId);
   return NextResponse.json({ ok: true }, { status: 202 });

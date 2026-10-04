@@ -3,6 +3,7 @@ import { AppState, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Application from "expo-application";
 import { getAppReleases, SERVER_TARGET } from "../api";
+import { AUTH_NAMESPACE } from "../lib/auth-config";
 import {
   bannerFor,
   parseSnooze,
@@ -19,7 +20,7 @@ import {
  * the local dev server's fixture record and production's real one are different
  * releases, and a snooze on one must not speak for the other.
  */
-const SNOOZE_KEY = `bookmark-ai:app-update-snooze:${SERVER_TARGET}`;
+const SNOOZE_KEY = `${AUTH_NAMESPACE}:app-update-snooze:${SERVER_TARGET}`;
 
 /** The releases endpoint is a nicety, never a gate — give up fast and silently. */
 const FETCH_TIMEOUT_MS = 5_000;

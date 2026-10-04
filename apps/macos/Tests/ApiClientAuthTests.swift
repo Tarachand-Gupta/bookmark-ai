@@ -111,9 +111,9 @@ final class ApiClientAuthTests: XCTestCase {
         XCTAssertEqual(unauthorized, 1)
     }
 
-    /// Local never consults the provider and never attaches a header.
+    /// QA cannot acquire an open-auth bypass by choosing the local enum value.
     @MainActor
-    func testLocalTargetSendsNoAuthorization() async throws {
+    func testLocalTargetObeysBuildAuthenticationPolicy() async throws {
         let api = makeClient()
         api.target = .local
         var providerCalls = 0
@@ -122,7 +122,7 @@ final class ApiClientAuthTests: XCTestCase {
 
         _ = try await api.meta()
 
-        XCTAssertEqual(providerCalls, 0)
-        XCTAssertNil(StubURLProtocol.requests.first?.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertEqual(providerCalls, SupabaseConfiguration.isQA ? 1 : 0)
+        XCTAssertEqual(StubURLProtocol.requests.first?.value(forHTTPHeaderField: "Authorization"), SupabaseConfiguration.isQA ? "Bearer never" : nil)
     }
 }

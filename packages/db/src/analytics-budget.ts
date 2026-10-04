@@ -1,13 +1,15 @@
+import { isMasterRepository, type MasterStore } from "./master-repository";
 import type { Db } from "./client";
 
 /** One atomic cross-instance reservation; invalid/corrupt counters fail closed. */
 export async function reserveAnalyticsBudget(
-  db: Db,
+  db: MasterStore,
   projectHash: string,
   utcMonth: string,
   count: number,
   limit: number,
 ): Promise<boolean> {
+  if (isMasterRepository(db)) return db.reserveAnalyticsBudget(projectHash, utcMonth, count, limit);
   if (
     !/^[a-f0-9]{64}$/.test(projectHash) ||
     !/^\d{4}-(0[1-9]|1[0-2])$/.test(utcMonth) ||

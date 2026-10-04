@@ -26,6 +26,7 @@ interface ClerkWebhookEvent {
 }
 
 async function POSTHandler(req: NextRequest) {
+  if (process.env.AUTH_PROVIDER === "supabase") return new NextResponse(null,{status:410});
   const secret = process.env.CLERK_WEBHOOK_SECRET;
   if (!secret) {
     if (!missingSecretWarned) {

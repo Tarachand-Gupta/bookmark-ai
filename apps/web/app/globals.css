@@ -8,7 +8,6 @@
 @import "@bookmark-ai/ui/demos/demos.css";
 
 /* Clerk components (UserButton, sign-in modal) themed to match shadcn. */
-@import "@clerk/ui/themes/shadcn.css";
 
 /* Scan the shared UI package for Tailwind classes. */
 @source "../../../packages/ui/src";

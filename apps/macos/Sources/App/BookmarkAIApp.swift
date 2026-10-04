@@ -24,6 +24,7 @@ struct BookmarkAIApp: App {
                 // System choice lands here, before first paint.
                 .onAppear { appEnvironment.preferences.applyAppearance() }
                 .task { await appEnvironment.start() }
+                .onOpenURL { url in Task { await appEnvironment.auth.handleNativeCallback(url) } }
                 // Remember THE MAIN window so a later dock click can bring it
                 // back with its state. The reader anchors in this scene's
                 // hierarchy only — the Settings window (its own scene) never

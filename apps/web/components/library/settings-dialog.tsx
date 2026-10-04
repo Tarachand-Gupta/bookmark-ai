@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useClerk, useUser } from "@clerk/nextjs";
+import { useUser, getBrowserSupabase } from "@/lib/auth";
+import { AccountSecurity } from "@/components/auth/account-security";
 import {
   Activity,
   AlertTriangle,
@@ -410,7 +411,6 @@ function DataSection() {
  * the avatar menu and the Settings dialog agree on where "account" lives.
  */
 function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
-  const { signOut, openUserProfile } = useClerk();
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -421,7 +421,8 @@ function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
     try {
       await deleteAccount();
       // Clear the Clerk session and land on the public home page.
-      await signOut({ redirectUrl: "/" });
+      await getBrowserSupabase().auth.signOut({ scope: "local" });
+      window.location.assign("/");
     } catch (e: unknown) {
       setError((e as Error).message);
       setDeleting(false);
@@ -437,37 +438,7 @@ function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
       <PlanGroup />
       <IdentityGroup />
 
-      {/* Clerk's account manager, opened as ITS OWN modal rather than embedded in
-          this pane. MEASURED (2026-08-11, dev Chrome, 1440x940):
-          <UserProfile routing="hash"> inline renders a FIXED 880px card (228px
-          internal nav rail + 661px content, 704px tall) that ignores
-          `elements.cardBox: "w-full"` — Clerk's generated styles win — so in the
-          ~574px pane it was clipped mid-word ("Add email a…") under a second nav
-          rail and a second "Account" heading inside ours; fitting it needs a
-          ~1120px dialog that still clips on any narrower window. Rendering the
-          modal INSIDE the pane (Clerk's `getContainer`) is interactive but hits
-          the same 880px-vs-574px clip, because DialogContent is
-          `overflow-hidden`. So this hands the screen over instead: close Settings,
-          then let Clerk's modal own the viewport — where it is neither clipped nor
-          made inert by Radix's focus trap. */}
-      <SettingsGroup
-        divided
-        title="Profile & security"
-        description="Your name and avatar, email addresses, connected accounts, password, two-factor authentication and active devices — all managed by Clerk, themed to match the app."
-      >
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            onRequestClose();
-            openUserProfile();
-          }}
-        >
-          <UserRound aria-hidden />
-          Manage profile &amp; security
-        </Button>
-      </SettingsGroup>
+      <AccountSecurity />
 
       <SettingsGroup
         divided

@@ -1,3 +1,5 @@
+import { isMasterRepository, PostgresMasterRepository, type MasterStore } from "@bookmark-ai/db";
+import { provisionQaTenant, deleteQaTenant } from "./qa-tenants";
 import { createHash } from "node:crypto";
 import {
   createDb,
@@ -27,13 +29,13 @@ export interface TenantPlatform {
 }
 
 export interface ProvisionTenantArgs {
-  master: Db;
+  master: MasterStore;
   platform: TenantPlatform;
   clerkUserId: string;
 }
 
 export interface DeprovisionTenantArgs {
-  master: Db;
+  master: MasterStore;
   platform: TenantPlatform;
   clerkUserId: string;
 }
@@ -71,6 +73,7 @@ export async function provisionTenant({
   platform,
   clerkUserId,
 }: ProvisionTenantArgs): Promise<Tenant> {
+  if (isMasterRepository(master)) return provisionQaTenant(master as PostgresMasterRepository, platform, clerkUserId);
   const existing = await getTenant(master, clerkUserId);
   if (existing && existing.status === "active") return existing;
 
@@ -135,6 +138,7 @@ export async function deprovisionTenant({
   platform,
   clerkUserId,
 }: DeprovisionTenantArgs): Promise<void> {
+  if (isMasterRepository(master)) return deleteQaTenant(master as PostgresMasterRepository, platform, clerkUserId);
   const existing = await getTenant(master, clerkUserId);
   const dbName = existing?.dbName ?? tenantDbName(clerkUserId);
   await platform.deleteDatabase(dbName);

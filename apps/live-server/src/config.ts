@@ -15,6 +15,13 @@ const boolish = z
   .transform((v) => v === "1" || v?.toLowerCase() === "true");
 
 const rawSchema = z.object({
+  AUTH_PROVIDER: z.enum(["clerk","supabase"]).default("clerk"),
+  BOOKMARK_BUILD_VARIANT: z.string().optional(),
+  SUPABASE_URL: z.string().optional(),
+  SUPABASE_PUBLISHABLE_KEY: z.string().optional(),
+  SUPABASE_DATABASE_URL: z.string().optional(),
+  SUPABASE_DATABASE_CA_BASE64: z.string().optional(),
+  SUPABASE_EXTENSION_CLIENT_IDS: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(8080),
   REDIS_URL: z.string().default("redis://127.0.0.1:6379"),
 
@@ -57,6 +64,12 @@ const rawSchema = z.object({
 });
 
 export type Config = {
+  authProvider?: "clerk" | "supabase";
+  supabaseUrl?: string;
+  supabasePublishableKey?: string;
+  supabaseDatabaseUrl?: string;
+  supabaseDatabaseCaBase64?: string;
+  supabaseExtensionClientIds?: string[];
   port: number;
   redisUrl: string;
   clerkSecretKey: string | undefined;
@@ -84,12 +97,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`Invalid live-server config: ${first?.path.join(".")} — ${first?.message}`);
   }
   const e = parsed.data;
+  if (e.BOOKMARK_BUILD_VARIANT === "supabase-qa" && e.AUTH_PROVIDER !== "supabase") throw new Error("Supabase QA requires native auth configuration");
   const isProduction = e.NODE_ENV === "production";
   const devOpen = e.DEV_OPEN_API && !isProduction;
 
   // Fail closed: in production we must be able to verify Clerk tokens, unless the
   // operator explicitly opted into open mode (which prod ignores anyway).
-  if (isProduction && !e.CLERK_SECRET_KEY && !(e.CLERK_JWT_KEY && e.CLERK_ISSUER)) {
+  if (e.AUTH_PROVIDER === "supabase" && (e.BOOKMARK_BUILD_VARIANT !== "supabase-qa" || !e.SUPABASE_URL || !e.SUPABASE_PUBLISHABLE_KEY || !e.SUPABASE_DATABASE_URL)) throw new Error("Supabase Live configuration unavailable");
+  if (e.AUTH_PROVIDER !== "supabase" && isProduction && !e.CLERK_SECRET_KEY && !(e.CLERK_JWT_KEY && e.CLERK_ISSUER)) {
     throw new Error(
       "live-server: production requires CLERK_SECRET_KEY, or CLERK_JWT_KEY + CLERK_ISSUER, to verify tokens.",
     );
@@ -122,6 +137,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
 
   return {
+    authProvider:e.AUTH_PROVIDER,
+    supabaseUrl:e.SUPABASE_URL,
+    supabasePublishableKey:e.SUPABASE_PUBLISHABLE_KEY,
+    supabaseDatabaseUrl:e.SUPABASE_DATABASE_URL,
+    supabaseDatabaseCaBase64:e.SUPABASE_DATABASE_CA_BASE64,
+    supabaseExtensionClientIds:csv(e.SUPABASE_EXTENSION_CLIENT_IDS),
     port: e.PORT,
     redisUrl: e.REDIS_URL,
     clerkSecretKey: e.CLERK_SECRET_KEY,

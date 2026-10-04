@@ -18,7 +18,7 @@ import {
 // WinterCG runtime — TextDecoder/TextDecoderStream, structuredClone, URL,
 // ReadableStream (see expo/src/winter/runtime.native.ts) — so no polyfills.
 import { fetch as expoFetch } from "expo/fetch";
-import { apiHeaders, getChatApiUrl } from "../api";
+import { apiHeaders, getChatApiUrl, reportUnauthorized } from "../api";
 import { sendPayload } from "../lib/chatAttachments";
 
 interface ErrorBody {
@@ -129,7 +129,7 @@ export interface UseAiChatOptions {
 }
 
 /**
- * `useChat` wired to THIS app's /api/chat: expo/fetch for streaming, the Clerk
+ * `useChat` wired to THIS app's /api/chat: expo/fetch for streaming, the SDK
  * bearer token, and the wire protocol the clients share — the first turn sends
  * `{ messages }`, every later turn sends ONLY the new message as
  * `{ message, conversationId }` (history lives on the server, so a turn with
@@ -168,6 +168,7 @@ export function useAiChat({
         ...init,
         headers,
       })) as Response;
+      if (res.status === 401) reportUnauthorized();
 
       const cid = res.headers.get("X-Conversation-Id");
       if (cid && conversationIdRef.current !== cid) {

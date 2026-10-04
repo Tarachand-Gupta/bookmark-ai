@@ -146,21 +146,22 @@ final class AuthStateTests: XCTestCase {
 
     // MARK: - Gate
 
-    /// Local has no session concept: the gate is always open, whatever auth says.
+    /// QA requires a native session for either target; legacy local stays open.
     @MainActor
-    func testLocalTargetIsAlwaysReady() async {
+    func testLocalTargetObeysBuildAuthenticationPolicy() async {
         let defaults = UserDefaults(suiteName: "AuthStateTests-\(UUID().uuidString)")!
         let preferences = Preferences(defaults: defaults)
         preferences.serverTarget = .local
         let env = AppEnvironment(preferences: preferences)
         XCTAssertEqual(env.preferences.serverTarget, .local)
         XCTAssertEqual(env.auth.status, .unknown)
-        XCTAssertEqual(env.gate, .ready)
-        XCTAssertTrue(env.canUseData)
+        XCTAssertEqual(env.gate, SupabaseConfiguration.isQA ? .connecting : .ready)
+        XCTAssertEqual(env.canUseData, !SupabaseConfiguration.isQA)
 
-        await env.auth.restore(requiresAuth: false)
+        env.auth.mintOverride = { _ in .noSession }
+        await env.auth.restore(requiresAuth: preferences.serverTarget.requiresAuth)
         XCTAssertEqual(env.auth.status, .signedOut)
-        XCTAssertEqual(env.gate, .ready, "local's .signedOut is bookkeeping, not a gate")
+        XCTAssertEqual(env.gate, SupabaseConfiguration.isQA ? .signedOut : .ready)
     }
 
     /// Cloud before the first answer is CONNECTING, not signed out.

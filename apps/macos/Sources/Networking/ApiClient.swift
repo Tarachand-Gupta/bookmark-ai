@@ -109,6 +109,33 @@ final class ApiClient {
         try await get("/api/me")
     }
 
+    func nativeSessions() async throws -> [NativeDeviceSession] {
+        struct Response: Decodable { let sessions: [NativeDeviceSession] }
+        let response: Response = try await get("/api/auth/sessions")
+        return response.sessions
+    }
+    func registerCurrentSession() async throws {
+        let payload: [String: String] = ["clientType": "macos", "deviceName": Host.current().localizedName ?? "Mac", "os": "macOS", "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"]
+        _ = try await send(path: "/api/auth/sessions/current", method: "POST", query: [], body: JSONEncoder().encode(payload), allowRetry: true)
+    }
+    func renameNativeSession(_ id: String, name: String) async throws {
+        guard UUID(uuidString: id) != nil else { throw ApiError.invalidURL }
+        _ = try await send(path: "/api/auth/sessions/\(Self.pathComponent(id))", method: "PATCH", query: [], body: JSONEncoder().encode(["displayName": name]), allowRetry: true)
+    }
+    func revokeNativeSession(_ id: String) async throws {
+        guard UUID(uuidString: id) != nil else { throw ApiError.invalidURL }
+        _ = try await send(path: "/api/auth/sessions/\(Self.pathComponent(id))", method: "DELETE", query: [], allowRetry: true)
+    }
+    func signOutSessions(scope: String) async throws {
+        _ = try await send(path: "/api/auth/sessions/sign-out", method: "POST", query: [], body: JSONEncoder().encode(["scope": scope]), allowRetry: true)
+    }
+    func updateNativeProfile(name: String) async throws {
+        _ = try await send(path: "/api/account/profile", method: "PATCH", query: [], body: JSONEncoder().encode(["displayName": name]), allowRetry: true)
+    }
+    func deleteNativeAccount() async throws {
+        _ = try await send(path: "/api/account", method: "DELETE", query: [], allowRetry: true)
+    }
+
     /// `GET /api/health` — public liveness + whether AI is configured.
     func health() async throws -> HealthResponse {
         try await get("/api/health")

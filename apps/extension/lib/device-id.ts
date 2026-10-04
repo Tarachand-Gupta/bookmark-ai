@@ -1,3 +1,4 @@
+import { SUPABASE_AUTH, getOAuthSessionId } from "./supabase-oauth";
 import { storage } from "#imports";
 import { detectBrowser, detectDeviceName } from "./detect";
 
@@ -26,6 +27,11 @@ export function defaultDeviceLabel(): string {
 
 /** The durable device id, minting and persisting one on first use. */
 export async function getDeviceId(): Promise<string> {
+  if (SUPABASE_AUTH) {
+    const id = await getOAuthSessionId();
+    if (!id) throw new Error("Extension session required");
+    return id;
+  }
   const existing = await deviceIdItem.getValue();
   if (existing) return existing;
   const id = crypto.randomUUID();
@@ -36,6 +42,7 @@ export async function getDeviceId(): Promise<string> {
 /** Read the id WITHOUT minting one — for teardown paths that must not resurrect a
  * device that never published. */
 export async function peekDeviceId(): Promise<string> {
+  if (SUPABASE_AUTH) return (await getOAuthSessionId()) ?? "";
   return deviceIdItem.getValue();
 }
 

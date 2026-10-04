@@ -4,6 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SERVER_TARGET, type ServerTarget } from "../api";
 import { resolveDark, type ThemePreference } from "../lib/appearance";
 import { darkColors, lightColors, radius, type Theme } from "../theme";
+import { AUTH_NAMESPACE } from "../lib/auth-config";
 import type { ViewMode } from "../components/SegmentedControl";
 
 export type { ThemePreference } from "../lib/appearance";
@@ -25,8 +26,8 @@ interface Preferences {
 
 const PreferencesContext = createContext<Preferences | null>(null);
 
-const THEME_KEY = "bookmark-ai:theme";
-const VIEW_KEY = "bookmark-ai:view";
+const THEME_KEY = `${AUTH_NAMESPACE}:theme`;
+const VIEW_KEY = `${AUTH_NAMESPACE}:view`;
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   // The live OS scheme. Every themed surface — the presented Settings and chat

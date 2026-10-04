@@ -1,3 +1,4 @@
+import { SUPABASE_AUTH, getOAuthToken, oauthGeneration } from "./supabase-oauth";
 import type {
   Bookmark,
   CreateBookmarkInput,
@@ -49,6 +50,7 @@ export const liveApiUrlItem = storage.defineItem<string>("local:liveApiUrl", {
 });
 
 export async function getApiBaseUrl(): Promise<string> {
+  if (SUPABASE_AUTH) return DEFAULT_API_URL;
   const value = await apiUrlItem.getValue();
   return (value || DEFAULT_API_URL).trim().replace(/\/+$/, "");
 }
@@ -73,6 +75,7 @@ const LIVE_BASE_TTL_MS = 5 * 60_000;
 let liveBaseCache: { value: string; at: number } | null = null;
 
 async function resolveLiveBaseUrl(): Promise<string> {
+  if (SUPABASE_AUTH) return DEFAULT_LIVE_API_URL;
   try {
     const base = await getApiBaseUrl();
     // authFetch carries a token only in the BACKGROUND (that's where all live
@@ -147,7 +150,11 @@ export async function authHeaders(): Promise<Record<string, string>> {
  * The token is re-resolved on every call, which is what makes the 401 retry in
  * `authFetch` meaningful: the second attempt picks up whatever the refresh stored.
  */
-async function sendAuthed(url: string, init: RequestInit): Promise<Response> {
+async function sendAuthed(
+  url: string,
+  init: RequestInit,
+  generation = oauthGeneration(),
+): Promise<Response> {
   // Timed: credential resolution used to be the dominant cost of a save (a full
   // Clerk client construction + token mint per request). Logged only when it's
   // slow enough to matter, so the every-5s live push doesn't spam the log.
@@ -165,18 +172,27 @@ async function sendAuthed(url: string, init: RequestInit): Promise<Response> {
   if (new Headers(init.headers).get("X-Bookmark-Analytics-Consent") === "denied") {
     headers["X-Bookmark-Analytics-Consent"] = "denied";
   }
+  if (SUPABASE_AUTH && generation !== oauthGeneration()) return new Response(null, { status: 401 });
   if (token) {
     headers.authorization = `Bearer ${token}`;
-    return fetchWithTimeout(url, { ...init, headers });
+    return fetchWithTimeout(url, {
+      ...init,
+      headers,
+      ...(SUPABASE_AUTH ? { credentials: "omit" as const } : {}),
+    });
   }
-  if (SAFARI) {
+  if (SAFARI && !SUPABASE_AUTH) {
     // No token. The background's registered strategy (bridge tab, else direct
     // credentialed fetch) handles it; without one (popup context) fall back to a
     // direct credentialed fetch.
     if (noTokenFetcher) return noTokenFetcher(url, { ...init, headers });
     return fetchWithTimeout(url, { ...init, headers, credentials: "include" });
   }
-  return fetchWithTimeout(url, { ...init, headers });
+  return fetchWithTimeout(url, {
+    ...init,
+    headers,
+    ...(SUPABASE_AUTH ? { credentials: "omit" as const } : {}),
+  });
 }
 
 /** A body we can put on the wire a SECOND time. Streams and one-shot sources
@@ -216,15 +232,19 @@ function logPath(url: string): string {
 export async function authFetch(
   url: string,
   init: RequestInit = {},
-  options: { retryOn401?: boolean } = {},
+  options: { retryOn401?: boolean; authGeneration?: number } = {},
 ): Promise<Response> {
-  const res = await sendAuthed(url, init);
+  const generation = options.authGeneration ?? oauthGeneration();
+  if (SUPABASE_AUTH && generation !== oauthGeneration()) return new Response(null, { status: 401 });
+  const res = await sendAuthed(url, init, generation);
   if (res.status !== 401) return res;
   if (options.retryOn401 === false || !isReplayableBody(init.body)) return res;
   const path = logPath(url);
   diag("authRetry", "401 on api call", { path, method: init.method ?? "GET" });
+  if (SUPABASE_AUTH && generation !== oauthGeneration()) return res;
   if (!(await refreshCredential())) return res;
-  const retried = await sendAuthed(url, init);
+  if (SUPABASE_AUTH && generation !== oauthGeneration()) return res;
+  const retried = await sendAuthed(url, init, generation);
   diag("authRetry", "retried after refresh", { path, status: retried.status });
   return retried;
 }
@@ -279,13 +299,18 @@ const liveTokenItem = storage.defineItem<CachedToken | null>("local:liveToken", 
 async function mintLiveToken(): Promise<CachedToken | null> {
   const base = await getApiBaseUrl();
   try {
-    const res = await authFetch(`${base}/api/live-token`, { headers: { accept: "application/json" } });
+    const res = await authFetch(`${base}/api/live-token`, {
+      headers: { accept: "application/json" },
+    });
     if (!res.ok) {
       diag("live", "live-token fetch", { status: res.status });
       return null;
     }
     const body = (await res.json()) as { token?: string; expiresInSeconds?: number };
-    diag("live", "live-token fetch", { status: res.status, expiresIn: body.expiresInSeconds ?? null });
+    diag("live", "live-token fetch", {
+      status: res.status,
+      expiresIn: body.expiresInSeconds ?? null,
+    });
     if (!body.token) return null;
     const ttlMs = Math.max(0, (body.expiresInSeconds ?? 60) * 1000);
     return { token: body.token, exp: Date.now() + ttlMs };
@@ -297,6 +322,7 @@ async function mintLiveToken(): Promise<CachedToken | null> {
 /** A live-server session JWT, reusing the in-memory cache unless it's within the
  * skew window (or `forceRefresh` after a 401). Null when none can be minted. */
 export async function getLiveToken(forceRefresh = false): Promise<string | null> {
+  if (SUPABASE_AUTH) return getOAuthToken(forceRefresh);
   // Once a long-lived device token exists it's a plain Bearer the LIVE server
   // accepts DIRECTLY (contract) — no /api/live-token mint or its caches. This
   // holds on every browser now that the device token is minted cross-browser.
@@ -329,6 +355,7 @@ export async function getLiveToken(forceRefresh = false): Promise<string | null>
 }
 
 async function postJson<T>(path: string, body: unknown, analytics = true): Promise<T> {
+  const generation = oauthGeneration();
   const base = await getApiBaseUrl();
   let res: Response;
   const payload = JSON.stringify(body);
@@ -337,11 +364,18 @@ async function postJson<T>(path: string, body: unknown, analytics = true): Promi
       "api post",
       10,
       () =>
-        authFetch(`${base}${path}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...(!analytics ? { "X-Bookmark-Analytics-Consent": "denied" } : {}) },
-          body: payload,
-        }),
+        authFetch(
+          `${base}${path}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(!analytics ? { "X-Bookmark-Analytics-Consent": "denied" } : {}),
+            },
+            body: payload,
+          },
+          { authGeneration: generation },
+        ),
       (r) => ({ path, status: r.status, bytes: payload.length }),
     );
   } catch {
@@ -355,7 +389,10 @@ async function postJson<T>(path: string, body: unknown, analytics = true): Promi
 }
 
 /** POST /api/bookmarks — the server scrapes OG data and AI-categorizes. */
-export async function createBookmark(input: CreateBookmarkInput, options: { analytics?: boolean } = {}): Promise<Bookmark> {
+export async function createBookmark(
+  input: CreateBookmarkInput,
+  options: { analytics?: boolean } = {},
+): Promise<Bookmark> {
   const data = await postJson<{ bookmark: Bookmark }>("/api/bookmarks", input, options.analytics);
   return data.bookmark;
 }

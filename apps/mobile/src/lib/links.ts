@@ -11,7 +11,7 @@ import * as WebBrowser from "expo-web-browser";
  * dev build talking to localhost still shows the real policy, because the policy
  * describes the hosted product the store build ships as.
  */
-export const WEB_URL = "https://www.bookmark-ai.cloud";
+export const WEB_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://www.bookmark-ai.cloud";
 export const PRIVACY_URL = `${WEB_URL}/privacy`;
 export const TERMS_URL = `${WEB_URL}/terms`;
 export const SUPPORT_EMAIL = "admin@bookmark-ai.cloud";

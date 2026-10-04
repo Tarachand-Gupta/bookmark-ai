@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Alert, Image, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useClerk, useUser } from "@clerk/expo";
+import { useAuth } from "../lib/auth";
+import { displayLabel } from "../lib/auth-policy";
+import { AuthAccountControls } from "../components/settings/AuthAccountControls";
 import * as Application from "expo-application";
 import * as Clipboard from "expo-clipboard";
-import { getApiUrl, SERVER_TARGET } from "../api";
+import { getApiUrl, reportUnauthorized, SERVER_TARGET } from "../api";
 import { DeleteAccountSheet } from "../components/DeleteAccountSheet";
 import { hasAppleAccount } from "../lib/appleSignIn";
 import { AiSettingsGroup } from "../components/settings/AiSettingsGroup";
@@ -63,29 +65,26 @@ export function SettingsScreen() {
   const { themePreference, setThemePreference } = usePreferences();
   // Tablet widths: the groups sit in the shared centered column (0 on phones).
   const { inset } = useContentWidth();
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  const { user, signOut } = useAuth();
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
   // Loads when the presentation opens (the Modal mounts this screen on show).
   const ai = useAiPlan();
 
-  // user is null only in the dev auth-bypass session (EXPO_PUBLIC_SKIP_AUTH);
-  // a real session always has a user by the time the Shell renders.
+  // The Shell is mounted only after SDK authentication and tenant readiness.
   const signedIn = user != null;
   const name = signedIn
-    ? user.fullName || user.username || user.primaryEmailAddress?.emailAddress || "Signed in"
+    ? displayLabel(typeof user.user_metadata.full_name === "string" ? user.user_metadata.full_name : user.email ?? "", "Signed in")
     : "Not signed in";
-  const email = user?.primaryEmailAddress?.emailAddress ?? "";
-  // Sign in with Apple leaves an authorization on Apple's side that neither we
-  // nor Clerk can revoke (no refresh token in the native flow — see
-  // hasAppleAccount) — the deletion sheet tells these users how to remove it.
-  const signedInWithApple = hasAppleAccount(user?.externalAccounts ?? []);
+  const email = user?.email ?? "";
+  const imageUrl = typeof user?.user_metadata.avatar_url === "string" ? user.user_metadata.avatar_url : null;
+  // The deletion sheet includes Apple's authorization-removal instructions.
+  const signedInWithApple = hasAppleAccount(user?.identities ?? []);
 
   const confirmSignOut = () => {
     Alert.alert("Sign out?", "You'll need to sign in again to browse your library.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Sign Out", style: "destructive", onPress: () => void signOut() },
+      { text: "Sign Out", style: "destructive", onPress: () => void signOut().catch(() => Alert.alert("Couldn't sign out", "Check your connection and retry. Your sign-in is still saved.")) },
     ]);
   };
 
@@ -105,16 +104,11 @@ export function SettingsScreen() {
     );
   };
 
-  /**
-   * The account is gone server-side; drop the local session so the app lands
-   * back on the sign-in screen. `signOut()` talks to Clerk, whose user no longer
-   * exists, so a throw here is EXPECTED — swallow it (the token cache is cleared
-   * either way) and tell the user it worked, because it did.
-   */
+  /** The durable deletion job was accepted; close private views immediately. */
   const finishDelete = () => {
     setDeleteSheetOpen(false);
-    void signOut().catch(() => undefined);
-    Alert.alert("Account deleted", "Your account and all of its data have been removed.");
+    reportUnauthorized();
+    Alert.alert("Account deletion requested", "Your account is being deleted. You have been signed out of this device.");
   };
 
   return (
@@ -124,10 +118,10 @@ export function SettingsScreen() {
         contentContainerStyle={[styles.content, { paddingHorizontal: CONTENT_GUTTER + inset }]}
       >
         <View style={styles.profile}>
-          {user?.imageUrl && !avatarFailed ? (
+          {imageUrl && !avatarFailed ? (
             // The picture gets a hairline RING, never shown bare. Profile images
             // are routinely a white silhouette on a colored disc (Google's default
-            // avatar, proxied by Clerk — Tara's own), and on the light theme the
+            // provider avatar), and on the light theme the
             // silhouette's white body ran straight into the white page: the disc
             // read as cut off flat at the bottom with the figure spilling out.
             // Dark mode hid the problem (the same image was a clean circle), which
@@ -136,7 +130,7 @@ export function SettingsScreen() {
             // full 64pt and nothing shifts.
             <View style={styles.avatarFrame}>
               <Image
-                source={{ uri: user.imageUrl }}
+                source={{ uri: imageUrl }}
                 onError={() => setAvatarFailed(true)}
                 style={styles.avatarImage}
               />
@@ -165,6 +159,7 @@ export function SettingsScreen() {
         <PlanCard plan={ai.plan} />
 
         <AiSettingsGroup state={ai} />
+        {signedIn && <AuthAccountControls />}
 
         <GroupLabel>Appearance</GroupLabel>
         <Group>
@@ -252,19 +247,13 @@ export function SettingsScreen() {
               <GroupRow symbol="trash" label="Delete Account" destructive onPress={startDelete} />
             </>
           ) : (
-            <GroupRow first symbol="person.fill" label="Developer session" detail="no account" />
+            <GroupRow first symbol="person.fill" label="Not signed in" />
           )}
         </Group>
         {signedIn && (
           <GroupFootnote>
             Deleting your account permanently removes your bookmarks, sessions, and sign-in. This
             cannot be undone.
-          </GroupFootnote>
-        )}
-        {!signedIn && (
-          <GroupFootnote>
-            This build was started with the sign-in gate bypassed (EXPO_PUBLIC_SKIP_AUTH — dev
-            only). Restart the dev server without the flag to use the real sign-in flow.
           </GroupFootnote>
         )}
       </ScrollView>

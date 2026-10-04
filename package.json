@@ -4,7 +4,7 @@
   "license": "MIT",
   "packageManager": "pnpm@10.34.1",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "turbo run build",
@@ -13,7 +13,9 @@
     "check-types": "turbo run check-types",
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
-    "dev:live": "./scripts/dev-live.sh"
+    "dev:live": "./scripts/dev-live.sh",
+    "qa:supabase": "node scripts/supabase-qa.mjs",
+    "test:supabase:isolation": "node --test scripts/supabase-qa.test.mjs"
   },
   "devDependencies": {
     "prettier": "^3.4.2",

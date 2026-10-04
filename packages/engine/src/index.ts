@@ -153,3 +153,9 @@ export {
   type AgentSkillResult,
   type InstallSkillOptions,
 } from "./skills";
+
+export * from "./supabase-auth";
+
+export * from "./qa-tenants";
+
+export * from "./extension-capabilities";

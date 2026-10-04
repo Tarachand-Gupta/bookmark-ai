@@ -1,6 +1,15 @@
+import {
+  SUPABASE_AUTH,
+  initializeOAuthStorage,
+  getOAuthToken,
+  oauthIdentity,
+  startOAuth,
+  completeOAuth,
+  signOutOAuth,
+} from "@/lib/supabase-oauth";
 import { defineBackground, storage } from "#imports";
 import { browser } from "wxt/browser";
-import { createClerkClient } from "@clerk/chrome-extension/background";
+import type { createClerkClient } from "@clerk/chrome-extension/background";
 import {
   createBookmark,
   fetchMe,
@@ -102,7 +111,10 @@ let winningPath: AuthPath | null = null;
 /** Reject if `p` doesn't settle within `ms`. */
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolvePromise, rejectPromise) => {
-    const timer = setTimeout(() => rejectPromise(new Error(`${label} timed out after ${ms}ms`)), ms);
+    const timer = setTimeout(
+      () => rejectPromise(new Error(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
     p.then(
       (v) => {
         clearTimeout(timer);
@@ -135,12 +147,15 @@ let clerkClientCache: { client: Promise<ClerkClient>; at: number } | null = null
  * JWT itself, so reusing the instance is safe; a construction that throws/times
  * out is NOT cached, and sign-out drops the cache immediately. */
 function racedClerkClient(): Promise<ClerkClient> {
+  if (SUPABASE_AUTH) return Promise.reject(new Error("Legacy authentication is disabled"));
   const now = Date.now();
   if (clerkClientCache && now - clerkClientCache.at < CLERK_CLIENT_TTL_MS) {
     return clerkClientCache.client;
   }
   const client = withTimeout(
-    createClerkClient({ publishableKey: CLERK_PUBLISHABLE_KEY, syncHost: CLERK_SYNC_HOST }),
+    import("@clerk/chrome-extension/background").then(({ createClerkClient }) =>
+      createClerkClient({ publishableKey: CLERK_PUBLISHABLE_KEY, syncHost: CLERK_SYNC_HOST }),
+    ),
     CLERK_RACE_MS,
     "createClerkClient",
   );
@@ -163,6 +178,7 @@ function resetClerkClient(): void {
  * Null when signed out or Clerk is unreachable — saves still work against the
  * open local server; the auth-enforcing deployed server rejects them. */
 async function getSessionToken(): Promise<string | null> {
+  if (SUPABASE_AUTH) return getOAuthToken();
   // Rung 1 — the persisted DEVICE TOKEN, whenever one is stored. It is a plain
   // 90-day Bearer scoped to exactly the routes the background calls
   // (`DEVICE_TOKEN_ROUTES` in apps/web/lib/server/require-user.ts: bookmark/session
@@ -309,11 +325,13 @@ async function bridgeTabIds(): Promise<number[]> {
  * this safe to call on a tab that does have one. */
 async function injectBridge(tabId: number): Promise<boolean> {
   try {
-    const scripting = (browser as unknown as {
-      scripting?: {
-        executeScript: (opts: { target: { tabId: number }; files: string[] }) => Promise<unknown>;
-      };
-    }).scripting;
+    const scripting = (
+      browser as unknown as {
+        scripting?: {
+          executeScript: (opts: { target: { tabId: number }; files: string[] }) => Promise<unknown>;
+        };
+      }
+    ).scripting;
     if (!scripting) return false;
     await scripting.executeScript({ target: { tabId }, files: ["content-scripts/bridge.js"] });
     diag("bridge", "re-injected", { tabId });
@@ -367,7 +385,10 @@ async function bridgeFetch(
   const ids = await bridgeTabIds();
   diag("bridge", "fetch tabs found", { count: ids.length, path });
   for (const tabId of ids) {
-    const res = await bridgeSend<BridgeFetchResult>(tabId, requestBridgeFetch(path, method, bodyJson, analyticsDenied));
+    const res = await bridgeSend<BridgeFetchResult>(
+      tabId,
+      requestBridgeFetch(path, method, bodyJson, analyticsDenied),
+    );
     if (res && typeof res.status === "number" && res.status > 0) {
       diag("bridge", "BRIDGE_FETCH", { path, status: res.status });
       const body = NULL_BODY_STATUS.has(res.status) ? null : (res.bodyJson ?? null);
@@ -417,7 +438,10 @@ async function mintDeviceTokenViaBridge(options: { force?: boolean } = {}): Prom
     } else {
       bridgeMintGate.failed();
     }
-    diag("deviceToken", "device token minted via bridge", { ok: !!body?.token, status: res.status });
+    diag("deviceToken", "device token minted via bridge", {
+      ok: !!body?.token,
+      status: res.status,
+    });
     return !!body?.token;
   } catch {
     bridgeMintGate.failed();
@@ -551,8 +575,7 @@ async function remintDeviceToken(): Promise<boolean> {
  * status, or a 401 that arrived after a redirect).
  */
 type DeviceProbe =
-  | { ok: true; name: string | null; email: string | null }
-  | { ok: false; cleared: true };
+  { ok: true; name: string | null; email: string | null } | { ok: false; cleared: true };
 
 async function probeDeviceToken(token: string, scope: string): Promise<DeviceProbe | null> {
   const base = await getApiBaseUrl();
@@ -630,6 +653,7 @@ async function purgeDevEraCookies(): Promise<void> {
  * `reentered` guards the ONE self-heal re-run: see Path B.5, where a rejected
  * device token un-pins `winningPath` and the ladder starts over. */
 async function resolveUser(reentered = false): Promise<UserInfo> {
+  if (SUPABASE_AUTH) return oauthIdentity();
   diag("getUser", "entry", { cachedPath: winningPath });
   // Path A — SDK (dev instances; settles empty on the prod custom domain).
   if (
@@ -763,7 +787,8 @@ async function resolveUser(reentered = false): Promise<UserInfo> {
  * of a fresh sign-in. */
 async function handleGetUser(): Promise<UserInfo> {
   const info = await resolveUser();
-  if (!info.stale) void reportAuthState({ signedIn: info.signedIn, email: info.email, name: info.name });
+  if (!info.stale)
+    void reportAuthState({ signedIn: info.signedIn, email: info.email, name: info.name });
   return info;
 }
 
@@ -771,6 +796,11 @@ async function handleGetUser(): Promise<UserInfo> {
  * (which ends the same client session the WEB app uses — signing out of the
  * extension signs out of the site too, which is the honest behavior). */
 async function handleSignOut(): Promise<SignOutResult> {
+  if (SUPABASE_AUTH) {
+    const result = await signOutOAuth();
+    if (result.ok) void reportAuthState({ signedIn: false });
+    return result;
+  }
   // Drop the memoized Clerk client: whatever happens below, the session it holds
   // is on its way out, and the next resolve must build a fresh one rather than
   // report the signed-out user as still signed in.
@@ -866,9 +896,7 @@ async function handleSaveSession(message: SaveSessionMessage): Promise<SaveSessi
 /** Read whether the popup's window is currently shared: the global publish switch,
  * the resolved per-window decision (override ?? policy), and the device policy
  * itself (so the popup can word its "future windows…" hint). */
-async function handleLiveWindowGet(
-  message: LiveWindowGetMessage,
-): Promise<LiveWindowGetResult> {
+async function handleLiveWindowGet(message: LiveWindowGetMessage): Promise<LiveWindowGetResult> {
   const [enabled, shared, policyDefault] = await Promise.all([
     liveEnabledItem.getValue(),
     isWindowShared(message.windowId),
@@ -881,9 +909,7 @@ async function handleLiveWindowGet(
  * mirror gains or drops the window right away (pushes are full-replace) instead
  * of waiting for the next tab change. Reply after the storage write; the push is
  * fire-and-forget, mirroring the rename path (LIVE_PUSH_NOW). */
-async function handleLiveWindowSet(
-  message: LiveWindowSetMessage,
-): Promise<LiveWindowSetResult> {
+async function handleLiveWindowSet(message: LiveWindowSetMessage): Promise<LiveWindowSetResult> {
   await setWindowShared(message.windowId, message.shared);
   void pushLiveNow();
   return { ok: true, shared: message.shared };
@@ -951,6 +977,25 @@ async function handleRestoreSession(
  * between is caught inline by `authFetch`'s recovery.
  */
 async function authTick(reason: "boot" | "alarm"): Promise<void> {
+  if (SUPABASE_AUTH) {
+    const token = await getOAuthToken();
+    if (!token) {
+      void reportAuthState({ signedIn: false });
+      return;
+    }
+    if (reason === "alarm") {
+      const identity = await oauthIdentity();
+      if (identity.stale) return;
+      void reportAuthState(
+        { signedIn: identity.signedIn, name: identity.name, email: identity.email },
+        { force: true },
+      );
+      if (!identity.signedIn) return;
+    }
+    await refreshNativeSyncSettings();
+    await drainNativeSyncQueue();
+    return;
+  }
   await renewDeviceTokenIfNeeded();
   if (reason === "alarm") {
     const token = await getUsableDeviceToken();
@@ -959,7 +1004,10 @@ async function authTick(reason: "boot" | "alarm"): Promise<void> {
       if (probe?.ok) {
         // Safari companion heartbeat: FORCED so its `updatedAt` stays fresh and a
         // wiped App Group suite heals within six hours (no-op off Safari).
-        void reportAuthState({ signedIn: true, email: probe.email, name: probe.name }, { force: true });
+        void reportAuthState(
+          { signedIn: true, email: probe.email, name: probe.name },
+          { force: true },
+        );
       } else if (probe && !probe.ok) {
         const minted = await remintDeviceToken();
         diag("authTick", "rejected token → forced re-mint", { reason, minted });
@@ -974,6 +1022,7 @@ async function authTick(reason: "boot" | "alarm"): Promise<void> {
 }
 
 export default defineBackground(() => {
+  void initializeOAuthStorage().catch(() => {});
   diag("bg", "boot", { browser: import.meta.env.BROWSER, syncHost: CLERK_SYNC_HOST });
   // FIREFOX (MV2) ONLY, and BEFORE the first `createClerkClient`: Firefox's
   // `runtime.getManifest()` returns the normalized manifest, which drops the
@@ -982,9 +1031,10 @@ export default defineBackground(() => {
   // Firefox while Chrome sails through. The shim hands the SDK the host
   // patterns WXT folded into `permissions` (see lib/manifest-shim.ts). Inlined
   // by Vite: the whole block is dead code in the Chrome/Safari bundles.
-  if (import.meta.env.BROWSER === "firefox") {
-    const runtime = (globalThis as { browser?: { runtime?: Parameters<typeof patchGetManifest>[0] } })
-      .browser?.runtime;
+  if (!SUPABASE_AUTH && import.meta.env.BROWSER === "firefox") {
+    const runtime = (
+      globalThis as { browser?: { runtime?: Parameters<typeof patchGetManifest>[0] } }
+    ).browser?.runtime;
     diag("bg", "clerk manifest shim", { outcome: patchGetManifest(runtime) });
     // FIREFOX (MV2) ONLY, and BEFORE any Clerk FAPI call: Firefox attaches
     // `Origin: moz-extension://<per-install UUID>` to every non-GET background
@@ -996,8 +1046,11 @@ export default defineBackground(() => {
     // only fix is to send no Origin at all. See lib/clerk-origin-strip.ts.
     diag("bg", "clerk origin strip", {
       outcome: registerClerkOriginStrip(
-        (globalThis as { browser?: { webRequest?: Parameters<typeof registerClerkOriginStrip>[0] } })
-          .browser?.webRequest,
+        (
+          globalThis as {
+            browser?: { webRequest?: Parameters<typeof registerClerkOriginStrip>[0] };
+          }
+        ).browser?.webRequest,
         fapiOrigin(),
       ),
     });
@@ -1017,7 +1070,7 @@ export default defineBackground(() => {
   //    on a 401, force one refresh and retry once.
   //  • otherwise → a direct credentialed fetch (works only if the cookie jar
   //    ever opens up for the extension context; today it 401s, harmlessly).
-  if (SAFARI) {
+  if (SAFARI && !SUPABASE_AUTH) {
     setNoTokenFetcher(async (url, init) => {
       // Deliberately NOT gated on `winningPath`: Safari kills this worker every
       // couple of minutes, and a fresh worker boots with winningPath === null —
@@ -1123,24 +1176,56 @@ export default defineBackground(() => {
           | { ok: boolean },
       ) => void,
     ) => {
+      if (SUPABASE_AUTH && typeof message === "object" && message !== null) {
+        const payload = message as { type?: string; url?: string };
+        if (payload.type === "START_OAUTH" && _sender.id === browser.runtime.id && !_sender.tab) {
+          void startOAuth().then(
+            () => sendResponse({ ok: true }),
+            () => sendResponse({ ok: false }),
+          );
+          return true;
+        }
+        if (
+          payload.type === "OAUTH_CALLBACK" &&
+          import.meta.env.BROWSER === "safari" &&
+          _sender.id === browser.runtime.id &&
+          _sender.tab &&
+          _sender.url &&
+          typeof payload.url === "string"
+        ) {
+          const expected = `${import.meta.env.WXT_APP_URL}/auth/extension-callback`;
+          const senderUrl = new URL(_sender.url);
+          if (senderUrl.origin + senderUrl.pathname !== expected || payload.url !== _sender.url)
+            return undefined;
+          void completeOAuth(payload.url, _sender.tab.id).then(
+            () => sendResponse({ ok: true }),
+            () => sendResponse({ ok: false }),
+          );
+          return true;
+        }
+      }
       if (isGetUserMessage(message)) {
         const started = Date.now();
-        void handleGetUser().then((info) => {
-          // The popup blocks its whole UI on this answer, so its cost is part of
-          // "the extension feels slow" — measure it alongside the save path.
-          diag("perf", "getUser", { ms: Date.now() - started, signedIn: info.signedIn });
-          sendResponse(info);
-          // PRE-WARM: the popup opening is the earliest possible signal that a
-          // save click is coming, and `GET_USER` is the message it always sends
-          // first. Resolving the credential now (off the reply path — the popup is
-          // already rendering) means the click starts with a warm one instead of
-          // paying for it inside the save.
-          if (info.signedIn) void warmCredential();
-        });
+        void handleGetUser()
+          .then((info) => {
+            // The popup blocks its whole UI on this answer, so its cost is part of
+            // "the extension feels slow" — measure it alongside the save path.
+            diag("perf", "getUser", { ms: Date.now() - started, signedIn: info.signedIn });
+            sendResponse(info);
+            // PRE-WARM: the popup opening is the earliest possible signal that a
+            // save click is coming, and `GET_USER` is the message it always sends
+            // first. Resolving the credential now (off the reply path — the popup is
+            // already rendering) means the click starts with a warm one instead of
+            // paying for it inside the save.
+            if (info.signedIn) void warmCredential();
+          })
+          .catch(() => sendResponse({ signedIn: false, name: null, email: null, stale: true }));
         return true; // keep the channel open for the async response
       }
       if (isSignOutMessage(message)) {
-        void handleSignOut().then(sendResponse);
+        void handleSignOut()
+          .then(sendResponse)
+          .catch(() => sendResponse({ ok: false }));
         return true;
       }
       if (isSaveBookmarkMessage(message)) {
@@ -1201,12 +1286,12 @@ export default defineBackground(() => {
     browser.alarms.create(AUTH_ALARM, { periodInMinutes: 6 * 60 });
     browser.alarms.onAlarm.addListener((a) => {
       if (a.name !== AUTH_ALARM) return;
-      void authTick("alarm");
+      void authTick("alarm").catch(() => {});
     });
     // Seed opportunistically at boot (throttled; no-op if a fresh token exists
     // or no live session yet — the alarm and handleGetUser retry afterward). The
     // boot tick also drains any mirror adds a previous session couldn't deliver.
-    void authTick("boot");
+    void authTick("boot").catch(() => {});
     diag("bg", "auth alarm registered");
   } catch (error) {
     diag("bg", "auth alarm failed", { error: errMsg(error) });

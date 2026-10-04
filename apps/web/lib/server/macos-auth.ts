@@ -6,7 +6,7 @@ import {
   getMacAuthFlow,
   issueMacAuthCsrf,
   purgeMacAuthFlows,
-  type Db,
+  type MasterStore,
   type MacAuthFlow,
 } from "@bookmark-ai/db";
 import { z } from "zod";
@@ -135,7 +135,7 @@ function verificationCode(): string {
   return `${part()}-${part()}`;
 }
 
-async function masterDb(): Promise<Db> {
+async function masterDb(): Promise<MasterStore> {
   const master = getMasterContext();
   if (!master) throw new MacAuthStoreUnavailableError("Mac sign-in store is not configured");
   await master.ready;

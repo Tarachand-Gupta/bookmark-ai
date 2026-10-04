@@ -4,7 +4,11 @@ import type { NextConfig } from "next";
 
 // Next only auto-loads env files from the app dir; the monorepo keeps its
 // single .env at the repo root (GEMINI_API_KEY etc.). Real env always wins.
-try {
+const supabaseQa = process.env.BOOKMARK_BUILD_VARIANT === "supabase-qa";
+if (supabaseQa && !process.env.BOOKMARK_QA_STAGE_ROOT) {
+  throw new Error("Supabase QA must use scripts/supabase-qa.mjs (isolated sources/env/output)");
+}
+if (!supabaseQa) try {
   const text = readFileSync(resolve(process.cwd(), "../../.env"), "utf8");
   for (const line of text.split("\n")) {
     const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
@@ -17,6 +21,11 @@ try {
 }
 
 const nextConfig: NextConfig = {
+  ...(supabaseQa ? {
+    distDir: ".next-supabase-qa",
+    outputFileTracingRoot: process.env.BOOKMARK_QA_STAGE_ROOT,
+    turbopack: { root: process.env.BOOKMARK_QA_STAGE_ROOT },
+  } : {}),
   transpilePackages: [
     "@bookmark-ai/server-logging",
     "@bookmark-ai/ui",
@@ -48,7 +57,7 @@ const nextConfig: NextConfig = {
       // XHR/fetch/websocket targets: same-origin API, Clerk, the live SSE server,
       // and localhost (http + ws) for local dev. (Turso is server-side only — no
       // client connection, so it is intentionally absent here.)
-      "connect-src 'self' https://clerk.bookmark-ai.cloud https://*.clerk.accounts.dev https://live.bookmark-ai.cloud http://localhost:* ws://localhost:*",
+      `connect-src 'self' https://clerk.bookmark-ai.cloud https://*.clerk.accounts.dev https://live.bookmark-ai.cloud http://localhost:* ws://localhost:* ${process.env.NEXT_PUBLIC_SUPABASE_URL || ""}`,
       "img-src 'self' https: data:",
       "style-src 'self' 'unsafe-inline'",
       "frame-src https://challenges.cloudflare.com https://*.clerk.accounts.dev",

@@ -1,3 +1,4 @@
+import { SUPABASE_AUTH } from "@/lib/supabase-oauth";
 import { defineContentScript } from "#imports";
 import { browser } from "wxt/browser";
 import { isAllowedBridgePath } from "@/lib/bridge-guard";
@@ -51,7 +52,10 @@ async function handleFetch(message: BridgeFetchMessage): Promise<BridgeFetchResu
   // Defense in depth: only relative /api/ paths, never an absolute/foreign URL.
   if (!isAllowedBridgePath(message.path)) return { ok: false, status: 0 };
   try {
-    const headers: Record<string, string> = { accept: "application/json", "X-Bookmark-Client": "extension-safari" };
+    const headers: Record<string, string> = {
+      accept: "application/json",
+      "X-Bookmark-Client": "extension-safari",
+    };
     if (message.analyticsDenied === true) headers["X-Bookmark-Analytics-Consent"] = "denied";
     const init: RequestInit = {
       method: message.method ?? "GET",
@@ -71,9 +75,31 @@ async function handleFetch(message: BridgeFetchMessage): Promise<BridgeFetchResu
 }
 
 export default defineContentScript({
-  matches: ["https://bookmark-ai.cloud/*", "https://www.bookmark-ai.cloud/*"],
+  matches:
+    import.meta.env.MODE === "supabase-qa"
+      ? ["http://localhost/*"]
+      : ["https://bookmark-ai.cloud/*", "https://www.bookmark-ai.cloud/*"],
   include: ["safari"],
   main() {
+    if (SUPABASE_AUTH) {
+      if (
+        location.origin !== "http://localhost:3100" ||
+        location.pathname !== "/auth/extension-callback"
+      )
+        return;
+      // No page messages or page credentials: the browser URL is the only input.
+      void browser.runtime
+        .sendMessage({ type: "OAUTH_CALLBACK", url: location.href })
+        .then((reply) => {
+          document.dispatchEvent(
+            new CustomEvent("bookmark-extension-authorization", {
+              detail: reply?.ok === true ? "complete" : "failed",
+            }),
+          );
+          history.replaceState(null, "", location.pathname);
+        });
+      return;
+    }
     // Double-injection guard: the background re-injects this file into tabs
     // whose bridge doesn't answer (scripting.executeScript). Within one install
     // the isolated world is shared, so a second injection must not add a second

@@ -30,6 +30,7 @@ function allowedUser(userId: string): boolean {
 }
 
 async function POSTHandler(request: NextRequest) {
+  if(process.env.AUTH_PROVIDER === "supabase") return NextResponse.json({error:"Use native Supabase OAuth/PKCE",code:"native-auth-required"},{status:410});
   try {
     if (!isTrustedMacAuthBrowserRequest(request)) return json({ error: "Invalid request origin" }, 403);
     if (request.headers.has("authorization")) return json({ error: "Browser session required" }, 401);

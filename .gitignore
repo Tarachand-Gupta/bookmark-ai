@@ -45,6 +45,7 @@ apps/extension/safari-app/DerivedData/
 apps/extension/safari-xcode/
 .vercel
 .env*
+!.env.supabase.example
 
 # OpenMemory - IDE/Assistant specific rules
 .cursor/rules/openmemory.mdc
@@ -56,6 +57,10 @@ openmemory.md
 # Local capture/QA work dirs (screenshots, browser profiles, scratch scripts) — never committed
 **/.work/
 
+# Supabase CLI scratch state is not a migration or source artifact.
+/supabase/.temp/
+/supabase/.branches/
+
 # Private signing material (Android release keystore + its passwords, CRX keys).
 # Never committed, never uploaded (also in .vercelignore). See docs/features/releases.md.
 /.keys/
@@ -64,4 +69,3 @@ openmemory.md
 apps/extension/STORE-LISTING.md
 apps/extension/AMO-LISTING.md
 apps/extension/RELEASING.md
-

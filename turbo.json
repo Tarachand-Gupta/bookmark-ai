@@ -3,9 +3,24 @@
   "ui": "tui",
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**", ".output/**", "zig-out/**"],
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**",
+        ".output/**",
+        "zig-out/**",
+        ".next-supabase-qa/**",
+        "!.next-supabase-qa/cache/**",
+        "dist-supabase-qa/**",
+        ".output-supabase-qa/**"
+      ],
       "env": [
         "GEMINI_API_KEY",
         "OPENROUTER_API_KEY",
@@ -42,7 +57,22 @@
         "POSTHOG_ALLOW_NON_PRODUCTION",
         "POSTHOG_MONTHLY_EVENT_LIMIT",
         "POSTHOG_SEARCH_SAMPLE_RATE",
-        "POSTHOG_BILLING_CYCLE_START_DAY"
+        "POSTHOG_BILLING_CYCLE_START_DAY",
+        "BOOKMARK_BUILD_VARIANT",
+        "AUTH_PROVIDER",
+        "NEXT_PUBLIC_AUTH_PROVIDER",
+        "SUPABASE_*",
+        "NEXT_PUBLIC_SUPABASE_*",
+        "WXT_SUPABASE_*",
+        "WXT_AUTH_PROVIDER",
+        "WXT_BUILD_VARIANT",
+        "EXPO_PUBLIC_SUPABASE_*",
+        "EXPO_PUBLIC_AUTH_*",
+        "EXPO_PUBLIC_BUILD_VARIANT",
+        "MASTER_CREDENTIAL_ENCRYPTION_KEY",
+        "TENANT_PLATFORM",
+        "TENANT_DB_PREFIX",
+        "TENANT_DB_DIR"
       ]
     },
     "dev": {
@@ -50,13 +80,19 @@
       "persistent": true
     },
     "lint": {
-      "dependsOn": ["^build"]
+      "dependsOn": [
+        "^build"
+      ]
     },
     "check-types": {
-      "dependsOn": ["^build"]
+      "dependsOn": [
+        "^build"
+      ]
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": [
+        "^build"
+      ]
     }
   }
 }

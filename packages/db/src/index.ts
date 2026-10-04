@@ -146,3 +146,7 @@ export {
   type ConsumeMacAuthFlowResult,
 } from "./queries/macos-auth";
 export { reserveAnalyticsBudget } from "./analytics-budget";
+
+export * from "./master-repository";
+export * from "./postgres-master";
+export * from "./credential-cipher";

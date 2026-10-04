@@ -1,37 +1,21 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { useClerk, useUser } from "@clerk/expo";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useAuth } from "../lib/auth";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 
-/**
- * NO-ACCESS SCREEN — the mobile twin of the web's NoAccessNotice
- * (apps/web/components/no-access-notice.tsx). Shown when the API answers 403
- * `{code:"forbidden"}`: the Clerk session is perfectly valid, the account just
- * isn't on the API's allowlist (`CLERK_ALLOWED_USER_IDS`).
- *
- * The whole point is what it does NOT say. This is not a network failure and not
- * a "check that you're signed in" problem — the user IS signed in, just as the
- * wrong identity (the owner hit exactly this when Google's account picker chose
- * the wrong account). So: name the signed-in email, say plainly that it has no
- * access, and give the one action that can fix it — sign out and come back as
- * someone else. "Check again" is there for the case where access was just
- * granted server-side and the user shouldn't have to force-quit the app.
- */
+/** A valid signed-in account was denied access by the API. Offer a recheck
+ * and an explicit account switch without treating it as a network failure. */
 export function NoAccessScreen({ onRecheck }: { onRecheck: () => void }) {
   const { colors, radius } = useAppTheme();
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  const { user, signOut } = useAuth();
   const [busy, setBusy] = useState(false);
 
-  const email =
-    user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress ?? null;
+  const email = user?.email ?? null;
 
   const handleSignOut = () => {
     setBusy(true);
-    // A throw here would only mean Clerk couldn't reach its API; the local
-    // session is dropped either way, so the gate returns to the sign-in screen.
-    void signOut().catch(() => undefined);
+    void signOut().catch(() => { setBusy(false); Alert.alert("Couldn't sign out", "Check your connection and retry."); });
   };
 
   return (

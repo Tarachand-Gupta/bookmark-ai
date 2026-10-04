@@ -1,0 +1,119 @@
+import Auth
+import Foundation
+import XCTest
+@testable import BookmarkAI
+
+final class SupabaseNativeAuthTests: XCTestCase {
+    final class MemoryStorage: AuthLocalStorage, @unchecked Sendable {
+        private let lock = NSLock()
+        private var values: [String: Data] = [:]
+        func store(key: String, value: Data) throws { lock.lock(); defer { lock.unlock() }; values[key] = value }
+        func retrieve(key: String) throws -> Data? { lock.lock(); defer { lock.unlock() }; return values[key] }
+        func remove(key: String) throws { lock.lock(); defer { lock.unlock() }; values.removeValue(forKey: key) }
+    }
+    static let info: [String: Any] = ["BOOKMARK_BUILD_VARIANT": "supabase-qa", "SUPABASE_URL": "https://xogqaqtyacmecdbmgqqd.supabase.co", "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_test", "BOOKMARK_API_URL": "http://localhost:3100", "BOOKMARK_LIVE_URL": "http://localhost:3101", "BOOKMARK_AUTH_STORAGE_NAMESPACE": "bookmark-ai:supabase-qa", "BOOKMARK_AUTH_CALLBACK_SCHEME": "bookmarkai-macos-supabase-qa"]
+    static let userJSON = """
+    {"id":"fcaa51f1-e2e9-4b90-8ea5-313b7b62b6aa","aud":"authenticated","role":"authenticated","email":"qa@example.test","app_metadata":{},"user_metadata":{},"created_at":"2026-10-04T00:00:00Z","updated_at":"2026-10-04T00:00:00Z","identities":[]}
+    """
+    static func token(expiration: Date) -> String {
+        let body = try! JSONSerialization.data(withJSONObject: ["exp": Int(expiration.timeIntervalSince1970), "sub": "fcaa51f1-e2e9-4b90-8ea5-313b7b62b6aa"])
+        return "e30." + body.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "") + ".test-signature"
+    }
+    static func sessionJSON(expiration: Date) -> Data {
+        Data("{\"access_token\":\"\(token(expiration: expiration))\",\"refresh_token\":\"fake-refresh\",\"expires_in\":3600,\"expires_at\":\(Int(expiration.timeIntervalSince1970)),\"token_type\":\"bearer\",\"user\":\(userJSON)}".utf8)
+    }
+    static func storedSessionJSON(expiration: Date) throws -> Data {
+        let user = User(id: UUID(uuidString: "fcaa51f1-e2e9-4b90-8ea5-313b7b62b6aa")!, appMetadata: [:], userMetadata: [:], aud: "authenticated", email: "qa@example.test", createdAt: Date(), updatedAt: Date())
+        return try JSONEncoder().encode(Session(accessToken: token(expiration: expiration), tokenType: "bearer", expiresIn: 3600, expiresAt: expiration.timeIntervalSince1970, refreshToken: "fake-refresh", user: user))
+    }
+    static func response(_ request: URLRequest, status: Int, body: Data) -> (Data, URLResponse) {
+        (body, HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!)
+    }
+
+    func testConfigurationCannotFallBackToProductionOrShareKeychain() {
+        XCTAssertNotNil(SupabaseConfiguration.parse(Self.info))
+        for (key, bad) in [("BOOKMARK_API_URL", "https://www.bookmark-ai.cloud"), ("BOOKMARK_LIVE_URL", "https://live.bookmark-ai.cloud"), ("SUPABASE_URL", "https://other.supabase.co"), ("BOOKMARK_AUTH_STORAGE_NAMESPACE", "supabase.gotrue.swift"), ("SUPABASE_PUBLISHABLE_KEY", "")] {
+            var info = Self.info; info[key] = bad; XCTAssertNil(SupabaseConfiguration.parse(info), key)
+        }
+    }
+    func testCallbackRequiresExactSchemeHostAndPath() {
+        let config = SupabaseConfiguration.parse(Self.info)!
+        XCTAssertTrue(config.acceptsCallback(URL(string: "bookmarkai-macos-supabase-qa://auth/callback?code=one-use")!))
+        for value in ["bookmarkai://auth/callback", "bookmarkai-macos-supabase-qa://evil/callback", "bookmarkai-macos-supabase-qa://auth/other"] { XCTAssertFalse(config.acceptsCallback(URL(string: value)!)) }
+    }
+    @MainActor func testSDKRefreshesPersistedSessionAfterSimulated21DayAbsence() async throws {
+        let storage = MemoryStorage()
+        let config = SupabaseConfiguration.parse(Self.info)!
+        let expired = Date().addingTimeInterval(-21 * 86400)
+        try storage.store(key: config.namespace + ":session", value: Self.storedSessionJSON(expiration: expired))
+        let refreshed = Self.sessionJSON(expiration: Date().addingTimeInterval(3600))
+        let native = SupabaseNativeAuth(configuration: config, storage: storage, fetch: { request in
+            if request.url!.path.hasSuffix("/token") {
+                XCTAssertEqual(request.url!.query, "grant_type=refresh_token")
+                return Self.response(request, status: 200, body: refreshed)
+            }
+            return Self.response(request, status: 200, body: Data(Self.userJSON.utf8))
+        }, autoRefresh: false)
+        guard case .token = await native.mint(fresh: false) else { return XCTFail("SDK must refresh an expired persisted session") }
+        let session = try await native.client.session
+        XCTAssertFalse(session.isExpired)
+        XCTAssertNotNil(try storage.retrieve(key: config.namespace + ":session"))
+    }
+    @MainActor func testOnlineOutagePreservesSDKCredentials() async throws {
+        let storage = MemoryStorage(); let config = SupabaseConfiguration.parse(Self.info)!
+        try storage.store(key: config.namespace + ":session", value: Self.storedSessionJSON(expiration: Date().addingTimeInterval(3600)))
+        let native = SupabaseNativeAuth(configuration: config, storage: storage, fetch: { request in
+            Self.response(request, status: 503, body: Data("{\"msg\":\"Temporary outage\"}".utf8))
+        }, autoRefresh: false)
+        let outcome = await native.mint(fresh: false)
+        XCTAssertEqual(outcome, .unavailable)
+        XCTAssertNotNil(native.client.currentSession)
+        XCTAssertNotNil(try storage.retrieve(key: config.namespace + ":session"))
+    }
+    @MainActor func testRetainedUnexpiredJWTRejectedAfterNativeRevoke() async throws {
+        let storage = MemoryStorage(); let config = SupabaseConfiguration.parse(Self.info)!
+        try storage.store(key: config.namespace + ":session", value: Self.storedSessionJSON(expiration: Date().addingTimeInterval(3600)))
+        let native = SupabaseNativeAuth(configuration: config, storage: storage, fetch: { request in
+            Self.response(request, status: 401, body: Data("{\"code\":\"session_not_found\",\"msg\":\"Session not found\"}".utf8))
+        }, autoRefresh: false)
+        let outcome = await native.mint(fresh: false)
+        XCTAssertEqual(outcome, .noSession)
+        await native.clearLocalSession()
+        XCTAssertNil(native.client.currentSession)
+        XCTAssertNil(try storage.retrieve(key: config.namespace + ":session"))
+    }
+    @MainActor func testOnlyDefinitiveProviderErrorsSignOut() {
+        XCTAssertFalse(SupabaseNativeAuth.isDefinitive(URLError(.notConnectedToInternet)))
+        XCTAssertTrue(SupabaseNativeAuth.isDefinitive(AuthError.sessionMissing))
+        XCTAssertFalse(SupabaseNativeAuth.isDefinitive(AuthError.refreshDiscarded))
+    }
+    @MainActor func testDeviceMetadataHasNoBearerAndMutationUsesAuthorizationHeader() async throws {
+        let transport = ApiClientAuthTests.StubURLProtocol.self
+        transport.requests = []
+        transport.handler = { _ in (204, Data()) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [transport]
+        let api = ApiClient(target: .cloud, session: URLSession(configuration: configuration))
+        api.tokenProvider = { _ in "fake-jwt" }
+        try await api.registerCurrentSession()
+        try await api.signOutSessions(scope: "others")
+        XCTAssertEqual(transport.requests.count, 2)
+        XCTAssertEqual(transport.requests[0].value(forHTTPHeaderField: "Authorization"), "Bearer fake-jwt")
+        let body: Data
+        if let data = transport.requests[0].httpBody { body = data }
+        else if let stream = transport.requests[0].httpBodyStream {
+            stream.open(); defer { stream.close() }
+            var data = Data(); var bytes = [UInt8](repeating: 0, count: 2048)
+            while stream.hasBytesAvailable { let count = stream.read(&bytes, maxLength: bytes.count); if count <= 0 { break }; data.append(contentsOf: bytes.prefix(count)) }
+            body = data
+        } else { return XCTFail("metadata request body missing") }
+        let metadata = try JSONSerialization.jsonObject(with: body) as! [String: String]
+        XCTAssertEqual(metadata["clientType"], "macos")
+        XCTAssertNil(metadata["accessToken"])
+        XCTAssertFalse(String(data: body, encoding: .utf8)!.contains("fake-jwt"))
+        XCTAssertEqual(transport.requests[1].url?.path, "/api/auth/sessions/sign-out")
+        do { try await api.revokeNativeSession("../account"); XCTFail("invalid native ID must not become a route") }
+        catch { XCTAssertEqual(error as? ApiError, .invalidURL) }
+        XCTAssertEqual(transport.requests.count, 2)
+    }
+}

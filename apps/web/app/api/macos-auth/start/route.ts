@@ -18,6 +18,7 @@ function json(body: unknown, status: number, extra: Record<string, string> = {})
 }
 
 async function POSTHandler(request: NextRequest) {
+  if(process.env.AUTH_PROVIDER === "supabase") return NextResponse.json({error:"Use native Supabase OAuth/PKCE",code:"native-auth-required"},{status:410});
   const rate = checkRateLimitWindow(`macos-auth:start:ip:${trustedClientKey(request.headers)}`, 10, 5 * 60_000);
   if (!rate.allowed) {
     return json({ error: "Too many requests" }, 429, { "retry-after": String(rate.retryAfterSeconds) });

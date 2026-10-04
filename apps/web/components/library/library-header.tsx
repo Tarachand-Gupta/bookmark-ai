@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import { SignInButton, SignUpButton, UserButton, useUser } from "@clerk/nextjs";
+import { useUser } from "@/lib/auth";
 import { ChevronRight, Search, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -147,7 +147,7 @@ export function LibraryHeader({
  * chat dock stay mounted.
  */
 function AuthControls() {
-  const { isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn, user } = useUser();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -166,20 +166,9 @@ function AuthControls() {
       {!isLoaded ? (
         <div className="size-8 animate-pulse rounded-full bg-muted" aria-hidden />
       ) : isSignedIn ? (
-        <UserButton userProfileMode="navigation" userProfileUrl={userProfileUrl} />
+        <a href={userProfileUrl} className="flex size-9 items-center justify-center rounded-full border bg-muted text-sm font-medium" aria-label="Manage account">{user?.hasImage ? <img src={user.imageUrl} alt="" className="size-9 rounded-full object-cover" /> : (user?.firstName?.slice(0, 1) || "A")}</a>
       ) : (
-        <div className="flex items-center gap-1.5">
-          <SignInButton mode="modal">
-            <Button size="sm" variant="ghost" className="h-9">
-              Sign in
-            </Button>
-          </SignInButton>
-          <SignUpButton mode="modal">
-            <Button size="sm" variant="outline" className="hidden h-9 sm:inline-flex">
-              Sign up
-            </Button>
-          </SignUpButton>
-        </div>
+        <div className="flex items-center gap-1.5"><a href="/sign-in" className="text-sm">Sign in</a><a href="/sign-up" className="text-sm">Sign up</a></div>
       )}
     </div>
   );

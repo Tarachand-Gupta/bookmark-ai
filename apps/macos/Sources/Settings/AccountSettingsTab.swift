@@ -44,11 +44,12 @@ struct AccountSettingsTab: View {
                         .pointingHandCursor()
                         .accessibilityIdentifier("sign-out-button")
 
-                        Button("Delete Account…", role: .destructive) {
+                        if !SupabaseConfiguration.isQA { Button("Delete Account…", role: .destructive) {
                             openURL(target.accountSettingsSignInURL)
                         }
                         .pointingHandCursor()
                         .accessibilityIdentifier("delete-account-link")
+                        }
                     } else {
                         Button("Sign In…") { auth.beginSignIn() }
                             .buttonStyle(.borderedProminent)
@@ -63,7 +64,7 @@ struct AccountSettingsTab: View {
                 } header: {
                     Text("Account")
                 } footer: {
-                    Text(auth.status == .signedIn
+                    Text(SupabaseConfiguration.isQA ? "Manage your profile and devices here." : auth.status == .signedIn
                         ? "Delete Account opens web Account settings, where deletion requires a second confirmation."
                         : "Sign-in opens in your default browser.")
                         .font(.caption)
@@ -78,9 +79,10 @@ struct AccountSettingsTab: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            if SupabaseConfiguration.isQA && auth.status == .signedIn { NativeAccountControls() }
         }
         .formStyle(.grouped)
-        .frame(height: 540)
+        .frame(minHeight: 540)
     }
 
     /// The only in-app server switch after the gate opens. Keeping it with the
@@ -94,6 +96,7 @@ struct AccountSettingsTab: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("account-server-picker")
+            .disabled(SupabaseConfiguration.isQA)
 
             LabeledContent("Endpoint") {
                 Text(appEnvironment.preferences.serverTarget.baseURL.absoluteString)

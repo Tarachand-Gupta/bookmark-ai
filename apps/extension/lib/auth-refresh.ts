@@ -1,3 +1,4 @@
+import { SUPABASE_AUTH, getOAuthToken } from "./supabase-oauth";
 /**
  * FORCED CREDENTIAL REFRESH — the one thing that turns a 401 into a retry
  * instead of a dead end, on every build target.
@@ -71,6 +72,7 @@ export async function refreshCredential(): Promise<boolean> {
 }
 
 async function runRefresh(): Promise<boolean> {
+  if (SUPABASE_AUTH) return !!(await getOAuthToken(true).catch(() => null));
   const outcome = await renewDeviceTokenIfNeeded({ force: true });
   diag("authRetry", "forced renewal", { outcome });
   if (outcome === "renewed") {

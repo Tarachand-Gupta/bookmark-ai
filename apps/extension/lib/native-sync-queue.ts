@@ -86,17 +86,20 @@ export interface DrainResult {
  */
 export async function drainMirrorQueue(
   send: (entry: QueuedMirrorAdd) => Promise<boolean>,
+  isCurrent: () => boolean = () => true,
 ): Promise<DrainResult> {
   if (draining) return { sent: 0, kept: 0, dropped: 0 };
   draining = true;
   try {
     const queue = await readQueue();
+    if (!isCurrent()) return { sent: 0, kept: 0, dropped: queue.length };
     if (queue.length === 0) return { sent: 0, kept: 0, dropped: 0 };
     await writeQueue([]);
     let sent = 0;
     let dropped = 0;
     const keep: QueuedMirrorAdd[] = [];
     for (const entry of queue) {
+      if (!isCurrent()) return { sent, kept: 0, dropped: queue.length - sent };
       const ok = await send(entry).catch(() => false);
       if (ok) {
         sent += 1;
@@ -109,12 +112,12 @@ export async function drainMirrorQueue(
       }
       keep.push({ ...entry, tries });
     }
-    if (keep.length > 0) {
+    if (keep.length > 0 && isCurrent()) {
       // Anything queued WHILE we were draining (a fresh native add) must not be
       // clobbered by the write-back.
       const queuedMeanwhile = await readQueue();
       const fresh = queuedMeanwhile.filter((e) => !keep.some((k) => k.url === e.url));
-      await writeQueue([...keep, ...fresh]);
+      if (isCurrent()) await writeQueue([...keep, ...fresh]);
     }
     diag("nativeSync", "queue drained", { sent, kept: keep.length, dropped });
     return { sent, kept: keep.length, dropped };

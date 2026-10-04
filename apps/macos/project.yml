@@ -26,11 +26,19 @@ settings:
     # Every color/material in the app is semantic, so the app is light/dark
     # correct by construction; no appearance override here on purpose.
 
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift.git
+    exactVersion: 2.55.3
+
 targets:
   BookmarkAI:
     type: application
     platform: macOS
     deploymentTarget: "14.0"
+    dependencies:
+      - package: Supabase
+        product: Auth
     sources:
       - path: Sources
       - path: Resources/Assets.xcassets
@@ -51,6 +59,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: BookmarkAI
+        PRODUCT_MODULE_NAME: BookmarkAI
         PRODUCT_BUNDLE_IDENTIFIER: ai.bookmarkai.macos
         INFOPLIST_FILE: Resources/Info.plist
         GENERATE_INFOPLIST_FILE: NO

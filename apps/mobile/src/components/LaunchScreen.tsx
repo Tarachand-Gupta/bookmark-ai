@@ -14,13 +14,13 @@ const MARK_SIZE = 128;
  * background — plus a spinner below it.
  *
  * It exists so the native splash can be dismissed on the app's FIRST painted
- * frame instead of being held up until Clerk has finished its cold-start
+ * frame instead of being held up until SDK has finished its cold-start
  * network round trip. The handoff is invisible (identical pixels, and the
  * splash cross-fades out over 250ms), while the spinner finally gives the
  * launch some motion — the old behaviour froze a static image on screen for as
  * long as the session restore took, then up to a 4s ceiling.
  *
- * Shown while: persisted preferences are being read, Clerk is restoring the
+ * Shown while: persisted preferences are being read, SDK is restoring the
  * session, and a signed-in account is being classified (see App.tsx Gate).
  */
 export function LaunchScreen() {

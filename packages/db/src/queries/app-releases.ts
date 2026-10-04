@@ -1,3 +1,4 @@
+import { isMasterRepository, type MasterStore } from "../master-repository";
 import type { Row } from "@libsql/client";
 import type { Db } from "../client";
 
@@ -31,13 +32,15 @@ function rowToRelease(row: Row): AppReleaseRow {
 }
 
 /** Every platform's current release, platform-sorted for stable output. */
-export async function listAppReleases(db: Db): Promise<AppReleaseRow[]> {
+export async function listAppReleases(db: MasterStore): Promise<AppReleaseRow[]> {
+  if (isMasterRepository(db)) return db.listAppReleases();
   const rs = await db.execute("SELECT * FROM app_releases ORDER BY platform ASC");
   return rs.rows.map(rowToRelease);
 }
 
 /** One platform's release, or null when nothing has been published for it. */
-export async function getAppRelease(db: Db, platform: string): Promise<AppReleaseRow | null> {
+export async function getAppRelease(db: MasterStore, platform: string): Promise<AppReleaseRow | null> {
+  if (isMasterRepository(db)) return db.getAppRelease(platform);
   const rs = await db.execute({
     sql: "SELECT * FROM app_releases WHERE platform = ?",
     args: [platform],
@@ -47,7 +50,8 @@ export async function getAppRelease(db: Db, platform: string): Promise<AppReleas
 }
 
 /** Insert or fully replace a platform's release (the row IS the latest version). */
-export async function upsertAppRelease(db: Db, release: AppReleaseRow): Promise<void> {
+export async function upsertAppRelease(db: MasterStore, release: AppReleaseRow): Promise<void> {
+  if (isMasterRepository(db)) return db.upsertAppRelease(release);
   await db.execute({
     sql: `INSERT INTO app_releases
             (platform, version, build, min_supported_version, download_url, release_notes, published_at, updated_at)
@@ -74,7 +78,8 @@ export async function upsertAppRelease(db: Db, release: AppReleaseRow): Promise<
 }
 
 /** Remove a platform's release. Returns whether a row existed. */
-export async function deleteAppRelease(db: Db, platform: string): Promise<boolean> {
+export async function deleteAppRelease(db: MasterStore, platform: string): Promise<boolean> {
+  if (isMasterRepository(db)) return db.deleteAppRelease(platform);
   const rs = await db.execute({
     sql: "DELETE FROM app_releases WHERE platform = ?",
     args: [platform],

@@ -1,8 +1,10 @@
+import { isMasterRepository, type MasterStore } from "./master-repository";
 import type { Row } from "@libsql/client";
 import type { Db } from "./client";
 import { runMigrations, type Migration } from "./migrations";
 
-/** A row in the master `tenants` table: Clerk user → their per-user Turso DB. */
+/** Tenant routing. The legacy clerkUserId accessor holds the canonical account
+ * UUID in the PostgreSQL provider; the legacy SQLite adapter retains Clerk IDs. */
 export interface Tenant {
   clerkUserId: string;
   dbName: string;
@@ -152,7 +154,8 @@ export const MASTER_MIGRATIONS: Migration[] = [
 ];
 
 /** Read a single platform_config value by key, or null if unset. */
-export async function getPlatformConfig(db: Db, key: string): Promise<string | null> {
+export async function getPlatformConfig(db: MasterStore, key: string): Promise<string | null> {
+  if (isMasterRepository(db)) return db.getPlatformConfig(key);
   const rs = await db.execute({
     sql: "SELECT value FROM platform_config WHERE key = ?",
     args: [key],
@@ -162,7 +165,8 @@ export async function getPlatformConfig(db: Db, key: string): Promise<string | n
 }
 
 /** Upsert a single platform_config value. `updated_at` is refreshed to now. */
-export async function setPlatformConfig(db: Db, key: string, value: string): Promise<void> {
+export async function setPlatformConfig(db: MasterStore, key: string, value: string): Promise<void> {
+  if (isMasterRepository(db)) return db.setPlatformConfig(key, value);
   await db.execute({
     sql: `INSERT INTO platform_config (key, value, updated_at)
           VALUES (?, ?, ?)
@@ -191,7 +195,8 @@ function rowToTenant(row: Row): Tenant {
 }
 
 /** Look up a tenant by Clerk user id (any status), or null if none. */
-export async function getTenant(db: Db, clerkUserId: string): Promise<Tenant | null> {
+export async function getTenant(db: MasterStore, clerkUserId: string): Promise<Tenant | null> {
+  if (isMasterRepository(db)) return db.getTenant(clerkUserId);
   const rs = await db.execute({
     sql: "SELECT * FROM tenants WHERE clerk_user_id = ?",
     args: [clerkUserId],
@@ -201,7 +206,8 @@ export async function getTenant(db: Db, clerkUserId: string): Promise<Tenant | n
 }
 
 /** Insert a tenant row and return it. Throws if the id/db_name already exists. */
-export async function insertTenant(db: Db, t: Tenant): Promise<Tenant> {
+export async function insertTenant(db: MasterStore, t: Tenant): Promise<Tenant> {
+  if (isMasterRepository(db)) return db.insertTenant(t);
   await db.execute({
     sql: `INSERT INTO tenants (clerk_user_id, db_name, db_url, db_auth_token, status, created_at)
           VALUES (?, ?, ?, ?, ?, ?)`,
@@ -213,7 +219,8 @@ export async function insertTenant(db: Db, t: Tenant): Promise<Tenant> {
 }
 
 /** Remove a tenant row. Returns whether a row was deleted. */
-export async function deleteTenant(db: Db, clerkUserId: string): Promise<boolean> {
+export async function deleteTenant(db: MasterStore, clerkUserId: string): Promise<boolean> {
+  if (isMasterRepository(db)) return db.deleteTenant(clerkUserId);
   const rs = await db.execute({
     sql: "DELETE FROM tenants WHERE clerk_user_id = ?",
     args: [clerkUserId],
@@ -222,7 +229,8 @@ export async function deleteTenant(db: Db, clerkUserId: string): Promise<boolean
 }
 
 /** All active tenants — the fan-out list for cross-tenant sweeps (e.g. embed). */
-export async function listActiveTenants(db: Db): Promise<Tenant[]> {
+export async function listActiveTenants(db: MasterStore): Promise<Tenant[]> {
+  if (isMasterRepository(db)) return db.listActiveTenants();
   const rs = await db.execute({
     sql: "SELECT * FROM tenants WHERE status = ? ORDER BY created_at ASC",
     args: ["active"],
@@ -239,12 +247,13 @@ export async function listActiveTenants(db: Db): Promise<Tenant[]> {
  * union before it is interpolated — never a raw string in SQL.
  */
 export async function bumpUsage(
-  db: Db,
+  db: MasterStore,
   userId: string,
   day: string,
   field: UsageField,
   max: number,
 ): Promise<{ allowed: boolean; count: number }> {
+  if (isMasterRepository(db)) return db.bumpUsage(userId, day, field, max);
   if (!USAGE_FIELDS.includes(field)) {
     throw new Error(`bumpUsage: invalid field "${field}"`);
   }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useAuth } from "@clerk/expo";
+import { useAuth } from "../lib/auth";
+import { AUTH_NAMESPACE } from "../lib/auth-config";
 import { ForbiddenError, getMeta, ProvisioningError, SERVER_TARGET } from "../api";
 import { usePreferences } from "../context/PreferencesContext";
 
@@ -14,7 +15,7 @@ import { usePreferences } from "../context/PreferencesContext";
  *  - `provisioning`  — 503 `{code:"provisioning"}`: this account's own isolated
  *                      database is still being created (a fresh signup waits
  *                      ~10-15s). We poll until it's ready.
- *  - `forbidden`     — 403 `{code:"forbidden"}`: signed in fine, but this Clerk
+ *  - `forbidden`     — 403 `{code:"forbidden"}`: signed in fine, but this SDK
  *                      identity isn't on the API's allowlist.
  *
  * Anything else (offline, 500, a timeout) resolves to `ok` ON PURPOSE: those are
@@ -40,7 +41,7 @@ const POLL_MAX_MS = 60_000;
 
 /**
  * "This account has reached a working API at least once" — per server target and
- * per Clerk user, so a dev build's marker never speaks for the prod target and a
+ * per SDK user, so a dev build's marker never speaks for the prod target and a
  * second account on the same phone is judged on its own.
  *
  * Why persist it: the probe is one request, and blocking the first paint on it
@@ -49,7 +50,7 @@ const POLL_MAX_MS = 60_000;
  * be provisioning), and returning users paint immediately while the probe runs
  * behind the already-rendered app.
  */
-const readyKey = (userId: string) => `bookmark-ai:account-ready:${SERVER_TARGET}:${userId}`;
+const readyKey = (userId: string) => `${AUTH_NAMESPACE}:account:${userId}:${SERVER_TARGET}:ready`;
 
 export interface AccountStatusState {
   status: AccountStatus;
@@ -83,7 +84,7 @@ export function useAccountStatus(): AccountStatusState {
     let timer: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
 
-    // Clerk hasn't restored the session yet: stay `checking` rather than
+    // SDK hasn't restored the session yet: stay `checking` rather than
     // reporting `ok` on a not-yet-known user, which would let the tab shell
     // mount for a split second in front of the provisioning screen.
     if (!isLoaded) {
@@ -91,7 +92,7 @@ export function useAccountStatus(): AccountStatusState {
       return;
     }
 
-    // Loaded, but no Clerk user (open/keyless mode): nothing to provision and
+    // Loaded, but no SDK user (open/keyless mode): nothing to provision and
     // nothing to allowlist — never gate the app.
     if (!userId) {
       setStatus("ok");
@@ -105,7 +106,7 @@ export function useAccountStatus(): AccountStatusState {
 
     // When to stop polling and let the app through (see POLL_MAX_MS). Set on the
     // FIRST provisioning answer, so the window covers the wait itself rather than
-    // the time Clerk took to hand us a user.
+    // the time SDK took to hand us a user.
     let deadline = 0;
     /** True once this run has seen the server say "still provisioning". */
     let sawProvisioning = false;

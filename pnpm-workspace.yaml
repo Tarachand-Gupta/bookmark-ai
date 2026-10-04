@@ -6,6 +6,3 @@ onlyBuiltDependencies:
   - esbuild
   - sharp
   - "@tailwindcss/oxide"
-
-patchedDependencies:
-  "@clerk/expo@4.6.5": "patches/@clerk__expo@4.6.5.patch"

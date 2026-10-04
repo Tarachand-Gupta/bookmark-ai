@@ -1,4 +1,4 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTHORIZED_PARTIES } from "@/lib/authorized-parties";
 
@@ -12,16 +12,18 @@ import { AUTHORIZED_PARTIES } from "@/lib/authorized-parties";
 // sign-in page). clerkMiddleware still runs on /api (and "/") so auth() has
 // request context there — the marketing page reads it to redirect signed-in
 // users straight to /app.
-const isPublicRoute = createRouteMatcher([
-  "/",
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/privacy",
-  "/terms",
-  "/support",
-  "/download",
-]);
-const isApiRoute = createRouteMatcher(["/api(.*)"]);
+function isPublicRoute(request: NextRequest): boolean {
+  const path = request.nextUrl.pathname;
+  return (
+    path === "/" ||
+    ["/sign-in", "/sign-up", "/auth", "/privacy", "/terms", "/support", "/download"].some(
+      (prefix) => path === prefix || path.startsWith(prefix + "/"),
+    )
+  );
+}
+function isApiRoute(request: NextRequest): boolean {
+  return request.nextUrl.pathname.startsWith("/api/");
+}
 
 // Browser CORS for the API: known web origins plus allowed extension origins.
 // Unknown web origins get no CORS headers.
@@ -47,8 +49,9 @@ function corsHeaders(origin: string | null): Record<string, string> {
   }
   return {
     "access-control-allow-origin": origin,
-    "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "access-control-allow-headers": "authorization,content-type,x-bookmark-client,x-bookmark-analytics-consent",
+    "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    "access-control-allow-headers":
+      "authorization,content-type,x-bookmark-client,x-bookmark-analytics-consent",
     // Response headers a cross-origin caller (the extension) may read: the chat
     // route's conversation id, which key answered, and the optional advisory
     // (`own-key-incomplete`) — see /api/chat.
@@ -119,38 +122,96 @@ function handleApiCors(request: NextRequest): NextResponse | null {
   // requireUser rejects device tokens outright when the stamp is missing.
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-bkm-route", `${request.method} ${request.nextUrl.pathname}`);
+  requestHeaders.set("x-bkm-origin", request.nextUrl.origin);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   for (const [key, value] of Object.entries(headers)) response.headers.set(key, value);
   return response;
 }
 
-// Keyless self-host mode has no Clerk keys, and clerkMiddleware throws at
-// request time without them — so pick the middleware at module load. With
-// keys: the full gate (protect() every page, self-authenticating /api). Without
-// keys: only API CORS, pages pass through unprotected (rendering the page UI
-// still needs Clerk, but that's a build/config concern documented elsewhere).
-const clerkGate = clerkMiddleware(
-  async (auth, request) => {
-    const apiResponse = handleApiCors(request);
-    if (apiResponse) return apiResponse;
-    if (!isPublicRoute(request)) {
-      await auth.protect();
+export default async function middleware(request: NextRequest) {
+  const api = handleApiCors(request);
+  if (api) return api;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) {
+    if (isPublicRoute(request)) return NextResponse.next();
+    return new NextResponse("Authentication is not configured.", { status: 503 });
+  }
+  let response = NextResponse.next({ request });
+  const supabase = createServerClient(url, key, {
+    cookieOptions: { name: "bmai-supabase-qa-auth" },
+    cookies: {
+      getAll: () => request.cookies.getAll(),
+      setAll: (cookies) => {
+        cookies.forEach(({ name, value }) => request.cookies.set(name, value));
+        response = NextResponse.next({ request });
+        cookies.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+      },
+    },
+  });
+  if (isPublicRoute(request)) return response;
+  try {
+    const { data: claims, error: claimError } = await supabase.auth.getClaims();
+    const value = claims?.claims;
+    if (!claimError && value) {
+      const audience = value.aud;
+      const validAudience =
+        audience === "authenticated" ||
+        (Array.isArray(audience) && audience.includes("authenticated"));
+      if (
+        value.iss !== url.replace(/\/$/, "") + "/auth/v1" ||
+        !validAudience ||
+        typeof value.session_id !== "string" ||
+        !value.session_id ||
+        value.role !== "authenticated"
+      )
+        return new NextResponse("Invalid authentication.", { status: 401 });
+      const { data, error } = await supabase.auth.getUser();
+      if (error && (error.status === undefined || error.status >= 500 || error.status === 429))
+        return new NextResponse("Authentication is temporarily unavailable. Try again.", {
+          status: 503,
+          headers: { "cache-control": "no-store" },
+        });
+      if (data.user) {
+        if (
+          data.user.factors?.some((factor) => factor.status === "verified") &&
+          value.aal !== "aal2"
+        ) {
+          const destination = request.nextUrl.clone();
+          destination.pathname = "/auth/mfa";
+          destination.search = "";
+          destination.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
+          const redirect = NextResponse.redirect(destination);
+          response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+          return redirect;
+        }
+        const destination = legacyLibraryRedirect(request);
+        if (destination) {
+          response.cookies.getAll().forEach((cookie) => destination.cookies.set(cookie));
+          return destination;
+        }
+        response.headers.set("cache-control", "private, no-store");
+        return response;
+      }
+    } else if (claimError && (claimError.status === undefined || claimError.status >= 500)) {
+      return new NextResponse("Authentication is temporarily unavailable. Try again.", {
+        status: 503,
+      });
     }
-    // After protect(), so an unauthenticated legacy link still goes to sign-in
-    // first (and lands on the library once signed in).
-    return legacyLibraryRedirect(request) ?? undefined;
-  },
-  // NOTE: no `authorizedParties` option here — @clerk/nextjs rejects tokens
-  // with a MISSING azp claim (native mobile tokens have none). The azp check
-  // with Express semantics (absent = pass, wrong = reject) lives in
-  // lib/server/require-user.ts instead.
-);
-
-function keylessMiddleware(request: NextRequest): NextResponse {
-  return handleApiCors(request) ?? legacyLibraryRedirect(request) ?? NextResponse.next();
+    const destination = request.nextUrl.clone();
+    destination.pathname = "/sign-in";
+    destination.search = "";
+    destination.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
+    const redirect = NextResponse.redirect(destination);
+    response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+    return redirect;
+  } catch {
+    return new NextResponse("Authentication is temporarily unavailable. Try again.", {
+      status: 503,
+      headers: { "cache-control": "no-store" },
+    });
+  }
 }
-
-export default process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? clerkGate : keylessMiddleware;
 
 export const config = {
   matcher: [
@@ -158,6 +219,5 @@ export const config = {
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     // Always run for API routes and Clerk's /__clerk auto-proxy path.
     "/(api|trpc)(.*)",
-    "/__clerk/:path*",
   ],
 };

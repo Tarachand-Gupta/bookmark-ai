@@ -29,6 +29,7 @@ async function GETHandler() {
     return NextResponse.json({ error: "live token requires Clerk" }, { status: 501 });
   }
 
+  if (gate.identity) return NextResponse.json({token:gate.identity.accessToken,expiresInSeconds:Math.max(0,Math.floor(gate.identity.expiresAt-Date.now()/1000))},{headers:{"cache-control":"no-store"}});
   const { sessionId } = await auth();
   if (!sessionId) {
     return NextResponse.json({ error: "No active session" }, { status: 401 });

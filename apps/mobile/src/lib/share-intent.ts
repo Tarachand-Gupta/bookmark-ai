@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Haptics from "expo-haptics";
+import * as Crypto from "expo-crypto";
 import { useShareIntentContext, type ShareIntent } from "expo-share-intent";
 import { createBookmark, detectSource, getBookmarkByUrl } from "../api";
+import { sessionStorage } from "./auth";
+import { AUTH_NAMESPACE } from "./auth-config";
+import { bindShare, canConsumeShare, createShareClaims, shareForAccount, type PendingShareRecord } from "./share-state";
 
 /**
  * "Save to Bookmark AI" from the system share sheet (see the expo-share-intent
@@ -20,7 +24,7 @@ import { createBookmark, detectSource, getBookmarkByUrl } from "../api";
  * every render, so an inline literal would churn its effects. (The library's
  * `ShareIntentOptions` type isn't re-exported from its entrypoint; the
  * provider's own prop type checks this structurally.) */
-export const SHARE_INTENT_OPTIONS = { debug: __DEV__ } as const;
+export const SHARE_INTENT_OPTIONS = { debug: false } as const;
 
 /** "https://x.co" from "x.co"; null when the text can't be a URL at all.
  * Shared by the Add Bookmark sheet's own input validation. */
@@ -68,6 +72,7 @@ export function extractFirstUrl(text: string | null | undefined): string | null 
 }
 
 export interface SharedLink {
+  id?: string;
   url: string;
   /** The page title, when the sharing app sent one (Android EXTRA_SUBJECT, iOS
    * `NSExtensionActivationSupportsWebPageWithMaxCount` page metadata). The
@@ -92,26 +97,67 @@ export function sharedLink(intent: ShareIntent): SharedLink | null {
  * decided what to render — and moves ownership to React state here, clearing
  * the native side so re-foregrounding can't replay it.
  *
- * Holding it in memory (never persisted — a share can be a private link) is
- * what makes the signed-out path work: Clerk's SSO round trip backgrounds the
- * app, which resets expo-share-intent's own state, but this survives because
- * the component holding it stays mounted across the sign-in → app swap.
+ * The pending link is encrypted in app-only SecureStore so browser sign-in
+ * and process restart cannot discard it. Account ownership prevents replay
+ * into a different account; the AppGroup contains only the native payload.
  */
-export function usePendingSharedLink(): { pending: SharedLink | null; clear: () => void } {
+export function usePendingSharedLink(userId: string | null, loaded: boolean): { pending: SharedLink | null; clear: (expectedId?: string) => void } {
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
-  const [pending, setPending] = useState<SharedLink | null>(null);
+  const [pending, setPending] = useState<PendingShareRecord | null>(null);
+  const storageKey = `${AUTH_NAMESPACE}:pending-share`;
+  const generation = useRef(0);
+  const capturing = useRef<ShareIntent | null>(null);
+  const current = useRef(pending);
+  current.current = pending;
   // resetShareIntent is re-created every provider render; keep it out of deps.
   const reset = useRef(resetShareIntent);
   reset.current = resetShareIntent;
 
   useEffect(() => {
-    if (!hasShareIntent) return;
-    const link = sharedLink(shareIntent);
-    reset.current();
-    if (link) setPending(link);
-  }, [hasShareIntent, shareIntent]);
+    const id = generation.current;
+    let cancelled = false;
+    void sessionStorage.getItem(storageKey).then((raw) => {
+      if (cancelled || generation.current !== id || !raw) return;
+      const record = JSON.parse(raw) as PendingShareRecord;
+      if (typeof record.id !== "string" || record.id.length > 128 || typeof record.url !== "string" || record.url.length > 8192 || !normalizeUrl(record.url) || !(record.owner === null || typeof record.owner === "string")) return;
+      setPending(record);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [storageKey]);
 
-  return { pending, clear: useCallback(() => setPending(null), []) };
+  useEffect(() => {
+    if (!hasShareIntent || capturing.current === shareIntent) return;
+    const link = sharedLink(shareIntent);
+    if (!link) { reset.current(); return; }
+    capturing.current = shareIntent;
+    generation.current++;
+    const record: PendingShareRecord = { ...link, id: Crypto.randomUUID(), owner: loaded ? userId : null };
+    // The AppGroup payload is released ONLY after its encrypted app-only copy
+    // exists. No access/refresh token ever enters the share extension container.
+    void sessionStorage.setItem(storageKey, JSON.stringify(record)).then(() => {
+      setPending(record); reset.current();
+    }).catch(() => undefined).finally(() => { capturing.current = null; });
+  }, [hasShareIntent, shareIntent, userId, loaded, storageKey]);
+
+  useEffect(() => {
+    if (pending && loaded && userId && pending.owner === null) {
+      const bound = bindShare(pending, userId), id = generation.current;
+      void sessionStorage.setItem(storageKey, JSON.stringify(bound)).then(() => {
+        if (generation.current === id) setPending(bound);
+      }).catch(() => undefined);
+      return;
+    }
+    const owned = shareForAccount(pending, userId, loaded);
+    if (pending && !owned) { setPending(null); void sessionStorage.removeItem(storageKey).catch(() => undefined); }
+  }, [pending, userId, loaded, storageKey]);
+
+  return { pending: shareForAccount(pending, userId, loaded), clear: useCallback((expectedId?: string) => {
+    if (expectedId && !canConsumeShare(current.current, expectedId)) return;
+    setPending(null);
+    // A newer native capture may already be writing its encrypted payload.
+    if (capturing.current) return;
+    generation.current++; void sessionStorage.removeItem(storageKey).catch(() => undefined);
+  }, [storageKey]) };
 }
 
 export interface ShareNotice {
@@ -145,7 +191,7 @@ export function useSharedLinkSave({
    * signed out — the caller withholds it until there is a session). */
   pending: SharedLink | null;
   /** Called once the save has been taken over from `pending` (success or not). */
-  onConsumed: () => void;
+  onConsumed: (expectedId?: string) => void;
   onSaved: () => void;
   onFailed: (link: SharedLink) => void;
 }): { notice: ShareNotice | null; dismiss: () => void } {
@@ -154,30 +200,24 @@ export function useSharedLinkSave({
   // keyed on `pending` alone.
   const callbacks = useRef({ onConsumed, onSaved, onFailed });
   callbacks.current = { onConsumed, onSaved, onFailed };
-  // Deliberately object identity, not the URL: `onConsumed` nulls `pending` out
-  // mid-flight (that is how a second share queues behind this one), and sharing
-  // the SAME link twice must still re-save it — each capture is a new object.
-  const started = useRef<SharedLink | null>(null);
+  // Each capture has its own ID, including repeat shares of the same URL.
+  const claim = useRef(createShareClaims());
   const mounted = useRef(true);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(
-    () => () => {
+    () => { mounted.current = true; return () => {
       mounted.current = false;
       for (const timer of timers.current) clearTimeout(timer);
-    },
+    }; },
     [],
   );
 
   useEffect(() => {
-    if (!pending || started.current === pending) return;
-    started.current = pending;
+    if (!pending || !claim.current(pending.id ?? pending.url)) return;
     const link = pending;
     setNotice({ url: link.url, title: link.title ?? null, saving: true });
-    // Release the capture now that the save owns it. Note this re-renders the
-    // owner with `pending: null`, which is why the save below is NOT tied to
-    // this effect's lifetime — a cleanup must never cancel an in-flight save.
-    callbacks.current.onConsumed();
+    // Consume only after the server accepts it; failures keep the payload.
 
     void (async () => {
       try {
@@ -188,6 +228,7 @@ export function useSharedLinkSave({
           savedAt: new Date().toISOString(),
         });
         if (!mounted.current) return;
+        callbacks.current.onConsumed(link.id);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setNotice({ url: link.url, title: bookmark.title ?? null, saving: false });
         callbacks.current.onSaved();

@@ -1,3 +1,4 @@
+import { SUPABASE_AUTH } from "@/lib/supabase-oauth";
 import { openSignIn } from "../nav";
 import { Header } from "./Header";
 import { PopupShell } from "./PopupShell";
@@ -27,7 +28,7 @@ export function SignInGate({
    * credentials — instead of a misleading "sign in". */
   reconnectAs?: string;
 }) {
-  const reconnect = reconnectAs !== undefined;
+  const reconnect = !SUPABASE_AUTH && reconnectAs !== undefined;
   return (
     <PopupShell>
       <Header />
@@ -41,7 +42,9 @@ export function SignInGate({
         <p className="text-[11px] leading-snug text-muted-foreground">
           {reconnect
             ? "You're still signed in on the website — Safari just needs a Bookmark AI tab open to reconnect the extension. Open the app and this popup picks the session up automatically."
-            : "Sign in on the Bookmark AI website to save and browse your bookmarks. Your session syncs back here automatically."}
+            : SUPABASE_AUTH
+              ? "Authorize this extension in your browser. It gets a separate session you can revoke from account settings."
+              : "Sign in on the Bookmark AI website to save and browse your bookmarks. Your session syncs back here automatically."}
         </p>
       </div>
 

@@ -1,0 +1,3 @@
+project_id = "bookmark-ai-supabase-qa"
+[db.migrations]
+schema_paths = ["./schemas/*.sql"]

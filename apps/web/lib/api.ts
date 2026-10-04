@@ -63,28 +63,8 @@ export interface LibraryFilters {
   to?: string;
 }
 
-interface ClerkGlobal {
-  loaded?: boolean;
-  session?: { getToken: () => Promise<string | null> } | null;
-}
-
-/** Clerk session JWT for the API. window.Clerk is the documented non-hook
- * escape hatch — this module is called outside React components. Null when
- * signed out or during SSR; the open local server accepts the tokenless
- * request, the auth-enforcing deployed server 401s it. */
-async function getAuthToken(): Promise<string | null> {
-  if (typeof window === "undefined") return null;
-  const w = window as Window & { Clerk?: ClerkGlobal };
-  // Clerk loads async after hydration; the first data fetches can race it.
-  for (let i = 0; i < 40 && !w.Clerk?.loaded; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  try {
-    return (await w.Clerk?.session?.getToken()) ?? null;
-  } catch {
-    return null;
-  }
-}
+import { getAccessToken } from "@/lib/auth";
+const getAuthToken = getAccessToken;
 
 /** Exported so the SSE hook (use-live.ts) can attach the same bearer token
  * to its fetch-event-source connection — that hook talks straight to
@@ -144,6 +124,10 @@ function errorFromBody(
   status: number,
   body: { error?: string; code?: string } | null,
 ): Error {
+  if (typeof window !== "undefined") {
+    if (status === 401) window.dispatchEvent(new Event("bookmark-auth-rejected"));
+    if (status === 403 && body?.code === "mfa-required") window.location.assign("/auth/mfa?next=" + encodeURIComponent(window.location.pathname + window.location.search));
+  }
   const message = body?.error ?? `Request failed (${status})`;
   if (body?.code === "provisioning") return new ProvisioningError(message);
   if (status === 403 && (body?.code === "forbidden" || body?.error === FORBIDDEN_MESSAGE)) {

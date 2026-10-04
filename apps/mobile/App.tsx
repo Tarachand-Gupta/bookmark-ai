@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { Linking, LogBox, StyleSheet, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { BlurTargetView } from "expo-blur";
 import * as SplashScreen from "expo-splash-screen";
 import {
@@ -8,7 +8,7 @@ import {
   SafeAreaProvider,
   SafeAreaView,
 } from "react-native-safe-area-context";
-import { ClerkProvider, useAuth } from "@clerk/expo";
+import { AuthProvider, useAuth } from "./src/lib/auth";
 import { ShareIntentProvider } from "expo-share-intent";
 import { setAuthTokenProvider } from "./src/api";
 import { LaunchScreen } from "./src/components/LaunchScreen";
@@ -18,7 +18,7 @@ import { useAccountStatus } from "./src/hooks/useAccountStatus";
 import type { SessionsSegment } from "./src/hooks/useLiveDevices";
 import { AccountSetupScreen } from "./src/screens/AccountSetupScreen";
 import { NoAccessScreen } from "./src/screens/NoAccessScreen";
-import { CLERK_PUBLISHABLE_KEY, tokenCache } from "./src/lib/clerk";
+import { PasswordRecoveryScreen } from "./src/screens/PasswordRecoveryScreen";
 import {
   SHARE_INTENT_OPTIONS,
   usePendingSharedLink,
@@ -34,10 +34,6 @@ import { LibraryScreen } from "./src/screens/LibraryScreen";
 import { SearchScreen } from "./src/screens/SearchScreen";
 import { SessionsScreen } from "./src/screens/SessionsScreen";
 import { SignInScreen } from "./src/screens/SignInScreen";
-
-// Only fires when the dev Clerk instance is used for local development (the
-// production default doesn't emit it); silenced to keep the log clean.
-LogBox.ignoreLogs([/Clerk has been loaded with development keys/]);
 
 /**
  * Native splash (app.json → expo-splash-screen plugin: the brand bookmark mark
@@ -71,12 +67,8 @@ setTimeout(() => void SplashScreen.hideAsync().catch(() => undefined), SPLASH_MA
  * LaunchScreen, an identical mark on an identical background, so nothing visibly
  * changes at the handoff except the spinner that starts moving.
  *
- * It used to wait for Clerk's `isLoaded` — a cold-start network round trip to
- * FAPI (+1377ms measured against production on a warm simulator, seconds on a
- * phone) — and, behind that, the account probe, so the launch sat on a frozen
- * image with no sign of life. Waiting for storage but NOT for the network is the
- * whole change: the theme can't flip after the handoff, and nothing on the far
- * side of a network call can freeze the launch again.
+ * Session restoration and the account probe render the matching launch view
+ * while they work, so the splash does not hide their progress.
  */
 function useHideSplashOnFirstPaint(hydrated: boolean): void {
   useEffect(() => {
@@ -91,12 +83,8 @@ function useHideSplashOnFirstPaint(hydrated: boolean): void {
 }
 
 /**
- * ClerkProvider mounts ABOVE PreferencesProvider deliberately: it kicks off
- * Clerk's cold-start FAPI round trip (environment + client) the moment the tree
- * mounts, so that network time overlaps the AsyncStorage read of persisted
- * preferences instead of queueing behind it. It takes this build's publishable
- * key once (CLERK_PUBLISHABLE_KEY is a build-time constant derived from
- * SERVER_TARGET — there is no in-app server switch) and never remounts.
+ * SDK restoration overlaps the preference read. The immutable QA build fixes
+ * the auth project, API, callback and credential namespace together.
  */
 export default function App() {
   return (
@@ -104,7 +92,7 @@ export default function App() {
     // provider has to sit above every other provider (it reads the launch URL /
     // Android intent on mount), so it is the outermost thing in the tree.
     <ShareIntentProvider options={SHARE_INTENT_OPTIONS}>
-      <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
+      <AuthProvider>
         <PreferencesProvider>
           {/* initialMetrics avoids the Android first-frame zero-inset flash
               (Settings title rendered under the status bar on first mount). */}
@@ -112,38 +100,32 @@ export default function App() {
             <Gate />
           </SafeAreaProvider>
         </PreferencesProvider>
-      </ClerkProvider>
+      </AuthProvider>
     </ShareIntentProvider>
   );
 }
 
-// Dev-only QA affordance: lets headless test agents past the sign-in gate to
-// exercise the UI against the open local server. Ignored in release builds.
-const SKIP_AUTH = __DEV__ && process.env.EXPO_PUBLIC_SKIP_AUTH === "1";
-
-/** Auth gate: the launch scaffold while storage/Clerk are still settling,
+/** Auth gate: the launch scaffold while storage/auth are still settling,
  * sign-in when there is no session, the app otherwise. Also feeds the session
  * token to the API client. */
 function Gate() {
   const { colors, dark } = useAppTheme();
   const { hydrated } = usePreferences();
-  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken, userId, recovery, error, retry } = useAuth();
   // Captured HERE, above the sign-in/app branch: a share that arrives while
-  // signed out is held in memory (never persisted) through the whole sign-in
-  // round trip and handed to the Shell the moment a session exists.
-  const share = usePendingSharedLink();
-  const signedIn = isSignedIn || SKIP_AUTH;
-  const clerkReady = isLoaded || SKIP_AUTH;
+  // signed out is held in encrypted app-only storage through sign-in.
+  const share = usePendingSharedLink(userId, isLoaded);
+  const signedIn = isSignedIn;
+  const authReady = isLoaded;
 
   useEffect(() => {
     setAuthTokenProvider(() => getToken());
   }, [getToken]);
 
   // One probe classifies the whole account: ready, still provisioning, or not
-  // allowed (see useAccountStatus). Never consulted in the SKIP_AUTH QA session,
-  // which has no Clerk user and talks to an open local server.
+  // allowed (see useAccountStatus).
   const account = useAccountStatus();
-  const gated = signedIn && !SKIP_AUTH;
+  const gated = signedIn;
 
   // The native splash goes away on our first correctly-themed frame — which is
   // the LaunchScreen below, its pixel twin — never waiting on the network.
@@ -151,13 +133,20 @@ function Gate() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {!hydrated || !clerkReady || (gated && account.status === "checking") ? (
-        // Still settling: the persisted theme/view read, Clerk restoring the
+      {!hydrated || !authReady || (gated && account.status === "checking") ? (
+        // Still settling: the persisted theme/view read, the SDK restoring the
         // session, and (for an account we have no evidence about yet — a fresh
         // signup) the account probe. Renders the splash's own mark plus a
         // spinner, so this is a seamless continuation of the launch image
         // rather than a second, emptier loading state.
         <LaunchScreen />
+      ) : error && !signedIn ? (
+        <View style={[styles.body, { justifyContent: "center", padding: 28, gap: 20 }]}>
+          <Text accessibilityRole="alert" style={{ color: colors.foreground }}>{error}</Text>
+          <Pressable accessibilityRole="button" onPress={retry}><Text style={{ color: colors.primary }}>Retry sign-in restoration</Text></Pressable>
+        </View>
+      ) : recovery && signedIn ? (
+        <PasswordRecoveryScreen />
       ) : !signedIn ? (
         <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.body}>
           <SignInScreen />
@@ -176,7 +165,7 @@ function Gate() {
           <NoAccessScreen onRecheck={account.recheck} />
         </SafeAreaView>
       ) : (
-        <Shell pendingShare={share.pending} onShareConsumed={share.clear} />
+        <Shell key={userId} pendingShare={share.pending} onShareConsumed={share.clear} />
       )}
       <StatusBar style={dark ? "light" : "dark"} />
     </View>
@@ -209,7 +198,7 @@ function Shell({
 }: {
   /** A link handed over by the system share sheet, waiting to be saved. */
   pendingShare: SharedLink | null;
-  onShareConsumed: () => void;
+  onShareConsumed: (expectedId?: string) => void;
 }) {
   const [tab, setTab] = useState<TabKey>(initialTab);
   const [filterSheetOpen, setFilterSheetOpen] = useState(INITIAL === "filters");
@@ -322,6 +311,7 @@ function Shell({
               requestedTag={libraryTag}
               onRequestedTagHandled={clearLibraryTag}
               refreshSignal={savedSignal}
+              onBookmarkAdded={() => { if (addSheetUrl && pendingShare?.url === addSheetUrl) onShareConsumed(pendingShare.id); }}
             />
           </View>
           <View style={[styles.screen, tab !== "sessions" && styles.hidden]}>

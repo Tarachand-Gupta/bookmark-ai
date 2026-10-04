@@ -19,7 +19,7 @@ struct ConnectingView: View {
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(.secondary)
 
-                    Text("Can't reach bookmark-ai.cloud")
+                    Text("Can't reach \(appEnvironment.preferences.serverTarget.hostLabel)")
                         .font(.title2.weight(.semibold))
                         .padding(.top, 18)
 
@@ -39,7 +39,7 @@ struct ConnectingView: View {
                         .font(.title3.weight(.semibold))
                         .padding(.top, 18)
 
-                    Text("Checking your session with bookmark-ai.cloud.")
+                    Text("Checking your session with \(appEnvironment.preferences.serverTarget.hostLabel).")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.top, 6)

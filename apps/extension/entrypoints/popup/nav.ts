@@ -1,3 +1,4 @@
+import { SUPABASE_AUTH } from "@/lib/supabase-oauth";
 import { browser } from "wxt/browser";
 
 /**
@@ -34,6 +35,11 @@ export function openDeviceSettings(webUrl: string): void {
 /** Sign-in (or `/app` for the Safari "reconnect" variant, where a live session
  * redirects straight into the app and a dead one lands on sign-in anyway). */
 export function openSignIn(webUrl: string, reconnect = false): void {
+  if (SUPABASE_AUTH) {
+    void browser.runtime.sendMessage({ type: "START_OAUTH" });
+    window.close();
+    return;
+  }
   open(`${webUrl}${reconnect ? "/app" : "/sign-in"}`);
 }
 

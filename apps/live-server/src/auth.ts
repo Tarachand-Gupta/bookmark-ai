@@ -1,7 +1,30 @@
+import { extensionLiveRequestAllowed } from "./extension-policy";
+import {
+  withAuthDeadline,
+  createSupabaseVerifier,
+  InvalidSessionError,
+  classifyOAuthClient,
+} from "@bookmark-ai/engine";
+import { connectPostgres } from "@bookmark-ai/db";
 import { verifyToken } from "@clerk/backend";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { type Config, LOCAL_USER } from "./config";
 import { DEVICE_TOKEN_PREFIX, verifyDeviceToken } from "./device-token";
+
+/** Bounded abuse counters, never authentication approval or token storage. */
+const limits = new Map<string, { start: number; count: number }>();
+class MfaRequiredError extends Error {}
+class CapabilityDeniedError extends Error {}
+function allowRequest(key: string, max: number) {
+  const now = Date.now();
+  let bucket = limits.get(key);
+  if (!bucket || now - bucket.start >= 60000) {
+    bucket = { start: now, count: 0 };
+    limits.set(key, bucket);
+  }
+  if (limits.size > 10000) limits.delete(limits.keys().next().value!);
+  return ++bucket.count <= max;
+}
 
 /**
  * Clerk session-JWT verification as a Fastify preHandler, OFFLINE — the same
@@ -18,9 +41,24 @@ import { DEVICE_TOKEN_PREFIX, verifyDeviceToken } from "./device-token";
  * to the "local" namespace so curl / the desktop client can smoke-test.
  */
 export function makeAuthPreHandler(config: Config) {
-  const openMode = config.devOpen || (!config.clerkSecretKey && !config.clerkJwtKey);
+  const supabase = config.authProvider === "supabase";
+  const openMode = !supabase && (config.devOpen || (!config.clerkSecretKey && !config.clerkJwtKey));
+  const verifier = supabase
+    ? createSupabaseVerifier({
+        url: config.supabaseUrl ?? "",
+        publishableKey: config.supabasePublishableKey ?? "",
+      })
+    : null;
+  const master =
+    supabase && config.supabaseDatabaseUrl
+      ? connectPostgres(config.supabaseDatabaseUrl, { caBase64: config.supabaseDatabaseCaBase64 })
+      : null;
 
   return async function authenticate(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+    if (supabase && !allowRequest(`ip:${req.ip}`, 240)) {
+      await reply.code(429).send({ error: "Too many requests" });
+      return;
+    }
     if (openMode) {
       req.userId = LOCAL_USER;
       return;
@@ -33,6 +71,65 @@ export function makeAuthPreHandler(config: Config) {
       return;
     }
 
+    if (supabase) {
+      try {
+        if (!verifier || !master) throw new Error();
+        const check = () => withAuthDeadline(async () => {
+          const identity = await verifier(token);
+          const capability = classifyOAuthClient(
+            identity.clientId,
+            config.supabaseExtensionClientIds ?? [],
+          );
+          if (capability === "denied") throw new InvalidSessionError("Invalid client");
+          if (
+            capability === "extension" &&
+            !extensionLiveRequestAllowed(req.method, req.url, identity.sessionId, req.body)
+          )
+            throw new CapabilityDeniedError();
+          if (
+            identity.user.factors?.some((f) => f.status === "verified") &&
+            identity.aal !== "aal2"
+          )
+            throw new MfaRequiredError();
+          const accounts = await master.query(
+            "select a.id from bmai_qa.identities i join bmai_qa.accounts a on a.id=i.account_id where i.provider='supabase' and i.subject=$1 and a.state='active'",
+            [identity.providerUserId],
+          );
+          if (!accounts[0]) throw new InvalidSessionError("Account unavailable");
+          return String(accounts[0].id);
+        });
+        req.userId = await check();
+        if (!allowRequest(`account:${req.userId}`, 240)) {
+          await reply.code(429).send({ error: "Too many requests" });
+          return;
+        }
+        (req as any).revalidateSession = async () => (await check()) === req.userId;
+        return;
+      } catch (error) {
+        await reply
+          .code(
+            error instanceof CapabilityDeniedError
+              ? 403
+              : error instanceof MfaRequiredError
+                ? 403
+                : error instanceof InvalidSessionError
+                  ? 401
+                  : 503,
+          )
+          .send({
+            error:
+              error instanceof CapabilityDeniedError
+                ? "This token may not access this endpoint"
+                : error instanceof MfaRequiredError
+                  ? "Complete two-factor verification"
+                  : error instanceof InvalidSessionError
+                    ? "Invalid session"
+                    : "Authentication temporarily unavailable",
+          });
+        return;
+      }
+    }
+
     // Long-lived device token (Safari extension header-auth) — a self-contained
     // HS256 JWT we verify locally, minted by the web app (apps/web/lib/server/
     // device-token.ts). No azp, so it skips the origin check; same allowlist.
@@ -42,10 +139,7 @@ export function makeAuthPreHandler(config: Config) {
         await reply.code(401).send({ error: "Invalid or expired token" });
         return;
       }
-      if (
-        config.allowedUserIds.length > 0 &&
-        !config.allowedUserIds.includes(verified.userId)
-      ) {
+      if (config.allowedUserIds.length > 0 && !config.allowedUserIds.includes(verified.userId)) {
         await reply.code(403).send({ error: "This account may not use this API" });
         return;
       }

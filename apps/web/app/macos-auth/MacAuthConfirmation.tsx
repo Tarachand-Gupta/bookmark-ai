@@ -1,6 +1,6 @@
 "use client";
 
-import { useClerk } from "@clerk/nextjs";
+import { useAccountAuth } from "@/lib/auth";
 import { useState } from "react";
 
 interface Props {
@@ -20,7 +20,7 @@ export function MacAuthConfirmation({
   accountLabel,
   accountEmail,
 }: Props) {
-  const { signOut } = useClerk();
+  const { signOut } = useAccountAuth();
   const [result, setResult] = useState<Result>("ready");
   const [error, setError] = useState<string | null>(null);
   const [switchingAccount, setSwitchingAccount] = useState(false);

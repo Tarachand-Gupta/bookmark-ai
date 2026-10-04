@@ -41,6 +41,7 @@ export function LibraryScreen({
   requestedTag = null,
   onRequestedTagHandled,
   refreshSignal = 0,
+  onBookmarkAdded,
 }: {
   /** Foreground-tab flag: gates useLibrary's stale-on-focus refetch. */
   active: boolean;
@@ -62,6 +63,7 @@ export function LibraryScreen({
    * this list is mounted behind the tab switcher, so it would otherwise sit on
    * stale data for the rest of its 60s staleness window. */
   refreshSignal?: number;
+  onBookmarkAdded?: () => void;
 }) {
   const { colors } = useAppTheme();
   const { viewMode, setViewMode } = usePreferences();
@@ -206,6 +208,7 @@ export function LibraryScreen({
         initialUrl={addSheetUrl}
         onClose={() => onAddSheetChange(false)}
         onSaved={() => {
+          onBookmarkAdded?.();
           lib.refresh();
           // the server scrapes the page's title/preview just after the save
           // returns — pick those up without a manual pull-to-refresh

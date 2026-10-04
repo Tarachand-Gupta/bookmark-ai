@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { DashboardResponse } from "@bookmark-ai/types";
-import { getDashboard, SERVER_TARGET } from "../api";
+import { getDashboard, getApiUrl } from "../api";
+import { useAuth } from "../lib/auth";
+import { AUTH_NAMESPACE } from "../lib/auth-config";
 import { usePreferences } from "../context/PreferencesContext";
 
 /**
@@ -9,7 +11,6 @@ import { usePreferences } from "../context/PreferencesContext";
  * Keyed by server target so a dev build never paints the production snapshot
  * (or vice versa) for the first frame.
  */
-const CACHE_KEY = `bookmark-ai:dashboard:${SERVER_TARGET}`;
 
 /** Home stays mounted as the landing tab; returning to it after this long
  * refetches silently (the "did my share-sheet save land?" loop). */
@@ -37,6 +38,8 @@ export interface DashboardState {
  * @param active whether Home is the foreground tab (gates the staleness refetch).
  */
 export function useDashboard(active: boolean): DashboardState {
+  const { userId } = useAuth();
+  const cacheKey = `${AUTH_NAMESPACE}:account:${userId}:${getApiUrl()}:dashboard`;
   const { serverTarget } = usePreferences(); // switching servers refetches
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,7 +55,7 @@ export function useDashboard(active: boolean): DashboardState {
   // always win: a slow storage read can never clobber data that already arrived.
   useEffect(() => {
     let cancelled = false;
-    void AsyncStorage.getItem(CACHE_KEY).then((raw) => {
+    void AsyncStorage.getItem(cacheKey).then((raw) => {
       if (cancelled || raw === null || fetchedAt.current > 0) return;
       try {
         setData(JSON.parse(raw) as DashboardResponse);
@@ -64,7 +67,7 @@ export function useDashboard(active: boolean): DashboardState {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const id = ++runId.current;
@@ -74,7 +77,7 @@ export function useDashboard(active: boolean): DashboardState {
         fetchedAt.current = Date.now();
         setData(next);
         setError(null);
-        void AsyncStorage.setItem(CACHE_KEY, JSON.stringify(next)).catch(() => {});
+        void AsyncStorage.setItem(cacheKey, JSON.stringify(next)).catch(() => {});
       })
       .catch((err: unknown) => {
         if (runId.current !== id) return;
@@ -87,7 +90,8 @@ export function useDashboard(active: boolean): DashboardState {
         setLoading(false);
         setRefreshing(false);
       });
-  }, [reloadKey, serverTarget]);
+    return () => { runId.current++; };
+  }, [reloadKey, serverTarget, cacheKey]);
 
   // Coming back to Home after a while: refetch WITHOUT the spinner, so the
   // visible snapshot never blanks or jumps.

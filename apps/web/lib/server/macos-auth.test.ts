@@ -59,6 +59,8 @@ beforeAll(async () => {
 afterAll(() => (db as unknown as { close(): void }).close());
 
 beforeEach(async () => {
+  vi.stubEnv("AUTH_PROVIDER", "clerk");
+  vi.stubEnv("BOOKMARK_BUILD_VARIANT", "legacy-test");
   masterCtx = { db, ready: Promise.resolve() };
   browserAuth = { userId: "user_a", sessionId: "sess_a", sessionClaims: { azp: "http://localhost:3000" } };
   ticketMint = async () => ({ token: "ticket_test" });
@@ -363,5 +365,17 @@ describe("configuredMacAuthOrigin", () => {
     expect(() =>
       configuredMacAuthOrigin({ NODE_ENV: "production", MACOS_AUTH_APP_ORIGIN: "https://attacker.example" }),
     ).toThrow(/allowlisted/);
+  });
+});
+
+describe('Supabase disables legacy Clerk ticket endpoints',()=>{
+  it('returns410 from start, authorize and exchange without issuing a Clerk ticket',async()=>{
+    vi.stubEnv('AUTH_PROVIDER','supabase');vi.stubEnv('BOOKMARK_BUILD_VARIANT','supabase-qa');
+    const mint=vi.fn(async()=>({token:'must-not-be-issued'}));ticketMint=mint;
+    for(const [route,path] of [[startRoute,'start'],[authorizeRoute,'authorize'],[exchangeRoute,'exchange']] as const){
+      const response=await route.POST(request('/api/macos-auth/'+path,{}));
+      expect(response.status).toBe(410);expect((await response.json()).code).toBe('native-auth-required');
+    }
+    expect(mint).not.toHaveBeenCalled();
   });
 });

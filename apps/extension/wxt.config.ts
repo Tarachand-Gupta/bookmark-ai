@@ -18,6 +18,7 @@ import { appPageMatchesFor, hostPermissionsFor } from "./lib/app-origins";
  *   local → joillpelifndeefomeimoomlgoimbkei
  */
 const CRX_KEYS = {
+  supabaseQa: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvYL1vdGdg0WEPeSvFaEa20cahB9rpwxvsK7O0IR+/ME5XbwDT9pyURFr3PpwvbBJTKJaf75d0ipj19S2Fspxu6Puae1w5JRPFYK2v+iFl1LaimLxH8lL6PMnYd8d0trPLV9AY1ptBeptwdi8gmp2D6kikWuYFhZsquZ0nR3FIyr171pHwZOaNqADBiBQ1iCBqugbKEzsSA5H7ULT4PH4GNhOthrSB9aX8S2IoBTSmQMFJ0tshoqPOzZ6cQzUiV3KqsaxkEnp4Bt70YFWwyzXYfBZyc2pXiuLgK3TEBEbt4ucsJUBBjqXCRq84ClJEw1RE9Vzt9Hty8oE8lFB9vJexwIDAQAB",
   prod: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxZao/ni4uukRy+6xGGy8DZqMWUzz+rYS/7+3IjLrp9RnrAipUTiqZcxqy+cVEtIiz5ZonMenarOSygvkIh5PG8gVx9eZm97Pcn96J7wIMwMIx3Lacve9RVsDTomSGsdZH/U83ad+6ZXPQGBMMQjSe60cu2Zsays5owt2zXyjKlUvLL4NgkiDNS/YGIruPSvVJg5lzEym7IKSl5WlDZgZ5Hqu3m36D3dKDy1RkiXpNANTWRtcbeoPXt0gf7vFPLnyyVh9mvJSpixD9aRbIRJU5M6ABao9pfnaJYmvdjpF1+8himJ1bYug4RZcLJxkQFqoyqVQaiDEIA7V5AjSo9xU4QIDAQAB",
   dev: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4BwVAsb+pQScMBBNirykrxv2N8OS6cA5ibAQZLQtTjU4r4b1pP5cO4Wk6zbaODmBbk863mss1GhkdmWJMfI544/q+E19cIxNOUI0YikIHlHYcBfrjSXP7B9Q8jJSi6b1BmgoJ5grN4XLYKBy/YbGk45JoQRKkYW9ER362w0emu+xzb/uGpOiVq4qd1GG5oKkq/7QKWUQKR/iCX6oAF5/d4SK5uCOwHW9Yc8hjYWFXtNpixO21FltRzHDyK9avnph0F3W+18fmH60JVj2nfJBCce79oweJcxYQps7u5KS3kSmKxoY/ARBpv2hacTQO+/Ktj7XktsixSnf+9AKNLb8LQIDAQAB",
   local: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt9Qd9/bjr0gAnz3fgxK4bzP1hwxJ83E4A02ctmBk/6V82VYnyG3piyY9tjOrjcLqphvJEqD3fgrJ95mOj0mVI1yJLp2xdKxpLW8pXR98r1krKoDOxwp/n8Sz8hTO6vlY41zQAs8wT5ozQcACdymHW1t+lCj7MLb97tVZAvQ8VM2/yqmi7j9tcx7sJX5rRO23B4FL9hMZw1C4+HUPrOSbGoq/Lkx6deNl4+qwmfp/FM2zlp9s2sskzLpuf/4ofVgScIlRmBIbWANilkAeJtMbC3TMZcpI4CzLtEjrw4/E6FeFX/qLq84OnQoenSfNpbKE1dX16zItC06r9t1QeWnfGQIDAQAB",
@@ -32,6 +33,7 @@ const CRX_KEYS = {
  *     (black plate / green plate / red plate, distinct ids).
  */
 const TARGETS = {
+  "supabase-qa": { key: CRX_KEYS.supabaseQa, name: "Bookmark AI Supabase QA", iconDir: "icon-dev" },
   production: { key: CRX_KEYS.prod, name: "Bookmark AI", iconDir: "icon" },
   "dev-remote": { key: CRX_KEYS.dev, name: "Bookmark AI (Dev)", iconDir: "icon-dev" },
   development: { key: CRX_KEYS.local, name: "Bookmark AI (Local)", iconDir: "icon-local" },
@@ -49,9 +51,13 @@ function iconsFor(mode: string): Record<string, string> {
 }
 
 export default defineConfig({
+  ...(process.env.BOOKMARK_BUILD_VARIANT === "supabase-qa" ? {
+    outDir: ".output-supabase-qa",
+  } : {}),
   modules: ["@wxt-dev/module-react"],
   vite: () => ({
     plugins: [tailwindcss()],
+    ...(process.env.BOOKMARK_BUILD_VARIANT === "supabase-qa" ? { cacheDir: ".cache-supabase-qa/vite" } : {}),
   }),
   zip: {
     // WXT's own `-sources.zip` (Firefox default) holds only apps/extension —
@@ -60,7 +66,15 @@ export default defineConfig({
     // archive under the same name; keep WXT from racing it.
     zipSources: false,
   },
-  manifest: ({ browser, manifestVersion, mode }) => ({
+  manifest: ({ browser, manifestVersion, mode }) => {
+    if (mode === "supabase-qa" && (!process.env.BOOKMARK_QA_STAGE_ROOT || process.env.BOOKMARK_BUILD_VARIANT !== "supabase-qa")) {
+      throw new Error("Supabase QA extension must use scripts/supabase-qa.mjs");
+    }
+    const qa = mode === "supabase-qa";
+    const qaHosts = [process.env.WXT_API_URL, process.env.WXT_LIVE_URL, process.env.WXT_SUPABASE_URL]
+      .filter((url): url is string => !!url).map((url) => `${new URL(url).origin}/*`);
+    const qaPages = [`${new URL(process.env.WXT_API_URL || "http://localhost:3100").origin}/*`];
+    return ({
     name: targetFor(mode).name,
     icons: iconsFor(mode),
     // WXT generates the toolbar action from the popup entrypoint with only
@@ -105,7 +119,8 @@ export default defineConfig({
       "tabs",
       "storage",
       "alarms",
-      "cookies",
+      ...(!qa ? ["cookies"] : []),
+      ...(qa && browser !== "safari" ? ["identity"] : []),
       ...(browser === "chrome" ? ["bookmarks", "readingList", "tabGroups"] : []),
       // `webRequest`/`webRequestBlocking` (Firefox-only, MV2): the ONE thing
       // they are used for is stripping the `Origin` header off the extension's
@@ -116,7 +131,7 @@ export default defineConfig({
       // listener is filtered to the Clerk FAPI host alone and reads nothing;
       // see lib/clerk-origin-strip.ts. Chrome's extension id IS allowlisted, so
       // neither permission is requested there.
-      ...(browser === "firefox" ? ["bookmarks", "webRequest", "webRequestBlocking"] : []),
+      ...(browser === "firefox" ? ["bookmarks", ...(!qa ? ["webRequest", "webRequestBlocking"] : [])] : []),
       ...(browser === "safari" ? ["scripting", "nativeMessaging"] : []),
     ],
     // MODE-AWARE (lib/app-origins.ts): a `production` build — every store zip —
@@ -126,7 +141,7 @@ export default defineConfig({
     // `permissions`, where Firefox expects host patterns in MV2;
     // `lib/manifest-shim.ts` re-derives a `host_permissions` view from whatever
     // host patterns are present at runtime for the Clerk SDK.
-    host_permissions: [...hostPermissionsFor(mode)],
+    host_permissions: qa ? qaHosts : [...hostPermissionsFor(mode)],
     ...(browser === "chrome" && {
       // Per-target key → distinct, stable id per install (prod/dev/local).
       key: targetFor(mode).key,
@@ -145,12 +160,12 @@ export default defineConfig({
       // Both of those targets get `entrypoints/marker.content.ts` instead, which
       // stamps a `<html>` attribute the page reads synchronously.
       // Mode-aware like host_permissions: production = apex + www only.
-      externally_connectable: { matches: [...appPageMatchesFor(mode)] },
+      externally_connectable: { matches: qa ? qaPages : [...appPageMatchesFor(mode)] },
     }),
     ...(browser === "firefox" && {
       browser_specific_settings: {
         gecko: {
-          id: "bookmark-ai@bookmark-ai.cloud",
+          id: qa ? "bookmark-ai-supabase-qa@bookmark-ai.cloud" : "bookmark-ai@bookmark-ai.cloud",
           // Firefox 140 introduced the desktop built-in data-consent UI that
           // renders `data_collection_permissions`; AMO asks new submissions
           // declaring any collection to require it. Android gained the same UI
@@ -189,7 +204,16 @@ export default defineConfig({
         description: "Open the Bookmark AI popup",
       },
     },
-  }),
+  });
+  },
+  hooks: {
+    "build:manifestGenerated": (_wxt, manifest) => {
+      if (process.env.BOOKMARK_BUILD_VARIANT !== "supabase-qa") return;
+      // QA presence/auth bridges must never inject into an existing production tab.
+      const page = `${new URL(process.env.WXT_API_URL!).origin}/*`;
+      for (const script of manifest.content_scripts ?? []) script.matches = [page];
+    },
+  },
   // NO MV2 `host_permissions` re-add hook — it used to patch the written
   // firefox-mv2/manifest.json with a top-level `host_permissions` key so that
   // @clerk/chrome-extension's validateManifest (which demands the key when

@@ -1,6 +1,6 @@
 "use client";
 
-import { useClerk, useUser } from "@clerk/nextjs";
+import { useAccountAuth, useUser } from "@/lib/auth";
 import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
  */
 export function NoAccessNotice() {
   const { user } = useUser();
-  const { signOut } = useClerk();
+  const { signOut } = useAccountAuth();
   const email =
     user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress ?? null;
 

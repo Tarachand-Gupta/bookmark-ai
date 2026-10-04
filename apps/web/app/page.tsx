@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { auth } from "@clerk/nextjs/server";
+import { getWebAuth } from "@/lib/server/supabase-auth";
 import { redirect } from "next/navigation";
 import { marketingFontVars } from "@/components/marketing/fonts";
 import { Backdrop } from "@/components/marketing/backdrop";
@@ -48,7 +48,8 @@ export default async function MarketingPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { userId } = await auth();
+  const identity = await getWebAuth().catch(() => null);
+  const userId = identity?.userId;
   if (userId) {
     const params = await searchParams;
     const destination = signedInRootDestination(params);

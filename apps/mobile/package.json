@@ -5,9 +5,9 @@
   "dependencies": {
     "@ai-sdk/react": "^4.0.19",
     "@bookmark-ai/types": "workspace:*",
-    "@clerk/expo": "4.6.5",
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@supabase/supabase-js": "2.117.2",
     "ai": "^7.0.18",
     "expo": "~57.0.12",
     "expo-apple-authentication": "57.0.1",
@@ -15,7 +15,9 @@
     "expo-auth-session": "~57.0.6",
     "expo-blur": "~57.0.2",
     "expo-clipboard": "~57.0.1",
+    "expo-constants": "57.0.10",
     "expo-crypto": "~57.0.1",
+    "expo-device": "57.0.1",
     "expo-document-picker": "~57.0.1",
     "expo-file-system": "~57.0.2",
     "expo-glass-effect": "~57.0.1",
@@ -34,17 +36,13 @@
     "react-native": "0.86.2",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-sse": "^1.2.1",
+    "react-native-url-polyfill": "2.0.0",
     "swr": "2.3.4"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
     "tsx": "^4.19.2",
     "typescript": "~6.0.3"
-  },
-  "expo": {
-    "autolinking": {
-      "exclude": ["@clerk/expo"]
-    }
   },
   "scripts": {
     "start": "expo start",

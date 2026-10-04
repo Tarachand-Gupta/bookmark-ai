@@ -1,3 +1,4 @@
+import { SUPABASE_AUTH, getOAuthToken, oauthGeneration } from "./supabase-oauth";
 import { storage } from "#imports";
 import { browser } from "wxt/browser";
 import { createBookmark, deleteBookmark, fetchSyncSettings } from "@/lib/api";
@@ -101,12 +102,17 @@ async function sendMirrorAdd(
   title: string | undefined,
   tags?: string[],
 ): Promise<void> {
-  const bookmark = await createBookmark({
-    url,
-    title: title || undefined,
-    tags,
-    ...detectSource(),
-  }, { analytics: false });
+  const authGeneration = oauthGeneration();
+  const bookmark = await createBookmark(
+    {
+      url,
+      title: title || undefined,
+      tags,
+      ...detectSource(),
+    },
+    { analytics: false },
+  );
+  if (SUPABASE_AUTH && authGeneration !== oauthGeneration()) return;
   await rememberUrlId(url, bookmark.id);
   diag("nativeSync", "added", { domain: bookmark.domain, tagged: !!tags });
 }
@@ -118,6 +124,8 @@ async function sendMirrorAdd(
  * onCreated event that produced this call. */
 async function mirrorAdd(url: string | undefined, title: string | undefined, tags?: string[]) {
   if (importing || !isHttp(url)) return;
+  if (SUPABASE_AUTH && !(await getOAuthToken().catch(() => null))) return;
+  const authGeneration = oauthGeneration();
   const enabled = await nativeSyncEnabledItem.getValue().catch(() => true);
   if (!enabled) {
     diag("nativeSync", "add skipped (sync off)");
@@ -127,7 +135,8 @@ async function mirrorAdd(url: string | undefined, title: string | undefined, tag
     await sendMirrorAdd(url, title, tags);
   } catch (e) {
     diag("nativeSync", "add failed (queued)", { error: errMsg(e) });
-    await enqueueMirrorAdd({ url, title, tags });
+    if (!SUPABASE_AUTH || authGeneration === oauthGeneration())
+      await enqueueMirrorAdd({ url, title, tags });
   }
 }
 
@@ -137,17 +146,22 @@ async function mirrorAdd(url: string | undefined, title: string | undefined, tag
  * rather than flushed — turning sync back on should not silently discard the
  * pending adds, and mirroring them while it's off would be wrong. */
 export async function drainNativeSyncQueue(): Promise<void> {
+  const generation = oauthGeneration();
+  if (SUPABASE_AUTH && !(await getOAuthToken().catch(() => null))) return;
   if (BROWSER === "safari") return; // the module no-ops there anyway
   const enabled = await nativeSyncEnabledItem.getValue().catch(() => true);
   if (!enabled) return;
-  await drainMirrorQueue(async (entry) => {
-    try {
-      await sendMirrorAdd(entry.url, entry.title, entry.tags);
-      return true;
-    } catch {
-      return false;
-    }
-  });
+  await drainMirrorQueue(
+    async (entry) => {
+      try {
+        await sendMirrorAdd(entry.url, entry.title, entry.tags);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    () => !SUPABASE_AUTH || generation === oauthGeneration(),
+  );
 }
 
 /** Mirror a native removal — only under full-sync. Folder removals report only

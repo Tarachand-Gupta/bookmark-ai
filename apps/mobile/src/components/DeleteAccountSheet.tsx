@@ -30,28 +30,11 @@ export function confirmationMatches(typed: string, email: string): boolean {
   return email.length > 0 && trimmed.toLowerCase() === email.toLowerCase();
 }
 
-/**
- * Account deletion — the App Store hard requirement (Guideline 5.1.1(v): an app
- * with account creation must offer in-app account deletion, not just a support
- * link). Deliberately more friction than Sign Out: a destructive Settings row
- * opens this sheet, the user must type DELETE (or their email), and only then is
- * the button armed. `DELETE /api/account` removes the Clerk user; its
- * `user.deleted` webhook tears down the tenant DB.
- *
- * Failures are reported verbatim and the sheet STAYS OPEN with the session
- * intact — never sign out on a failed delete, that would strand a still-live
- * account behind a "deleted" story. Only a 202 leads to `onDeleted()`.
- *
- * Sign in with Apple accounts get one extra line (`signedInWithApple`). Apple's
- * TN3194 asks apps to revoke the user's Sign in with Apple tokens on deletion,
- * and — when the app holds no refresh/access token — to "delete the user's
- * account data from your systems" and "direct the user to manually revoke"
- * the authorization instead. That is our case: Clerk's native flow verifies
- * only the identity token (no authorization-code exchange, so no refresh token
- * exists anywhere on our side), and deleting the Clerk user does not touch
- * Apple's record ("Deleting the user from Clerk does not reset this on Apple's
- * side" — Clerk's own docs). So the sheet names the Settings path.
- */
+/** Destructive deletion requires typed confirmation and recent server-verified
+ * authentication. Keep this sheet open and preserve credentials on failures.
+ * A202 accepts the durable deletion job; completion continues server-side.
+ * Native Apple authentication supplies an identity token, so users also see
+ * the manual Apple authorization-removal instructions. */
 export function DeleteAccountSheet({
   visible,
   email,

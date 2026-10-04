@@ -1,3 +1,4 @@
+import { AUTH_VALIDATION_DEADLINE_MS } from '@bookmark-ai/engine';
 import type { FastifyInstance } from "fastify";
 import { sseCorsHeaders } from "../cors";
 import type { Deps } from "../deps";
@@ -39,47 +40,54 @@ export function registerStream(app: FastifyInstance, { store, config, auth, fano
     const raw = initSse(reply, sseCorsHeaders(req.headers.origin, config.allowedOrigins));
 
     let closed = false;
-
-    // Immediate initial frame for THIS connection — never routed through the
-    // coalesce window, so a new viewer sees state at once.
-    try {
-      const enabled = await store.getEnabled(userId);
-      const devices = enabled ? await store.listDevices(userId) : [];
-      writeEvent(raw, "state", { devices, enabled, ttlHours: config.ttlHours });
-    } catch (error) {
-      logger?.log("warn", "live.stream.initial_read_failed", { route: "/live/stream", operation: "read_initial_state", error });
-      // transient read error — the fanout group's next frame (or reconnect) recovers
-    }
-
-    // Subsequent updates arrive as pre-serialized frames from the shared per-user group.
-    const leave = fanout.join(userId, (frame) => {
-      if (!closed) writeFrame(raw, frame);
-    });
-
-    const heartbeat = setInterval(() => {
-      if (!closed) writeComment(raw, "keepalive");
-    }, KEEPALIVE_MS);
-
+    let leave = () => {};
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    let validation: ReturnType<typeof setInterval> | undefined;
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const validate = (req as any).revalidateSession as (() => Promise<boolean>) | undefined;
     const cleanup = (): void => {
       if (closed) return;
       closed = true;
-      // Release this user's slot. Runs exactly once (guarded by `closed`).
       const remaining = (streamCounts.get(userId) ?? 1) - 1;
       if (remaining <= 0) streamCounts.delete(userId);
       else streamCounts.set(userId, remaining);
       clearInterval(heartbeat);
+      clearInterval(validation);
+      clearTimeout(watchdog);
       leave();
-      try {
-        raw.end();
-      } catch {
-        // socket already gone
-      }
+      try { raw.end(); } catch { /* socket already gone */ }
     };
-
+    // A successful check grants at most 15s until the next check plus its 10s
+    // deadline. Arm before any content lookup; a stuck lookup cannot pin SSE.
+    const armDeadline = () => {
+      clearTimeout(watchdog);
+      watchdog = setTimeout(cleanup, 15_000 + AUTH_VALIDATION_DEADLINE_MS);
+    };
     req.raw.on("close", cleanup);
     req.raw.on("error", (error) => {
       logger?.log("warn", "live.stream.failed", { route: "/live/stream", operation: "stream", error });
       cleanup();
     });
+    heartbeat = setInterval(() => { if (!closed) writeComment(raw, "keepalive"); }, KEEPALIVE_MS);
+    if (validate) {
+      armDeadline();
+      let checking = false;
+      validation = setInterval(async () => {
+        if (checking || closed) return;
+        checking = true;
+        try {
+          if (!await validate()) cleanup();
+          else if (!closed) armDeadline();
+        } catch { cleanup(); } finally { checking = false; }
+      }, 15_000);
+    }
+    try {
+      const enabled = await store.getEnabled(userId);
+      const devices = enabled ? await store.listDevices(userId) : [];
+      if (!closed) writeEvent(raw, "state", { devices, enabled, ttlHours: config.ttlHours });
+    } catch (error) {
+      logger?.log("warn", "live.stream.initial_read_failed", { route: "/live/stream", operation: "read_initial_state", error });
+    }
+    if (!closed) leave = fanout.join(userId, (frame) => { if (!closed) writeFrame(raw, frame); });
   });
 }

@@ -9,7 +9,7 @@ function adminIds(): string[] {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  return csv.length > 0 ? csv : [DEFAULT_ADMIN_ID];
+  return csv.length > 0 ? csv : process.env.AUTH_PROVIDER === "supabase" ? [] : [DEFAULT_ADMIN_ID];
 }
 
 /**

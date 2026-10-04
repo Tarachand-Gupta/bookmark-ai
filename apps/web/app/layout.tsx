@@ -1,5 +1,4 @@
-import { ClerkProvider } from "@clerk/nextjs";
-import { shadcn } from "@clerk/ui/themes";
+import { AuthProvider } from "@/lib/auth";
 import type { Metadata, Viewport } from "next";
 import { ThemeProvider } from "next-themes";
 import { ThemeColorMeta } from "@/components/theme-color-meta";
@@ -80,7 +79,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               prefers-color-scheme media query cannot see. */}
           <ThemeColorMeta />
           {/* shadcn theme keeps Clerk's UserButton + sign-in modal on-brand. */}
-          <ClerkProvider appearance={{ theme: shadcn }}>{children}</ClerkProvider>
+          <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>
       </body>
     </html>

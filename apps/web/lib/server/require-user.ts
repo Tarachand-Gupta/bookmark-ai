@@ -1,3 +1,12 @@
+import { apiCookieMutationAllowed } from "./auth-request-origin";
+import { classifyOAuthClient, extensionRouteAllowed } from "@bookmark-ai/engine";
+import {
+  getWebAuth,
+  isSupabaseAuth,
+  AuthUnavailableError,
+  MfaRequiredError,
+  type WebAuth,
+} from "./supabase-auth";
 import { auth } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
@@ -79,7 +88,13 @@ function warnAuthMisconfig(): void {
  */
 export type Gate =
   | { ok: false; response: NextResponse }
-  | { ok: true; userId: string | null; via?: "clerk" | "device"; sessionId: string | null };
+  | {
+      ok: true;
+      userId: string | null;
+      via?: "clerk" | "device" | "supabase";
+      sessionId: string | null;
+      identity?: WebAuth;
+    };
 
 /**
  * The ONLY routes a device token may call — the extension's save/live/native-sync
@@ -124,7 +139,78 @@ export async function requireUser(): Promise<Gate> {
   const h = await headers();
 
   if (!checkRateLimit(clientKey(h))) {
-    return { ok: false, response: NextResponse.json({ error: "Too many requests" }, { status: 429 }) };
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Too many requests" }, { status: 429 }),
+    };
+  }
+
+  if (isSupabaseAuth()) {
+    if (!apiCookieMutationAllowed(h))
+      return {
+        ok: false,
+        response: NextResponse.json({ error: "Invalid request origin" }, { status: 403 }),
+      };
+    try {
+      const identity = await getWebAuth({ allowExtension: true });
+      if (!identity)
+        return {
+          ok: false,
+          response: NextResponse.json({ error: "Missing or invalid session" }, { status: 401 }),
+        };
+      const capability = classifyOAuthClient(
+        identity.clientId,
+        csv(process.env.SUPABASE_EXTENSION_CLIENT_IDS),
+      );
+      if (
+        capability === "denied" ||
+        (capability === "extension" && !extensionRouteAllowed(h.get("x-bkm-route")))
+      )
+        return {
+          ok: false,
+          response: NextResponse.json(
+            { error: "This token may not access this endpoint", code: "token-scope" },
+            { status: 403 },
+          ),
+        };
+      const allowed = csv(process.env.AUTH_ALLOWED_USER_IDS);
+      if (allowed.length && !allowed.includes(identity.userId))
+        return {
+          ok: false,
+          response: NextResponse.json(
+            { error: "This account may not use this API", code: "forbidden" },
+            { status: 403 },
+          ),
+        };
+      if (!checkRateLimit(`account:${identity.userId}:${identity.sessionId}`))
+        return {
+          ok: false,
+          response: NextResponse.json({ error: "Too many requests" }, { status: 429 }),
+        };
+      return {
+        ok: true,
+        userId: identity.userId,
+        sessionId: identity.sessionId,
+        via: "supabase",
+        identity,
+      };
+    } catch (error) {
+      if (error instanceof MfaRequiredError)
+        return {
+          ok: false,
+          response: NextResponse.json(
+            { error: "Complete two-factor verification", code: "mfa-required" },
+            { status: 403 },
+          ),
+        };
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Authentication temporarily unavailable", code: "auth-unavailable" },
+          { status: 503 },
+        ),
+      };
+    }
   }
 
   // Open modes skip Clerk entirely: never call auth() here — it throws when

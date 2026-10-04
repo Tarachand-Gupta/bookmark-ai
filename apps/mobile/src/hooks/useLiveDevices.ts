@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { AppState } from "react-native";
 import EventSource from "react-native-sse";
 import type { LiveDevice, ListLiveResponse } from "@bookmark-ai/types";
-import { authHeaders, getLiveBaseUrl, listLiveDevices, ProvisioningError } from "../api";
+import { authHeaders, getLiveBaseUrl, listLiveDevices, ProvisioningError, reportUnauthorized } from "../api";
+import { useAuth } from "../lib/auth";
 import { usePreferences } from "../context/PreferencesContext";
 
 export type SessionsSegment = "saved" | "ongoing";
@@ -67,6 +68,7 @@ export function useLiveDevices({
   segment: SessionsSegment;
   expanded: boolean;
 }): LiveDevicesState {
+  const { session } = useAuth();
   const { serverTarget } = usePreferences(); // switching servers reconnects
   const [devices, setDevices] = useState<LiveDevice[]>([]);
   const [enabled, setEnabled] = useState(false); // never assume enabled (§4.9 hydration)
@@ -134,6 +136,7 @@ export function useLiveDevices({
 
       const stream = new EventSource<LiveStreamEvent>(`${liveBase}/live/stream`, {
         headers,
+        pollingInterval: 0,
       });
       es = stream;
 
@@ -151,20 +154,28 @@ export function useLiveDevices({
         // Keep last-known devices (same "stale is still useful" rule as the
         // initial fetch) — never clear `devices`/`loaded` here.
         if (event.type === "error" || event.type === "exception") {
+          es?.close();
+          if (event.type === "error" && event.xhrStatus === 401) reportUnauthorized();
+          else setTimeout(() => { if (!cancelled) setReloadKey((key) => key + 1); }, 2500);
           setError(reportLiveFailure(event.message));
         }
       });
       // "open" and keepalive comments need no handling.
     };
 
-    void connect();
+    void connect().catch((failure) => {
+      if (cancelled) return;
+      setError(reportLiveFailure(failure));
+      setLoading(false); setRefreshing(false);
+      setTimeout(() => { if (!cancelled) setReloadKey((key) => key + 1); }, 2500);
+    });
 
     return () => {
       cancelled = true;
       es?.removeAllEventListeners();
       es?.close();
     };
-  }, [onOngoing, appActive, serverTarget, reloadKey, applySnapshot]);
+  }, [onOngoing, appActive, serverTarget, reloadKey, applySnapshot, session?.access_token]);
 
   const refresh = useCallback(() => {
     setRefreshing(true);

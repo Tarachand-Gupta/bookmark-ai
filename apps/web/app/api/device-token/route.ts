@@ -23,6 +23,7 @@ import { requireUser } from "@/lib/server/require-user";
  *    Clerk re-auth (401 `code:"reauth"`) so a stolen token can't renew forever.
  */
 async function POSTHandler() {
+  if(process.env.AUTH_PROVIDER === "supabase") return NextResponse.json({error:"Use native Supabase OAuth/PKCE",code:"native-auth-required"},{status:410});
   const gate = await requireUser();
   if (!gate.ok) return gate.response;
 

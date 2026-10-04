@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useUser } from "@clerk/nextjs";
+import { useUser } from "@/lib/auth";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { NoAccessNotice } from "@/components/no-access-notice";
 import { AccountSetup } from "@/components/library/account-setup";

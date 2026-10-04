@@ -8,8 +8,9 @@ struct SignInSheet: View {
 
     var body: some View {
         let auth = appEnvironment.auth
-
-        VStack(spacing: 0) {
+        if SupabaseConfiguration.isQA {
+            SupabaseSignInView(auth: auth)
+        } else { VStack(spacing: 0) {
             header(auth)
             Divider()
             content(auth)
@@ -19,6 +20,7 @@ struct SignInSheet: View {
         .frame(width: 500, height: 460)
         .interactiveDismissDisabled()
         .accessibilityIdentifier("browser-sign-in-sheet")
+        }
     }
 
     private func header(_ auth: AuthController) -> some View {

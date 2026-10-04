@@ -1,3 +1,4 @@
+import { mcpAccountAccessible } from '@/lib/server/mcp/account-access';
 import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { after, type NextRequest } from "next/server";
 import { propagateAttributes } from "@langfuse/tracing";
@@ -134,6 +135,9 @@ async function POSTHandler(req: NextRequest) {
   let db: Db;
   let ready: Promise<void>;
   try {
+    if ((process.env.AUTH_PROVIDER === 'supabase' || process.env.BOOKMARK_BUILD_VARIANT === 'supabase-qa') && !await mcpAccountAccessible(verified.userId)) {
+      return unauthorized(version, 'Account or integration credential no longer available');
+    }
     ({ db, ready } = await resolveDb(verified.userId));
   } catch (err) {
     if (err instanceof TenantNotProvisionedError) {
@@ -143,14 +147,15 @@ async function POSTHandler(req: NextRequest) {
       console.error("[mcp]", err.message);
       return jsonResponse({ error: "Account not provisioned yet", code: "provisioning" }, 503, version);
     }
-    throw err;
+    // A control-plane/provider/content outage is not evidence of revocation.
+    return jsonResponse({error:'Integration authentication temporarily unavailable'},503,version);
   }
-  await ready;
-
   // REVOCATION: a signature-valid token is not enough — its registry row must
   // still exist and be un-revoked. This is the only way to kill a leaked token
   // before its 365-day expiry.
-  const record = await getMcpToken(db, verified.tokenId);
+  let record;
+  try { await ready; record = await getMcpToken(db, verified.tokenId); }
+  catch { return jsonResponse({error:'Integration authentication temporarily unavailable'},503,version); }
   if (!record || record.revokedAt) {
     return unauthorized(version, "This token has been revoked");
   }

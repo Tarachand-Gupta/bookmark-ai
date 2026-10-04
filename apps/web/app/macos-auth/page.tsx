@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { unstable_noStore as noStore } from "next/cache";
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { getWebAuth } from "@/lib/server/supabase-auth";
 import { MacAuthStoreUnavailableError, macAuthFlowIdSchema, prepareMacAuthBrowser } from "@/lib/server/macos-auth";
 import { MacAuthConfirmation } from "./MacAuthConfirmation";
 
@@ -18,7 +18,9 @@ export default async function MacAuthPage({
   searchParams: Promise<{ flow?: string }>;
 }) {
   noStore();
-  const { userId, sessionId } = await auth();
+  const identity = await getWebAuth().catch(() => null);
+  const userId = identity?.userId;
+  const sessionId = identity?.sessionId;
   const parsedFlow = macAuthFlowIdSchema.safeParse((await searchParams).flow);
   if (!userId || !sessionId || !parsedFlow.success) return <Terminal title="Invalid sign-in request" />;
 
@@ -41,21 +43,10 @@ export default async function MacAuthPage({
     return <Terminal title={content[0]} detail={content[1]} code={prepared.flow?.verificationCode} />;
   }
 
-  const user = await (async () => {
-    try {
-      const client = await clerkClient();
-      return await client.users.getUser(userId);
-    } catch {
-      console.error("[macos-auth/page] account lookup failed");
-      return null;
-    }
-  })();
-  if (!user) {
-    return <Terminal title="Sign-in service unavailable" detail="Return to the Mac app and try again shortly." />;
-  }
-  const primaryEmail = user.emailAddresses.find((email) => email.id === user.primaryEmailAddressId)?.emailAddress ?? null;
-  const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ");
-  const accountLabel = fullName || primaryEmail || "Signed-in account";
+  const user = identity?.user;
+  if (!user) return <Terminal title="Sign-in service unavailable" />;
+  const primaryEmail = user.email ?? null;
+  const accountLabel = typeof user.user_metadata?.display_name === "string" ? user.user_metadata.display_name : primaryEmail || "Signed-in account";
 
   return (
     <PageShell>

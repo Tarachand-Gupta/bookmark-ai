@@ -168,6 +168,7 @@ final class LiveModel {
     /// A settings failure silently uses the default — live must not break on a
     /// settings hiccup.
     private func resolveBase() async -> URL {
+        if SupabaseConfiguration.isQA { return api.target.liveBaseURL }
         if let baseCache, baseCache.expires > Date() { return baseCache.url }
         let fallback = api.target.liveBaseURL
         do {

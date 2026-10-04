@@ -1,4 +1,6 @@
 import { Platform } from "react-native";
+import { BUILD_VARIANT } from "./lib/auth-config";
+import { nativeEndpoint } from "./lib/native-endpoints";
 import { parseReleasesResponse, type AppReleasesResponse } from "./lib/appUpdate";
 import type {
   AccountResponse,
@@ -53,27 +55,11 @@ export function detectSource(): Pick<
   };
 }
 
-/**
- * API client — same contract as apps/web/lib/api.ts. Two selectable servers:
- * the local Next dev server (iOS simulator reaches the host's localhost
- * directly; the Android emulator sees it as 10.0.2.2) and the deployed API —
- * Next.js route handlers on the web app's Vercel domain. Both require the Clerk
- * bearer token; the local dev server only accepts tokenless requests when
- * started with DEV_OPEN_API=1. EXPO_PUBLIC_API_URL overrides both.
- */
+/** API endpoints are fixed at bundle time. QA requires explicit isolated
+ * API/live overrides and authenticated Supabase requests. */
 export const LOCAL_API_URL =
   Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
-/**
- * `www` is the CANONICAL host and the ONLY correct base for a Bearer client:
- * the apex 308s every path (including `/api/*`) to www, and every HTTP stack —
- * URLSession on iOS, OkHttp on Android, curl, browsers — strips the
- * `Authorization` header when following a redirect to a different origin. The
- * retried request arrives bare, so the server correctly answers
- * `401 {"error":"Missing or invalid bearer token"}` while the app looks signed
- * in. Cookies survive the hop (Clerk's is a `.bookmark-ai.cloud` domain
- * cookie), which is why the web app never saw this and the app did.
- * The extension hit the identical trap once — see apps/extension/.env.production.
- */
+/** Legacy canonical production origin, retained for future non-QA builds. */
 export const PROD_API_URL = "https://www.bookmark-ai.cloud";
 
 /**
@@ -87,22 +73,7 @@ export const PROD_LIVE_URL = "https://live.bookmark-ai.cloud";
 
 export type ServerTarget = "local" | "production";
 
-/**
- * The server target is chosen ONCE at BUILD/BUNDLE time — it is NOT toggleable
- * in-app. This keeps the API, the live server, and the Clerk instance (see
- * src/lib/clerk.ts) locked together to a single environment, so a session
- * minted by one instance is never sent to the other API (which would 401).
- *
- * Rule (evaluated at bundle time):
- *   1. `EXPO_PUBLIC_SERVER_TARGET=local|production` — explicit override, wins.
- *   2. else `__DEV__` — a dev run (Expo Go / dev client / `expo start`) → local,
- *      a release build (`eas build` / production bundle) → production.
- *
- * So: `expo start` / `expo run:*` in dev talks to the local Next dev server +
- * dev Clerk instance; a shipped release build talks to bookmark-ai.cloud + the
- * prod Clerk instance. To point a dev run at prod for testing, run with
- * `EXPO_PUBLIC_SERVER_TARGET=production`.
- */
+/** Fixed at build time; the QA wrapper supplies explicit API/live origins. */
 function resolveServerTarget(): ServerTarget {
   const explicit = process.env.EXPO_PUBLIC_SERVER_TARGET;
   if (explicit === "local" || explicit === "production") return explicit;
@@ -112,12 +83,12 @@ function resolveServerTarget(): ServerTarget {
 export const SERVER_TARGET: ServerTarget = resolveServerTarget();
 
 export function getApiUrl(): string {
-  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
+  if (process.env.EXPO_PUBLIC_API_URL) return nativeEndpoint(process.env.EXPO_PUBLIC_API_URL, Platform.OS);
   return SERVER_TARGET === "production" ? PROD_API_URL : LOCAL_API_URL;
 }
 
 export function getLiveUrl(): string {
-  if (process.env.EXPO_PUBLIC_LIVE_API_URL) return process.env.EXPO_PUBLIC_LIVE_API_URL;
+  if (process.env.EXPO_PUBLIC_LIVE_API_URL) return nativeEndpoint(process.env.EXPO_PUBLIC_LIVE_API_URL, Platform.OS);
   return SERVER_TARGET === "production" ? PROD_LIVE_URL : LOCAL_LIVE_URL;
 }
 
@@ -137,6 +108,9 @@ const LIVE_BASE_TTL_MS = 5 * 60 * 1000;
 let liveBaseCache: { url: string; expires: number } | null = null;
 
 export async function getLiveBaseUrl(): Promise<string> {
+  // QA origins are fixed together by the wrapper; settings cannot reroute
+  // bearer credentials into a saved production/custom server URL.
+  if (BUILD_VARIANT === "supabase-qa") return getLiveUrl();
   const now = Date.now();
   if (liveBaseCache && liveBaseCache.expires > now) {
     return liveBaseCache.url;
@@ -160,11 +134,13 @@ export function resetLiveBaseCache(): void {
   liveBaseCache = null;
 }
 
-/** Clerk session token (registered from the ClerkProvider tree). Mobile
- * normally sends a token; null → unauthenticated request, which the local Next
- * dev server accepts only when run with DEV_OPEN_API=1, and the deployed server
- * always 401s. */
+/** SDK-owned Supabase access token. Provider failures propagate for retry. */
 let authTokenProvider: (() => Promise<string | null>) | null = null;
+let unauthorizedHandler: (() => void) | null = null;
+let accountGeneration = 0;
+export function setUnauthorizedHandler(handler: (() => void) | null): void { unauthorizedHandler = handler; }
+export function reportUnauthorized(): void { unauthorizedHandler?.(); }
+export function resetAccountApiState(): void { accountGeneration++; resetLiveBaseCache(); }
 
 export function setAuthTokenProvider(provider: () => Promise<string | null>): void {
   authTokenProvider = provider;
@@ -174,26 +150,15 @@ export function setAuthTokenProvider(provider: () => Promise<string | null>): vo
  * needs raw headers up front) can attach the same Bearer token as everything
  * else. */
 export async function authHeaders(): Promise<Record<string, string>> {
-  // A THROWING provider is not the same as a tokenless one. Returning null is
-  // legitimate (no session yet, or a local dev server run with DEV_OPEN_API=1),
-  // but a throw means Clerk failed to mint a token — and since we then send the
-  // request bare, the server can only answer "Missing or invalid bearer token",
-  // which reads like an auth bug rather than a token-fetch failure. Control flow
-  // is deliberately unchanged (the live-server probe relies on getting a
-  // response, not an exception); the warning is what makes it diagnosable.
-  const token = await authTokenProvider?.().catch((err: unknown) => {
-    console.warn(
-      `[api] token fetch failed, sending an UNAUTHENTICATED request — expect a 401: ${
-        (err as Error).message
-      }`,
-    );
-    return null;
-  });
+  // Temporary SDK failures must never become anonymous API requests.
+  const generation = accountGeneration;
+  const token = await authTokenProvider?.();
+  if (generation !== accountGeneration) throw new Error("The account changed; please retry this action");
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
 interface RequestOptions {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;
 }
@@ -217,7 +182,7 @@ export class ProvisioningError extends Error {
 }
 
 /**
- * The request authenticated fine, but this Clerk account isn't on the API's
+ * The request authenticated fine, but this account isn't on the API's
  * allowlist (server 403 `{code: "forbidden"}` from
  * apps/web/lib/server/require-user.ts). NOT a "you're signed out / bad token"
  * failure — the user IS signed in, just with an identity that has no access
@@ -257,13 +222,18 @@ async function request<T>(
   path: string,
   { method = "GET", body, signal }: RequestOptions = {},
 ): Promise<T> {
+  const generation = accountGeneration;
+  const headers = await apiHeaders();
+  if (generation !== accountGeneration) throw new Error("The account changed; please retry this action");
   const res = await fetch(`${getApiUrl()}${path}`, {
     method,
     signal,
-    headers: { "content-type": "application/json", ...(await apiHeaders()) },
+    headers: { "content-type": "application/json", ...headers, "cache-control": "no-store" },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
+  if (generation !== accountGeneration) throw new Error("The account changed; please retry this action");
   if (!res.ok) {
+    if (res.status === 401) unauthorizedHandler?.();
     const errBody = (await res.json().catch(() => null)) as {
       error?: string;
       code?: string;
@@ -271,23 +241,43 @@ async function request<T>(
     throw errorFromBody(res.status, errBody);
   }
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  const result = (await res.json()) as T;
+  if (generation !== accountGeneration) throw new Error("The account changed; please retry this action");
+  return result;
 }
+
+export interface AuthSession {
+  id: string; displayName: string; clientType: string | null; browser: string | null;
+  os: string | null; createdAt: string; lastActiveAt: string | null; isCurrent: boolean;
+}
+export function listAuthSessions(): Promise<{ sessions: AuthSession[] }> { return request("/api/auth/sessions"); }
+export function registerAuthSession(input: { clientType: "ios" | "android"; deviceName: string; os: string; appVersion?: string }): Promise<{ session: AuthSession }> {
+  return request("/api/auth/sessions/current", { method: "POST", body: input });
+}
+export function renameAuthSession(id: string, displayName: string): Promise<{ session: AuthSession }> {
+  return request(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: "PATCH", body: { displayName } });
+}
+export function revokeAuthSession(id: string): Promise<void> { return request(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }); }
+export function signOutAuthSessions(scope: "local" | "global" | "others"): Promise<void> { return request("/api/auth/sessions/sign-out", { method: "POST", body: { scope } }); }
 
 /**
  * Permanently delete the signed-in account — the App Store's required
  * "delete your account in-app" primitive (Guideline 5.1.1(v)). Same contract as
  * the web app's `deleteAccount` (apps/web/lib/api.ts): `DELETE /api/account`
- * removes the Clerk user, whose `user.deleted` webhook then tears down the
- * tenant DB. Raw fetch rather than `request()` so the 202/400 status codes can
- * be told apart — 400 is the local/open-mode case (no Clerk user to delete).
+ * accepts the durable provider/tenant deletion job. A202 is acceptance; server
+ * processing may continue. Recent authentication is required server-side.
  */
 export async function deleteAccount(): Promise<void> {
+  const generation = accountGeneration;
+  const headers = await apiHeaders();
+  if (generation !== accountGeneration) throw new Error("The account changed; please retry this action");
   const res = await fetch(`${getApiUrl()}/api/account`, {
     method: "DELETE",
-    headers: await apiHeaders(),
+    headers,
   });
+  if (generation !== accountGeneration) throw new Error("The account changed; please retry this action");
   if (res.status === 202) return;
+  if (res.status === 401) reportUnauthorized();
   if (res.status === 400) {
     throw new Error("Account deletion isn't available in local mode.");
   }
@@ -498,6 +488,7 @@ export async function listLiveDevices(signal?: AbortSignal): Promise<ListLiveRes
     headers: { "content-type": "application/json", ...(await authHeaders()) },
   });
   if (!res.ok) {
+    if (res.status === 401) reportUnauthorized();
     const errBody = (await res.json().catch(() => null)) as {
       error?: string;
       code?: string;

@@ -1,3 +1,5 @@
+import { resolve, sep } from "node:path";
+import { connectPostgres, PostgresMasterRepository, isPostgresMasterRepository, CredentialCipher, assertQaTenantName, type MasterStore } from "@bookmark-ai/db";
 import {
   createDb,
   ensureMasterSchema,
@@ -25,7 +27,7 @@ import { GeminiClient, provisionTenant, type TenantPlatform } from "@bookmark-ai
 
 /** True when per-user tenant routing is enabled. */
 export function isMultiTenant(): boolean {
-  return process.env.MULTI_TENANT === "1";
+  return process.env.AUTH_PROVIDER === "supabase" || process.env.BOOKMARK_BUILD_VARIANT === "supabase-qa" || process.env.MULTI_TENANT === "1";
 }
 
 // ── Shared single-DB context (flag-off; also the open-mode path when flag-on) ──
@@ -43,7 +45,9 @@ const store = globalThis as unknown as {
   __bookmarkApiContext?: ApiContext;
   __bookmarkGemini?: { client: GeminiClient | null };
   __bookmarkMasterContext?: MasterContext | null;
+  __bookmarkMasterReadyFailed?: boolean;
   __bookmarkPlatform?: TenantPlatform | null;
+  __bookmarkPlatformProvider?: string;
   __bookmarkTenantDbs?: Map<string, TenantDb>;
   __bookmarkTenantRecords?: Map<string, { tenant: Tenant; expiresAt: number }>;
 };
@@ -63,6 +67,7 @@ export function getGemini(): GeminiClient | null {
 }
 
 export function getApiContext(): ApiContext {
+  if (process.env.AUTH_PROVIDER === "supabase" || process.env.BOOKMARK_BUILD_VARIANT === "supabase-qa") throw new MultiTenantConfigError("Supabase QA requires isolated tenant routing");
   if (!store.__bookmarkApiContext) {
     const db = createDb(
       // Fallback points at the repo-root local file DB for fully-local setups
@@ -87,7 +92,7 @@ export function getApiContext(): ApiContext {
 // ── Master / control-plane context (flag-on, and webhook provisioning) ──
 
 export interface MasterContext {
-  db: Db;
+  db: MasterStore;
   /** Resolves once the master schema has been ensured (once per process). */
   ready: Promise<void>;
 }
@@ -98,6 +103,21 @@ export interface MasterContext {
  * flag is on or webhook provisioning runs, otherwise null.
  */
 export function getMasterContext(): MasterContext | null {
+  if (process.env.AUTH_PROVIDER === "supabase" || process.env.BOOKMARK_BUILD_VARIANT === "supabase-qa") {
+    if (process.env.AUTH_PROVIDER !== "supabase" || process.env.BOOKMARK_BUILD_VARIANT !== "supabase-qa" || !process.env.SUPABASE_DATABASE_URL || !process.env.MASTER_CREDENTIAL_ENCRYPTION_KEY) throw new MultiTenantConfigError("Supabase master configuration unavailable");
+    if (!store.__bookmarkMasterContext) {
+      const repository = new PostgresMasterRepository(connectPostgres(process.env.SUPABASE_DATABASE_URL,{caBase64:process.env.SUPABASE_DATABASE_CA_BASE64}), new CredentialCipher(process.env.MASTER_CREDENTIAL_ENCRYPTION_KEY));
+      const ready=repository.ready().catch(error=>{store.__bookmarkMasterReadyFailed=true;throw error;});
+      store.__bookmarkMasterContext = { db: repository, ready };
+    }
+    if (!isPostgresMasterRepository(store.__bookmarkMasterContext.db)) throw new MultiTenantConfigError("Mixed master providers");
+    if(store.__bookmarkMasterReadyFailed){
+      store.__bookmarkMasterReadyFailed=false;
+      store.__bookmarkMasterContext.ready=store.__bookmarkMasterContext.db.ready().catch(error=>{store.__bookmarkMasterReadyFailed=true;throw error;});
+    }
+    return store.__bookmarkMasterContext;
+  }
+  if (store.__bookmarkMasterContext && isPostgresMasterRepository(store.__bookmarkMasterContext.db)) throw new MultiTenantConfigError("Mixed master providers");
   if (store.__bookmarkMasterContext === undefined) {
     const url = process.env.MASTER_DATABASE_URL;
     if (!url) {
@@ -125,8 +145,12 @@ export function getMasterContext(): MasterContext | null {
  * defaults to "default".
  */
 export function getPlatform(): TenantPlatform | null {
+  const provider=process.env.AUTH_PROVIDER??'clerk';
+  if(store.__bookmarkPlatformProvider && store.__bookmarkPlatformProvider!==provider)throw new MultiTenantConfigError('Mixed tenant platform providers');
   if (store.__bookmarkPlatform === undefined) {
+    store.__bookmarkPlatformProvider=provider;
     if (process.env.TENANT_PLATFORM === "local" && process.env.NODE_ENV !== "production") {
+      if ((process.env.AUTH_PROVIDER === "supabase" || process.env.BOOKMARK_BUILD_VARIANT === "supabase-qa") && !process.env.TENANT_DB_DIR) throw new MultiTenantConfigError("Supabase QA requires an isolated TENANT_DB_DIR");
       store.__bookmarkPlatform = new LocalFilePlatform(process.env.TENANT_DB_DIR ?? "../../data/tenants");
     } else {
       const apiToken = process.env.TURSO_API_TOKEN;
@@ -149,6 +173,7 @@ export function getPlatform(): TenantPlatform | null {
 
 export interface TenantDb {
   db: Db;
+  dbUrl?: string;
   /** Resolves once ensureSchema has run for this cached client (once per open). */
   ready: Promise<void>;
 }
@@ -205,9 +230,18 @@ function cacheTenant(tenant: Tenant): void {
  * same caching without re-reading the tenant row it already has.
  */
 export function tenantDbFromRecord(tenant: Tenant): TenantDb {
+  if(process.env.AUTH_PROVIDER==='supabase'||process.env.BOOKMARK_BUILD_VARIANT==='supabase-qa'){
+    assertQaTenantName(tenant.dbName);
+    const url=new URL(tenant.dbUrl);
+    if(url.protocol==='file:'){
+      const directory=process.env.TENANT_DB_DIR;
+      if(!directory||!resolve(tenant.dbUrl.slice(5)).startsWith(resolve(directory)+sep))throw new MultiTenantConfigError('Tenant file outside isolated QA directory');
+    }else if(url.protocol!=='libsql:'||!url.hostname.endsWith('.turso.io')||!(url.hostname.startsWith(tenant.dbName+'-')||url.hostname.startsWith(tenant.dbName+'.')))throw new MultiTenantConfigError('Tenant URL outside isolated QA namespace');
+  }
   const cache = tenantCache();
   const hit = cache.get(tenant.clerkUserId);
-  if (hit) return hit;
+  if (hit && (!hit.dbUrl || hit.dbUrl===tenant.dbUrl)) return hit;
+  if(hit){hit.db.close();cache.delete(tenant.clerkUserId);}
 
   // file: URLs (local/dev tenants) take no auth token — mirror createDb.
   const db = createDb(
@@ -216,6 +250,7 @@ export function tenantDbFromRecord(tenant: Tenant): TenantDb {
   );
   const entry: TenantDb = {
     db,
+    dbUrl:tenant.dbUrl,
     ready: ensureSchema(db).catch((err: unknown) => {
       console.error(`[api] ensureSchema failed for tenant ${tenant.clerkUserId}:`, err);
     }),
@@ -263,7 +298,7 @@ const inflightProvision = new Map<string, Promise<Tenant>>();
  * webhook failure/retry and users who predate the flag).
  */
 async function provisionOnce(
-  master: Db,
+  master: MasterStore,
   platform: TenantPlatform,
   userId: string,
 ): Promise<Tenant> {
@@ -305,7 +340,7 @@ export async function getTenantDb(userId: string): Promise<TenantDb> {
   }
   // A warm instance already knows this user's tenant — skip the master DB
   // entirely (its `ready` await included); tenantDbFromRecord is a cache hit too.
-  const warm = cachedTenant(userId);
+  const warm = process.env.AUTH_PROVIDER === "supabase" ? null : cachedTenant(userId);
   if (warm) return tenantDbFromRecord(warm);
 
   const master = getMasterContext();

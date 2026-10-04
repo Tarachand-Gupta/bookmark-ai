@@ -22,6 +22,7 @@ function json(body: unknown, status: number, extra: Record<string, string> = {})
 }
 
 async function POSTHandler(request: NextRequest) {
+  if(process.env.AUTH_PROVIDER === "supabase") return NextResponse.json({error:"Use native Supabase OAuth/PKCE",code:"native-auth-required"},{status:410});
   const ipRate = checkRateLimitWindow(
     `macos-auth:exchange:ip:${trustedClientKey(request.headers)}`,
     600,

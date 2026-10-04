@@ -1,3 +1,4 @@
+import { isMasterRepository, type MasterStore } from "../master-repository";
 import { timingSafeEqual } from "node:crypto";
 import type { Row } from "@libsql/client";
 import type { Db } from "../client";
@@ -60,7 +61,8 @@ function constantTimeEqual(left: string, right: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-export async function createMacAuthFlow(db: Db, input: CreateMacAuthFlow): Promise<void> {
+export async function createMacAuthFlow(db: MasterStore, input: CreateMacAuthFlow): Promise<void> {
+  if (isMasterRepository(db)) return db.createMacAuthFlow(input);
   await db.execute({
     sql: `INSERT INTO macos_auth_flows
           (flow_id, code_challenge, verification_code, state, created_at, expires_at)
@@ -69,7 +71,8 @@ export async function createMacAuthFlow(db: Db, input: CreateMacAuthFlow): Promi
   });
 }
 
-export async function getMacAuthFlow(db: Db, flowId: string): Promise<MacAuthFlow | null> {
+export async function getMacAuthFlow(db: MasterStore, flowId: string): Promise<MacAuthFlow | null> {
+  if (isMasterRepository(db)) return db.getMacAuthFlow(flowId);
   const result = await db.execute({
     sql: "SELECT * FROM macos_auth_flows WHERE flow_id = ?",
     args: [flowId],
@@ -79,13 +82,14 @@ export async function getMacAuthFlow(db: Db, flowId: string): Promise<MacAuthFlo
 
 /** Rotate the browser form's CSRF token without changing authorization state. */
 export async function issueMacAuthCsrf(
-  db: Db,
+  db: MasterStore,
   flowId: string,
   csrfHash: string,
   clerkUserId: string,
   clerkSessionId: string,
   now: number,
 ): Promise<boolean> {
+  if (isMasterRepository(db)) return db.issueMacAuthCsrf(flowId, csrfHash, clerkUserId, clerkSessionId, now);
   const result = await db.execute({
     sql: `UPDATE macos_auth_flows
           SET csrf_hash = ?, csrf_user_id = ?, csrf_session_id = ?
@@ -100,7 +104,7 @@ export async function issueMacAuthCsrf(
  * in the same guarded update, so a form replay cannot change the chosen account.
  */
 export async function authorizeMacAuthFlow(
-  db: Db,
+  db: MasterStore,
   input: {
     flowId: string;
     csrfHash: string;
@@ -110,6 +114,7 @@ export async function authorizeMacAuthFlow(
     now: number;
   },
 ): Promise<AuthorizeMacAuthFlowResult> {
+  if (isMasterRepository(db)) return db.authorizeMacAuthFlow(input);
   const flow = await getMacAuthFlow(db, input.flowId);
   if (!flow || !flow.csrfHash || !constantTimeEqual(flow.csrfHash, input.csrfHash)) return "invalid";
   if (
@@ -149,9 +154,10 @@ export async function authorizeMacAuthFlow(
  * mint a ticket. The post-miss read classifies the losing caller as replayed.
  */
 export async function consumeMacAuthFlow(
-  db: Db,
+  db: MasterStore,
   input: { flowId: string; codeChallenge: string; now: number },
 ): Promise<ConsumeMacAuthFlowResult> {
+  if (isMasterRepository(db)) return db.consumeMacAuthFlow(input);
   const flow = await getMacAuthFlow(db, input.flowId);
   if (!flow || !constantTimeEqual(flow.codeChallenge, input.codeChallenge)) return { status: "invalid" };
   if (flow.expiresAt <= input.now) return { status: "expired" };
@@ -182,10 +188,11 @@ export async function consumeMacAuthFlow(
  * recent second exchange is still recognizable as a replay rather than a miss.
  */
 export async function purgeMacAuthFlows(
-  db: Db,
+  db: MasterStore,
   now: number,
   retentionMs = 24 * 60 * 60 * 1_000,
 ): Promise<number> {
+  if (isMasterRepository(db)) return db.purgeMacAuthFlows(now, retentionMs);
   const cutoff = now - retentionMs;
   const result = await db.execute({
     sql: `DELETE FROM macos_auth_flows

@@ -22,6 +22,11 @@ async function GETHandler() {
     return NextResponse.json({ signedIn: true, name: null, email: null });
   }
 
+  if (gate.identity) {
+    const user=gate.identity.user;
+    const name=typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name : null;
+    return NextResponse.json({signedIn:true,userId:gate.userId,providerUserId:user.id,name,email:user.email??null},{headers:{"cache-control":"no-store"}});
+  }
   const client = await clerkClient();
   const user = await client.users.getUser(gate.userId);
   const name =

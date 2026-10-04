@@ -1,3 +1,4 @@
+import { getWebAuth, isSupabaseAuth, AuthUnavailableError } from "./supabase-auth";
 import { clerkClient } from "@clerk/nextjs/server";
 import { getUserSettings, type Db } from "@bookmark-ai/db";
 
@@ -26,7 +27,13 @@ export const LIVE_TOKEN_EXPIRES_IN_SECONDS = 600;
  */
 export async function mintLiveSessionToken(
   sessionId: string,
+  accessToken?: string,
 ): Promise<{ token: string; expiresInSeconds: number }> {
+  if (isSupabaseAuth()) {
+    const identity = await getWebAuth({allowExtension:true});
+    if (!identity || identity.sessionId !== sessionId) throw new AuthUnavailableError("Session unavailable");
+    return {token: identity.accessToken, expiresInSeconds: Math.max(0, Math.floor(identity.expiresAt-Date.now()/1000))};
+  }
   const client = await clerkClient();
   // No template arg → default session token (standard session JWT).
   const { jwt } = await client.sessions.getToken(sessionId, undefined, LIVE_TOKEN_EXPIRES_IN_SECONDS);
