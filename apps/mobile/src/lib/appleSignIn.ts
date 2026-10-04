@@ -1,4 +1,5 @@
-export const offersAppleSignIn = (os: string): boolean => os === "ios";
+export const appleSignInPresentation = (os: string): "native" | "browser" | null => os === "ios" ? "native" : os === "android" ? "browser" : null;
+export const offersAppleSignIn = (os: string): boolean => appleSignInPresentation(os) !== null;
 export const appleButtonStyle = (dark: boolean): "WHITE" | "BLACK" => dark ? "WHITE" : "BLACK";
 export const hasAppleAccount = (accounts: readonly { provider: string }[]): boolean => accounts.some((account) => account.provider === "apple");
 export type AppleSignInFailure = { kind: "cancelled" } | { kind: "apple" | "provider" | "unknown"; message: string };

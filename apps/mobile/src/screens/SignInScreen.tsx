@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as WebBrowser from "expo-web-browser";
+import { Ionicons } from "@expo/vector-icons";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
-import { appleButtonStyle, offersAppleSignIn } from "../lib/appleSignIn";
+import { appleButtonStyle, appleSignInPresentation, offersAppleSignIn } from "../lib/appleSignIn";
 import { adoptNativeEmailSession, createNativeEmailAuthClient, signInInBrowser } from "../lib/auth";
 import { createEmailAuthFlow, validEmailCode, type EmailMode, type EmailStep } from "../lib/email-auth-flow";
 import { getApiUrl } from "../api";
@@ -25,6 +26,7 @@ export function SignInScreen() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const appleAvailable = OAUTH_ENABLED && offersAppleSignIn(Platform.OS);
+  const applePresentation = appleSignInPresentation(Platform.OS);
   const finishing = false;
   const flow = useRef<ReturnType<typeof createEmailAuthFlow> | null>(null);
   if (!flow.current) flow.current = createEmailAuthFlow(createNativeEmailAuthClient(), `${getApiUrl()}/auth/callback?next=/sign-in`, adoptNativeEmailSession);
@@ -107,7 +109,7 @@ export function SignInScreen() {
             <>
               {OAUTH_ENABLED && (
                 <>
-                  {appleAvailable && (
+                  {appleAvailable && (applePresentation === "native" ? (
                     // Apple's own ASAuthorizationAppleIDButton — Apple-approved
                     // title, logo, colours and localisation for free. It has no
                     // disabled state of its own, so gate touches and dim it
@@ -128,7 +130,23 @@ export function SignInScreen() {
                         style={styles.appleBtn}
                       />
                     </View>
-                  )}
+                  ) : (
+                    <Pressable
+                      onPress={() => void signInWithApple()}
+                      disabled={busy}
+                      accessibilityRole="button"
+                      accessibilityLabel="Continue with Apple"
+                      accessibilityState={{ disabled: busy }}
+                      style={({ pressed }) => [styles.primaryBtn, {
+                        backgroundColor: dark ? "#ffffff" : "#000000",
+                        borderRadius: radius.lg,
+                        opacity: busy ? 0.6 : pressed ? 0.85 : 1,
+                      }]}
+                    >
+                      <Ionicons name="logo-apple" size={20} color={dark ? "#000000" : "#ffffff"} />
+                      <Text style={[styles.primaryBtnText, { color: dark ? "#000000" : "#ffffff" }]}>Continue with Apple</Text>
+                    </Pressable>
+                  ))}
 
                   <Pressable
                     onPress={() => void signInWithGoogle()}
