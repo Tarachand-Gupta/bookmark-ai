@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useTheme } from "next-themes";
 import { THEME_COLOR } from "@/lib/theme-colors";
+import { useThemePreferences } from "./theme-preferences-provider";
 
 /**
  * Keeps `<meta name="theme-color">` in sync with the theme the app is ACTUALLY
@@ -34,30 +35,50 @@ const OWNED_ID = "theme-color-resolved";
 
 export function ThemeColorMeta() {
   const { resolvedTheme } = useTheme();
+  const { preference } = useThemePreferences();
 
   useEffect(() => {
     // Undefined until next-themes has resolved "system" against the OS.
     if (resolvedTheme !== "light" && resolvedTheme !== "dark") return;
-    const color = THEME_COLOR[resolvedTheme];
+    // next-themes applies its root class in an effect; read after that write.
+    const frame = requestAnimationFrame(() => {
+      let color: string = THEME_COLOR[resolvedTheme];
+      // Canvas resolves modern CSS colors to an opaque sRGB color accepted by browser chrome.
+      try {
+        const background = getComputedStyle(document.body).backgroundColor;
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext("2d");
+        if (context) {
+          context.fillStyle = background;
+          context.fillRect(0, 0, 1, 1);
+          const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+          color = `#${[red, green, blue].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+        } else color = background;
+      } catch {
+        /* Keep the existing neutral fallback on unsupported renderers. */
+      }
 
-    for (const tag of document.head.querySelectorAll<HTMLMetaElement>(
-      'meta[name="theme-color"][media]',
-    )) {
-      tag.setAttribute("content", color);
-    }
+      for (const tag of document.head.querySelectorAll<HTMLMetaElement>(
+        'meta[name="theme-color"][media]',
+      )) {
+        tag.setAttribute("content", color);
+      }
 
-    // ...and re-insert an unscoped tag of our own. Some WebKit builds only
-    // re-read theme-color when a tag is added or removed, not when an existing
-    // tag's `content` changes, so replacing the node (rather than editing it) is
-    // what actually makes the chrome repaint. Ours is the tag we own, so
-    // removing it can never fight React's reconciliation of the static ones.
-    document.getElementById(OWNED_ID)?.remove();
-    const meta = document.createElement("meta");
-    meta.id = OWNED_ID;
-    meta.name = "theme-color";
-    meta.content = color;
-    document.head.appendChild(meta);
-  }, [resolvedTheme]);
+      // ...and re-insert an unscoped tag of our own. Some WebKit builds only
+      // re-read theme-color when a tag is added or removed, not when an existing
+      // tag's `content` changes, so replacing the node (rather than editing it) is
+      // what actually makes the chrome repaint. Ours is the tag we own, so
+      // removing it can never fight React's reconciliation of the static ones.
+      document.getElementById(OWNED_ID)?.remove();
+      const meta = document.createElement("meta");
+      meta.id = OWNED_ID;
+      meta.name = "theme-color";
+      meta.content = color;
+      document.head.appendChild(meta);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [resolvedTheme, preference]);
 
   return null;
 }

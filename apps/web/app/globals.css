@@ -6,6 +6,7 @@
 
 /* Keyframes for the shared demo animations (landing page + onboarding tour). */
 @import "@bookmark-ai/ui/demos/demos.css";
+@import "../components/theme-picker.css";
 
 /* Clerk components (UserButton, sign-in modal) themed to match shadcn. */
 

@@ -3,6 +3,9 @@ import type { Metadata, Viewport } from "next";
 import { ThemeProvider } from "next-themes";
 import { ThemeColorMeta } from "@/components/theme-color-meta";
 import { THEME_COLOR } from "@/lib/theme-colors";
+import { ThemePreferencesProvider } from "@/components/theme-preferences-provider";
+import { ThemePicker } from "@/components/theme-picker";
+import { themeBootstrapScript } from "@/lib/theme-picker/bootstrap";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -64,6 +67,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript() }} />
+      </head>
       <body className="antialiased">
         {/* Class-based dark mode; Clerk's shadcn theme reads the same CSS
             variables, so its components follow the toggle automatically. */}
@@ -77,9 +83,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               chrome (Android Chrome's toolbar, an installed Android PWA, iOS
               Safari's tint) follows a MANUAL light/dark override, which a
               prefers-color-scheme media query cannot see. */}
-          <ThemeColorMeta />
-          {/* shadcn theme keeps Clerk's UserButton + sign-in modal on-brand. */}
-          <AuthProvider>{children}</AuthProvider>
+          <ThemePreferencesProvider>
+            <ThemeColorMeta />
+            {/* shadcn theme keeps Clerk's UserButton + sign-in modal on-brand. */}
+            <AuthProvider>{children}</AuthProvider>
+            <ThemePicker />
+          </ThemePreferencesProvider>
         </ThemeProvider>
       </body>
     </html>

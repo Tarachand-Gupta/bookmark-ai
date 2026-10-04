@@ -27,7 +27,14 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ObservabilityResponse } from "@bookmark-ai/types";
-import { deleteAccount, exportData, getAccount, getMe, getObservability, importData } from "@/lib/api";
+import {
+  deleteAccount,
+  exportData,
+  getAccount,
+  getMe,
+  getObservability,
+  importData,
+} from "@/lib/api";
 import { DEFAULT_PLAN, PLAN_FEATURES, type PlanId } from "@/lib/plan";
 import { cn } from "@/lib/utils";
 import { AiSetupCard } from "./ai-setup-card";
@@ -220,7 +227,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
               <SettingsSection
                 title="AI"
                 icon={Sparkles}
-                description="Chat and search-by-meaning run on included free credits. Bring your own provider key to run chat unmetered on the model you pick."
+                description="Choose included AI or connect your own provider for chat. Search by meaning is included."
               >
                 {/* The card draws its own border/padding — it's the pane's single
                     block, so it doesn't need a SettingsGroup around it. */}
@@ -246,9 +253,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
               <ObservabilitySection initial={observability} />
             )}
 
-            {section === "account" && (
-              <AccountSection onRequestClose={() => onOpenChange(false)} />
-            )}
+            {section === "account" && <AccountSection onRequestClose={() => onOpenChange(false)} />}
           </div>
         </div>
       </DialogContent>
@@ -351,9 +356,7 @@ function DataSection() {
             </>
           )}
         </Button>
-        {exportMsg && (
-          <p className="text-sm text-emerald-600 dark:text-emerald-500">{exportMsg}</p>
-        )}
+        {exportMsg && <p className="text-sm text-emerald-600 dark:text-emerald-500">{exportMsg}</p>}
         {exportError && <p className="text-sm text-destructive">{exportError}</p>}
       </SettingsGroup>
 
@@ -388,9 +391,7 @@ function DataSection() {
             </>
           )}
         </Button>
-        {importMsg && (
-          <p className="text-sm text-emerald-600 dark:text-emerald-500">{importMsg}</p>
-        )}
+        {importMsg && <p className="text-sm text-emerald-600 dark:text-emerald-500">{importMsg}</p>}
         {importError && <p className="text-sm text-destructive">{importError}</p>}
       </SettingsGroup>
     </SettingsSection>
@@ -534,9 +535,7 @@ function PlanGroup() {
           ) : (
             <Badge>{info.name} plan</Badge>
           )}
-          <span className="text-xs text-muted-foreground">
-            ${info.price} · everything, today
-          </span>
+          <span className="text-xs text-muted-foreground">${info.price} · everything, today</span>
         </div>
         <ul className="mt-3 grid gap-2 sm:grid-cols-2">
           {info.features.map((f) => (

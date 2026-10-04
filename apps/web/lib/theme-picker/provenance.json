@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/jnsahaj/tweakcn",
+  "website": "https://tweakcn.com/editor/theme",
+  "revision": "a3b47b37cba97dd637de517aab52c45ec0f83456",
+  "commitDate": "2026-09-03T17:06:07Z",
+  "source": "utils/theme-presets.ts",
+  "defaultsSource": "config/theme.ts",
+  "mergeSource": "utils/theme-preset-helper.ts",
+  "license": "Apache-2.0",
+  "presetCount": 42,
+  "dropdownCountIncludingDefault": 43,
+  "sourceSha256": "d333858a5a4f1e2fd615f1b73709f552e5a84c12882196456dfc48e1f09376a8",
+  "derivation": "complete-presets.json uses upstream defaults and exact upstream light/dark spread order; no color conversion, font stripping or shadow generation performed",
+  "noticeFilePresent": false
+}

@@ -80,6 +80,7 @@ export function ChatPanel({ open, children }: { open: boolean; children: React.R
 
   return (
     <aside
+      data-theme-picker-chat={dock}
       className={modeClass}
       style={dock === "side" ? { width: dockWidth, top: HEADER_PX, bottom: 0 } : undefined}
     >

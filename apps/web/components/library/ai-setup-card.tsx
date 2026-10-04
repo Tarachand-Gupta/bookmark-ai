@@ -6,7 +6,7 @@ import type { AiModel, AiProvider, AiUsage, UserSettings } from "@bookmark-ai/ty
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
-import { SegmentedControl } from "@/components/ui/segmented-control";
+import { ownProviderRequest } from "@/lib/ai-setup";
 import {
   Select,
   SelectContent,
@@ -18,7 +18,6 @@ import { cn } from "@/lib/utils";
 import { fetchAiModels, getSettings, updateSettings } from "@/lib/api";
 import {
   AI_MODE_COPY,
-  AI_MODE_OPTIONS,
   type AiMode,
   providerNeedsModel,
   resolveAiMode,
@@ -47,7 +46,7 @@ export interface AiSetupCardProps {
   /** When set, renders a dismiss (×) button; used on the chat surface. */
   onDismiss?: () => void;
   /**
-   * Start with the "Use your own AI provider" section EXPANDED. The chat's
+   * Start on the own-provider setup panel. The chat's
    * free-limit wall passes this: at that point the free credits are gone, so the
    * secondary option is the only one left and hiding it behind a chevron would be
    * a dead end.
@@ -56,23 +55,8 @@ export interface AiSetupCardProps {
   className?: string;
 }
 
-/**
- * The one AI-setup surface, used in three places: the onboarding tour's AI step,
- * Settings → AI, and the chat's free-limit wall.
- *
- * MODE IS EXPLICIT (CONTRACT §1). The card leads with a two-way switch —
- * "Included free AI" | "Your own key" — that persists `aiMode` and NOTHING
- * else: switching never touches the stored key, provider or model. The saved
- * key is summarised in both modes ("Saved key ••••1234 · Gemini · model"), and
- * the only thing that ever sends `apiKey: ""` is the separate, confirmed
- * "Remove key…" action. Saving a new key flips the mode to "own" (the server
- * does that); removing it flips back to "included".
- *
- * Under the switch, the active mode explains itself: the free weekly meter
- * (plus the "your key stays saved, we fall back to it" note when a key exists),
- * or the own-key summary with the free meter tucked into a footnote. The
- * provider/key/model form stays a collapsed secondary section.
- */
+/** Shared AI source settings for onboarding, Settings, and the chat limit wall.
+ * The selected panel is a draft; only successful server responses change the active source. */
 export function AiSetupCard({
   onSaved,
   onDismiss,
@@ -83,7 +67,9 @@ export function AiSetupCard({
   const [aiMode, setAiMode] = useState<AiMode>("included");
   const [modeSaving, setModeSaving] = useState(false);
   const [modeError, setModeError] = useState<string | null>(null);
-  const [modeHint, setModeHint] = useState<string | null>(null);
+  const [selectedSource, setSelectedSource] = useState<AiMode>(
+    defaultProviderOpen ? "own" : "included",
+  );
 
   // ── Provider form ──
   const [provider, setProvider] = useState<AiProvider>("google");
@@ -109,6 +95,8 @@ export function AiSetupCard({
   const [testing, setTesting] = useState(false);
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+  const [verifiedDraft, setVerifiedDraft] = useState<string | null>(null);
+  const [rejectedDraft, setRejectedDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -119,10 +107,7 @@ export function AiSetupCard({
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [removedMsg, setRemovedMsg] = useState<string | null>(null);
 
-  // Which of the secondary sections is expanded. The provider form starts
-  // closed unless the caller says otherwise; the credits footnote only exists
-  // in own-key mode and starts closed there.
-  const [providerOpen, setProviderOpen] = useState(!!defaultProviderOpen);
+  // Optional credit details live inside the own-provider panel.
   const [creditsOpen, setCreditsOpen] = useState(false);
 
   /** Everything the GET/PUT response carries — used on load and after Save. */
@@ -150,7 +135,10 @@ export function AiSetupCard({
     let cancelled = false;
     getSettings()
       .then(({ settings }) => {
-        if (!cancelled) applyAll(settings);
+        if (!cancelled) {
+          applyAll(settings);
+          if (!defaultProviderOpen) setSelectedSource(resolveAiMode(settings));
+        }
       })
       .catch((e: unknown) => {
         if (!cancelled) setLoadError((e as Error).message);
@@ -176,6 +164,10 @@ export function AiSetupCard({
   // Save is complete only with a model for providers that need one; Google's
   // server default (gemini-3.8-flash) is the one exception.
   const needsModel = providerNeedsModel(provider) && !model.trim();
+  const draftIdentity = JSON.stringify([provider, baseUrl.trim(), apiKeyInput.trim()]);
+  const keyVerified = verifiedDraft === draftIdentity;
+  const keyRejected = rejectedDraft === draftIdentity;
+  const verificationNeeded = !!apiKeyInput.trim() && provider !== "custom" && !keyVerified;
   const keyIncomplete = apiKeySet && aiMode === "own" && !ownKeyReady;
 
   /** "Saved key ••••1234 · Gemini (Google) · gemini-3.8-flash" — a Google key
@@ -190,24 +182,19 @@ export function AiSetupCard({
   const switchMode = async (next: AiMode) => {
     if (next === aiMode || modeSaving) return;
     setModeError(null);
-    setModeHint(null);
     setRemovedMsg(null);
     if (next === "own" && !apiKeySet) {
       // The server would 400 ("Add an API key before switching…"); open the form
       // instead and let a saved key do the switching (the PUT sets the mode).
-      setProviderOpen(true);
-      setModeHint("Add an API key below to switch — saving a key switches to it automatically.");
+      setSelectedSource("own");
       return;
     }
-    const previous = aiMode;
-    setAiMode(next);
     setModeSaving(true);
     try {
       const { settings } = await updateSettings({ aiMode: next });
       applyStatus(settings);
       onSaved?.();
     } catch (e: unknown) {
-      setAiMode(previous);
       setModeError((e as Error).message);
     } finally {
       setModeSaving(false);
@@ -253,8 +240,13 @@ export function AiSetupCard({
           ? [{ id: model, label: model }, ...found]
           : found;
       setModels(merged);
-      setTestMsg(`${found.length} model${found.length === 1 ? "" : "s"} found`);
+      setVerifiedDraft(draftIdentity);
+      setRejectedDraft(null);
+      setTestMsg(
+        `Connection verified · ${found.length} model${found.length === 1 ? "" : "s"} found`,
+      );
     } catch (e: unknown) {
+      if ((e as Error).message === "Invalid API key") setRejectedDraft(draftIdentity);
       setTestError((e as Error).message);
     } finally {
       setTesting(false);
@@ -267,17 +259,18 @@ export function AiSetupCard({
     setSaveError(null);
     setRemovedMsg(null);
     try {
-      const typed = apiKeyInput.trim();
-      const providerChanged = provider !== loadedProvider;
-      const { settings } = await updateSettings({
+      const request = ownProviderRequest({
         provider,
-        apiKey: typed || undefined,
-        baseUrl: provider === "custom" ? baseUrl.trim() : undefined,
-        // A blank model is an EXPLICIT clear only when the provider changed (the
-        // stored model id belongs to the old provider); with the same provider,
-        // absent = keep whatever is stored.
-        model: model ? model : providerChanged ? "" : undefined,
+        loadedProvider,
+        apiKey: apiKeyInput,
+        apiKeySet,
+        keyVerified,
+        keyRejected,
+        baseUrl,
+        model,
       });
+      if (!request) throw new Error("Add a key and complete the provider setup before using it.");
+      const { settings } = await updateSettings(request);
       applyAll(settings);
       setApiKeyInput("");
       setSaved(true);
@@ -297,6 +290,7 @@ export function AiSetupCard({
       const last4 = apiKeyLast4;
       const { settings } = await updateSettings({ apiKey: "" });
       applyStatus(settings);
+      setSelectedSource("included");
       setApiKeyInput("");
       setConfirmRemove(false);
       setRemovedMsg(`Key ••••${last4 ?? "????"} removed. Chat runs on the included free AI.`);
@@ -317,7 +311,7 @@ export function AiSetupCard({
     <div
       className={cn(
         "mt-2 rounded-lg border p-3",
-        ownActive ? "border-emerald-500/30 bg-emerald-500/[0.06]" : "bg-muted/30",
+        ownActive && ownKeyReady ? "border-emerald-500/30 bg-emerald-500/[0.06]" : "bg-muted/30",
       )}
     >
       <div className="flex items-start gap-2">
@@ -329,7 +323,9 @@ export function AiSetupCard({
           <KeyRound className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         )}
         <div className="min-w-0 flex-1">
-          {ownActive && <p className="text-sm font-medium leading-tight">Using your own key</p>}
+          <p className="text-sm font-medium leading-tight">
+            {ownActive && ownKeyReady ? "Using your own provider" : "Saved provider"}
+          </p>
           <p
             className={cn(
               "text-xs [overflow-wrap:anywhere]",
@@ -339,7 +335,11 @@ export function AiSetupCard({
             {keySummary}
           </p>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            {ownActive ? AI_MODE_COPY.own : AI_MODE_COPY.includedWithKey}
+            {ownActive && ownKeyReady
+              ? AI_MODE_COPY.own
+              : ownActive
+                ? AI_MODE_COPY.ownKeyIncomplete
+                : "Configured, not active. Save and use this provider to switch chat."}
           </p>
         </div>
         {!confirmRemove && (
@@ -388,11 +388,15 @@ export function AiSetupCard({
           </Button>
         </div>
       )}
-      {removeError && <p className="mt-2 text-xs text-destructive">{removeError}</p>}
+      {removeError && (
+        <p role="alert" className="mt-2 text-xs text-destructive">
+          {removeError}
+        </p>
+      )}
     </div>
   );
 
-  // The provider/key/model form — a collapsible secondary section.
+  // Provider setup is shown only in the selected own-provider panel.
   const providerForm = loading ? (
     <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
       <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -418,7 +422,7 @@ export function AiSetupCard({
           type="button"
           size="sm"
           variant={openRouterActive ? "secondary" : "outline"}
-          className="mt-2"
+          className="mt-2 min-h-11"
           onClick={useOpenRouter}
         >
           Use OpenRouter
@@ -430,7 +434,7 @@ export function AiSetupCard({
           Provider
         </label>
         <Select value={provider} onValueChange={changeProvider}>
-          <SelectTrigger id="ai-setup-provider" className="w-full">
+          <SelectTrigger id="ai-setup-provider" className="min-h-11 w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -449,6 +453,7 @@ export function AiSetupCard({
             API base URL
           </label>
           <Input
+            className="min-h-11 text-base sm:text-sm"
             id="ai-setup-url"
             type="url"
             inputMode="url"
@@ -476,7 +481,9 @@ export function AiSetupCard({
             setSaved(false);
           }}
           placeholder={
-            showSavedHint ? `Saved (••••${apiKeyLast4}) — paste a new key to replace it` : "Paste your API key"
+            showSavedHint
+              ? `Saved (••••${apiKeyLast4}) — paste a new key to replace it`
+              : "Paste your API key"
           }
         />
         {apiKeySet && provider !== loadedProvider && (
@@ -492,6 +499,7 @@ export function AiSetupCard({
           type="button"
           variant="outline"
           size="sm"
+          className="min-h-11"
           onClick={test}
           disabled={testing || !hasKeySource || customNeedsUrl}
         >
@@ -500,14 +508,20 @@ export function AiSetupCard({
               <Loader2 className="animate-spin" aria-hidden />
               Verifying…
             </>
+          ) : provider === "custom" ? (
+            "Check connection & list models"
           ) : (
             "Verify key & list models"
           )}
         </Button>
-        {testMsg && (
+        {testMsg && keyVerified && (
           <span className="text-xs text-emerald-600 dark:text-emerald-500">{testMsg}</span>
         )}
-        {testError && <span className="text-xs text-destructive">{testError}</span>}
+        {testError && (
+          <span role="alert" className="text-xs text-destructive">
+            {testError}
+          </span>
+        )}
       </div>
 
       {/* Always rendered, disabled until a test returns a list: hiding the field
@@ -518,8 +532,32 @@ export function AiSetupCard({
         <label htmlFor="ai-setup-model" className="text-xs font-medium">
           Default model
         </label>
-        <Select value={model} onValueChange={setModel} disabled={models.length === 0}>
-          <SelectTrigger id="ai-setup-model" className="w-full" aria-invalid={needsModel || undefined}>
+        {provider === "custom" && (
+          <Input
+            id="ai-setup-model-manual"
+            aria-label="Model ID"
+            className="min-h-11 text-base sm:text-sm"
+            value={model}
+            onChange={(event) => {
+              setModel(event.target.value);
+              setSaved(false);
+            }}
+            placeholder="Enter a model ID, or select one below"
+          />
+        )}
+        <Select
+          value={model}
+          onValueChange={(value) => {
+            setModel(value);
+            setSaved(false);
+          }}
+          disabled={models.length === 0}
+        >
+          <SelectTrigger
+            id="ai-setup-model"
+            className="min-h-11 w-full"
+            aria-invalid={needsModel || undefined}
+          >
             <SelectValue
               placeholder={models.length ? "Select a model" : "Verify the key to list models"}
             />
@@ -538,8 +576,16 @@ export function AiSetupCard({
         <Button
           type="button"
           size="sm"
+          className="min-h-11"
           onClick={save}
-          disabled={saving || customNeedsUrl || needsModel}
+          disabled={
+            saving ||
+            !hasKeySource ||
+            customNeedsUrl ||
+            needsModel ||
+            verificationNeeded ||
+            keyRejected
+          }
           title={needsModel ? `${providerLabel} needs a model before saving` : undefined}
         >
           {saving ? (
@@ -547,17 +593,34 @@ export function AiSetupCard({
               <Loader2 className="animate-spin" aria-hidden />
               Saving…
             </>
+          ) : aiMode === "own" ? (
+            "Save changes"
           ) : (
-            "Save"
+            "Save and use provider"
           )}
         </Button>
         {saved && (
           <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-500">
             <Check className="size-3.5" aria-hidden />
-            Saved
+            Saved — provider active
           </span>
         )}
-        {saveError && <span className="text-xs text-destructive">{saveError}</span>}
+        {saveError && (
+          <span role="alert" className="text-xs text-destructive">
+            {saveError}
+          </span>
+        )}
+        {verificationNeeded && (
+          <p className="text-xs text-muted-foreground">
+            Verify this new key before saving and using it.
+          </p>
+        )}
+        {provider === "custom" && apiKeyInput.trim() && !keyVerified && !keyRejected && (
+          <p className="text-xs text-muted-foreground">
+            Connection unverified. If this endpoint does not list models, enter its model ID before
+            saving.
+          </p>
+        )}
         {needsModel ? (
           <span className="text-xs text-muted-foreground">
             {providerLabel} needs a model — verify the key, then pick one.
@@ -565,7 +628,9 @@ export function AiSetupCard({
         ) : (
           !apiKeySet &&
           !saved && (
-            <span className="text-xs text-muted-foreground">Saving a key switches chat to it.</span>
+            <span className="text-xs text-muted-foreground">
+              Your provider is used only after a successful save.
+            </span>
           )
         )}
       </div>
@@ -579,105 +644,145 @@ export function AiSetupCard({
           type="button"
           onClick={onDismiss}
           aria-label="Dismiss"
-          className="cursor-pointer absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted"
+          className="cursor-pointer absolute right-2 top-2 z-10 flex size-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted"
         >
           <X className="size-4" aria-hidden />
         </button>
       )}
 
-      {/* ── The mode switch leads: what does chat run on? ── */}
-      <div className={cn("space-y-2", onDismiss && "pr-8")}>
-        <p id="ai-mode-label" className="text-xs font-medium text-muted-foreground">
-          Chat runs on
-        </p>
-        <SegmentedControl
-          fullWidth
-          value={aiMode}
-          options={AI_MODE_OPTIONS}
-          onChange={(next) => void switchMode(next)}
-          ariaLabel="AI mode"
-          disabled={loading || modeSaving}
-        />
-        {modeHint && <p className="text-xs leading-relaxed text-muted-foreground">{modeHint}</p>}
-        {modeError && <p className="text-xs text-destructive">{modeError}</p>}
-        {removedMsg && (
-          <p className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-500">
-            <Check className="size-3.5" aria-hidden />
-            {removedMsg}
-          </p>
-        )}
+      <div className={cn("space-y-3", onDismiss && "pr-8")}>
+        <p className="text-sm font-medium">Choose what powers chat</p>
+        <div role="group" aria-label="Chat AI source" className="grid gap-2 sm:grid-cols-2">
+          {(
+            [
+              {
+                value: "included",
+                title: "Included AI",
+                description: "Free weekly credits · no setup",
+              },
+              {
+                value: "own",
+                title: "Your own provider",
+                description: "Your key, provider and model",
+              },
+            ] as const
+          ).map(({ value, title, description }) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={selectedSource === value}
+              disabled={loading || !!loadError || modeSaving || saving || removing || testing}
+              onClick={() => {
+                setSelectedSource(value);
+                setModeError(null);
+                setSaveError(null);
+              }}
+              className={cn(
+                "min-h-16 rounded-lg border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                selectedSource === value ? "border-primary bg-primary/5" : "hover:bg-muted/50",
+              )}
+            >
+              <span className="flex items-center justify-between gap-2 text-sm font-medium">
+                {title}
+                {selectedSource === value && <Check className="size-4 shrink-0" aria-hidden />}
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">{description}</span>
+            </button>
+          ))}
+        </div>
       </div>
-
-      {/* ── The active mode explains itself ── */}
-      <div className="mt-3">
-        {aiMode === "own" ? (
+      <p role="status" className="mt-3 text-xs leading-relaxed text-muted-foreground">
+        {loading
+          ? "Loading active source…"
+          : loadError
+            ? "Active source unavailable."
+            : modeSaving || saving
+              ? "Saving source…"
+              : aiMode === "own" && ownKeyReady
+                ? `Active: your provider · ${savedProviderLabel}${savedModelLabel ? ` · ${savedModelLabel}` : ""}`
+                : aiMode === "own"
+                  ? "Your saved provider needs a model. Chat currently falls back to included AI."
+                  : "Active: included AI"}
+      </p>
+      {loadError && (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          Couldn’t load settings: {loadError}. Reopen this panel to retry.
+        </p>
+      )}
+      {modeError && (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          {modeError}
+        </p>
+      )}
+      {removedMsg && (
+        <p role="status" className="mt-3 text-xs text-muted-foreground">
+          {removedMsg}
+        </p>
+      )}
+      <fieldset
+        disabled={loading || !!loadError || modeSaving || saving || removing || testing}
+        className="mt-4 min-w-0 space-y-4"
+      >
+        {selectedSource === "included" ? (
           <>
-            {keySummaryBlock}
-            {keyIncomplete && (
-              <div
-                role="alert"
-                className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3"
-              >
-                <AlertTriangle
-                  className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-500"
-                  aria-hidden
-                />
-                <p className="min-w-0 flex-1 text-xs leading-relaxed">
-                  {AI_MODE_COPY.ownKeyIncomplete}{" "}
-                  <button
-                    type="button"
-                    onClick={() => setProviderOpen(true)}
-                    className="cursor-pointer font-medium underline-offset-2 hover:underline"
-                  >
-                    Pick a model
-                  </button>
-                </p>
-              </div>
+            <AiCreditsCallout
+              usage={aiUsage}
+              loading={loading}
+              dim={aiMode === "own" && ownKeyReady}
+            />
+            {apiKeySet && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {AI_MODE_COPY.includedWithKey}
+              </p>
             )}
-            <Collapsible open={creditsOpen} onOpenChange={setCreditsOpen} className="mt-2">
-              <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/60">
-                <span className="text-sm font-medium">Free AI credits</span>
-                <span className="text-xs text-muted-foreground">Unused while your key is active</span>
-                <ChevronDown
-                  className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
-                  aria-hidden
-                />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="px-3 pb-1 pt-3">
-                <AiCreditsMeter usage={aiUsage} loading={loading} dim />
-              </CollapsibleContent>
-            </Collapsible>
+            {aiMode !== "included" && (
+              <Button
+                type="button"
+                className="min-h-11"
+                onClick={() => void switchMode("included")}
+              >
+                {modeSaving ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                    Switching…
+                  </>
+                ) : (
+                  "Use included AI"
+                )}
+              </Button>
+            )}
           </>
         ) : (
           <>
-            <AiCreditsCallout usage={aiUsage} loading={loading} />
             {keySummaryBlock}
+            {keyIncomplete && (
+              <p role="alert" className="flex items-start gap-2 text-xs text-muted-foreground">
+                <AlertTriangle className="size-4 shrink-0" aria-hidden />
+                {AI_MODE_COPY.ownKeyIncomplete}
+              </p>
+            )}
+            {providerForm}
+            <Collapsible open={creditsOpen} onOpenChange={setCreditsOpen}>
+              <CollapsibleTrigger
+                type="button"
+                className="group flex min-h-11 w-full items-center gap-2 rounded-lg border px-3 py-2 text-left hover:bg-muted/60"
+              >
+                <span className="text-xs font-medium">Included credits</span>
+                <ChevronDown
+                  className="ml-auto size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180"
+                  aria-hidden
+                />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="px-3 pt-3">
+                <AiCreditsMeter usage={aiUsage} loading={loading} dim />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Chat does not use these credits while a complete own-provider setup is active.
+                </p>
+              </CollapsibleContent>
+            </Collapsible>
           </>
         )}
-      </div>
-
-      {/* Outside the collapsible on purpose: a swallowed load error is invisible,
-          and it must be readable even while the provider section is closed. */}
-      {loadError && (
-        <p className="mt-3 text-xs leading-relaxed text-destructive">
-          Couldn’t load settings: {loadError}
-        </p>
-      )}
-
-      <Collapsible open={providerOpen} onOpenChange={setProviderOpen} className="mt-3">
-        <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/60">
-          <KeyRound className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-          <span className="text-sm font-medium">
-            {apiKeySet ? "Change provider, key or model" : "Use your own AI provider"}
-          </span>
-          {!apiKeySet && <span className="text-xs text-muted-foreground">Optional</span>}
-          <ChevronDown
-            className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
-            aria-hidden
-          />
-        </CollapsibleTrigger>
-        <CollapsibleContent className="pt-3">{providerForm}</CollapsibleContent>
-      </Collapsible>
+      </fieldset>
 
       {/* Embeddings for search-by-meaning are served for free for now — no key needed. */}
       <p className="mt-3 border-t pt-3 text-xs leading-relaxed text-muted-foreground">

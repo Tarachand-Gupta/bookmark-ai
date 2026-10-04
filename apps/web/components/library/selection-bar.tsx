@@ -69,6 +69,7 @@ export function SelectionBar({
   return createPortal(
     <div
       role="region"
+      data-theme-picker-selection="active"
       aria-label={`${count} ${noun}${count === 1 ? "" : "s"} selected`}
       // The sidebar animates its width over 200ms/linear — match it so the bar
       // slides with the layout instead of snapping to the new centre.
@@ -79,9 +80,7 @@ export function SelectionBar({
       }}
     >
       <div className="pointer-events-auto flex min-w-0 max-w-full items-center gap-1 rounded-full border bg-popover/95 p-1.5 pl-4 text-popover-foreground shadow-lg backdrop-blur duration-200 animate-in fade-in slide-in-from-bottom-4">
-        <span className="whitespace-nowrap text-sm font-medium tabular-nums">
-          {count} selected
-        </span>
+        <span className="whitespace-nowrap text-sm font-medium tabular-nums">{count} selected</span>
         <Separator orientation="vertical" className="mx-1 !h-5" />
         <Button
           variant="ghost"
