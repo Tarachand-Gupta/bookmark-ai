@@ -2,6 +2,7 @@ import { withRequestLogging } from "@/lib/server/observability/request-logging";
 import { clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/server/require-user";
+import { profileName } from "@/lib/auth-policy";
 
 /**
  * GET /api/me — the current signed-in identity, for the cookie-credentialed auth
@@ -24,7 +25,7 @@ async function GETHandler() {
 
   if (gate.identity) {
     const user=gate.identity.user;
-    const name=typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name : null;
+    const name=profileName(user.user_metadata) || null;
     return NextResponse.json({signedIn:true,userId:gate.userId,providerUserId:user.id,name,email:user.email??null},{headers:{"cache-control":"no-store"}});
   }
   const client = await clerkClient();

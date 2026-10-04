@@ -5,7 +5,7 @@ import { DEFAULT_WEB_URL, getWebBaseUrl } from "@/lib/api";
 import { PerfTrace } from "@/lib/perf";
 import { requestSaveBookmark, requestSaveSession } from "@/lib/messages";
 import { openApp, openDeviceSettings } from "./nav";
-import { SIGNED_OUT, useAuth } from "./use-auth";
+import { SIGNED_OUT, useAuth, degradedAuthNote } from "./use-auth";
 import { useLive } from "./use-live";
 import { BentoGrid } from "./components/BentoGrid";
 import { CompactStrip } from "./components/CompactStrip";
@@ -29,8 +29,7 @@ const AUTO_CLOSE_MS = 1200;
  * request is bounded at 20s (lib/net.ts), so this is the only feedback in between. */
 const SLOW_SAVE_MS = 1500;
 
-const DEGRADED_NOTE =
-  "Couldn't reach the extension background. Sign in on the website — your session still syncs back here.";
+const DEGRADED_NOTE = degradedAuthNote(import.meta.env.MODE === "supabase-qa");
 
 type Status =
   | "idle"

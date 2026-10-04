@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { displayLabel, nativeAppleExchange, nativeCallback } from "./auth-policy";
+import { displayLabel, nativeAppleExchange, nativeCallback, profileName, profileNameUpdate } from "./auth-policy";
 
 const redirect = "bookmarkai-supabase-qa://sso-callback", now = 1_000_000;
 const pending = { state: "random-attempt", createdAt: now - 100, flow: "google" as const };
@@ -29,4 +29,11 @@ test("Apple state mismatch or absent identity token never reaches Supabase", asy
 test("device labels strip controls and stay bounded", () => {
   assert.equal(displayLabel("  iPad\nTara\0 ", "device"), "iPadTara");
   assert.equal(displayLabel(" ", "device"), "device"); assert.equal(displayLabel("x".repeat(200), "device").length, 80);
+});
+test("profile name changes replace both historical metadata fields consistently", () => {
+  assert.equal(profileName({ display_name: "Legacy name" }), "Legacy name");
+  const previous = { full_name: "Provider name", display_name: "Old web name" };
+  const changed = { ...previous, ...profileNameUpdate("  New name\n ") };
+  assert.equal(profileName(changed), "New name"); assert.equal(changed.display_name, "New name");
+  assert.equal(profileName({ full_name: "", display_name: "Fallback" }), "Fallback");
 });

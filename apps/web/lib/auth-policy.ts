@@ -18,3 +18,12 @@ export function displayName(value: unknown): string {
         .slice(0, 80)
     : "";
 }
+
+/** full_name is canonical across clients; display_name supports earlier QA metadata. */
+export function profileName(metadata: Record<string, unknown> | undefined): string {
+  return displayName(metadata?.full_name) || displayName(metadata?.display_name);
+}
+export function profileNameUpdate(value: unknown) {
+  const name = displayName(value);
+  return { full_name: name, display_name: name };
+}

@@ -28,6 +28,12 @@ const BOOT_TIMEOUT_MS = 5000;
 
 export const SIGNED_OUT: UserInfo = { signedIn: false, name: null, email: null };
 
+export function degradedAuthNote(supabase: boolean): string {
+  return supabase
+    ? "Couldn't reach the extension background. Reopen the popup to try again."
+    : "Couldn't reach the extension background. Sign in on the website — your session still syncs back here.";
+}
+
 /** Popup-side probe of the background page's liveness — the decisive signal for
  * "does Safari actually run the MV2 background script?". `getBackgroundPage` is
  * MV2-only (absent on MV3/Chrome) and may be disallowed on Safari, so it's fully
@@ -80,6 +86,7 @@ export function useAuth(): AuthState {
       void requestUser().then((info) => {
         if (!alive) return;
         responded = true;
+        setDegraded(false);
         diag("popup", "auth resolved", { signedIn: info.signedIn });
         setAuth(info);
       });
@@ -110,13 +117,19 @@ export function useAuth(): AuthState {
   // sign-in flips it true (or while auth is still loading/undefined).
   useEffect(() => {
     if (!auth || auth.signedIn) return;
+    let alive = true;
     const id = window.setInterval(() => {
       void requestUser().then((info) => {
+        if (!alive) return;
         diag("popup", "poll", { signedIn: info.signedIn });
+        setDegraded(false);
         setAuth(info);
       });
     }, AUTH_POLL_MS);
-    return () => window.clearInterval(id);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
   }, [auth?.signedIn]);
 
   return { auth, degraded, setAuth };

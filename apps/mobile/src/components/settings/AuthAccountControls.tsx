@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput
 import { listAuthSessions, renameAuthSession, reportUnauthorized, revokeAuthSession, type AuthSession } from "../../api";
 import { useAppTheme } from "../../context/PreferencesContext";
 import { beginNativeFlow, supabase, useAuth } from "../../lib/auth";
-import { displayLabel } from "../../lib/auth-policy";
+import { displayLabel, profileName, profileNameUpdate } from "../../lib/auth-policy";
 import { Group, GroupFootnote, GroupLabel, GroupRow } from "./SettingsGroup";
 
 type Editor = { kind: "profile" | "email" | "password" | "device"; id?: string };
@@ -48,7 +48,7 @@ export function AuthAccountControls() {
         return;
       }
     } else {
-      const attributes = editor.kind === "profile" ? { data: { full_name: displayLabel(value, "Bookmark AI user") } } : { password: value };
+      const attributes = editor.kind === "profile" ? { data: profileNameUpdate(value) } : { password: value };
       const { error: failure } = await supabase.auth.updateUser(attributes);
       if (failure) throw failure;
     }
@@ -66,7 +66,7 @@ export function AuthAccountControls() {
   return <>
     <GroupLabel>Profile & security</GroupLabel>
     <Group>
-      <GroupRow first label="Display name" onPress={() => open({ kind: "profile" }, typeof user?.user_metadata.full_name === "string" ? user.user_metadata.full_name : "")} chevron />
+      <GroupRow first label="Display name" onPress={() => open({ kind: "profile" }, profileName(user?.user_metadata))} chevron />
       <GroupRow label="Change email" onPress={() => open({ kind: "email" }, user?.email ?? "")} chevron />
       <GroupRow label="Change password" onPress={() => open({ kind: "password" })} chevron />
       <GroupRow label="Send password recovery email" onPress={() => void run(async () => {

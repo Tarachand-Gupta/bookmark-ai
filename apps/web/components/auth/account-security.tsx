@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { getAccessToken, getBrowserSupabase, signOut, useAuth } from "@/lib/auth";
-import { displayName } from "@/lib/auth-policy";
+import { displayName, profileName, profileNameUpdate } from "@/lib/auth-policy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AccountFactors } from "./account-factors";
@@ -35,9 +35,7 @@ async function request(path: string, method = "GET", body?: unknown) {
 export function AccountSecurity() {
   const { session } = useAuth();
   const [name, setName] = useState(
-    displayName(
-      session?.user.user_metadata?.display_name ?? session?.user.user_metadata?.full_name,
-    ),
+    profileName(session?.user.user_metadata),
   );
   const [email, setEmail] = useState(session?.user.email ?? "");
   const [password, setPassword] = useState("");
@@ -82,7 +80,7 @@ export function AccountSecurity() {
   }
   async function profile() {
     const { error } = await getBrowserSupabase().auth.updateUser({
-      data: { display_name: displayName(name) },
+      data: profileNameUpdate(name),
     });
     if (error) throw new Error("Profile could not be updated.");
     setMessage("Profile updated.");

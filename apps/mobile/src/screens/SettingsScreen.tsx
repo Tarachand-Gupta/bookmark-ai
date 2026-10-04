@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Alert, Image, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../lib/auth";
-import { displayLabel } from "../lib/auth-policy";
+import { displayLabel, profileName } from "../lib/auth-policy";
 import { AuthAccountControls } from "../components/settings/AuthAccountControls";
 import * as Application from "expo-application";
 import * as Clipboard from "expo-clipboard";
@@ -74,7 +74,7 @@ export function SettingsScreen() {
   // The Shell is mounted only after SDK authentication and tenant readiness.
   const signedIn = user != null;
   const name = signedIn
-    ? displayLabel(typeof user.user_metadata.full_name === "string" ? user.user_metadata.full_name : user.email ?? "", "Signed in")
+    ? profileName(user.user_metadata) || displayLabel(user.email ?? "", "Signed in")
     : "Not signed in";
   const email = user?.email ?? "";
   const imageUrl = typeof user?.user_metadata.avatar_url === "string" ? user.user_metadata.avatar_url : null;

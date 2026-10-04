@@ -21,6 +21,14 @@ vi.mock("wxt/browser", () => ({
 vi.mock("./net", () => ({ fetchWithTimeout: vi.fn() }));
 const key = "local:bookmark-ai:supabase-qa:oauth";
 const original = { accessToken: "access", refreshToken: "refresh", expiresAt: 1 };
+it.each(["not-a-jwt", "header..signature", "header.not-json.signature"])(
+  "does not invent a Live device session from malformed token %s",
+  async (accessToken) => {
+    values.set(key, { accessToken, refreshToken: "refresh", expiresAt: Date.now() + 3600000 });
+    const { getOAuthSessionId } = await import("./supabase-oauth");
+    expect(await getOAuthSessionId()).toBeNull();
+  },
+);
 beforeEach(async () => {
   vi.resetModules();
   values.clear();

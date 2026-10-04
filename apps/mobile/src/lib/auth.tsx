@@ -9,10 +9,11 @@ import * as WebBrowser from "expo-web-browser";
 import * as Device from "expo-device";
 import * as Application from "expo-application";
 import { createClient, type Session } from "@supabase/supabase-js";
-import { registerAuthSession, signOutAuthSessions, resetAccountApiState, resetLiveBaseCache, setAuthTokenProvider, setUnauthorizedHandler } from "../api";
+import { registerAuthSession, signOutAuthSessions, resetAccountApiState, resetLiveBaseCache, setAuthTokenProvider, setUnauthorizedHandler, setMfaRequiredHandler } from "../api";
 import { AUTH_CALLBACK_URL, AUTH_NAMESPACE, SUPABASE_PUBLIC_KEY, SUPABASE_URL } from "./auth-config";
 import { displayLabel, nativeAppleExchange, nativeCallback, type NativeFlow, type PendingNativeFlow } from "./auth-policy";
 import { createSecureSessionStorage } from "./secure-session-storage";
+import { createMfaVerificationGuard, createSessionAssuranceGate } from "./session-assurance";
 
 if (!SUPABASE_URL || !SUPABASE_PUBLIC_KEY) throw new Error("Supabase mobile public configuration is required");
 const secureOptions = { keychainService: AUTH_NAMESPACE, keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY };
@@ -27,12 +28,22 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
 });
 WebBrowser.maybeCompleteAuthSession();
 let protectedRequestsBlocked = false;
+const assuranceGate = createSessionAssuranceGate(async (token) => {
+  // Passing the JWT fetches current provider factors instead of stale user metadata.
+  const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel(token);
+  if (error || !data) throw new Error("Sign-in verification is temporarily unavailable.");
+  return data;
+});
 
 export async function getToken(): Promise<string | null> {
   if (protectedRequestsBlocked) throw new Error("This sign-in has ended. Sign in again.");
   const { data, error } = await supabase.auth.getSession();
   if (error) throw new Error("Sign-in is temporarily unavailable. Please retry when connected.");
-  return data.session?.access_token ?? null;
+  if (!data.session) return null;
+  await assuranceGate.check(data.session);
+  if (protectedRequestsBlocked) throw new Error("This sign-in has ended. Sign in again.");
+  if (!assuranceGate.allowed(data.session)) throw new Error("Complete sign-in verification before opening your library.");
+  return data.session.access_token;
 }
 setAuthTokenProvider(getToken);
 
@@ -105,6 +116,8 @@ interface AuthState {
   recovery: boolean; finishRecovery(): void;
   error: string | null; retry(): void;
   signOut(scope?: "local" | "global" | "others"): Promise<void>;
+  mfaStatus: ReturnType<typeof assuranceGate.getState>["status"];
+  retryMFA(): void; verifyMFA(factorId: string, code: string): Promise<void>; cancelMFA(): Promise<void>;
 }
 const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -112,9 +125,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoaded, setLoaded] = useState(false), [error, setError] = useState<string | null>(null);
   const [recovery, setRecovery] = useState(false), [attempt, setAttempt] = useState(0);
   const [revoked, setRevoked] = useState(false);
+  const [assurance, setAssurance] = useState(assuranceGate.getState);
+  const [assuranceAttempt, setAssuranceAttempt] = useState(0);
   const invalidated = useRef(false);
   const previousUser = useRef<string | null>(null);
+  const observedSession = useRef<Session | null>(null);
   const authEpoch = useRef(0);
+  const verification = useRef(createMfaVerificationGuard());
   const signOut = useCallback(async (scope: "local" | "global" | "others" = "local") => {
     await signOutAuthSessions(scope);
     if (scope !== "others") {
@@ -130,19 +147,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const { data, error: failure } = await supabase.auth.getSession();
         if (failure) throw failure;
-        if (mounted && authEpoch.current === epoch) { setSession(data.session); setError(null); }
+        if (mounted && authEpoch.current === epoch) { observedSession.current = data.session; assuranceGate.observe(data.session); setSession(data.session); setError(null); }
       } catch { if (mounted && authEpoch.current === epoch) setError("Sign-in couldn't be restored. Unlock this device and check your connection, then retry."); }
       finally { if (mounted) setLoaded(true); }
     };
     const { data: listener } = supabase.auth.onAuthStateChange((event, next) => {
       if (!mounted) return;
       authEpoch.current++;
+      if (!verification.current.observe(event, next?.user.id ?? null)) {
+        // The SDK already persisted this late verify response. Never admit it;
+        // remove that stale session asynchronously outside the SDK callback.
+        protectedRequestsBlocked = true; invalidated.current = true; setRevoked(true); resetAccountApiState();
+        observedSession.current = null; assuranceGate.observe(null); setSession(null);
+        void Promise.resolve().then(() => supabase.auth.signOut({ scope: "local" })).catch(() => undefined);
+        return;
+      }
       // Keep callbacks synchronous; never reenter refresh from TOKEN_REFRESHED.
       if (previousUser.current !== (next?.user.id ?? null)) {
         resetAccountApiState();
         if (previousUser.current) void clearAccountCaches(previousUser.current);
       }
       previousUser.current = next?.user.id ?? null;
+      observedSession.current = next;
+      assuranceGate.observe(next, event === "USER_UPDATED");
       setSession(next); setLoaded(true);
       if (event === "SIGNED_IN" || event === "SIGNED_OUT") { invalidated.current = false; protectedRequestsBlocked = false; setRevoked(false); }
       if (next) setError(null);
@@ -157,6 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const state = AppState.addEventListener("change", active);
     setUnauthorizedHandler(() => {
       if (invalidated.current) return;
+      verification.current.invalidate();
       invalidated.current = true; protectedRequestsBlocked = true; resetAccountApiState(); setRevoked(true);
       void clearAccountCaches();
       // A definitive protected-request401 hides private views immediately.
@@ -164,20 +192,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // encrypted credentials available for its eventual server retry.
       void supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
     });
+    setMfaRequiredHandler(() => {
+      assuranceGate.observe(observedSession.current, true);
+      resetAccountApiState();
+      setAssuranceAttempt((value) => value + 1);
+    });
     const callback = (url: string | null) => {
       if (!url || browserOpen || !url.startsWith(AUTH_CALLBACK_URL)) return;
       void completeNativeCallback(url).catch(() => { if (mounted) Alert.alert("Couldn't complete sign-in", "The sign-in link expired or couldn't complete. Start a new sign-in attempt."); });
     };
     void Linking.getInitialURL().then(callback);
     const links = Linking.addEventListener("url", ({ url }) => callback(url));
-    return () => { mounted = false; listener.subscription.unsubscribe(); state.remove(); links.remove(); supabase.auth.stopAutoRefresh(); setUnauthorizedHandler(null); };
+    return () => { mounted = false; listener.subscription.unsubscribe(); state.remove(); links.remove(); supabase.auth.stopAutoRefresh(); setUnauthorizedHandler(null); setMfaRequiredHandler(null); };
   }, [attempt, signOut]);
+  useEffect(() => assuranceGate.subscribe(setAssurance), []);
+  useEffect(() => { if (session && !revoked) void assuranceGate.check(session); }, [session, revoked, assuranceAttempt]);
+  const retryMFA = () => { assuranceGate.observe(session, true); setAssuranceAttempt((value) => value + 1); };
+  const verifyMFA = async (factorId: string, code: string) => {
+    const original = session;
+    if (!original || assuranceGate.getState().token !== original.access_token) throw new Error("This sign-in changed. Retry verification.");
+    const ticket = verification.current.begin(original.user.id);
+    try {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code });
+      if (!ticket.valid) throw new Error("This sign-in changed. Start sign-in again.");
+      if (error) throw new Error(error.message);
+      // SDK emits MFA_CHALLENGE_VERIFIED; the guarded observer owns admission.
+    } finally { verification.current.finish(ticket); }
+  };
+  const cancelMFA = async () => {
+    const { error } = await supabase.auth.signOut({ scope: "local" });
+    if (error) throw new Error("Reconnect to cancel this sign-in, then try again.");
+    await clearAccountCaches(); await sessionStorage.removeItem(pendingKey); setRecovery(false);
+  };
+  const admitted = !!session && !revoked && assurance.token === session.access_token && assurance.userId === session.user.id && assurance.status === "ready";
   useEffect(() => {
-    if (!session) return;
+    if (!session || !admitted) return;
     const label = displayLabel(Device.modelName ?? (Platform.OS === "ios" ? Platform.isPad ? "iPad" : "iPhone" : "Android"), "Mobile device");
     void registerAuthSession({ clientType: Platform.OS === "ios" ? "ios" : "android", deviceName: label, os: `${Platform.OS} ${Device.osVersion ?? Platform.Version}`, appVersion: Application.nativeApplicationVersion ?? undefined }).catch(() => undefined);
-  }, [session?.access_token]);
-  return <AuthContext.Provider value={{ session: revoked ? null : session, isLoaded, isSignedIn: !!session && !revoked, userId: revoked ? null : session?.user.id ?? null, user: revoked ? null : session?.user ?? null, getToken, recovery, finishRecovery: () => setRecovery(false), error, retry: () => setAttempt((value) => value + 1), signOut }}>{children}</AuthContext.Provider>;
+  }, [session?.access_token, admitted]);
+  return <AuthContext.Provider value={{ session: admitted ? session : null, isLoaded, isSignedIn: admitted, userId: admitted ? session.user.id : null, user: admitted ? session.user : null, getToken, recovery, finishRecovery: () => setRecovery(false), error, retry: () => setAttempt((value) => value + 1), signOut, mfaStatus: revoked ? "signed-out" : session && assurance.token !== session.access_token ? "checking" : assurance.status, retryMFA, verifyMFA, cancelMFA }}>{children}</AuthContext.Provider>;
 }
 export function useAuth(): AuthState {
   const value = useContext(AuthContext);

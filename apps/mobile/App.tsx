@@ -19,6 +19,7 @@ import type { SessionsSegment } from "./src/hooks/useLiveDevices";
 import { AccountSetupScreen } from "./src/screens/AccountSetupScreen";
 import { NoAccessScreen } from "./src/screens/NoAccessScreen";
 import { PasswordRecoveryScreen } from "./src/screens/PasswordRecoveryScreen";
+import { MfaChallengeScreen } from "./src/screens/MfaChallengeScreen";
 import {
   SHARE_INTENT_OPTIONS,
   usePendingSharedLink,
@@ -111,7 +112,7 @@ export default function App() {
 function Gate() {
   const { colors, dark } = useAppTheme();
   const { hydrated } = usePreferences();
-  const { isLoaded, isSignedIn, getToken, userId, recovery, error, retry } = useAuth();
+  const { isLoaded, isSignedIn, getToken, userId, recovery, error, retry, mfaStatus } = useAuth();
   // Captured HERE, above the sign-in/app branch: a share that arrives while
   // signed out is held in encrypted app-only storage through sign-in.
   const share = usePendingSharedLink(userId, isLoaded);
@@ -140,6 +141,10 @@ function Gate() {
         // spinner, so this is a seamless continuation of the launch image
         // rather than a second, emptier loading state.
         <LaunchScreen />
+      ) : ["checking", "required", "unavailable"].includes(mfaStatus) ? (
+        <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.body}>
+          <MfaChallengeScreen />
+        </SafeAreaView>
       ) : error && !signedIn ? (
         <View style={[styles.body, { justifyContent: "center", padding: 28, gap: 20 }]}>
           <Text accessibilityRole="alert" style={{ color: colors.foreground }}>{error}</Text>

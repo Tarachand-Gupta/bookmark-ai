@@ -15,6 +15,14 @@ export function nativeCallback(url: string, redirect: string, pending: PendingNa
 export function displayLabel(value: string, fallback: string): string {
   return value.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 80) || fallback;
 }
+export function profileName(metadata: Record<string, unknown> | undefined): string {
+  const clean = (value: unknown) => typeof value === "string" ? displayLabel(value, "") : "";
+  return clean(metadata?.full_name) || clean(metadata?.display_name);
+}
+export function profileNameUpdate(value: string) {
+  const name = displayLabel(value, "Bookmark AI user");
+  return { full_name: name, display_name: name };
+}
 
 export async function nativeAppleExchange(options: {
   nonce: string; state: string; hash: (value: string) => Promise<string>;

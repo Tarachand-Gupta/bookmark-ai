@@ -137,9 +137,11 @@ export function resetLiveBaseCache(): void {
 /** SDK-owned Supabase access token. Provider failures propagate for retry. */
 let authTokenProvider: (() => Promise<string | null>) | null = null;
 let unauthorizedHandler: (() => void) | null = null;
+let mfaRequiredHandler: (() => void) | null = null;
 let accountGeneration = 0;
 export function setUnauthorizedHandler(handler: (() => void) | null): void { unauthorizedHandler = handler; }
 export function reportUnauthorized(): void { unauthorizedHandler?.(); }
+export function setMfaRequiredHandler(handler: (() => void) | null): void { mfaRequiredHandler = handler; }
 export function resetAccountApiState(): void { accountGeneration++; resetLiveBaseCache(); }
 
 export function setAuthTokenProvider(provider: () => Promise<string | null>): void {
@@ -211,6 +213,7 @@ const FORBIDDEN_MESSAGE = "This account may not use this API";
  */
 function errorFromBody(status: number, body: { error?: string; code?: string } | null): Error {
   const message = body?.error ?? `Request failed (${status})`;
+  if (status === 403 && body?.code === "mfa-required") mfaRequiredHandler?.();
   if (body?.code === "provisioning") return new ProvisioningError(message);
   if (status === 403 && (body?.code === "forbidden" || body?.error === FORBIDDEN_MESSAGE)) {
     return new ForbiddenError(message);
@@ -238,6 +241,7 @@ async function request<T>(
       error?: string;
       code?: string;
     } | null;
+    if (generation !== accountGeneration) throw new Error("The account changed; please retry this action");
     throw errorFromBody(res.status, errBody);
   }
   if (res.status === 204) return undefined as T;
@@ -483,17 +487,24 @@ export function updateSettings(patch: UpdateUserSettingsInput): Promise<UserSett
  * but it classifies failures through the same `errorFromBody` so a provisioning
  * 503 / forbidden 403 from the live server reads exactly like one from /api. */
 export async function listLiveDevices(signal?: AbortSignal): Promise<ListLiveResponse> {
-  const res = await fetch(`${await getLiveBaseUrl()}/live`, {
+  const generation = accountGeneration;
+  const base = await getLiveBaseUrl(), headers = await authHeaders();
+  if (generation !== accountGeneration) throw new Error("The account changed; please retry this action");
+  const res = await fetch(`${base}/live`, {
     signal,
-    headers: { "content-type": "application/json", ...(await authHeaders()) },
+    headers: { "content-type": "application/json", ...headers },
   });
+  if (generation !== accountGeneration) throw new Error("The account changed; please retry this action");
   if (!res.ok) {
     if (res.status === 401) reportUnauthorized();
     const errBody = (await res.json().catch(() => null)) as {
       error?: string;
       code?: string;
     } | null;
+    if (generation !== accountGeneration) throw new Error("The account changed; please retry this action");
     throw errorFromBody(res.status, errBody);
   }
-  return (await res.json()) as ListLiveResponse;
+  const result = (await res.json()) as ListLiveResponse;
+  if (generation !== accountGeneration) throw new Error("The account changed; please retry this action");
+  return result;
 }

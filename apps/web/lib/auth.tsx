@@ -2,7 +2,7 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useState } from "react";
-import { safeAuthDestination, displayName } from "./auth-policy";
+import { safeAuthDestination, profileName } from "./auth-policy";
 import { webSessionMetadata } from "./web-session-metadata";
 let client: SupabaseClient | undefined;
 let refresh: Promise<string | null> | null = null;
@@ -135,7 +135,7 @@ export function useAuth() {
 export function useUser() {
   const state = useContext(Context);
   const raw: User | undefined = state.session?.user;
-  const name = displayName(raw?.user_metadata?.display_name ?? raw?.user_metadata?.full_name);
+  const name = profileName(raw?.user_metadata);
   const image =
     typeof raw?.user_metadata?.avatar_url === "string" &&
     /^https:\/\//.test(raw.user_metadata.avatar_url)
