@@ -19,10 +19,10 @@ export function detectSource(): { browser: Browser; device: DeviceType; os: stri
   else if (/macintosh/i.test(ua)) device = "laptop";
 
   let os = "unknown";
-  if (/mac os x|macintosh/i.test(ua)) os = "macOS";
+  if (/iphone|ipad/i.test(ua)) os = "iOS";
+  else if (/mac os x|macintosh/i.test(ua)) os = "macOS";
   else if (/windows/i.test(ua)) os = "Windows";
   else if (/android/i.test(ua)) os = "Android";
-  else if (/iphone|ipad/i.test(ua)) os = "iOS";
   else if (/linux/i.test(ua)) os = "Linux";
 
   return { browser, device, os };

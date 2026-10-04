@@ -7,6 +7,7 @@ The owner has authorized independent development and QA decisions in the new Sup
 - Working Clerk source checkpoint: `87f1995` on `codex/server-logging-analytics-audit`.
 - Local rollback tag: `checkpoint/clerk-before-supabase-2026-10-04` (points to that checkpoint; nothing was pushed).
 - Supabase implementation branch: `codex/supabase-auth`.
+- Initial implementation checkpoint: `5362d91`; subsequent fixes and final runtime evidence stay on the same Supabase branch. Nothing has been pushed or merged.
 - Existing production environment files, Turso master/content databases, store versions, and installed release apps remain outside the QA setup.
 - Supabase artifacts use `.work/builds/supabase-qa/`, distinct app IDs, callbacks, credential storage, native generation, and build manifests. Their source/dependency snapshots survive branch switches unchanged.
 
@@ -16,7 +17,7 @@ The owner has authorized independent development and QA decisions in the new Sup
 | --- | --- |
 | New Supabase project `xogqaqtyacmecdbmgqqd`; private schema `bmai_qa` | Authentication and all master/control-plane records are isolated from the old Turso master. Existing users are not migrated. |
 | Separate Turso group `bmai-supabase-qa`, `bmai-sbqa-` database prefix | QA provisioning credentials can access only the QA group. No production tenant adoption. |
-| Native Supabase sessions; no auth Redis records | SDK refresh and provider-owned sessions replace Clerk. Private server-only functions support selected-device controls; hosted lifecycle verification is a cutover gate. |
+| Native Supabase sessions; no auth Redis records | SDK refresh and provider-owned sessions replace Clerk. Private server-only functions support selected-device controls. Hosted lifecycle checks, including rejection of retained access/refresh credentials after selected revoke, pass; remaining client journeys are recorded in the QA results. |
 | Dedicated local Redis at `127.0.0.1:6386` for Live Tabs content | This preserves the existing Live Tabs architecture, using a separate QA encryption key. It is not an authentication cache or token registry. The QA instance is ephemeral and does not use the existing Redis service. |
 | No session/inactivity timeout | Supports the requested multi-week return. Refresh-token replay detection stays enabled. Current QA access JWT expiry is one hour, with online validation on each protected human request. |
 | OAuth Server enabled for extension clients; dynamic registration disabled | Keeps each extension's credential separate and restrictable through its signed client ID. This provider feature is beta and needs review before production adoption. |

@@ -3,6 +3,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useState } from "react";
 import { safeAuthDestination, displayName } from "./auth-policy";
+import { webSessionMetadata } from "./web-session-metadata";
 let client: SupabaseClient | undefined;
 let refresh: Promise<string | null> | null = null;
 export function getBrowserSupabase(): SupabaseClient {
@@ -108,7 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           method: "POST",
           signal: controller.signal,
           headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify({ clientType: standalone ? "pwa" : "web" }),
+          body: JSON.stringify(webSessionMetadata(Boolean(standalone))),
         }),
       )
       .catch(() => undefined);
