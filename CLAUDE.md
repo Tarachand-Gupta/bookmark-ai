@@ -8,8 +8,11 @@ builds: source, dependencies, native IDs, credential storage, and output paths
 must stay in the `supabase-qa` variant. Node 22+ and Corepack pnpm 10.34.1 apply.
 Supabase owns authentication and the private master database; only new QA content
 databases belong to Turso group `bmai-supabase-qa`. No existing-user migration,
-production configuration, DNS, deployment, or store submission is authorized by
-this branch. The owner authorizes routine isolated development/QA decisions.
+DNS, deployment, or store submission is authorized by this branch. The owner
+subsequently authorized production Google/Apple credential setup in the new
+Supabase project, preserving Clerk callbacks and credentials; see
+`docs/features/supabase-social-providers.md`. Other production cutover work stays
+deferred. The owner authorizes routine isolated development/QA decisions.
 
 Read [QA setup](docs/features/supabase-qa-setup.md) and
 [decisions and rollback](docs/features/supabase-decisions-and-rollback.md).

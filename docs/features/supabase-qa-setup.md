@@ -36,7 +36,9 @@ The free project's session/inactivity settings are both `0 / never`. Keep refres
 
 Extensions use separate public OAuth clients with PKCE and exact callbacks. OAuth Server is currently beta: its compatibility and production terms require review before release. Dynamic client registration stays disabled. Register the actual Firefox runtime redirect instead of assuming a calculated value. Set trusted extension client IDs on the backend so an extension token cannot become an unrestricted account credential.
 
-Google/Apple credentials, their provider-console callbacks, email delivery, native signing, and installed-device journeys are separate verification gates. A successful build or unit test does not prove those gates.
+Production Google/Apple credentials are now configured in the new project with additive provider callbacks; [social provider setup and renewal](supabase-social-providers.md) records the configuration and verification. Real email delivery, native signing, and installed-device journeys remain separate gates. A successful build or unit test does not prove those gates.
+
+On this Mac's Xcode installation, the simulator UI is **Device Hub** at `/Applications/Xcode.app/Contents/Applications/DeviceHub.app` (`com.apple.dt.Devices`). Open that app and select the existing `Bookmark AI Supabase QA iPhone` or `Bookmark AI Supabase QA iPad` in the sidebar. Do not reinstall or rebuild merely because `Simulator.app` is absent. The isolated simulator UUIDs can be obtained from `xcrun simctl list devices`; use the matching QA device only.
 
 ## Before merge or release
 
