@@ -17,6 +17,7 @@ enum BrowserSignInExchange: Equatable, Sendable {
     case pending(retryAfter: TimeInterval)
     case rateLimited(retryAfter: TimeInterval)
     case complete(ticket: String, expiresAt: Date)
+    case nativeComplete(NativeHandoffSession)
 }
 
 enum BrowserSignInError: LocalizedError, Equatable {
@@ -110,11 +111,15 @@ enum BrowserSignInPollPolicy {
 /// cookies; these two JSON calls deliberately do not share any of them.
 final class BrowserSignInClient {
     private static let maximumResponseBytes = 64 * 1_024
+    var nativeCompletionCode: String?
+    private(set) var nativeState: String?
     private var origin: URL
     private let session: URLSession
+    private let nativeMode: Bool
 
-    init(origin: URL, session: URLSession? = nil) {
+    init(origin: URL, session: URLSession? = nil, nativeMode: Bool = SupabaseConfiguration.isQA) {
         self.origin = origin
+        self.nativeMode = nativeMode
         if let session {
             self.session = session
         } else {
@@ -136,6 +141,17 @@ final class BrowserSignInClient {
     }
 
     func start(codeChallenge: String) async throws -> BrowserSignInStart {
+        if nativeMode {
+            struct Body: Encodable { let clientType = "macos"; let codeChallenge: String; let state: String }
+            let state = try BrowserSignInPKCE.generateVerifier()
+            let (data, response) = try await post(path: "/api/auth/native/start", body: Body(codeChallenge: codeChallenge, state: state))
+            guard response.statusCode == 201 else { throw error(for: response, data: data, terminal502: true) }
+            struct Start: Decodable { let flowId: String; let browserUrl: String; let expiresAt: Double; let state: String }
+            guard let result = try? JSONDecoder().decode(Start.self, from: data), result.state == state else { throw BrowserSignInError.invalidResponse }
+            nativeState = state
+            nativeCompletionCode = nil
+            return BrowserSignInStart(flowId: result.flowId, browserUrl: result.browserUrl, verificationCode: "AAAA-AAAA", expiresAt: result.expiresAt, expiresInSeconds: 300)
+        }
         struct Body: Encodable { let codeChallenge: String }
         let (data, response) = try await post(path: "/api/macos-auth/start", body: Body(codeChallenge: codeChallenge))
         guard response.statusCode == 201 else {
@@ -149,15 +165,21 @@ final class BrowserSignInClient {
     }
 
     func exchange(flowId: String, verifier: String) async throws -> BrowserSignInExchange {
-        struct Body: Encodable { let flowId: String; let verifier: String }
+        if nativeMode, nativeCompletionCode == nil { return .pending(retryAfter: 1) }
+        struct Body: Encodable { let flowId: String; let verifier: String; let completionCode: String? }
         let (data, response) = try await post(
-            path: "/api/macos-auth/exchange",
-            body: Body(flowId: flowId, verifier: verifier)
+            path: nativeMode ? "/api/auth/native/exchange" : "/api/macos-auth/exchange",
+            body: Body(flowId: flowId, verifier: verifier, completionCode: nativeMode ? nativeCompletionCode : nil)
         )
 
         switch response.statusCode {
         case 200:
             guard isJSON(response) else { throw BrowserSignInError.invalidResponse }
+            if nativeMode {
+                struct Complete: Decodable { let status: String; let session: NativeHandoffSession }
+                guard let body = try? JSONDecoder().decode(Complete.self, from: data), body.status == "complete" else { throw BrowserSignInError.invalidResponse }
+                return .nativeComplete(body.session)
+            }
             struct Complete: Decodable { let status: String; let ticket: String; let expiresAt: Double }
             guard let body = try? JSONDecoder().decode(Complete.self, from: data),
                   body.status == "complete", !body.ticket.isEmpty
@@ -180,8 +202,13 @@ final class BrowserSignInClient {
         }
     }
 
+    func cancel(flowId: String, verifier: String) async {
+        struct Body: Encodable { let flowId: String; let verifier: String }
+        _ = try? await post(path: "/api/auth/native/cancel", body: Body(flowId: flowId, verifier: verifier))
+    }
+
     private func post<Body: Encodable>(path: String, body: Body) async throws -> (Data, HTTPURLResponse) {
-        guard origin.scheme == "https" || (origin.scheme == "http" && origin.host == "localhost") else {
+        guard origin.scheme == "https" || (origin.scheme == "http" && ["localhost", "127.0.0.1"].contains(origin.host ?? "")) else {
             throw BrowserSignInError.terminal("This server target cannot be used for sign-in.")
         }
         let url = origin.appendingPathComponent(String(path.dropFirst()))
@@ -268,5 +295,29 @@ final class BrowserSignInRedirectBlocker: NSObject, URLSessionTaskDelegate {
         // redirect is a configuration or interception error; never forward the
         // verifier POST body to another URL.
         completionHandler(nil)
+    }
+}
+
+struct NativeHandoffSession: Decodable, Equatable, Sendable {
+    let access_token: String
+    let refresh_token: String
+    let user_id: String
+    let session_id: String
+    let expires_at: Double
+}
+
+enum NativeBrowserURLValidator {
+    static func validate(_ url: URL, flowId: String, origin: URL) -> Bool {
+        guard url.scheme == origin.scheme, url.host == origin.host, url.port == origin.port,
+              url.user == nil, url.password == nil, url.fragment == nil, url.path == "/sign-in",
+              let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+              items.count == 1, items[0].name == "next", let next = items[0].value,
+              let destination = URL(string: next, relativeTo: origin)?.absoluteURL,
+              destination.host == origin.host, destination.path == "/auth/native/complete",
+              let values = URLComponents(url: destination, resolvingAgainstBaseURL: false)?.queryItems,
+              values.count == 2, values.first(where: { $0.name == "flow" })?.value == flowId,
+              let nonce = values.first(where: { $0.name == "browser_nonce" })?.value,
+              BrowserSignInWireValidator.isOpaque43(nonce) else { return false }
+        return true
     }
 }

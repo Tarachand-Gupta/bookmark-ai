@@ -25,6 +25,8 @@ export function parseEnv(text) {
 }
 
 export function qaEnvironment(source = {}, inherited = process.env, surface = 'web') {
+  const hosted = source.BOOKMARK_HOSTED_TARGET === 'production';
+  if (source.BOOKMARK_HOSTED_TARGET && !hosted) throw new Error('Unknown explicit hosted target');
   const env = {};
   // Credentials/settings are never inherited from the caller's production shell.
   for (const key of ['PATH', 'HOME', 'USER', 'SHELL', 'LANG', 'LC_ALL', 'TERM', 'CI', 'JAVA_HOME', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'DEVELOPER_DIR', 'SDKROOT']) {
@@ -34,7 +36,7 @@ export function qaEnvironment(source = {}, inherited = process.env, surface = 'w
   if (surface === 'live') {
     if (!source.REDIS_URL) throw new Error('QA Live requires explicit isolated REDIS_URL; default6379 is forbidden');
     const redis = new URL(source.REDIS_URL);
-    if (redis.protocol !== 'redis:' || !['localhost', '127.0.0.1'].includes(redis.hostname) || redis.port !== '6386' || !['', '/0'].includes(redis.pathname)) throw new Error('QA Live Redis must use localhost6386/database0');
+    if (redis.protocol !== 'redis:' || !['localhost', '127.0.0.1'].includes(redis.hostname) || (hosted ? redis.port !== '6379' || redis.pathname !== '/3' : redis.port !== '6386' || !['', '/0'].includes(redis.pathname))) throw new Error('Live Redis target must match explicit build mode (local6386/0; hosted6379/3)');
     if (!source.LIVE_ENCRYPTION_SECRET || source.LIVE_ENCRYPTION_SECRET.length < 32) throw new Error('QA Live requires its explicit encryption secret');
   }
   if (surface === 'macos') {
@@ -48,9 +50,10 @@ export function qaEnvironment(source = {}, inherited = process.env, surface = 'w
   }
   const api = source.BOOKMARK_QA_WEB_URL || 'http://localhost:3100';
   const live = source.BOOKMARK_QA_LIVE_URL || 'http://localhost:3101';
+  if (hosted && (api !== 'https://www.bookmark-ai.cloud' || live !== 'https://live.bookmark-ai.cloud')) throw new Error('Hosted production target requires exact approved HTTPS endpoints');
   for (const url of [api, live]) {
     const parsed = new URL(url);
-    if (/bookmark-ai\.cloud$|vercel\.app$/.test(parsed.hostname)) throw new Error('QA may not target production/deployed Bookmark APIs');
+    if (!hosted && /bookmark-ai\.cloud$|vercel\.app$/.test(parsed.hostname)) throw new Error('QA may not target production/deployed Bookmark APIs');
     if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Unsupported QA API URL');
   }
   const supabase = source.SUPABASE_URL || source.NEXT_PUBLIC_SUPABASE_URL;
@@ -65,6 +68,7 @@ export function qaEnvironment(source = {}, inherited = process.env, surface = 'w
     EXPO_PUBLIC_API_URL: surface === 'android' ? api.replace('localhost', '10.0.2.2') : api,
     EXPO_PUBLIC_LIVE_URL: surface === 'android' ? live.replace('localhost', '10.0.2.2') : live,
     EXPO_PUBLIC_LIVE_API_URL: surface === 'android' ? live.replace('localhost', '10.0.2.2') : live,
+    EXPO_PUBLIC_HOSTED_TARGET: hosted ? 'production' : '',
     EXPO_PUBLIC_BUILD_VARIANT: variant, EXPO_PUBLIC_AUTH_STORAGE_NAMESPACE: 'bookmark-ai:supabase-qa',
     EXPO_PUBLIC_AUTH_REDIRECT_URL: 'bookmarkai-supabase-qa://sso-callback',
     WXT_BUILD_VARIANT: variant, WXT_API_URL: api, WXT_APP_URL: api, WXT_LIVE_URL: live, WXT_LIVE_API_URL: live,
@@ -268,7 +272,7 @@ function nativeConfiguration(stagedRoot, env) {
     ]);
     replaceFile(join(mac, 'Resources/Info.plist'), [['<string>Bookmark AI</string>', '<string>Bookmark AI Supabase QA</string>']]);
     const info = {
-      BOOKMARK_BUILD_VARIANT: variant, BOOKMARK_API_URL: env.WXT_API_URL, BOOKMARK_LIVE_URL: env.WXT_LIVE_URL,
+      BOOKMARK_BUILD_VARIANT: variant, BOOKMARK_HOSTED_TARGET: env.BOOKMARK_HOSTED_TARGET || "", BOOKMARK_API_URL: env.WXT_API_URL, BOOKMARK_LIVE_URL: env.WXT_LIVE_URL,
       BOOKMARK_AUTH_STORAGE_NAMESPACE: 'bookmark-ai:supabase-qa', BOOKMARK_AUTH_CALLBACK_SCHEME: 'bookmarkai-macos-supabase-qa',
       SUPABASE_URL: env.SUPABASE_URL || '', SUPABASE_PUBLISHABLE_KEY: env.SUPABASE_PUBLISHABLE_KEY || '',
       CFBundleURLTypes: [{ CFBundleURLSchemes: ['bookmarkai-macos-supabase-qa'], CFBundleURLName: 'ai.bookmarkai.macos.supabaseqa' }],
@@ -308,7 +312,7 @@ export function stageSources(surface, env) {
   const stagedRoot = join(runRoot, 'source');
   mkdirSync(stagedRoot, { recursive: true });
   const selected = surface === 'check' ? Object.values(apps) : surface === 'web' ? [apps.web, apps.live] : [apps[surface]];
-  const rootFiles = new Set(['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'turbo.json', 'tsconfig.json', 'tsconfig.base.json']);
+  const rootFiles = new Set(['.vercelignore', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'turbo.json', 'tsconfig.json', 'tsconfig.base.json']);
   const paths = git('ls-files', '--cached', '--others', '--exclude-standard', '-z').split('\0').filter(Boolean);
   const hash = createHash('sha256');
   for (const path of [...new Set(paths)].sort()) {
@@ -353,12 +357,18 @@ export function stageSources(surface, env) {
 }
 
 export function main(argv = process.argv.slice(2)) {
+  const hosted = argv.includes('--hosted-production');
+  argv = argv.filter((arg) => arg !== '--hosted-production');
   const [surface = 'check', action = 'build'] = argv;
   if (!surfaces.includes(surface) || !['build', 'prepare', 'dev', 'export', 'generate', 'typecheck', 'test'].includes(action) || argv.length > 2) throw new Error('Usage: node scripts/supabase-qa.mjs check|web|live|chrome|firefox|safari|macos|ios|android [build|prepare|dev|export|generate|typecheck|test]');
   if (['export', 'generate'].includes(action) && !['ios', 'android'].includes(surface)) throw new Error('export/generate are mobile-only actions');
   if (['test', 'typecheck'].includes(action) && ['check', 'macos'].includes(surface)) throw new Error('Use check for wrapper tests; Mac tests need an explicitly configured Xcode destination');
-  const file = join(repoRoot, '.env.supabase.local');
-  const env = qaEnvironment(existsSync(file) ? parseEnv(readFileSync(file, 'utf8')) : {}, process.env, surface);
+  const file = join(repoRoot, hosted ? '.env.supabase.production.local' : '.env.supabase.local');
+  if (hosted && !existsSync(file)) throw new Error('Explicit hosted production environment file is required');
+  const source = existsSync(file) ? parseEnv(readFileSync(file, 'utf8')) : {};
+  if (hosted && source.BOOKMARK_HOSTED_TARGET !== 'production') throw new Error('Hosted flag requires matching production marker in private environment file');
+  if (!hosted && source.BOOKMARK_HOSTED_TARGET) throw new Error('Hosted environment requires explicit --hosted-production flag');
+  const env = qaEnvironment(source, process.env, surface);
   if (action === 'dev' && ['ios', 'android'].includes(surface)) {
     env.EXPO_PUBLIC_API_URL = env.NEXT_PUBLIC_API_URL;
     env.EXPO_PUBLIC_LIVE_API_URL = env.NEXT_PUBLIC_LIVE_API_URL;

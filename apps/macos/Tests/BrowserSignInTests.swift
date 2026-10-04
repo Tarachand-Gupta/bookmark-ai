@@ -6,6 +6,19 @@ final class BrowserSignInTests: XCTestCase {
     private static let origin = URL(string: "https://www.bookmark-ai.cloud")!
     private static let flow = String(repeating: "A", count: 43)
 
+    func testNativeHostedBrowserURLRequiresExactOriginFlowAndNonce() throws {
+        var destination = URLComponents(string: "/auth/native/complete")!
+        destination.queryItems = [URLQueryItem(name: "flow", value: Self.flow), URLQueryItem(name: "browser_nonce", value: String(repeating: "N", count: 43))]
+        var signIn = URLComponents(url: Self.origin.appendingPathComponent("sign-in"), resolvingAgainstBaseURL: false)!
+        signIn.queryItems = [URLQueryItem(name: "next", value: destination.string!)]
+        XCTAssertTrue(NativeBrowserURLValidator.validate(signIn.url!, flowId: Self.flow, origin: Self.origin))
+        var foreign = signIn; foreign.host = "evil.invalid"
+        XCTAssertFalse(NativeBrowserURLValidator.validate(foreign.url!, flowId: Self.flow, origin: Self.origin))
+        var fragment = signIn; fragment.fragment = "access_token=secret"
+        XCTAssertFalse(NativeBrowserURLValidator.validate(fragment.url!, flowId: Self.flow, origin: Self.origin))
+        XCTAssertFalse(NativeBrowserURLValidator.validate(signIn.url!, flowId: String(repeating: "B", count: 43), origin: Self.origin))
+    }
+
     final class StubURLProtocol: URLProtocol {
         static var handler: ((URLRequest) -> (Int, [String: String], Data))?
         static var requests: [URLRequest] = []
@@ -51,14 +64,31 @@ final class BrowserSignInTests: XCTestCase {
         }
     }
 
-    private func client() -> BrowserSignInClient {
+    private func client(nativeMode: Bool = false) -> BrowserSignInClient {
         Self.StubURLProtocol.requests = []
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
         configuration.urlCache = nil
-        return BrowserSignInClient(origin: Self.origin, session: URLSession(configuration: configuration))
+        return BrowserSignInClient(origin: Self.origin, session: URLSession(configuration: configuration), nativeMode: nativeMode)
+    }
+
+    func testNativeExchangeDoesNotPollBeforeCallbackCode() async throws {
+        let client = client(nativeMode: true)
+        let pending = try await client.exchange(flowId: Self.flow, verifier: String(repeating: "V", count: 43))
+        guard case .pending = pending else { return XCTFail("Must wait for native callback") }
+        XCTAssertTrue(Self.StubURLProtocol.requests.isEmpty)
+        client.nativeCompletionCode = String(repeating: "C", count: 43)
+        Self.StubURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/auth/native/exchange")
+            XCTAssertNil(request.url?.query)
+            let body = try! JSONSerialization.jsonObject(with: Self.bodyData(from: request)!) as! [String: String]
+            XCTAssertEqual(body["completionCode"], String(repeating: "C", count: 43))
+            return (202, ["Content-Type": "application/json"], Data("{\"status\":\"pending\"}".utf8))
+        }
+        _ = try await client.exchange(flowId: Self.flow, verifier: String(repeating: "V", count: 43))
+        XCTAssertEqual(Self.StubURLProtocol.requests.count, 1)
     }
 
     /// Foundation may represent a streamed upload as `httpBodyStream` by the
@@ -263,7 +293,7 @@ final class BrowserSignInTests: XCTestCase {
 
     @MainActor
     func testPendingAndRateLimitDelaysThenSuccessfulTicketAdoptsSession() async {
-        let auth = AuthController(origin: Self.origin)
+        let auth = AuthController(origin: Self.origin, nativeMode: false)
         auth.seed(status: .signedOut)
         let now = Date()
         var delays: [TimeInterval] = []
@@ -306,7 +336,7 @@ final class BrowserSignInTests: XCTestCase {
 
     @MainActor
     func testOpenFailureKeepsFlowWaitingAndReopenCanRecover() async {
-        let auth = AuthController(origin: Self.origin)
+        let auth = AuthController(origin: Self.origin, nativeMode: false)
         auth.seed(status: .signedOut)
         auth.browserStartOverride = { _ in Self.start() }
         auth.browserExchangeOverride = { _, _ in .pending(retryAfter: 2) }
@@ -335,7 +365,7 @@ final class BrowserSignInTests: XCTestCase {
 
     @MainActor
     func testMintStartedBeforeBrowserAttemptCannotReturnOldToken() async {
-        let auth = AuthController(origin: Self.origin)
+        let auth = AuthController(origin: Self.origin, nativeMode: false)
         auth.seed(status: .signedOut)
         var mint: CheckedContinuation<MintOutcome, Never>?
         auth.mintOverride = { _ in await withCheckedContinuation { mint = $0 } }
@@ -363,7 +393,7 @@ final class BrowserSignInTests: XCTestCase {
 
     @MainActor
     func testCancelDuringRedemptionClearsLateHiddenSession() async {
-        let auth = AuthController(origin: Self.origin)
+        let auth = AuthController(origin: Self.origin, nativeMode: false)
         auth.seed(status: .signedOut)
         auth.browserStartOverride = { _ in Self.start() }
         auth.browserExchangeOverride = { _, _ in .complete(ticket: "ticket", expiresAt: Date().addingTimeInterval(60)) }
@@ -396,7 +426,7 @@ final class BrowserSignInTests: XCTestCase {
 
     @MainActor
     func testCanceledRedemptionCleansUpEvenWhenJavaScriptReportsFailure() async {
-        let auth = AuthController(origin: Self.origin)
+        let auth = AuthController(origin: Self.origin, nativeMode: false)
         auth.seed(status: .signedOut)
         auth.browserStartOverride = { _ in Self.start() }
         auth.browserExchangeOverride = { _, _ in .complete(ticket: "ticket", expiresAt: Date().addingTimeInterval(60)) }
@@ -426,7 +456,7 @@ final class BrowserSignInTests: XCTestCase {
 
     @MainActor
     func testTargetChangeWaitsForLateRedemptionCleanup() async {
-        let auth = AuthController(origin: Self.origin)
+        let auth = AuthController(origin: Self.origin, nativeMode: false)
         auth.seed(status: .signedOut)
         auth.browserStartOverride = { _ in Self.start() }
         auth.browserExchangeOverride = { _, _ in .complete(ticket: "ticket", expiresAt: Date().addingTimeInterval(60)) }
@@ -462,7 +492,7 @@ final class BrowserSignInTests: XCTestCase {
 
     @MainActor
     func testNewAttemptWaitsForCanceledRedemptionCleanup() async {
-        let auth = AuthController(origin: Self.origin)
+        let auth = AuthController(origin: Self.origin, nativeMode: false)
         auth.seed(status: .signedOut)
         var starts = 0
         var redemptions = 0
@@ -504,7 +534,7 @@ final class BrowserSignInTests: XCTestCase {
 
     @MainActor
     func testExpiryStopsPollingAtServerDeadline() async {
-        let auth = AuthController(origin: Self.origin)
+        let auth = AuthController(origin: Self.origin, nativeMode: false)
         auth.seed(status: .signedOut)
         var now = Date()
         var exchanges = 0

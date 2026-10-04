@@ -15,8 +15,8 @@ final class SupabaseNativeAuthTests: XCTestCase {
     static let userJSON = """
     {"id":"fcaa51f1-e2e9-4b90-8ea5-313b7b62b6aa","aud":"authenticated","role":"authenticated","email":"qa@example.test","app_metadata":{},"user_metadata":{},"created_at":"2026-10-04T00:00:00Z","updated_at":"2026-10-04T00:00:00Z","identities":[]}
     """
-    static func token(expiration: Date) -> String {
-        let body = try! JSONSerialization.data(withJSONObject: ["exp": Int(expiration.timeIntervalSince1970), "sub": "fcaa51f1-e2e9-4b90-8ea5-313b7b62b6aa"])
+    static func token(expiration: Date, aal: String = "aal1") -> String {
+        let body = try! JSONSerialization.data(withJSONObject: ["exp": Int(expiration.timeIntervalSince1970), "sub": "fcaa51f1-e2e9-4b90-8ea5-313b7b62b6aa", "aal": aal, "session_id": "00000000-0000-4000-8000-000000000002"])
         return "e30." + body.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "") + ".test-signature"
     }
     static func sessionJSON(expiration: Date) -> Data {
@@ -35,6 +35,17 @@ final class SupabaseNativeAuthTests: XCTestCase {
         for (key, bad) in [("BOOKMARK_API_URL", "https://www.bookmark-ai.cloud"), ("BOOKMARK_LIVE_URL", "https://live.bookmark-ai.cloud"), ("SUPABASE_URL", "https://other.supabase.co"), ("BOOKMARK_AUTH_STORAGE_NAMESPACE", "supabase.gotrue.swift"), ("SUPABASE_PUBLISHABLE_KEY", "")] {
             var info = Self.info; info[key] = bad; XCTAssertNil(SupabaseConfiguration.parse(info), key)
         }
+    }
+    func testHostedTargetRequiresExplicitMarkerAndExactCanonicalOrigins() {
+        var info = Self.info
+        info["BOOKMARK_HOSTED_TARGET"] = "production"
+        info["BOOKMARK_API_URL"] = "https://www.bookmark-ai.cloud"
+        info["BOOKMARK_LIVE_URL"] = "https://live.bookmark-ai.cloud"
+        XCTAssertNotNil(SupabaseConfiguration.parse(info))
+        for bad in ["https://bookmark-ai.cloud", "http://www.bookmark-ai.cloud", "https://www.bookmark-ai.cloud.evil.invalid", "https://evil.bookmark-ai.cloud", "https://www.bookmark-ai.cloud/api"] {
+            var changed = info; changed["BOOKMARK_API_URL"] = bad; XCTAssertNil(SupabaseConfiguration.parse(changed))
+        }
+        info.removeValue(forKey: "BOOKMARK_HOSTED_TARGET"); XCTAssertNil(SupabaseConfiguration.parse(info))
     }
     func testCallbackRequiresExactSchemeHostAndPath() {
         let config = SupabaseConfiguration.parse(Self.info)!
@@ -58,6 +69,34 @@ final class SupabaseNativeAuthTests: XCTestCase {
         let session = try await native.client.session
         XCTAssertFalse(session.isExpired)
         XCTAssertNotNil(try storage.retrieve(key: config.namespace + ":session"))
+    }
+    @MainActor func testNewLiveMFAFactorBlocksCachedFactorFreeSession() async throws {
+        let storage = MemoryStorage(); let config = SupabaseConfiguration.parse(Self.info)!
+        try storage.store(key: config.namespace + ":session", value: Self.storedSessionJSON(expiration: Date().addingTimeInterval(3600)))
+        let body = Self.userJSON.dropLast() + ",\"factors\":[{\"id\":\"00000000-0000-4000-8000-000000000004\",\"status\":\"verified\",\"factor_type\":\"totp\",\"created_at\":\"2026-10-04T00:00:00Z\",\"updated_at\":\"2026-10-04T00:00:00Z\"}]}"
+        let native = SupabaseNativeAuth(configuration: config, storage: storage, fetch: { request in
+            Self.response(request, status: 200, body: Data(body.utf8))
+        }, autoRefresh: false)
+        let outcome = await native.mint(fresh: false)
+        XCTAssertEqual(outcome, .unavailable)
+        XCTAssertTrue(native.needsBrowserVerification)
+    }
+    @MainActor func testAAL2HandoffImportsProviderSessionAndMismatchNeverPublishes() async throws {
+        let config = SupabaseConfiguration.parse(Self.info)!
+        let native = SupabaseNativeAuth(configuration: config, storage: MemoryStorage(), fetch: { request in
+            Self.response(request, status: 200, body: Data(Self.userJSON.utf8))
+        }, autoRefresh: false)
+        let expiry = Date().addingTimeInterval(3600)
+        let payload = NativeHandoffSession(access_token: Self.token(expiration: expiry, aal: "aal2"), refresh_token: "native-refresh", user_id: "fcaa51f1-e2e9-4b90-8ea5-313b7b62b6aa", session_id: "00000000-0000-4000-8000-000000000002", expires_at: expiry.timeIntervalSince1970)
+        try await native.importHandoff(payload)
+        XCTAssertEqual(native.client.currentSession?.refreshToken, "native-refresh")
+        let outcome = await native.mint(fresh: false)
+        guard case .token = outcome else { return XCTFail("Provider-confirmed AAL2 must be admitted") }
+        let wrong = NativeHandoffSession(access_token: payload.access_token, refresh_token: "other", user_id: "00000000-0000-4000-8000-000000000009", session_id: payload.session_id, expires_at: payload.expires_at)
+        do { try await native.importHandoff(wrong); XCTFail("Identity swap must fail before SDK import") } catch {}
+        XCTAssertEqual(native.client.currentSession?.refreshToken, "native-refresh")
+        await native.clearHandoffSession(wrong)
+        XCTAssertNotNil(native.client.currentSession)
     }
     @MainActor func testOnlineOutagePreservesSDKCredentials() async throws {
         let storage = MemoryStorage(); let config = SupabaseConfiguration.parse(Self.info)!

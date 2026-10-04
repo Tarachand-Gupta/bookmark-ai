@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CircleAlert, CircleCheck, Eye, EyeOff, Loader2 } from "lucide-react";
-import { getBrowserSupabase } from "@/lib/auth";
+import { getAuthFlowSupabase, nativeFlowFromLocation } from "@/lib/native-auth-context";
 import { authDestinationFromSearch, safeAuthDestination } from "@/lib/auth-policy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ export function AuthForm({
   const [mfa, setMfa] = useState(mode === "mfa");
   const [factor, setFactor] = useState("");
   const [code, setCode] = useState("");
+  const [nativeEmailPending, setNativeEmailPending] = useState(false);
   const [nextQuery, setNextQuery] = useState("");
   useEffect(() => {
     const destination = authDestinationFromSearch(window.location.search);
@@ -34,7 +35,7 @@ export function AuthForm({
   }, []);
   useEffect(() => {
     if (mfa)
-      void getBrowserSupabase()
+      void getAuthFlowSupabase()
         .auth.mfa.listFactors()
         .then(({ data, error }) => {
           if (error) throw error;
@@ -66,18 +67,23 @@ export function AuthForm({
     setError("");
     setMessage("");
     try {
-      const auth = getBrowserSupabase().auth;
+      const auth = getAuthFlowSupabase().auth;
       const next = authDestinationFromSearch(window.location.search);
-      if (mfa) {
+      if (nativeEmailPending) {
+        const result = await auth.verifyOtp({email,token:code,type:mode === "recovery" ? "recovery" : "signup"});
+        if(result.error)throw result.error;
+        window.location.assign(mode === "recovery" ? "/auth/update-password?next="+encodeURIComponent(next) : next);
+      } else if (mfa) {
         const result = await auth.mfa.challengeAndVerify({ factorId: factor, code });
         if (result.error) throw result.error;
         window.location.assign(next);
       } else if (mode === "recovery") {
         const result = await auth.resetPasswordForEmail(email, {
-          redirectTo: callback("/auth/update-password"),
+          redirectTo: callback("/auth/update-password?next=" + encodeURIComponent(next)),
         });
         if (result.error) throw result.error;
-        setMessage("If an account exists for this address, check your email for a reset link.");
+        if(nativeFlowFromLocation()){setNativeEmailPending(true);setMessage("Enter the code from your recovery email here. Keep this browser window open.");}
+        else setMessage("If an account exists for this address, check your email for a reset link.");
       } else if (mode === "update-password") {
         const result = await auth.updateUser({ password });
         if (result.error) throw result.error;
@@ -95,6 +101,7 @@ export function AuthForm({
         });
         if (result.error) throw result.error;
         if (result.data.session) window.location.assign(next);
+        else if(nativeFlowFromLocation()){setNativeEmailPending(true);setPassword("");setMessage("Enter the code from your confirmation email here. Keep this browser window open.");}
         else setMessage("Check your email to confirm your account, then return to sign in.");
       } else {
         const result = await auth.signInWithPassword({ email, password });
@@ -119,7 +126,7 @@ export function AuthForm({
     setMessage("");
     try {
       const next = authDestinationFromSearch(window.location.search);
-      const { error } = await getBrowserSupabase().auth.signInWithOAuth({
+      const { error } = await getAuthFlowSupabase().auth.signInWithOAuth({
         provider,
         options: { redirectTo: callback(next) },
       });
@@ -156,7 +163,7 @@ export function AuthForm({
         : mode === "sign-up"
           ? "Creating account…"
           : "Signing in…";
-  const showProviders = !mfa && (mode === "sign-in" || mode === "sign-up");
+  const showProviders = !mfa && !nativeEmailPending && (mode === "sign-in" || mode === "sign-up");
   const passwordUpdated = mode === "update-password" && Boolean(message);
   return (
     <AuthShell
@@ -208,7 +215,7 @@ export function AuthForm({
           aria-busy={busy}
           aria-describedby={error ? "auth-error" : message ? "auth-message" : undefined}
         >
-          {!mfa && mode === "sign-up" && (
+          {!mfa && !nativeEmailPending && mode === "sign-up" && (
             <div className="space-y-2">
               <label htmlFor="auth-name" className="text-sm font-medium">
                 Name <span className="font-normal text-muted-foreground">(optional)</span>
@@ -224,7 +231,7 @@ export function AuthForm({
               />
             </div>
           )}
-          {!mfa && mode !== "update-password" && (
+          {!mfa && !nativeEmailPending && mode !== "update-password" && (
             <div className="space-y-2">
               <label htmlFor="auth-email" className="text-sm font-medium">
                 Email
@@ -241,7 +248,7 @@ export function AuthForm({
               />
             </div>
           )}
-          {!mfa && mode !== "recovery" && (
+          {!mfa && !nativeEmailPending && mode !== "recovery" && (
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <label htmlFor="auth-password" className="text-sm font-medium">
@@ -292,20 +299,20 @@ export function AuthForm({
               )}
             </div>
           )}
-          {mfa && (
+          {(mfa || nativeEmailPending) && (
             <div className="space-y-2">
               <label htmlFor="auth-code" className="text-sm font-medium">
-                Authenticator code
+                {nativeEmailPending ? "Email code" : "Authenticator code"}
               </label>
               <Input
                 id="auth-code"
                 className="h-11 text-center font-mono tracking-widest"
-                placeholder="000000"
+                placeholder={nativeEmailPending ? "Email code" : "000000"}
                 required
                 autoComplete="one-time-code"
                 inputMode="numeric"
-                pattern="[0-9]{6}"
-                maxLength={6}
+                pattern={nativeEmailPending ? "[0-9]{6,10}" : "[0-9]{6}"}
+                maxLength={nativeEmailPending ? 10 : 6}
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
               />
@@ -314,12 +321,12 @@ export function AuthForm({
           <Button
             type="submit"
             className="h-11 w-full"
-            disabled={busy || (mfa && (!factor || code.length !== 6))}
+            disabled={busy || (mfa && (!factor || code.length !== 6)) || (nativeEmailPending && !/^[0-9]{6,10}$/.test(code))}
           >
             {busyAction === "form" && (
               <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
             )}
-            {busyAction === "form" ? pendingAction : action}
+            {busyAction === "form" ? pendingAction : nativeEmailPending ? "Verify email code" : action}
           </Button>
         </form>
       )}
@@ -372,7 +379,7 @@ export function AuthForm({
             </Link>
           </p>
         ) : mode === "update-password" ? (
-          <Link href="/app" className={`${authLink} inline-flex min-h-11 items-center`}>
+          <Link href={authDestinationFromSearch(typeof window === "undefined" ? "" : window.location.search)} className={`${authLink} inline-flex min-h-11 items-center`}>
             Return to library
           </Link>
         ) : (

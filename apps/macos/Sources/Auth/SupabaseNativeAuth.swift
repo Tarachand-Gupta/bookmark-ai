@@ -9,6 +9,7 @@ import Foundation
 final class SupabaseNativeAuth: NSObject, ASWebAuthenticationPresentationContextProviding, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
     let client: AuthClient
     let configuration: SupabaseConfiguration
+    private(set) var needsBrowserVerification = false
     private var webSession: ASWebAuthenticationSession?
     private var appleController: ASAuthorizationController?
     private var appleContinuation: CheckedContinuation<ASAuthorizationAppleIDCredential, Error>?
@@ -47,11 +48,16 @@ final class SupabaseNativeAuth: NSObject, ASWebAuthenticationPresentationContext
     }
 
     func mint(fresh: Bool) async -> MintOutcome {
+        needsBrowserVerification = false
         let snapshot = client.currentSession?.refreshToken
         do {
             let session = try await (fresh ? client.refreshSession() : client.session)
             // Locally held tokens never imply a live provider session.
-            _ = try await client.user(jwt: session.accessToken)
+            let user = try await client.user(jwt: session.accessToken)
+            guard user.id == session.user.id, let aal = Self.claims(session.accessToken)?["aal"] as? String,
+                  ["aal1", "aal2"].contains(aal) else { return .unavailable }
+            needsBrowserVerification = user.factors?.contains(where: { $0.status == .verified }) == true && aal != "aal2"
+            guard !needsBrowserVerification else { return .unavailable }
             return .token(session.accessToken)
         } catch {
             guard Self.isDefinitive(error) else { return .unavailable }
@@ -59,6 +65,46 @@ final class SupabaseNativeAuth: NSObject, ASWebAuthenticationPresentationContext
             await clearLocalSession()
             return .noSession
         }
+    }
+
+    func revokeHandoff(_ value: NativeHandoffSession) async {
+        var parts = URLComponents(url: configuration.url.appendingPathComponent("auth/v1/logout"), resolvingAgainstBaseURL: false)!
+        parts.queryItems = [URLQueryItem(name: "scope", value: "local")]
+        var request = URLRequest(url: parts.url!)
+        request.httpMethod = "POST"; request.setValue("Bearer " + value.access_token, forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.publishableKey, forHTTPHeaderField: "apikey")
+        _ = try? await Self.uncachedFetch(request)
+    }
+
+    func importHandoff(_ value: NativeHandoffSession) async throws {
+        guard value.expires_at > Date().timeIntervalSince1970,
+              UUID(uuidString: value.user_id) != nil, UUID(uuidString: value.session_id) != nil,
+              !value.access_token.isEmpty, !value.refresh_token.isEmpty else { throw NativeAuthError.invalidCallback }
+        let user = try await client.user(jwt: value.access_token)
+        guard user.id.uuidString.lowercased() == value.user_id.lowercased(),
+              Self.sessionID(value.access_token) == value.session_id,
+              let aal = Self.claims(value.access_token)?["aal"] as? String,
+              ["aal1", "aal2"].contains(aal),
+              user.factors?.contains(where: { $0.status == .verified }) != true || aal == "aal2" else { throw NativeAuthError.invalidCallback }
+        let session = try await client.setSession(accessToken: value.access_token, refreshToken: value.refresh_token)
+        guard session.user.id.uuidString.lowercased() == value.user_id.lowercased(),
+              Self.sessionID(session.accessToken) == value.session_id else { await clearHandoffSession(value); throw NativeAuthError.invalidCallback }
+    }
+    static func sessionID(_ token: String) -> String? { claims(token)?["session_id"] as? String }
+    private static func claims(_ token: String) -> [String: Any]? {
+        let parts = token.split(separator: ".")
+        guard parts.count == 3 else { return nil }
+        var body = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        body += String(repeating: "=", count: (4 - body.count % 4) % 4)
+        guard let data = Data(base64Encoded: body), let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return claims
+    }
+
+    func clearHandoffSession(_ value: NativeHandoffSession) async {
+        guard let current = client.currentSession,
+              current.user.id.uuidString.lowercased() == value.user_id.lowercased(),
+              Self.sessionID(current.accessToken) == value.session_id else { return }
+        await clearLocalSession()
     }
 
     func clearLocalSession() async { try? await client.signOut(scope: .local) }

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Device controls act on Supabase's native sessions; names are display metadata.
 struct NativeAccountControls: View {
@@ -28,7 +29,7 @@ struct NativeAccountControls: View {
                 }
             }
             if let profileMessage { Text(profileMessage).font(.caption).foregroundStyle(.secondary) }
-            Button("Change Password…") { environment.auth.needsPasswordUpdate = true; environment.auth.isPresentingSignIn = true }
+            Button("Change Password…") { NSWorkspace.shared.open(environment.preferences.serverTarget.accountSettingsSignInURL) }
         }
         Section("Your Devices") {
             ForEach(sessions) { session in

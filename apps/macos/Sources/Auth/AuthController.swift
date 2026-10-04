@@ -87,6 +87,7 @@ final class AuthController {
     static let stallAfter: TimeInterval = 60
     private static let log = Logger(subsystem: "ai.bookmarkai", category: "auth")
 
+    private let nativeMode: Bool
     private let web: ClerkWebAuth?
     let native: SupabaseNativeAuth?
     var nativeBusy = false
@@ -96,6 +97,7 @@ final class AuthController {
     private var nativeUserId: UUID?
     // Only assigned on MainActor; Sendable task cancellation is safe in deinit.
     @ObservationIgnored nonisolated(unsafe) private var nativeEvents: Task<Void, Never>?
+    private var nativeBrowserAttempt: (flow: String, verifier: String, state: String)?
     private let browserClient: BrowserSignInClient
     private var cachedToken: String?
     private var cachedAt: Date?
@@ -129,10 +131,11 @@ final class AuthController {
     var webSignOutOverride: (() async -> Void)?
     #endif
 
-    init(origin: URL) {
-        self.web = SupabaseConfiguration.isQA ? nil : ClerkWebAuth(origin: origin)
-        self.native = SupabaseConfiguration.isQA ? SupabaseConfiguration.current.map { SupabaseNativeAuth(configuration: $0) } : nil
-        self.browserClient = BrowserSignInClient(origin: origin)
+    init(origin: URL, nativeMode: Bool = SupabaseConfiguration.isQA) {
+        self.nativeMode = nativeMode
+        self.web = nativeMode ? nil : ClerkWebAuth(origin: origin)
+        self.native = nativeMode ? SupabaseConfiguration.current.map { SupabaseNativeAuth(configuration: $0) } : nil
+        self.browserClient = BrowserSignInClient(origin: origin, nativeMode: nativeMode)
         self.currentAuthOrigin = origin
         if let native {
             nativeEvents = Task { [weak self] in
@@ -156,35 +159,10 @@ final class AuthController {
 
     var isSignedIn: Bool { status == .signedIn }
 
-    func nativeAction(_ operation: String, email: String = "", password: String = "", code: String = "") async {
-        guard !nativeBusy else { return }
-        guard let native else { lastError = NativeAuthError.unavailable.localizedDescription; return }
-        nativeBusy = true; lastError = nil; nativeMessage = nil
-        authOperationGeneration &+= 1
-        invalidateToken()
-        let generation = authOperationGeneration
-        defer { nativeBusy = false }
-        do {
-            switch operation {
-            case "email": try await native.signIn(email: email, password: password)
-            case "signup":
-                guard try await native.signUp(email: email, password: password) else { nativeMessage = "Check your email to confirm your account."; return }
-            case "google": try await native.google()
-            case "apple": try await native.apple()
-            case "recovery": try await native.recover(email: email); nativeMessage = "Check your email for the recovery link."; return
-            case "password": try await native.updatePassword(password); needsPasswordUpdate = false
-            case "mfa": try await native.verifyMFA(code: code); needsMFA = false
-            default: return
-            }
-            guard generation == authOperationGeneration else { await native.clearLocalSession(); return }
-            try await confirmNative()
-        } catch { lastError = error.localizedDescription }
-    }
-
     private func confirmNative() async throws {
         guard let native else { throw NativeAuthError.unavailable }
         let assurance = try await native.client.mfa.getAuthenticatorAssuranceLevel()
-        if assurance.nextLevel == "aal2", assurance.currentLevel != "aal2" { needsMFA = true; isPresentingSignIn = true; return }
+        if assurance.nextLevel == "aal2", assurance.currentLevel != "aal2" { needsMFA = true; beginSignIn(); return }
         let nextUser = native.client.currentUser?.id
         if let previous = nativeUserId, previous != nextUser { setSignedOut(force: true) }
         nativeUserId = nextUser
@@ -197,20 +175,27 @@ final class AuthController {
     }
 
     func handleNativeCallback(_ url: URL) async {
+        if nativeMode, let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           components.queryItems?.contains(where: { $0.name == "flow" }) == true {
+            guard let attempt = nativeBrowserAttempt, native?.configuration.acceptsCallback(url) == true,
+                  components.queryItems?.filter({ $0.name == "flow" }).count == 1,
+                  components.queryItems?.filter({ $0.name == "state" }).count == 1,
+                  components.queryItems?.first(where: { $0.name == "flow" })?.value == attempt.flow,
+                  components.queryItems?.first(where: { $0.name == "state" })?.value == attempt.state,
+                  let code = components.queryItems?.first(where: { $0.name == "code" })?.value,
+                  components.queryItems?.filter({ $0.name == "code" }).count == 1,
+                  components.queryItems?.count == 3, BrowserSignInWireValidator.isOpaque43(code),
+                  url.fragment == nil else { return }
+            browserClient.nativeCompletionCode = code
+            return
+        }
         guard let native, native.configuration.acceptsCallback(url), !nativeBusy else { return }
         nativeBusy = true; defer { nativeBusy = false }
         do {
             try await native.callback(url)
-            // Recovery requires an explicit new password before opening the library.
-            needsPasswordUpdate = true; isPresentingSignIn = true
-            nativeMessage = "Email confirmed. Set a new password if you requested recovery, or continue."
+            try await confirmNative()
         } catch { lastError = error.localizedDescription; isPresentingSignIn = true }
     }
-    func continueNativeCallback() async {
-        needsPasswordUpdate = false
-        do { try await confirmNative() } catch { lastError = error.localizedDescription }
-    }
-
     private func nativeAPI() -> ApiClient {
         let api = ApiClient(target: .cloud)
         api.tokenProvider = { [weak self] fresh in await self?.token(forceRefresh: fresh) }
@@ -254,11 +239,10 @@ final class AuthController {
         let generation = authOperationGeneration
         let outcome = await performMint(forceRefresh: forceRefresh)
         guard browserAttemptID == nil, authOperationGeneration == generation else { return .unavailable }
-        if SupabaseConfiguration.isQA, case .token = outcome, let native,
-           let assurance = try? await native.client.mfa.getAuthenticatorAssuranceLevel(),
-           assurance.nextLevel == "aal2", assurance.currentLevel != "aal2" {
-            needsMFA = true; isPresentingSignIn = true
+        if nativeMode, native?.needsBrowserVerification == true {
+            needsMFA = true
             setSignedOut()
+            beginSignIn()
             return .unavailable
         }
         applyMintOutcome(outcome)
@@ -286,7 +270,7 @@ final class AuthController {
             #if DEBUG
             if let mintOverride { return await mintOverride(forceRefresh) }
             #endif
-            if SupabaseConfiguration.isQA { return await native?.mint(fresh: forceRefresh) ?? .unavailable }
+            if nativeMode { return await native?.mint(fresh: forceRefresh) ?? .unavailable }
             return await web?.mintToken(fresh: forceRefresh) ?? .unavailable
         }
         mintTask = task
@@ -300,7 +284,7 @@ final class AuthController {
     private func applyMintOutcome(_ outcome: MintOutcome) {
         switch outcome {
         case .token(let token):
-            if SupabaseConfiguration.isQA, let next = native?.client.currentUser?.id {
+            if nativeMode, let next = native?.client.currentUser?.id {
                 if let previous = nativeUserId, previous != next { setSignedOut(force: true) }
                 nativeUserId = next
             }
@@ -365,7 +349,7 @@ final class AuthController {
     /// and its retry schedule.
     private func attemptRestore(attempt: Int) async {
         let outcome = await mint(forceRefresh: true)
-        if SupabaseConfiguration.isQA && needsMFA { return }
+        if nativeMode && needsMFA { return }
 
         switch outcome {
         case .token:
@@ -410,15 +394,11 @@ final class AuthController {
     }
 
     func beginSignIn() {
-        if SupabaseConfiguration.isQA {
-            nativeMessage = nil; lastError = nil; isPresentingSignIn = true; return
-        }
         isPresentingSignIn = true
         startBrowserAttempt()
     }
 
     func retrySignIn() {
-        if SupabaseConfiguration.isQA { beginSignIn(); return }
         guard isPresentingSignIn else { return }
         startBrowserAttempt()
     }
@@ -435,7 +415,10 @@ final class AuthController {
     }
 
     func cancelSignIn() {
-        if SupabaseConfiguration.isQA { authOperationGeneration &+= 1; native?.cancel(); isPresentingSignIn = false; return }
+        if let attempt = nativeBrowserAttempt {
+            nativeBrowserAttempt = nil
+            Task { await browserClient.cancel(flowId: attempt.flow, verifier: attempt.verifier) }
+        }
         authOperationGeneration &+= 1
         browserAttemptID = nil
         browserAttemptTask?.cancel()
@@ -473,10 +456,19 @@ final class AuthController {
             guard let browserURL = start.browserURL,
                   BrowserSignInWireValidator.isOpaque43(start.flowId),
                   BrowserSignInWireValidator.isVerificationCode(start.verificationCode),
-                  BrowserSignInURLValidator.validate(browserURL, flowId: start.flowId, origin: currentAuthOrigin),
+                  (nativeMode ? NativeBrowserURLValidator.validate(browserURL, flowId: start.flowId, origin: currentAuthOrigin) : BrowserSignInURLValidator.validate(browserURL, flowId: start.flowId, origin: currentAuthOrigin)),
                   start.expirationDate > browserNow()
             else { throw BrowserSignInError.invalidBrowserURL }
 
+            if nativeMode, let state = browserClient.nativeState {
+                nativeBrowserAttempt = (start.flowId, verifier, state)
+            }
+            defer {
+                if nativeBrowserAttempt?.flow == start.flowId {
+                    nativeBrowserAttempt = nil
+                    Task { await browserClient.cancel(flowId: start.flowId, verifier: verifier) }
+                }
+            }
             let deadline = min(start.expirationDate, startedAt.addingTimeInterval(BrowserSignInPollPolicy.maximumLifetime))
             let opened = openBrowser(browserURL)
             browserSignInState = .waiting(
@@ -499,9 +491,34 @@ final class AuthController {
             while isCurrentBrowserAttempt(attemptID) {
                 do {
                     let exchange = try await exchangeBrowserFlow(flowId: start.flowId, verifier: verifier)
-                    guard isCurrentBrowserAttempt(attemptID) else { return }
+                    guard isCurrentBrowserAttempt(attemptID) else {
+                        if case .nativeComplete(let session) = exchange { await native?.revokeHandoff(session) }
+                        return
+                    }
 
                     switch exchange {
+                    case .nativeComplete(let session):
+                        guard let native else { throw NativeAuthError.unavailable }
+                        browserSignInState = .redeeming(code: start.verificationCode)
+                        do {
+                            try await native.importHandoff(session)
+                            guard isCurrentBrowserAttempt(attemptID) else { throw CancellationError() }
+                            let outcome = await performMint(forceRefresh: false)
+                            guard isCurrentBrowserAttempt(attemptID), case .token(let token) = outcome else { throw NativeAuthError.unavailable }
+                            let api = nativeAPI()
+                            api.tokenProvider = { _ in token }
+                            try await api.registerCurrentSession()
+                            guard isCurrentBrowserAttempt(attemptID) else { throw CancellationError() }
+                            cachedToken = nil; cachedAt = nil
+                            applyMintOutcome(outcome)
+                        } catch {
+                            await native.revokeHandoff(session)
+                            await native.clearHandoffSession(session)
+                            throw error
+                        }
+                        nativeBrowserAttempt = nil; browserAttemptID = nil; browserSignInState = .idle
+                        isPresentingSignIn = false; lastError = nil
+                        return
                     case .complete(let ticket, let ticketExpiresAt):
                         guard ticketExpiresAt > browserNow() else {
                             failBrowserAttempt(attemptID, message: "The secure sign-in handoff expired. Try again.")
@@ -673,7 +690,7 @@ final class AuthController {
             return
         }
         #endif
-        if SupabaseConfiguration.isQA { await native?.clearLocalSession() }
+        if nativeMode { await native?.clearLocalSession() }
         else { await web?.signOut() }
     }
 
@@ -705,7 +722,7 @@ final class AuthController {
     }
 
     func signOut() async {
-        if SupabaseConfiguration.isQA {
+        if nativeMode {
             do { try await nativeSessionScope("local") } catch { lastError = error.localizedDescription }
             return
         }
@@ -726,7 +743,7 @@ final class AuthController {
         cancelSignIn()
         Self.log.error("401 after a forced re-mint — treating as signed out")
         lastError = "The server rejected the session. Sign in again."
-        if SupabaseConfiguration.isQA {
+        if nativeMode {
             let rejectedUser = native?.client.currentUser?.id
             Task { if native?.client.currentUser?.id == rejectedUser { await native?.clearLocalSession() } }
         }
@@ -777,7 +794,7 @@ final class AuthController {
     /// Keeps a fresh token on hand so the first request after an idle period
     /// doesn't pay the mint latency (or, worse, race the TTL).
     private func startRefreshLoop() {
-        if SupabaseConfiguration.isQA { return }
+        if nativeMode { return }
         refreshLoop?.cancel()
         refreshLoop = Task { @MainActor [weak self] in
             while !Task.isCancelled {

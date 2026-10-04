@@ -8,9 +8,7 @@ struct SignInSheet: View {
 
     var body: some View {
         let auth = appEnvironment.auth
-        if SupabaseConfiguration.isQA {
-            SupabaseSignInView(auth: auth)
-        } else { VStack(spacing: 0) {
+        VStack(spacing: 0) {
             header(auth)
             Divider()
             content(auth)
@@ -20,7 +18,6 @@ struct SignInSheet: View {
         .frame(width: 500, height: 460)
         .interactiveDismissDisabled()
         .accessibilityIdentifier("browser-sign-in-sheet")
-        }
     }
 
     private func header(_ auth: AuthController) -> some View {
@@ -62,17 +59,17 @@ struct SignInSheet: View {
                         .font(.system(size: 38, weight: .medium))
                         .foregroundStyle(.secondary)
 
-                    Text("Confirm this code in your browser")
+                    Text(SupabaseConfiguration.isQA ? "Finish signing in in your browser" : "Confirm this code in your browser")
                         .font(.title3.weight(.semibold))
 
-                    Text(code)
+                    if !SupabaseConfiguration.isQA { Text(code)
                         .font(.system(size: 30, weight: .bold, design: .monospaced))
-                        .textSelection(.enabled)
+                        .textSelection(.enabled) }
                         // Keep the selectable text's native accessibility label.
                         // On macOS 27, overriding it recursively asks AppKit for
                         // the same label when an AX client copies the hierarchy.
 
-                    Text("Choose the account in your browser, make sure the same code appears there, then approve the sign-in.")
+                    Text(SupabaseConfiguration.isQA ? "Sign in on the Bookmark AI website. You will return to the app automatically." : "Choose the account in your browser, make sure the same code appears there, then approve the sign-in.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: 390)

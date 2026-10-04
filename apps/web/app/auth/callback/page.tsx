@@ -4,7 +4,7 @@ import Link from "next/link";
 import { CircleAlert, Loader2 } from "lucide-react";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
-import { getBrowserSupabase } from "@/lib/auth";
+import { getAuthFlowSupabase } from "@/lib/native-auth-context";
 import { authDestinationFromSearch } from "@/lib/auth-policy";
 let exchange: Promise<void> | null = null;
 export default function Callback() {
@@ -19,12 +19,12 @@ export default function Callback() {
       setError("This sign-in link is invalid or expired. Start again.");
       return;
     }
-    exchange ??= getBrowserSupabase()
+    exchange ??= getAuthFlowSupabase()
       .auth.exchangeCodeForSession(code)
       .then(async ({ error }) => {
         if (error) throw new Error("Sign-in failed.");
-        window.history.replaceState(null, "", "/auth/callback");
-        const { data } = await getBrowserSupabase().auth.mfa.getAuthenticatorAssuranceLevel();
+        window.history.replaceState(null, "", "/auth/callback?next=" + encodeURIComponent(next));
+        const { data } = await getAuthFlowSupabase().auth.mfa.getAuthenticatorAssuranceLevel();
         window.location.replace(
           data?.nextLevel === "aal2" && data.currentLevel !== "aal2"
             ? "/auth/mfa?next=" + encodeURIComponent(next)

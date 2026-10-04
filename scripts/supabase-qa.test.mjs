@@ -138,3 +138,15 @@ test('Expo shipped identity stays intact; migration builds require an isolated Q
     }
   }
 });
+
+
+test('explicit hosted target pins production endpoints and preserves distinct auth identity', () => {
+  const hosted = { BOOKMARK_HOSTED_TARGET: 'production', BOOKMARK_QA_WEB_URL: 'https://www.bookmark-ai.cloud', BOOKMARK_QA_LIVE_URL: 'https://live.bookmark-ai.cloud', REDIS_URL: 'redis://127.0.0.1:6379/3', LIVE_ENCRYPTION_SECRET: 'x'.repeat(32) };
+  const env = qaEnvironment(hosted, {}, 'live');
+  assert.equal(env.NEXT_PUBLIC_API_URL, 'https://www.bookmark-ai.cloud');
+  assert.equal(env.EXPO_PUBLIC_HOSTED_TARGET, 'production');
+  assert.equal(env.WXT_AUTH_STORAGE_NAMESPACE, 'bookmark-ai:supabase-qa');
+  assert.equal(env.BOOKMARK_BUILD_VARIANT, 'supabase-qa');
+  for (const patch of [{ BOOKMARK_HOSTED_TARGET: 'other' }, { BOOKMARK_QA_WEB_URL: 'http://bookmark-ai.cloud' }, { BOOKMARK_QA_LIVE_URL: 'https://evil.example' }, { REDIS_URL: 'redis://127.0.0.1:6379/2' }]) assert.throws(() => qaEnvironment({ ...hosted, ...patch }, {}, 'live'));
+  assert.throws(() => qaEnvironment({ ...hosted, BOOKMARK_HOSTED_TARGET: undefined }, {}, 'live'));
+});
