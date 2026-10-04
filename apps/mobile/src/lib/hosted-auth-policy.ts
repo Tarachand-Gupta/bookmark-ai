@@ -6,10 +6,11 @@ export function hostedCallback(url:string, redirect:string, attempt:HostedAttemp
   if(!attempt||!opaque.test(attempt.flowId)||!opaque.test(attempt.verifier)||attempt.expiresAt<=now||target.searchParams.getAll('flow').length!==1||target.searchParams.getAll('state').length!==1||target.searchParams.get('flow')!==attempt.flowId||target.searchParams.get('state')!==attempt.state||target.searchParams.size!==3||!opaque.test(target.searchParams.get('code')??''))throw new Error('Sign-in expired or belongs to another attempt');
   return {...attempt,completionCode:target.searchParams.get('code')!};
 }
-export function hostedSignInURL(value:string, origin:string, flowId:string) {
+export function hostedSignInURL(value:string, origin:string, flowId:string, provider?: "google" | "apple") {
   const url=new URL(value),base=new URL(origin);
   if(url.origin!==base.origin||url.pathname!=='/sign-in'||url.hash||url.username||url.password||url.searchParams.size!==1)throw new Error('Unexpected sign-in address');
   const next=new URL(url.searchParams.get('next')??'',base);
   if(next.origin!==base.origin||next.pathname!=='/auth/native/complete'||next.searchParams.get('flow')!==flowId||!opaque.test(next.searchParams.get('browser_nonce')??'')||next.searchParams.size!==2)throw new Error('Unexpected sign-in destination');
+  if(provider)url.searchParams.set('native_provider',provider);
   return url.href;
 }

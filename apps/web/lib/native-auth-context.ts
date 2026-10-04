@@ -16,6 +16,11 @@ export function nativeFlowFromLocation(search=window.location.search, path=windo
   if(!flow||!nonce||!opaque.test(flow)||!opaque.test(nonce)||target.getAll('flow').length!==1||target.getAll('browser_nonce').length!==1)return null;
   return {flow,nonce};
 }
+export function nativeProviderHint(search:string,path:string): {flow:string;nonce:string;provider:'google'|'apple'}|null {
+  const query=new URLSearchParams(search),provider=query.get('native_provider'),flow=nativeFlowFromLocation(search,path);
+  if(path!=='/sign-in'||query.getAll('native_provider').length!==1||(provider!=='google'&&provider!=='apple')||!flow)return null;
+  return {...flow,provider};
+}
 /** Only PKCE verifier crosses email tabs; provider session tokens remain tab-scoped. */
 export function nativeFlowStorage(flow:string, tab:Storage, shared:Storage) {
   const prefix=`bmai-native:${flow}`;

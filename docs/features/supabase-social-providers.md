@@ -49,3 +49,9 @@ Both providers show Enabled in the hosted Supabase dashboard. Google completed a
 Clerk remains usable with its original callbacks, client secret, Apple key, and primary-app association. Rolling back the source branch does not require removing the additive Supabase callbacks. If an operator later retires the new Supabase project, remove only its exact callback/domain entries; do not revoke shared credentials or delete the Clerk callback.
 
 References: [Supabase Google configuration](https://supabase.com/docs/guides/auth/social-login/auth-google), [Supabase Apple configuration and secret renewal](https://supabase.com/docs/guides/auth/social-login/auth-apple), [Apple web configuration](https://developer.apple.com/help/account/capabilities/configure-sign-in-with-apple-for-the-web).
+
+## Auth email — 4 October 2026
+
+Resend domain `bookmark-ai.cloud` is verified. Supabase project `xogqaqtyacmecdbmgqqd` now uses custom SMTP `smtp.resend.com:465` (TLS), sender **Bookmark AI <noreply@bookmark-ai.cloud>**. Confirmation remains required; Google/Apple and Clerk configuration were unchanged. Original confirmation/recovery subjects, HTML and `{{ .ConfirmationURL }}` links are preserved with `{{ .Token }}` added for native browser-storage fallback. Existing provider OTP length8/expiry3600s are unchanged.
+
+SMTP credential authentication passed235 without sending an extra message. Resend accepted the clearly labeled **Bookmark AI — email delivery test**, reported delivered, and root verified the matching message in Hero Gmail Primary. This proves SMTP credentials and mailbox delivery separately; it does **not** prove actual Supabase signup/recovery email E2E. No Hero account was created or password assigned. Start normal hosted signup/recovery in the user’s browser so its PKCE verifier is available, then check the auth email and finish there. No paid upgrade or DNS changes were needed.

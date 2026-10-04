@@ -14,6 +14,7 @@ test('server cannot redirect native Sign In to a foreign website or a token-bear
   const next='/auth/native/complete?'+new URLSearchParams({flow:attempt.flowId,browser_nonce:'n'.repeat(43)});
   const url=origin+'/sign-in?'+new URLSearchParams({next});
   assert.equal(hostedSignInURL(url,origin,attempt.flowId),url);
+  assert.equal(new URL(hostedSignInURL(url,origin,attempt.flowId,'google')).searchParams.get('native_provider'),'google');
   assert.throws(()=>hostedSignInURL(url.replace(origin,'https://evil.invalid'),origin,attempt.flowId));
   assert.throws(()=>hostedSignInURL(url+'#access_token=secret',origin,attempt.flowId));
   assert.throws(()=>hostedSignInURL(url,origin,'x'.repeat(43)));

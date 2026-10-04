@@ -1,32 +1,375 @@
-import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import * as AppleAuthentication from "expo-apple-authentication";
+import * as WebBrowser from "expo-web-browser";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
-import { signInInBrowser } from "../lib/auth";
+import { appleButtonStyle, offersAppleSignIn } from "../lib/appleSignIn";
+import { adoptNativeEmailSession, createNativeEmailAuthClient, signInInBrowser } from "../lib/auth";
+import { createEmailAuthFlow, validEmailCode, type EmailMode, type EmailStep } from "../lib/email-auth-flow";
+import { getApiUrl } from "../api";
 import { openWebPage, PRIVACY_URL, TERMS_URL } from "../lib/links";
 
+const OAUTH_ENABLED = true;
+
 export function SignInScreen() {
-  const { colors, radius } = useAppTheme();
-  const [busy,setBusy]=useState(false),[error,setError]=useState("");
-  async function signIn() {
-    if(busy)return;setBusy(true);setError("");
-    try{await signInInBrowser();}catch{setError("Couldn't finish sign-in. Check your connection and try again.");}finally{setBusy(false);}
-  }
-  return <ScrollView contentContainerStyle={[styles.root,{backgroundColor:colors.background}]}>
-    <View style={[styles.hero,styles.column]}>
-      <View style={[styles.mark,{backgroundColor:colors.primary}]}><Symbol name="bookmark.fill" size={30} color={colors.primaryForeground} fallback="B"/></View>
-      <Text style={[styles.title,{color:colors.foreground}]}>Bookmark AI</Text>
-      <Text style={[styles.subtitle,{color:colors.mutedForeground}]}>Sign in to browse and search your library.</Text>
-    </View>
-    <View style={[styles.form,styles.column]}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Sign in" disabled={busy} onPress={()=>void signIn()} style={({pressed})=>[styles.primaryBtn,{backgroundColor:colors.primary,borderRadius:radius.lg,opacity:busy?0.6:pressed?0.85:1}]}>
-        {busy?<ActivityIndicator color={colors.primaryForeground}/>:<Text style={[styles.primaryBtnText,{color:colors.primaryForeground}]}>Sign In</Text>}
-      </Pressable>
-      <Text style={[styles.subtitle,{color:colors.mutedForeground}]}>Continue securely in your browser.</Text>
-      {error&&<Text accessibilityRole="alert" style={[styles.error,{color:colors.destructive}]}>{error}</Text>}
-    </View>
-    <Text style={[styles.consent,styles.column,{color:colors.mutedForeground}]}>By continuing you agree to the <Text onPress={()=>openWebPage(TERMS_URL)} accessibilityRole="link" style={[styles.consentLink,{color:colors.foreground}]}>Terms of Service</Text> and <Text onPress={()=>openWebPage(PRIVACY_URL)} accessibilityRole="link" style={[styles.consentLink,{color:colors.foreground}]}>Privacy Policy</Text>.</Text>
-  </ScrollView>;
+  const { colors, radius, dark } = useAppTheme();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [phase, setPhase] = useState<"credentials" | "code">("credentials");
+  const [mode, setMode] = useState<EmailMode>("signIn");
+  const [busy, setBusy] = useState(false);
+  const running = useRef(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const appleAvailable = OAUTH_ENABLED && offersAppleSignIn(Platform.OS);
+  const finishing = false;
+  const flow = useRef<ReturnType<typeof createEmailAuthFlow> | null>(null);
+  if (!flow.current) flow.current = createEmailAuthFlow(createNativeEmailAuthClient(), `${getApiUrl()}/auth/callback?next=/sign-in`, adoptNativeEmailSession);
+  useEffect(() => () => flow.current?.dispose(), []);
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    void WebBrowser.warmUpAsync();
+    return () => { void WebBrowser.coolDownAsync(); };
+  }, []);
+  const failed = (failure: unknown) => {
+    setError(failure instanceof Error ? failure.message : "Couldn't finish sign-in. Check your connection and try again.");
+  };
+  const step = (result: EmailStep) => {
+    if (result.phase === "code") { setMode(result.mode); setPhase("code"); setNotice(result.notice ?? null); }
+  };
+  const run = async (work: () => Promise<EmailStep | void>) => {
+    if (running.current) return;
+    running.current = true;
+    setBusy(true); setError(null); setNotice(null);
+    try { const result = await work(); if (result) step(result); }
+    catch (failure) { failed(failure); }
+    finally { running.current = false; setBusy(false); }
+  };
+  const resetToCredentials = () => {
+    if (running.current) return;
+    void flow.current!.reset().catch(failed);
+    setPhase("credentials"); setMode("signIn"); setCode(""); setNewPassword(""); setNotice(null); setError(null);
+  };
+  const continueWithPassword = () => run(async () => {
+    if (!email.trim() || !password) return;
+    setCode(""); setNewPassword(""); return flow.current!.password(email, password);
+  });
+  const sendEmailCode = () => run(async () => {
+    if (!email.trim()) return;
+    setCode(""); setNewPassword(""); return flow.current!.code(email);
+  });
+  const forgotPassword = () => {
+    if (!email.trim()) { setError("Enter your email first, then tap Forgot password."); return Promise.resolve(); }
+    return run(async () => { setCode(""); setNewPassword(""); return flow.current!.recovery(email); });
+  };
+  const verifyCode = () => run(() => flow.current!.verify(email, mode, code, newPassword));
+  // Original social buttons use the separately scoped hosted provider session.
+  const signInWithGoogle = () => run(() => signInInBrowser("google"));
+  const signInWithApple = () => run(() => signInInBrowser("apple"));
+  const codeTooShort = !validEmailCode(code);
+  const resetPwTooShort = mode === "reset" && newPassword.length < 8;
+  const verifyDisabled = busy || codeTooShort || resetPwTooShort;
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={styles.flex}
+    >
+      <ScrollView
+        contentContainerStyle={[styles.root, { backgroundColor: colors.background }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={[styles.hero, styles.column]}>
+          <View style={[styles.mark, { backgroundColor: colors.primary }]}>
+            <Symbol name="bookmark.fill" size={30} color={colors.primaryForeground} fallback="B" />
+          </View>
+          <Text style={[styles.title, { color: colors.foreground }]}>Bookmark AI</Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            Sign in to browse and search your library.
+          </Text>
+        </View>
+
+        <View style={[styles.form, styles.column]}>
+          {finishing ? (
+            <View style={styles.finishing} accessibilityLiveRegion="polite">
+              <ActivityIndicator color={colors.mutedForeground} />
+              <Text style={[styles.finishingTitle, { color: colors.foreground }]}>
+                Finishing sign-in…
+              </Text>
+              <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+                Google is done — we're waiting on the last handshake with the server.
+              </Text>
+            </View>
+          ) : phase === "credentials" ? (
+            <>
+              {OAUTH_ENABLED && (
+                <>
+                  {appleAvailable && (
+                    // Apple's own ASAuthorizationAppleIDButton — Apple-approved
+                    // title, logo, colours and localisation for free. It has no
+                    // disabled state of its own, so gate touches and dim it
+                    // while a flow runs, exactly like the Google button. Above
+                    // Google on purpose: it must never read as the lesser option.
+                    <View
+                      pointerEvents={busy ? "none" : "auto"}
+                      accessibilityState={{ disabled: busy }}
+                      style={{ opacity: busy ? 0.6 : 1 }}
+                    >
+                      <AppleAuthentication.AppleAuthenticationButton
+                        buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                        buttonStyle={
+                          AppleAuthentication.AppleAuthenticationButtonStyle[appleButtonStyle(dark)]
+                        }
+                        cornerRadius={radius.lg}
+                        onPress={() => void signInWithApple()}
+                        style={styles.appleBtn}
+                      />
+                    </View>
+                  )}
+
+                  <Pressable
+                    onPress={() => void signInWithGoogle()}
+                    disabled={busy}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.primaryBtn,
+                      {
+                        backgroundColor: colors.primary,
+                        borderRadius: radius.lg,
+                        opacity: busy ? 0.6 : pressed ? 0.85 : 1,
+                      },
+                    ]}
+                  >
+                    <Symbol name="globe" size={17} color={colors.primaryForeground} fallback="G" />
+                    <Text style={[styles.primaryBtnText, { color: colors.primaryForeground }]}>
+                      Continue with Google
+                    </Text>
+                  </Pressable>
+
+                  <View style={styles.dividerRow}>
+                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                    <Text style={{ fontSize: 13, color: colors.mutedForeground }}>
+                      or use email
+                    </Text>
+                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                  </View>
+                </>
+              )}
+
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@example.com"
+                placeholderTextColor={colors.mutedForeground}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                autoComplete="email"
+                textContentType="username"
+                editable={!busy}
+                style={[
+                  styles.input,
+                  {
+                    color: colors.foreground,
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    borderRadius: radius.lg,
+                  },
+                ]}
+              />
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Password"
+                placeholderTextColor={colors.mutedForeground}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+                autoComplete="password"
+                textContentType="password"
+                editable={!busy}
+                onSubmitEditing={() => void continueWithPassword()}
+                style={[
+                  styles.input,
+                  {
+                    color: colors.foreground,
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    borderRadius: radius.lg,
+                  },
+                ]}
+              />
+              <Pressable
+                onPress={() => void continueWithPassword()}
+                disabled={busy || !email.trim() || !password}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  {
+                    backgroundColor: colors.primary,
+                    borderRadius: radius.lg,
+                    opacity: busy || !email.trim() || !password ? 0.5 : pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.primaryBtnText, { color: colors.primaryForeground }]}>
+                  Continue
+                </Text>
+              </Pressable>
+
+              <Pressable onPress={() => void forgotPassword()} disabled={busy} hitSlop={8}>
+                <Text style={[styles.linkText, { color: colors.mutedForeground }]}>
+                  Forgot password?
+                </Text>
+              </Pressable>
+
+              <View style={styles.dividerRow}>
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                <Text style={{ fontSize: 13, color: colors.mutedForeground }}>or</Text>
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              </View>
+
+              <Pressable
+                onPress={() => void sendEmailCode()}
+                disabled={busy || !email.trim()}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.secondaryBtn,
+                  {
+                    borderColor: colors.border,
+                    borderRadius: radius.lg,
+                    backgroundColor: colors.card,
+                    opacity: busy || !email.trim() ? 0.5 : pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.secondaryBtnText, { color: colors.foreground }]}>
+                  Email me a code instead
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={{ fontSize: 15, color: colors.mutedForeground, textAlign: "center" }}>
+                {notice ??
+                  (mode === "signUp"
+                    ? `Check your email — enter the code sent to ${email.trim()}`
+                    : mode === "reset"
+                      ? `Enter the code sent to ${email.trim()} and choose a new password`
+                      : `Enter the code sent to ${email.trim()}`)}
+              </Text>
+              <TextInput
+                value={code}
+                onChangeText={setCode}
+                placeholder="12345678"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="number-pad"
+                autoComplete="one-time-code"
+                textContentType="oneTimeCode"
+                editable={!busy}
+                style={[
+                  styles.input,
+                  styles.codeInput,
+                  // letterSpacing/large type deform the placeholder — only track a real value
+                  code.length === 0 && styles.codeInputEmpty,
+                  {
+                    color: colors.foreground,
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    borderRadius: radius.lg,
+                  },
+                ]}
+              />
+              {mode === "reset" && (
+                <TextInput
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholder="New password"
+                  placeholderTextColor={colors.mutedForeground}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry
+                  autoComplete="password-new"
+                  textContentType="newPassword"
+                  editable={!busy}
+                  style={[
+                    styles.input,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                      borderRadius: radius.lg,
+                    },
+                  ]}
+                />
+              )}
+              <Pressable
+                onPress={() => void verifyCode()}
+                disabled={verifyDisabled}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  {
+                    backgroundColor: colors.primary,
+                    borderRadius: radius.lg,
+                    opacity: verifyDisabled ? 0.5 : pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.primaryBtnText, { color: colors.primaryForeground }]}>
+                  {mode === "reset" ? "Reset password" : "Verify"}
+                </Text>
+              </Pressable>
+              <Pressable onPress={resetToCredentials} hitSlop={8}>
+                <Text style={[styles.linkText, { color: colors.mutedForeground }]}>
+                  Use a different email
+                </Text>
+              </Pressable>
+            </>
+          )}
+
+          {/* The finishing panel has its own spinner — one is enough. */}
+          {busy && !finishing && <ActivityIndicator color={colors.mutedForeground} />}
+          {error && (
+            <Text style={[styles.error, { color: colors.destructive }]} accessibilityRole="alert">
+              {error}
+            </Text>
+          )}
+        </View>
+
+        {/* Consent line — the disclosure both stores expect at the point an
+            account is created (App Store 5.1.1(i)/5.1.2(i): personal data and
+            saved links go to the server and to third-party AI; Play User Data
+            policy). Every path on this screen — Apple, Google, password, email
+            code — can create the account, so it sits under the whole form, on the
+            credentials step only (the code step is mid-flow). */}
+        {phase === "credentials" && !finishing && (
+          <Text style={[styles.consent, styles.column, { color: colors.mutedForeground }]}>
+            By continuing you agree to the{" "}
+            <Text
+              onPress={() => openWebPage(TERMS_URL)}
+              accessibilityRole="link"
+              style={[styles.consentLink, { color: colors.foreground }]}
+            >
+              Terms of Service
+            </Text>{" "}
+            and{" "}
+            <Text
+              onPress={() => openWebPage(PRIVACY_URL)}
+              accessibilityRole="link"
+              style={[styles.consentLink, { color: colors.foreground }]}
+            >
+              Privacy Policy
+            </Text>
+            .
+          </Text>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
 }
 
 const AUTH_BUTTON_HEIGHT = 50;

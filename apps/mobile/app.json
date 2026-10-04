@@ -121,6 +121,12 @@
     },
     "plugins": [
       [
+        "expo-build-properties",
+        {
+          "ios": { "enableSceneSupport": true }
+        }
+      ],
+      [
         "expo-secure-store",
         {
           "faceIDPermission": "Bookmark AI can use Face ID to protect the sign-in saved on this device."

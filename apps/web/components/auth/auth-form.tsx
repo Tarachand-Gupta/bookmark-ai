@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CircleAlert, CircleCheck, Eye, EyeOff, Loader2 } from "lucide-react";
-import { getAuthFlowSupabase, nativeFlowFromLocation } from "@/lib/native-auth-context";
+import { getAuthFlowSupabase, nativeFlowFromLocation, nativeProviderHint } from "@/lib/native-auth-context";
 import { authDestinationFromSearch, safeAuthDestination } from "@/lib/auth-policy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,25 @@ export function AuthForm({
   const [code, setCode] = useState("");
   const [nativeEmailPending, setNativeEmailPending] = useState(false);
   const [nextQuery, setNextQuery] = useState("");
+  const nativeProviderStarted = useRef(false);
+  useEffect(() => {
+    const hint = nativeProviderHint(window.location.search, window.location.pathname);
+    if (mode !== "sign-in" || nativeProviderStarted.current || !hint) return;
+    nativeProviderStarted.current = true;
+    // Consume the hint before OAuth; reloads and error returns never restart it.
+    const address = new URL(window.location.href);
+    address.searchParams.delete("native_provider");
+    window.history.replaceState(null, "", address.href);
+    setBusyAction(hint.provider);
+    void fetch("/api/auth/native/view", { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ flowId: hint.flow, browserNonce: hint.nonce }) })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Sign-in request ended");
+        const flow = await response.json();
+        if (!Number.isFinite(flow.expiresAt) || flow.expiresAt <= Date.now()) throw new Error("Sign-in request ended");
+        await social(hint.provider);
+      })
+      .catch(() => { setBusyAction(null); setError("This sign-in request ended. Start again in the app."); });
+  }, [mode]);
   useEffect(() => {
     const destination = authDestinationFromSearch(window.location.search);
     setNextQuery(`?next=${encodeURIComponent(destination)}`);

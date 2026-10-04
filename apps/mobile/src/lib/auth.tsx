@@ -16,6 +16,7 @@ import { createSecureSessionStorage } from "./secure-session-storage";
 import { adoptHostedSession, createHostedCallbackFlight } from "./hosted-session";
 import { hostedCallback, hostedSignInURL, type HostedAttempt } from "./hosted-auth-policy";
 import { createMfaVerificationGuard, createSessionAssuranceGate } from "./session-assurance";
+import { fetchWithTimeout } from "./request-timeout";
 
 if (!SUPABASE_URL || !SUPABASE_PUBLIC_KEY) throw new Error("Supabase mobile public configuration is required");
 const secureOptions = { keychainService: AUTH_NAMESPACE, keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY };
@@ -28,6 +29,20 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
   // SDK2.117 owns refresh single-flight and the refresh-vs-signout commit guard.
   auth: { storage: sessionStorage, storageKey: `${AUTH_NAMESPACE}:session`, flowType: "pkce", autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
 });
+/** Email verification/reset stays private until its original native phase completes. */
+export function createNativeEmailAuthClient() {
+  return createClient(SUPABASE_URL!, SUPABASE_PUBLIC_KEY!, {
+    auth: { storageKey: `${AUTH_NAMESPACE}:email:${Crypto.randomUUID()}`, flowType: "pkce", autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+  }).auth;
+}
+export async function adoptNativeEmailSession(session: Session, isCurrent: () => boolean) {
+  const claims = await supabase.auth.getClaims(session.access_token);
+  const sid = claims.data?.claims.session_id;
+  if (claims.error || typeof sid !== "string") throw new Error("Invalid sign-in session");
+  const revoke = () => fetch(`${SUPABASE_URL}/auth/v1/logout?scope=local`, { method: "POST", credentials: "omit", headers: { apikey: SUPABASE_PUBLIC_KEY!, authorization: `Bearer ${session.access_token}` } }).catch(() => undefined);
+  // AuthProvider's assurance gate still blocks AAL1 from private UI and APIs.
+  await adoptHostedSession(supabase.auth, { ...session, user_id: session.user.id, session_id: sid, expires_at: session.expires_at ?? 0 }, `${SUPABASE_URL}/auth/v1`, isCurrent, revoke, async () => undefined, true);
+}
 WebBrowser.maybeCompleteAuthSession();
 let protectedRequestsBlocked = false;
 const assuranceGate = createSessionAssuranceGate(async (token) => {
@@ -89,7 +104,7 @@ let hostedCompletedFlow: string | null = null;
 let hostedCompletedCallback: string | null = null;
 const base64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 async function hostedRequest(action: string, body: unknown) {
-  const response = await fetch(`${getApiUrl()}/api/auth/native/${action}`, { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });
+  const response = await fetchWithTimeout(`${getApiUrl()}/api/auth/native/${action}`, { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   if (!response.ok) throw new Error("Sign-in could not complete. Return to the app and try again.");
   return response.json();
 }
@@ -115,7 +130,7 @@ async function completeHostedCallback(url:string):Promise<void> {
     if(Platform.OS==="ios"&&browserOpen){try{WebBrowser.dismissAuthSession();}catch{}}
   });
 }
-export async function signInInBrowser():Promise<void> {
+export async function signInInBrowser(provider?: "google" | "apple"):Promise<void> {
   if(browserOpen)throw new Error("A sign-in attempt is already open");
   browserOpen=true;
   try {
@@ -127,7 +142,7 @@ export async function signInInBrowser():Promise<void> {
     const result=await hostedRequest("start",{clientType:Platform.OS,codeChallenge:challenge,state});
     if(result.state!==state||!Number.isFinite(result.expiresAt)||result.expiresAt<=Date.now()||result.expiresAt>Date.now()+5*60_000)throw new Error("Invalid sign-in response");
     const attempt:HostedAttempt={flowId:result.flowId,state,verifier,expiresAt:result.expiresAt};
-    const url=hostedSignInURL(result.browserUrl,getApiUrl(),attempt.flowId);
+    const url=hostedSignInURL(result.browserUrl,getApiUrl(),attempt.flowId,provider);
     await sessionStorage.setItem(hostedPendingKey,JSON.stringify(attempt));
     const outcome=await WebBrowser.openAuthSessionAsync(url,AUTH_CALLBACK_URL);
     if(outcome.type==="success")await completeHostedCallback(outcome.url);

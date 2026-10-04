@@ -1,8 +1,15 @@
 import {expect,it} from 'vitest';
 import {createClient} from '@supabase/supabase-js';
-import {nativeFlowStorage,nativeFlowFromLocation,nativeMfaDestination} from './native-auth-context';
+import {nativeFlowStorage,nativeFlowFromLocation,nativeMfaDestination,nativeProviderHint} from './native-auth-context';
 function storage():Storage {const map=new Map<string,string>();return {get length(){return map.size;},getItem:key=>map.get(key)??null,setItem:(key,value)=>{map.set(key,value);},removeItem:key=>{map.delete(key);},clear:()=>map.clear(),key:index=>[...map.keys()][index]??null};}
 const flow='f'.repeat(43),nonce='n'.repeat(43),destination='/auth/native/complete?flow='+flow+'&browser_nonce='+nonce;
+it('automatic native social login accepts only one allowed provider with a scoped native destination',()=>{
+ const query='?'+new URLSearchParams({next:destination,native_provider:'google'});
+ expect(nativeProviderHint(query,'/sign-in')).toEqual({flow,nonce,provider:'google'});
+ expect(nativeProviderHint(query.replace('google','apple'),'/sign-in')?.provider).toBe('apple');
+ for(const search of [query.replace('google','github'),query+'&native_provider=apple','?native_provider=google&next=/app',query.replace(nonce,'bad')])expect(nativeProviderHint(search,'/sign-in')).toBeNull();
+ expect(nativeProviderHint(query,'/sign-up')).toBeNull();
+});
 it('separate email tabs share only flow PKCE verifier and never provider credentials',()=>{
  const shared=storage(),one=nativeFlowStorage(flow,storage(),shared),two=nativeFlowStorage(flow,storage(),shared),prefix='bmai-native:'+flow;
  one.setItem(prefix+'-code-verifier','pkce');one.setItem(prefix,'provider-session');

@@ -15,7 +15,7 @@ function sessionId(token:string):string|undefined {
   try{return JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).session_id;}catch{return undefined;}
 }
 /** Provider validation precedes SDK publication; every unsuccessful adoption revokes this exact session. */
-export async function adoptHostedSession(auth:SupabaseClient['auth'],payload:HostedSession,issuer:string,isCurrent:()=>boolean,revoke:()=>Promise<unknown>,commit:()=>Promise<void>) {
+export async function adoptHostedSession(auth:SupabaseClient['auth'],payload:HostedSession,issuer:string,isCurrent:()=>boolean,revoke:()=>Promise<unknown>,commit:()=>Promise<void>,allowNativeMfaChallenge=false) {
   let adopted=false;
   try {
     if(!isCurrent())throw new Error('Sign-in canceled');
@@ -26,7 +26,7 @@ export async function adoptHostedSession(auth:SupabaseClient['auth'],payload:Hos
     const imported=await auth.setSession(payload);
     if(!isCurrent()||imported.error||!imported.data.session||imported.data.session.user.id!==payload.user_id||sessionId(imported.data.session.access_token)!==payload.session_id)throw new Error('Invalid sign-in session');
     const assurance=await auth.mfa.getAuthenticatorAssuranceLevel(imported.data.session.access_token);
-    if(!isCurrent()||assurance.error||!assurance.data||!['aal1','aal2'].includes(assurance.data.currentLevel??'')||(assurance.data.nextLevel==='aal2'&&assurance.data.currentLevel!=='aal2'))throw new Error('Complete sign-in verification in your browser.');
+    if(!isCurrent()||assurance.error||!assurance.data||!['aal1','aal2'].includes(assurance.data.currentLevel??'')||(!allowNativeMfaChallenge&&assurance.data.nextLevel==='aal2'&&assurance.data.currentLevel!=='aal2'))throw new Error('Complete sign-in verification in your browser.');
     await commit();
     if(!isCurrent())throw new Error('Sign-in canceled');
     adopted=true;

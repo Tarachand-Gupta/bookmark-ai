@@ -34,3 +34,9 @@ test('successful AAL2 adoption commits once and AAL1 cannot bypass verification'
   const g=fixture();g.raw.mfa.getAuthenticatorAssuranceLevel=async()=>({data:{currentLevel:'aal1',nextLevel:'aal2'},error:null});
   await assert.rejects(adoptHostedSession(g.auth,payload,issuer,()=>true,g.revoke,async()=>{}));assert.deepEqual(g.counts(),{revoked:1,signedOut:1});
 });
+test('native email may retain AAL1 only for the existing fail-closed authenticator gate',async()=>{
+ const f=fixture();let commits=0;
+ f.raw.mfa.getAuthenticatorAssuranceLevel=async()=>({data:{currentLevel:'aal1',nextLevel:'aal2'},error:null});
+ await adoptHostedSession(f.auth,payload,issuer,()=>true,f.revoke,async()=>{commits++;},true);
+ assert.equal(commits,1);assert.deepEqual(f.counts(),{revoked:0,signedOut:0});
+});
