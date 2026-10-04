@@ -27,7 +27,7 @@ The owner has authorized independent development and QA decisions in the new Sup
 | Node 22+ and Corepack pnpm 10.34.1 | Required by the pinned Supabase SDK; avoid the host's different global pnpm version. |
 | Hosted breached-password screening is unavailable on Free | The security advisor reports this disabled. Supabase documents it as Pro-only; no paid upgrade was purchased. Review this explicit difference before production password-auth cutover: [password security](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). |
 | Local Docker started for schema generation | Only an isolated shadow database is needed. Record created QA containers before cleaning them up; never remove unrelated Docker data. |
-| Recovery worker at `/api/cron/account-operations` | Uses `CRON_SECRET`; production input and Vercel key presence are verified. The deployed configuration initially scheduled only embedding. A separate Hobby-compatible daily recovery schedule (`45 4 * * *`, UTC, imprecise within the hour) is now prepared alongside unchanged embedding; root must deploy it. Authenticated worker invocation mutates pending operations, so no no-change live run is claimed. |
+| Recovery worker at `/api/cron/account-operations` | Uses `CRON_SECRET`; production input and Vercel key presence are verified. The deployed configuration initially scheduled only embedding. The active production configuration now includes a separate Hobby-compatible daily recovery schedule (`45 4 * * *`, UTC, imprecise within the hour) alongside unchanged embedding (`30 3 * * *`); both definitions were verified after promotion. Authenticated worker invocation mutates pending operations, so no no-change live run is claimed. |
 
 ## Request and extension security decisions
 
@@ -53,7 +53,7 @@ Historical QA instructions above describe the retained local Clerk version. The 
 
 ## Production cutover — 4 October 2026
 
-The user authorized production promotion. Web/API now use **https://www.bookmark-ai.cloud**, deployment **dpl_5ARcomCsxfC2BihHafwLMKMG9Tzg**; Live uses **https://live.bookmark-ai.cloud**, release **supabase-20261004-a89fea9**. Signed-out health200/protected401 and sign-in200 were verified after promotion. Monitoring registered successfully. Chrome, Firefox and Safari OAuth protocol checks passed (five checks each); these are not browser UI E2E claims.
+The user authorized production promotion. Web/API now use **https://www.bookmark-ai.cloud**, deployment **dpl_7p5J99r8F5maipGXE4CmW61yGhhB**; Live uses **https://live.bookmark-ai.cloud**, release **supabase-20261004-a89fea9**. Signed-out health200/protected401 and sign-in200 were verified after promotion. Monitoring registered successfully. Chrome, Firefox and Safari OAuth protocol checks passed (five checks each); these are not browser UI E2E claims.
 
 The original Clerk deployment **dpl_5ZmFA7Daf4BHA4nMChpxJKgzn3iU** remains available. CLI rollback to it was executed and health200/me401/sign-in200 verified during the failed-candidate recovery. Root can run `corepack pnpm dlx vercel@62.2.0 rollback dpl_5ZmFA7Daf4BHA4nMChpxJKgzn3iU --scope team_YrK7IQKCrCxbbuxx94RJEZbK --yes`. The old Live sibling and Redis DB2 are retained; Supabase Live uses DB3. Root's preserved release rollback helper restores the old Live directory/environment and restarts only that service. Existing user data and Clerk credentials were not migrated or deleted.
 
