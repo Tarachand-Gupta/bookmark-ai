@@ -8,8 +8,11 @@
  * resolves — false means "extension not reachable, use a page-side fallback".
  */
 
-/** Stable id — pinned via the CRX key in apps/extension/wxt.config.ts. */
-const EXTENSION_ID = "ffhbgpgebpmofjkehpjcemepbgcmoelp";
+/** Pinned public-key ids only. Prefer the store install when both coexist. */
+export const RESTORE_EXTENSION_IDS = [
+  "ffhbgpgebpmofjkehpjcemepbgcmoelp", // store
+  "peikdeadpkgjgohdndljbciephekdpfg", // isolated production-connected Supabase QA
+] as const;
 
 interface ExternalChrome {
   runtime?: {
@@ -24,38 +27,49 @@ interface ExternalChrome {
 
 export type RestoreMode = "window" | "group";
 
-export function restoreSessionViaExtension(
-  urls: string[],
-  options: { mode?: RestoreMode; name?: string } = {},
+function messageExtension(
+  runtime: NonNullable<ExternalChrome["runtime"]>,
+  id: (typeof RESTORE_EXTENSION_IDS)[number],
+  message: unknown,
+  timeoutMs: number,
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    const chrome = (window as { chrome?: ExternalChrome }).chrome;
-    if (!chrome?.runtime?.sendMessage) {
-      resolve(false);
-      return;
-    }
     let settled = false;
     const settle = (ok: boolean) => {
       if (!settled) {
         settled = true;
+        clearTimeout(timer);
         resolve(ok);
       }
     };
-    // No response (extension installed but old version / handler missing).
-    const timer = setTimeout(() => settle(false), 800);
+    const timer = setTimeout(() => settle(false), timeoutMs);
     try {
-      chrome.runtime.sendMessage(
-        EXTENSION_ID,
-        { type: "RESTORE_SESSION", urls, mode: options.mode ?? "window", name: options.name },
-        (response) => {
-          clearTimeout(timer);
-          // lastError = extension not installed / origin not allowed.
-          settle(!chrome.runtime?.lastError && response?.ok === true);
-        },
-      );
+      runtime.sendMessage(id, message, (response) => {
+        // Consume lastError even for a late reply (absent install/origin denied).
+        settle(!runtime.lastError && response?.ok === true);
+      });
     } catch {
-      clearTimeout(timer);
       settle(false);
     }
   });
+}
+
+export async function restoreSessionViaExtension(
+  urls: string[],
+  options: { mode?: RestoreMode; name?: string } = {},
+): Promise<boolean> {
+  const runtime = typeof window === "undefined"
+    ? undefined
+    : (window as { chrome?: ExternalChrome }).chrome?.runtime;
+  if (!runtime?.sendMessage) return false;
+  for (const id of RESTORE_EXTENSION_IDS) {
+    // Discovery is side-effect-free. Never broadcast or retry the restore:
+    // a timed-out mutating request could already have opened its window.
+    if (await messageExtension(runtime, id, { type: "BOOKMARK_AI_PING" }, 1500)) {
+      return messageExtension(runtime, id, {
+        type: "RESTORE_SESSION", urls, mode: options.mode ?? "window", name: options.name,
+      }, 800);
+    }
+  }
+  return false;
 }

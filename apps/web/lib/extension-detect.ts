@@ -23,10 +23,11 @@
  * the memo and brings the card back.
  */
 
-/** Published extension ids per build target — each browser exposes exactly one,
- * so we ping all three and take the first that answers. */
+import { RESTORE_EXTENSION_IDS } from "./extension-bridge";
+
+/** Pinned extension ids per build target; detection is side-effect-free. */
 export const EXTENSION_IDS = [
-  "ffhbgpgebpmofjkehpjcemepbgcmoelp", // prod
+  ...RESTORE_EXTENSION_IDS, // store + production-connected QA
   "ljlfmaknohecakpdolffabmjdfikfjed", // dev
   "joillpelifndeefomeimoomlgoimbkei", // local
 ];
