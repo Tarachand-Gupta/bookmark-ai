@@ -1,6 +1,6 @@
 # Supabase QA setup
 
-This branch implements an isolated replacement for Clerk. It does not migrate existing users, reuse the production Turso master, change DNS, deploy services, or submit store builds. Supabase holds authentication and the master/control-plane data; each user's content remains in a separate Turso database.
+This branch replaces Clerk with Supabase. Production promotion and existing-account migration were subsequently authorized and completed: Supabase holds authentication and master/account routing, while existing content remains in retained Turso tenant databases. The yellow client identifiers and isolated output folders distinguish test installations from retained Clerk apps. These builds use the live service with `--hosted-production`; they do not require a local server. Store submission remains separate.
 
 ## Development and build isolation
 
@@ -45,6 +45,6 @@ On this Mac's Xcode installation, the simulator UI is **Device Hub** at `/Applic
 1. Complete the per-client QA matrix, including two same-user sessions, foreign-user denial, retained unexpired JWT rejection after revoke, rejected refresh, outage recovery, and cache/share isolation.
 2. Verify restricted database privileges, Turso provisioning/deletion recovery, MCP credentials, and bounded Live stream revocation.
 3. Review provider configuration, Google/Apple account continuity, SMTP, custom accounts-domain changes, and the explicit existing-user migration plan.
-4. Create production configuration and signed release artifacts only after separate cutover approval. Keep the checkpoint branch and existing outputs available for rollback.
+4. Production cutover is authorized and live. Build production-connected artifacts with `--hosted-production`, verify the installed executable rather than only the build output, and keep the checkpoint branch and existing outputs available for rollback. Store submission and public distribution remain separate.
 
 Implementation progress and runtime evidence are recorded separately; this setup guide is not a release-readiness declaration.

@@ -1178,10 +1178,19 @@ export default defineBackground(() => {
     ) => {
       if (SUPABASE_AUTH && typeof message === "object" && message !== null) {
         const payload = message as { type?: string; url?: string };
-        if (payload.type === "START_OAUTH" && _sender.id === browser.runtime.id && !_sender.tab) {
+        if (payload.type === "START_OAUTH") {
+          const trusted = _sender.id === browser.runtime.id && !_sender.tab;
+          diag("oauth", "launch request", { trusted, sameExtension: _sender.id === browser.runtime.id, hasTab: !!_sender.tab });
+          if (!trusted) {
+            sendResponse({ ok: false });
+            return undefined;
+          }
           void startOAuth().then(
             () => sendResponse({ ok: true }),
-            () => sendResponse({ ok: false }),
+            () => {
+              diag("oauth", "launch failed", "");
+              sendResponse({ ok: false });
+            },
           );
           return true;
         }

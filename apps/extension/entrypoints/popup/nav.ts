@@ -34,9 +34,12 @@ export function openDeviceSettings(webUrl: string): void {
 
 /** Sign-in (or `/app` for the Safari "reconnect" variant, where a live session
  * redirects straight into the app and a dead one lands on sign-in anyway). */
-export function openSignIn(webUrl: string, reconnect = false): void {
+export async function openSignIn(webUrl: string, reconnect = false): Promise<void> {
   if (SUPABASE_AUTH) {
-    void browser.runtime.sendMessage({ type: "START_OAUTH" });
+    // Safari tears down the popup's message port on close. Keep it alive until
+    // the background has accepted the request and opened the authorization tab.
+    const response = await browser.runtime.sendMessage({ type: "START_OAUTH" });
+    if (response?.ok !== true) throw new Error("Could not open authorization. Please try again.");
     window.close();
     return;
   }

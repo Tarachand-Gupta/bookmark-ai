@@ -1,4 +1,5 @@
 import { SUPABASE_AUTH } from "@/lib/supabase-oauth";
+import { useState } from "react";
 import { openSignIn } from "../nav";
 import { Header } from "./Header";
 import { PopupShell } from "./PopupShell";
@@ -29,6 +30,19 @@ export function SignInGate({
   reconnectAs?: string;
 }) {
   const reconnect = !SUPABASE_AUTH && reconnectAs !== undefined;
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function signIn() {
+    setStarting(true);
+    setError(null);
+    try {
+      await openSignIn(webUrl, reconnect);
+    } catch {
+      setError("Could not open authorization. Please try again.");
+    } finally {
+      setStarting(false);
+    }
+  }
   return (
     <PopupShell>
       <Header />
@@ -56,9 +70,10 @@ export function SignInGate({
         </p>
       )}
 
-      <Button variant="primary" onClick={() => openSignIn(webUrl, reconnect)}>
+      {error && <p role="alert" className="text-[11px] text-destructive">{error}</p>}
+      <Button variant="primary" disabled={starting} onClick={() => void signIn()}>
         <ExternalLinkIcon className="size-[15px]" strokeWidth={2.2} />
-        {reconnect ? "Open Bookmark AI" : "Sign in"}
+        {starting ? "Opening authorization…" : reconnect ? "Open Bookmark AI" : "Sign in"}
       </Button>
     </PopupShell>
   );
