@@ -1,7 +1,12 @@
 # Testing Playbook
 
-Step-by-step verification of every surface. All of this passed on 2026-07-09; if something
-fails, the regression is real. Commands assume repo root unless noted.
+For current hosted Supabase clients and harness-independent E2E coverage, start with
+[the portable testing guide](testing/README.md), its journey matrix and run-report template.
+
+The recipes below are a historical July–September playbook. Their dated results, Clerk
+authentication, open/local mode and machine paths are not current hosted acceptance proof.
+Verify the current scripts/configuration before reuse; a failure may reflect environment or
+configuration drift. Commands assume repo root unless noted.
 
 ## 0. Static gates (fast, run first)
 
