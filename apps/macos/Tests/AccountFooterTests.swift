@@ -7,12 +7,16 @@ import XCTest
 final class AccountFooterTests: XCTestCase {
 
     private let tara = AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@bookmark-ai.cloud")
+    private var cloudHost: String {
+        guard SupabaseConfiguration.isQA else { return "bookmark-ai.cloud" }
+        return URL(string: Bundle.main.object(forInfoDictionaryKey: "BOOKMARK_API_URL") as? String ?? "")?.host ?? "Configuration unavailable"
+    }
 
     func testCloudSignedInShowsNameOverHostWithEmailTooltip() {
         let lines = AccountFooter.lines(target: .cloud, status: .signedIn, account: tara)
         XCTAssertEqual(
             lines,
-            .init(primary: "Tara Gupta", secondary: "bookmark-ai.cloud", tooltip: "tara@bookmark-ai.cloud")
+            .init(primary: "Tara Gupta", secondary: cloudHost, tooltip: "tara@bookmark-ai.cloud")
         )
 
         // Surrounding whitespace is trimmed off both, and a long name is the
@@ -23,7 +27,7 @@ final class AccountFooterTests: XCTestCase {
             AccountFooter.lines(target: .cloud, status: .signedIn, account: long),
             .init(
                 primary: "Tarachandra Gupta-Rajagopalan",
-                secondary: "bookmark-ai.cloud",
+                secondary: cloudHost,
                 tooltip: "tarachandragupta2784@gmail.com"
             )
         )
@@ -33,7 +37,7 @@ final class AccountFooterTests: XCTestCase {
         let emailOnly = AccountInfo(signedIn: true, name: nil, email: "tara@bookmark-ai.cloud")
         XCTAssertEqual(
             AccountFooter.lines(target: .cloud, status: .signedIn, account: emailOnly),
-            .init(primary: "tara@bookmark-ai.cloud", secondary: "bookmark-ai.cloud", tooltip: "tara@bookmark-ai.cloud")
+            .init(primary: "tara@bookmark-ai.cloud", secondary: cloudHost, tooltip: "tara@bookmark-ai.cloud")
         )
         let blankName = AccountInfo(signedIn: true, name: "   ", email: "tara@bookmark-ai.cloud")
         XCTAssertEqual(
@@ -45,14 +49,14 @@ final class AccountFooterTests: XCTestCase {
         let nameOnly = AccountInfo(signedIn: true, name: "Tara Gupta", email: "   ")
         XCTAssertEqual(
             AccountFooter.lines(target: .cloud, status: .signedIn, account: nameOnly),
-            .init(primary: "Tara Gupta", secondary: "bookmark-ai.cloud", tooltip: "Tara Gupta")
+            .init(primary: "Tara Gupta", secondary: cloudHost, tooltip: "Tara Gupta")
         )
 
         // An open-mode server reports a nameless session.
         let nameless = AccountInfo(signedIn: true, name: nil, email: nil)
         XCTAssertEqual(
             AccountFooter.lines(target: .cloud, status: .signedIn, account: nameless),
-            .init(primary: "Signed in", secondary: "bookmark-ai.cloud", tooltip: nil)
+            .init(primary: "Signed in", secondary: cloudHost, tooltip: nil)
         )
     }
 
@@ -60,7 +64,7 @@ final class AccountFooterTests: XCTestCase {
     /// placeholder, never "Signed in" pretending to be an identity.
     func testCloudIdentityNotLoadedYetShowsPlaceholder() {
         let lines = AccountFooter.lines(target: .cloud, status: .signedIn, account: nil)
-        XCTAssertEqual(lines, .init(primary: AccountFooter.loadingPlaceholder, secondary: "bookmark-ai.cloud", tooltip: nil))
+        XCTAssertEqual(lines, .init(primary: AccountFooter.loadingPlaceholder, secondary: cloudHost, tooltip: nil))
         XCTAssertEqual(lines.primary, "Loading…")
         XCTAssertLessThanOrEqual(lines.primary.count, 10, "must fit the footer at the sidebar's minimum width without truncating")
     }
@@ -68,6 +72,14 @@ final class AccountFooterTests: XCTestCase {
     func testLocalAndGateStatesUseTargetCopy() {
         // Local has no session concept — whatever auth says, even a stale identity.
         for status in [AuthController.Status.unknown, .signedOut, .signedIn, .unreachable] {
+            if SupabaseConfiguration.isQA {
+                // Isolated native builds pin both targets to the configured,
+                // authenticated endpoint; Local cannot bypass sign-in.
+                let expectedPrimary = status == .signedIn ? "Tara Gupta" : status == .signedOut ? "Not signed in" : "Connecting…"
+                XCTAssertEqual(AccountFooter.lines(target: .local, status: status, account: tara),
+                    .init(primary: expectedPrimary, secondary: cloudHost, tooltip: status == .signedIn ? "tara@bookmark-ai.cloud" : nil))
+                continue
+            }
             XCTAssertEqual(
                 AccountFooter.lines(target: .local, status: status, account: tara),
                 .init(primary: "Local account", secondary: "localhost:3000", tooltip: nil),
@@ -78,6 +90,6 @@ final class AccountFooterTests: XCTestCase {
         XCTAssertEqual(AccountFooter.lines(target: .cloud, status: .unknown, account: nil).primary, "Connecting…")
         XCTAssertEqual(AccountFooter.lines(target: .cloud, status: .unreachable, account: tara).primary, "Connecting…")
         XCTAssertEqual(AccountFooter.lines(target: .cloud, status: .signedOut, account: nil).primary, "Not signed in")
-        XCTAssertEqual(AccountFooter.lines(target: .cloud, status: .signedOut, account: nil).secondary, "bookmark-ai.cloud")
+        XCTAssertEqual(AccountFooter.lines(target: .cloud, status: .signedOut, account: nil).secondary, cloudHost)
     }
 }

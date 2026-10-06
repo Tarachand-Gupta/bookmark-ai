@@ -5,18 +5,25 @@ import XCTest
 /// are worth pinning down, because getting either wrong fails silently at runtime.
 final class ApiClientTests: XCTestCase {
 
+    private var expectedCloudBase: URL {
+        let configured = Bundle.main.object(forInfoDictionaryKey: "BOOKMARK_API_URL") as? String
+        return URL(string: SupabaseConfiguration.isQA ? (configured ?? "http://127.0.0.1:1") : "https://www.bookmark-ai.cloud")!
+    }
+
     // MARK: - Base URLs
 
     /// The cloud base MUST be `www`. The apex 308-redirects `/api/*` to `www`,
     /// and URLSession strips `Authorization` across that origin hop — the exact
     /// trap documented in apps/mobile/src/api.ts.
-    func testCloudBaseUsesWWWHost() {
-        XCTAssertEqual(ServerTarget.cloud.baseURL.absoluteString, "https://www.bookmark-ai.cloud")
-        XCTAssertEqual(ServerTarget.cloud.baseURL.host(), "www.bookmark-ai.cloud")
+    func testCloudBaseUsesConfiguredOriginWithoutRedirect() {
+        if SupabaseConfiguration.isQA { XCTAssertNotNil(SupabaseConfiguration.current, "QA configuration must validate rather than silently use a fallback") }
+        XCTAssertEqual(ServerTarget.cloud.baseURL, expectedCloudBase)
+        XCTAssertEqual(ServerTarget.cloud.baseURL.host(), expectedCloudBase.host())
     }
 
-    func testLocalBaseIsDevServer() {
-        XCTAssertEqual(ServerTarget.local.baseURL.absoluteString, "http://localhost:3000")
+    func testLocalBaseMatchesBuildConfiguration() {
+        XCTAssertEqual(ServerTarget.local.baseURL.absoluteString,
+            SupabaseConfiguration.isQA ? expectedCloudBase.absoluteString : "http://localhost:3000")
     }
 
     func testAccountSettingsSignInURLPreservesDeletionDestination() throws {
@@ -24,25 +31,26 @@ final class ApiClientTests: XCTestCase {
             url: ServerTarget.cloud.accountSettingsSignInURL,
             resolvingAgainstBaseURL: false
         ))
-        XCTAssertEqual(components.scheme, "https")
-        XCTAssertEqual(components.host, "www.bookmark-ai.cloud")
+        XCTAssertEqual(components.scheme, expectedCloudBase.scheme)
+        XCTAssertEqual(components.host, expectedCloudBase.host)
         XCTAssertEqual(components.path, "/sign-in")
         XCTAssertEqual(components.queryItems, [
             URLQueryItem(name: "redirect_url", value: "/app?settings=account"),
         ])
     }
 
-    /// Only cloud gets a bearer token; local relies on DEV_OPEN_API.
-    func testOnlyCloudRequiresAuth() {
+    /// Ordinary Local is open; isolated native builds require a bearer token
+    /// for either selection so the Local label cannot bypass authentication.
+    func testAuthRequirementMatchesBuildConfiguration() {
         XCTAssertTrue(ServerTarget.cloud.requiresAuth)
-        XCTAssertFalse(ServerTarget.local.requiresAuth)
+        XCTAssertEqual(ServerTarget.local.requiresAuth, SupabaseConfiguration.isQA)
     }
 
     // MARK: - URL building
 
     func testMakeURLBuildsPathAndQuery() throws {
         let url = try XCTUnwrap(ApiClient.makeURL(
-            base: ServerTarget.local.baseURL,
+            base: URL(string: "http://localhost:3000")!,
             path: "/api/search",
             query: [
                 URLQueryItem(name: "q", value: "swift ui"),
@@ -64,7 +72,7 @@ final class ApiClientTests: XCTestCase {
         let url = try XCTUnwrap(ApiClient.makeURL(
             base: ServerTarget.cloud.baseURL, path: "/api/meta", query: []
         ))
-        XCTAssertEqual(url.absoluteString, "https://www.bookmark-ai.cloud/api/meta")
+        XCTAssertEqual(url, expectedCloudBase.appendingPathComponent("api/meta"))
     }
 
     /// The cloud path must never lose the `www` host when a route is appended.
@@ -72,7 +80,7 @@ final class ApiClientTests: XCTestCase {
         let url = try XCTUnwrap(ApiClient.makeURL(
             base: ServerTarget.cloud.baseURL, path: "/api/bookmarks", query: []
         ))
-        XCTAssertEqual(url.host(), "www.bookmark-ai.cloud")
+        XCTAssertEqual(url.host(), expectedCloudBase.host())
     }
 
     // MARK: - Server limits
