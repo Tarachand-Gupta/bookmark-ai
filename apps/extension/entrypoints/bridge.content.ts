@@ -1,4 +1,5 @@
 import { SUPABASE_AUTH } from "@/lib/supabase-oauth";
+import { isOAuthBridgeCallback } from "@/lib/oauth-policy";
 import { defineContentScript } from "#imports";
 import { browser } from "wxt/browser";
 import { isAllowedBridgePath } from "@/lib/bridge-guard";
@@ -82,10 +83,7 @@ export default defineContentScript({
   include: ["safari"],
   main() {
     if (SUPABASE_AUTH) {
-      if (
-        location.origin !== "http://localhost:3100" ||
-        location.pathname !== "/auth/extension-callback"
-      )
+      if (!isOAuthBridgeCallback(location.href, import.meta.env.WXT_APP_URL?.replace(/\/$/, "") ?? ""))
         return;
       // No page messages or page credentials: the browser URL is the only input.
       void browser.runtime

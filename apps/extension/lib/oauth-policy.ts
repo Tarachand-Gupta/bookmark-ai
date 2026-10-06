@@ -1,4 +1,16 @@
 /** Pure checks shared by the OAuth background and its tests. */
+export function isApprovedOAuthApp(origin: string): boolean {
+  return ["http://localhost:3100", "https://www.bookmark-ai.cloud"].includes(origin);
+}
+export function isOAuthBridgeCallback(url: string, app: string): boolean {
+  if (!isApprovedOAuthApp(app)) return false;
+  try {
+    const actual = new URL(url);
+    return actual.origin === app && actual.pathname === "/auth/extension-callback";
+  } catch {
+    return false;
+  }
+}
 export function oauthCallback(url: string, expected: string, state: string): string {
   const actual = new URL(url);
   const target = new URL(expected);
