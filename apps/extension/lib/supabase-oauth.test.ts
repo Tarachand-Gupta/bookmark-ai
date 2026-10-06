@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const { values } = vi.hoisted(() => ({ values: new Map<string, unknown>() }));
-vi.mock("#imports", () => ({
-  storage: {
+const { values, storageMock } = vi.hoisted(() => {
+  const values = new Map<string, unknown>();
+  return { values, storageMock: {
     defineItem(key: string, options: { fallback: unknown }) {
       return {
         getValue: async () => (values.has(key) ? values.get(key) : options.fallback),
@@ -13,8 +13,11 @@ vi.mock("#imports", () => ({
         },
       };
     },
-  },
-}));
+  } };
+});
+vi.mock("#imports", () => ({ storage: storageMock }));
+// WXT rewrites #imports to its concrete utility during the complete suite.
+vi.mock("wxt/utils/storage", () => ({ storage: storageMock }));
 vi.mock("wxt/browser", () => ({
   browser: { storage: { local: { remove: vi.fn() } }, identity: {}, tabs: {} },
 }));
@@ -37,6 +40,28 @@ beforeEach(async () => {
   vi.stubEnv("WXT_APP_URL", "http://localhost:3100");
   vi.stubEnv("WXT_SUPABASE_OAUTH_CLIENT_ID", "public-client");
 });
+it.each(["http://localhost:3100", "https://www.bookmark-ai.cloud"])(
+  "exchanges scoped OAuth credentials against the configured target %s",
+  async (appUrl) => {
+    vi.stubEnv("WXT_APP_URL", appUrl);
+    values.set(key, original);
+    const { fetchWithTimeout } = await import("./net");
+    vi.mocked(fetchWithTimeout).mockResolvedValue(new Response(JSON.stringify({
+      token_type: "Bearer", access_token: "next", refresh_token: "rotated", expires_in: 3600,
+    })));
+    const { getOAuthToken } = await import("./supabase-oauth");
+    expect(await getOAuthToken()).toBe("next");
+  },
+);
+it.each(["https://bookmark-ai.cloud.evil.example", "http://www.bookmark-ai.cloud", "https://preview.example"])(
+  "rejects an unapproved OAuth app target %s",
+  async (appUrl) => {
+    vi.stubEnv("WXT_APP_URL", appUrl);
+    values.set(key, original);
+    const { getOAuthToken } = await import("./supabase-oauth");
+    await expect(getOAuthToken()).rejects.toThrow("not configured");
+  },
+);
 it("coalesces concurrent rotation and stores the provider replacement", async () => {
   values.set(key, original);
   const { fetchWithTimeout } = await import("./net");

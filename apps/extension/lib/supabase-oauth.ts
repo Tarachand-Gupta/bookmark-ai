@@ -65,7 +65,7 @@ function configuration() {
     !origin.startsWith("https://") ||
     new URL(origin).hostname !== "xogqaqtyacmecdbmgqqd.supabase.co" ||
     !clientId ||
-    app !== "http://localhost:3100"
+    !["http://localhost:3100", "https://www.bookmark-ai.cloud"].includes(app)
   )
     throw new Error("Extension authentication is not configured");
 }
