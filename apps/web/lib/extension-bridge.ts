@@ -5,7 +5,7 @@
  *
  * Chrome-only mechanism (runtime.sendMessage from a web page requires the
  * extension's manifest `externally_connectable` to allow this origin). Always
- * resolves — false means "extension not reachable, use a page-side fallback".
+ * resolves — false means "restore not confirmed, use a page-side fallback".
  */
 
 /** Pinned public-key ids only. Prefer the store install when both coexist. */
