@@ -2,6 +2,37 @@
 
 One codebase → three browsers at build time. WXT 0.20 + React 19 + Tailwind v4.
 
+## Current Supabase branch: build and load the correct artifact
+
+Production authentication now uses Supabase. From the repository root:
+
+```bash
+corepack pnpm qa:supabase chrome build --hosted-production
+corepack pnpm qa:supabase firefox build --hosted-production
+corepack pnpm qa:supabase safari build --hosted-production
+```
+
+These commands require the ignored `.env.supabase.production.local` and create
+frozen snapshots under `.work/builds/supabase-qa/`; the wrapper prints each
+snapshot's build manifest. They do not install or reload an extension.
+
+The current tested Chrome artifact is
+`.work/production-clients-oct6/extension-kit/chrome` (name **Bookmark AI Supabase
+QA**, ID `peikdeadpkgjgohdndljbciephekdpfg`). Its installation instructions and
+exact proof boundaries are in that kit's `INSTALL-EXTENSIONS.md` and
+`.work/production-clients-oct6/EXTENSIONS.md`. The preserved
+`apps/extension/.output/chrome-mv3` is the legacy
+**Bookmark AI** / Clerk artifact, ID `ffhbgpgebpmofjkehpjcemepbgcmoelp`; it cannot
+sign into current Supabase production. Both show version `0.1.5`, so verify the
+name, ID and loaded folder rather than using version alone.
+
+`wxt-run.mjs` rejects ordinary `build`/`zip` modes on this source. Deliberate
+Clerk rollback can use `node scripts/wxt-run.mjs build --legacy-clerk` from
+`apps/extension`, with its original Clerk environment. Existing output folders
+remain preserved; this guard does not invalidate previously built files.
+`prepare`, the dev server, tests and type checking retain their existing behavior.
+The commands and Clerk architecture below document the retained legacy targets.
+
 ```bash
 pnpm --filter @bookmark-ai/extension dev            # LOCAL target, chrome dev w/ HMR
 pnpm --filter @bookmark-ai/extension build           # PROD  → .output/chrome-mv3          (turbo's `build`)

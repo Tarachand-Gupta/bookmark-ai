@@ -14,8 +14,19 @@
  * NEVER use this for `wxt dev` — dev is supposed to stay alive.
  */
 import { spawn } from "node:child_process";
+import { extensionBuildArguments } from "./wxt-build-policy.mjs";
 
-const args = process.argv.slice(2);
+let args;
+try {
+  const build = extensionBuildArguments(process.argv.slice(2));
+  args = build.args;
+  if (build.legacyClerk) {
+    console.warn("[wxt-run] Explicit legacy Clerk build: incompatible with current Supabase production.");
+  }
+} catch (error) {
+  console.error(`[wxt-run] ${error.message}`);
+  process.exit(1);
+}
 
 // Vercel builds only need apps/web; extension type-generation is dead weight
 // there and is exactly the command that wedges the deploy. Skip outright.
