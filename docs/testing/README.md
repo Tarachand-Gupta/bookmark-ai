@@ -33,6 +33,7 @@ The Chrome restore patch preserves the store ID, discovers the fixed QA ID with 
 
 ## Contents and source of truth
 
+- [7 October Chrome authentication report](reports/2026-10-07-chrome-auth.md): wrong-provider artifact cause, actual personal-Chrome same-www-profile reuse/callback PASS, and Google return/authenticated apex repeat NOT RUN; supersedes only the cases it exercises.
 - [Runbook](RUNBOOK.md): environments, build/install commands, harness alternatives, sequencing, platform failure patterns and evidence/cleanup.
 - [Journey matrix](MATRIX.md): stable case IDs, prerequisites, steps, expected results and evidence; includes destructive disposable-account tests and isolation.
 - [Run report template](RUN-REPORT-TEMPLATE.md): copy into each run and keep all results attributable.
