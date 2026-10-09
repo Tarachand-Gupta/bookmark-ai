@@ -5,18 +5,23 @@ import { CircleAlert, Loader2 } from "lucide-react";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { getAuthFlowSupabase } from "@/lib/native-auth-context";
+import { recoveryPage, recoveryReturnDestination } from "@/lib/password-recovery";
+import { nativeMfaDestination } from "@/lib/native-auth-context";
 import { authDestinationFromSearch } from "@/lib/auth-policy";
 let exchange: Promise<void> | null = null;
 export default function Callback() {
   const [error, setError] = useState("");
+  const [recoveryNext, setRecoveryNext] = useState<string | null>(null);
   const [nextQuery, setNextQuery] = useState("");
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const next = authDestinationFromSearch(window.location.search);
+    const recovery = recoveryReturnDestination(next);
+    setRecoveryNext(recovery);
     setNextQuery(`?next=${encodeURIComponent(next)}`);
     if (!code || params.has("error")) {
-      setError("This sign-in link is invalid or expired. Start again.");
+      setError(recovery !== null ? "This password reset link is invalid, expired, or already used. Request a new recovery email and enter its newest code in the window where you started." : "This sign-in link is invalid or expired. Start again.");
       return;
     }
     exchange ??= getAuthFlowSupabase()
@@ -24,26 +29,24 @@ export default function Callback() {
       .then(async ({ error }) => {
         if (error) throw new Error("Sign-in failed.");
         window.history.replaceState(null, "", "/auth/callback?next=" + encodeURIComponent(next));
-        const { data } = await getAuthFlowSupabase().auth.mfa.getAuthenticatorAssuranceLevel();
-        window.location.replace(
-          data?.nextLevel === "aal2" && data.currentLevel !== "aal2"
-            ? "/auth/mfa?next=" + encodeURIComponent(next)
-            : next,
-        );
+        const assurance = await getAuthFlowSupabase().auth.mfa.getAuthenticatorAssuranceLevel();
+        window.location.replace(nativeMfaDestination(assurance, next) ?? next);
       });
     void exchange.catch(() => {
       exchange = null;
       setError(
-        "This sign-in link could not be used. Open it in the browser where you started signing in, or start again.",
+        recovery !== null
+          ? "This reset link opened in a different browser and could not finish. It may have used the email code already. Return to the Bookmark AI window where you requested the reset, send a new code, and enter the newest code there without opening its link."
+          : "This sign-in link could not be used. Open it in the browser where you started signing in, or start again.",
       );
     });
   }, []);
   return (
     <AuthShell
-      title={error ? "Sign-in could not finish" : "Finishing sign-in…"}
+      title={error ? recoveryNext !== null ? "Password reset could not finish" : "Sign-in could not finish" : "Finishing sign-in…"}
       description={
         error
-          ? "Return to sign in to try again."
+          ? recoveryNext !== null ? "Use a recovery code in your original Bookmark AI window." : "Return to sign in to try again."
           : "Please wait while we securely connect your account."
       }
     >
@@ -56,7 +59,11 @@ export default function Callback() {
             <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
             <p>{error}</p>
           </div>
-          <Button asChild className="h-11 w-full">
+          {recoveryNext !== null && <>
+            <Button asChild className="h-11 w-full"><Link href={recoveryPage(recoveryNext, true)}>Enter a recovery code</Link></Button>
+            <Button asChild variant="outline" className="h-11 w-full"><Link href={recoveryPage(recoveryNext)}>Request a new recovery code</Link></Button>
+          </>}
+          <Button asChild variant={recoveryNext !== null ? "ghost" : "default"} className="h-11 w-full">
             <Link href={`/sign-in${nextQuery}`}>Return to sign in</Link>
           </Button>
         </>

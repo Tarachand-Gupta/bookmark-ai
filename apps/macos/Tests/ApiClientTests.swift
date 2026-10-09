@@ -7,7 +7,7 @@ final class ApiClientTests: XCTestCase {
 
     private var expectedCloudBase: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "BOOKMARK_API_URL") as? String
-        return URL(string: SupabaseConfiguration.isQA ? (configured ?? "http://127.0.0.1:1") : "https://www.bookmark-ai.cloud")!
+        return URL(string: SupabaseConfiguration.isSupabase ? (configured ?? "http://127.0.0.1:1") : "https://www.bookmark-ai.cloud")!
     }
 
     // MARK: - Base URLs
@@ -16,14 +16,14 @@ final class ApiClientTests: XCTestCase {
     /// and URLSession strips `Authorization` across that origin hop — the exact
     /// trap documented in apps/mobile/src/api.ts.
     func testCloudBaseUsesConfiguredOriginWithoutRedirect() {
-        if SupabaseConfiguration.isQA { XCTAssertNotNil(SupabaseConfiguration.current, "QA configuration must validate rather than silently use a fallback") }
+        if SupabaseConfiguration.isSupabase { XCTAssertNotNil(SupabaseConfiguration.current, "QA configuration must validate rather than silently use a fallback") }
         XCTAssertEqual(ServerTarget.cloud.baseURL, expectedCloudBase)
         XCTAssertEqual(ServerTarget.cloud.baseURL.host(), expectedCloudBase.host())
     }
 
     func testLocalBaseMatchesBuildConfiguration() {
         XCTAssertEqual(ServerTarget.local.baseURL.absoluteString,
-            SupabaseConfiguration.isQA ? expectedCloudBase.absoluteString : "http://localhost:3000")
+            SupabaseConfiguration.isSupabase ? expectedCloudBase.absoluteString : "http://localhost:3000")
     }
 
     func testAccountSettingsSignInURLPreservesDeletionDestination() throws {
@@ -43,7 +43,7 @@ final class ApiClientTests: XCTestCase {
     /// for either selection so the Local label cannot bypass authentication.
     func testAuthRequirementMatchesBuildConfiguration() {
         XCTAssertTrue(ServerTarget.cloud.requiresAuth)
-        XCTAssertEqual(ServerTarget.local.requiresAuth, SupabaseConfiguration.isQA)
+        XCTAssertEqual(ServerTarget.local.requiresAuth, SupabaseConfiguration.isSupabase)
     }
 
     // MARK: - URL building

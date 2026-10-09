@@ -134,7 +134,7 @@ function Gate() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {!hydrated || !authReady || (gated && account.status === "checking") ? (
+      {!hydrated || !authReady ? (
         // Still settling: the persisted theme/view read, the SDK restoring the
         // session, and (for an account we have no evidence about yet — a fresh
         // signup) the account probe. Renders the splash's own mark plus a
@@ -156,12 +156,12 @@ function Gate() {
         <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.body}>
           <SignInScreen />
         </SafeAreaView>
-      ) : gated && account.status === "provisioning" ? (
+      ) : gated && ["checking", "provisioning", "setup-error"].includes(account.status) ? (
         // A brand-new account's own database is still being created. Full-screen
         // on purpose — the Shell is NOT mounted behind it, so when provisioning
         // finishes every screen's first fetch already sees a ready DB.
         <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.body}>
-          <AccountSetupScreen />
+          <AccountSetupScreen failed={account.status === "setup-error"} onRetry={account.recheck} />
         </SafeAreaView>
       ) : gated && account.status === "forbidden" ? (
         // Signed in fine, but this identity isn't allowed to use the API. A

@@ -117,7 +117,7 @@ final class BrowserSignInClient {
     private let session: URLSession
     private let nativeMode: Bool
 
-    init(origin: URL, session: URLSession? = nil, nativeMode: Bool = SupabaseConfiguration.isQA) {
+    init(origin: URL, session: URLSession? = nil, nativeMode: Bool = SupabaseConfiguration.isSupabase) {
         self.origin = origin
         self.nativeMode = nativeMode
         if let session {
@@ -142,9 +142,9 @@ final class BrowserSignInClient {
 
     func start(codeChallenge: String) async throws -> BrowserSignInStart {
         if nativeMode {
-            struct Body: Encodable { let clientType = "macos"; let codeChallenge: String; let state: String }
+            struct Body: Encodable { let clientType = "macos"; let buildVariant: String?; let codeChallenge: String; let state: String }
             let state = try BrowserSignInPKCE.generateVerifier()
-            let (data, response) = try await post(path: "/api/auth/native/start", body: Body(codeChallenge: codeChallenge, state: state))
+            let (data, response) = try await post(path: "/api/auth/native/start", body: Body(buildVariant: SupabaseConfiguration.isProduction ? "supabase-production" : nil, codeChallenge: codeChallenge, state: state))
             guard response.statusCode == 201 else { throw error(for: response, data: data, terminal502: true) }
             struct Start: Decodable { let flowId: String; let browserUrl: String; let expiresAt: Double; let state: String }
             guard let result = try? JSONDecoder().decode(Start.self, from: data), result.state == state else { throw BrowserSignInError.invalidResponse }

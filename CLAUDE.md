@@ -1,5 +1,29 @@
 # Bookmark AI — Agent Guide
 
+## Supabase production builds (9 October 2026)
+
+Supabase is the production authentication provider. The supported release command
+is `corepack pnpm production:supabase <surface> <action>`; delivery packages live
+in `dist/production/`. Production builds use `supabase-production`, ordinary
+Bookmark AI names/icons and production application identifiers, canonical
+`https://www.bookmark-ai.cloud` and `https://live.bookmark-ai.cloud`, and separate
+Supabase credential storage. Read the generated `dist/production/INSTALL.md` and
+`ARTIFACTS.json` before installing. Chrome/Firefox/Safari standard `.output`
+directories are updated from the production snapshots; verify loaded provider,
+version, ID and hash before testing. A version label alone is insufficient.
+
+`qa:supabase` remains an explicitly isolated development tool. Previous yellow QA
+apps and Clerk checkpoints are rollback/history artifacts, not the current user
+test kit. Do not restore old credentials or repeat the completed data migration.
+Production native callbacks are fixed, allowlisted destinations selected by an
+explicit build variant; never accept an arbitrary callback URL. Browser OAuth
+clients are separately registered for the production extension identifiers.
+Website deployment is authorized. The owner subsequently authorized Chrome Web
+Store and Firefox AMO updates after their production checks pass; record actual
+submission/review receipts separately from local builds. Apple/Google Play store
+submissions and paid purchases remain outside this request. Preserve user data and exact rollback
+artifacts. See `docs/testing/` for tests and recorded evidence.
+
 ## Supabase QA branch (4 October 2026)
 
 On `codex/supabase-auth`, use `corepack pnpm qa:supabase <surface> <action>` and
@@ -70,7 +94,7 @@ Whole-repo: `pnpm build` · `pnpm check-types` · desktop: `cd apps/desktop && n
   `apps/web` dev fallback when `DATABASE_URL` is unset (`file:../../data/bookmarks.db` in
   `lib/server/context.ts`); pointing `DATABASE_URL` back at it restores fully-local mode;
   query code is URL-agnostic.
-- **Git**: pushed to GitHub `Tarachand-Gupta/bookmark-ai` (private).
+- **Git**: GitHub `Tarachand-Gupta/bookmark-ai` is public (verified 9 October 2026). Local release changes still require a separate push/merge decision.
 - **Auth (Clerk)**: `apps/web` requires login — `middleware.ts` `auth.protect()`s every PAGE
   except `/sign-in` and `/sign-up`; `/api` routes self-protect via `lib/server/require-user.ts`
   (clean 401 JSON; Bearer or cookie). Middleware also handles API CORS (extension schemes +

@@ -52,7 +52,7 @@ final class SessionLoadTests: XCTestCase {
 
     @MainActor
     func testBrowserSignInLoadsIdentityAfterTheSheetDismisses() async throws {
-        try XCTSkipIf(SupabaseConfiguration.isQA, "Legacy Clerk ticket flow; run in the ordinary test-host configuration. Native handoff is covered by BrowserSignInTests and SupabaseNativeAuthTests.")
+        try XCTSkipIf(SupabaseConfiguration.isSupabase, "Legacy Clerk ticket flow; run in the ordinary test-host configuration. Native handoff is covered by BrowserSignInTests and SupabaseNativeAuthTests.")
         let env = Self.makeStubbedEnvironment()
         env.auth.seed(status: .signedOut)
 
@@ -70,7 +70,7 @@ final class SessionLoadTests: XCTestCase {
 
     @MainActor
     func testTicketRedemptionConfirmsSessionAndLoadsIdentity() async throws {
-        try XCTSkipIf(SupabaseConfiguration.isQA, "Legacy Clerk ticket flow; run in the ordinary test-host configuration.")
+        try XCTSkipIf(SupabaseConfiguration.isSupabase, "Legacy Clerk ticket flow; run in the ordinary test-host configuration.")
         let env = Self.makeStubbedEnvironment()
         env.auth.seed(status: .signedOut)
 
@@ -88,7 +88,7 @@ final class SessionLoadTests: XCTestCase {
     /// clears the identity; the next sign-in loads it again.
     @MainActor
     func testEveryTransitionToSignedInLoadsIdentityExactlyOnce() async throws {
-        try XCTSkipIf(SupabaseConfiguration.isQA, "Includes legacy Clerk ticket flow; run in the ordinary test-host configuration.")
+        try XCTSkipIf(SupabaseConfiguration.isSupabase, "Includes legacy Clerk ticket flow; run in the ordinary test-host configuration.")
         let env = Self.makeStubbedEnvironment()
         var confirmations = 0
         let load = env.auth.onSessionConfirmed

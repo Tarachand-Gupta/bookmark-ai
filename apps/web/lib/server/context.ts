@@ -1,3 +1,5 @@
+import { after } from "next/server";
+import { waitForProvisioning } from "./provisioning-deadline";
 import { resolve, sep } from "node:path";
 import { connectPostgres, PostgresMasterRepository, isPostgresMasterRepository, CredentialCipher, assertQaTenantName, bindTenantSettingsOwner, type MasterStore } from "@bookmark-ai/db";
 import {
@@ -27,7 +29,7 @@ import { GeminiClient, provisionTenant, type TenantPlatform } from "@bookmark-ai
 
 /** True when per-user tenant routing is enabled. */
 export function isMultiTenant(): boolean {
-  return process.env.AUTH_PROVIDER === "supabase" || process.env.BOOKMARK_BUILD_VARIANT === "supabase-qa" || process.env.MULTI_TENANT === "1";
+  return process.env.AUTH_PROVIDER === "supabase" || ["supabase-qa", "supabase-production"].includes(process.env.BOOKMARK_BUILD_VARIANT ?? "") || process.env.MULTI_TENANT === "1";
 }
 
 // ── Shared single-DB context (flag-off; also the open-mode path when flag-on) ──
@@ -67,7 +69,7 @@ export function getGemini(): GeminiClient | null {
 }
 
 export function getApiContext(): ApiContext {
-  if (process.env.AUTH_PROVIDER === "supabase" || process.env.BOOKMARK_BUILD_VARIANT === "supabase-qa") throw new MultiTenantConfigError("Supabase QA requires isolated tenant routing");
+  if (process.env.AUTH_PROVIDER === "supabase" || ["supabase-qa", "supabase-production"].includes(process.env.BOOKMARK_BUILD_VARIANT ?? "")) throw new MultiTenantConfigError("Supabase requires isolated tenant routing");
   if (!store.__bookmarkApiContext) {
     const db = createDb(
       // Fallback points at the repo-root local file DB for fully-local setups
@@ -103,8 +105,8 @@ export interface MasterContext {
  * flag is on or webhook provisioning runs, otherwise null.
  */
 export function getMasterContext(): MasterContext | null {
-  if (process.env.AUTH_PROVIDER === "supabase" || process.env.BOOKMARK_BUILD_VARIANT === "supabase-qa") {
-    if (process.env.AUTH_PROVIDER !== "supabase" || process.env.BOOKMARK_BUILD_VARIANT !== "supabase-qa" || !process.env.SUPABASE_DATABASE_URL || !process.env.MASTER_CREDENTIAL_ENCRYPTION_KEY) throw new MultiTenantConfigError("Supabase master configuration unavailable");
+  if (process.env.AUTH_PROVIDER === "supabase" || ["supabase-qa", "supabase-production"].includes(process.env.BOOKMARK_BUILD_VARIANT ?? "")) {
+    if (process.env.AUTH_PROVIDER !== "supabase" || !["supabase-qa", "supabase-production"].includes(process.env.BOOKMARK_BUILD_VARIANT ?? "") || !process.env.SUPABASE_DATABASE_URL || !process.env.MASTER_CREDENTIAL_ENCRYPTION_KEY) throw new MultiTenantConfigError("Supabase master configuration unavailable");
     if (!store.__bookmarkMasterContext) {
       const repository = new PostgresMasterRepository(connectPostgres(process.env.SUPABASE_DATABASE_URL,{caBase64:process.env.SUPABASE_DATABASE_CA_BASE64}), new CredentialCipher(process.env.MASTER_CREDENTIAL_ENCRYPTION_KEY));
       const ready=repository.ready().catch(error=>{store.__bookmarkMasterReadyFailed=true;throw error;});
@@ -150,7 +152,7 @@ export function getPlatform(): TenantPlatform | null {
   if (store.__bookmarkPlatform === undefined) {
     store.__bookmarkPlatformProvider=provider;
     if (process.env.TENANT_PLATFORM === "local" && process.env.NODE_ENV !== "production") {
-      if ((process.env.AUTH_PROVIDER === "supabase" || process.env.BOOKMARK_BUILD_VARIANT === "supabase-qa") && !process.env.TENANT_DB_DIR) throw new MultiTenantConfigError("Supabase QA requires an isolated TENANT_DB_DIR");
+      if ((process.env.AUTH_PROVIDER === "supabase" || ["supabase-qa", "supabase-production"].includes(process.env.BOOKMARK_BUILD_VARIANT ?? "")) && !process.env.TENANT_DB_DIR) throw new MultiTenantConfigError("Supabase requires an isolated TENANT_DB_DIR");
       store.__bookmarkPlatform = new LocalFilePlatform(process.env.TENANT_DB_DIR ?? "../../data/tenants");
     } else {
       const apiToken = process.env.TURSO_API_TOKEN;
@@ -230,7 +232,7 @@ function cacheTenant(tenant: Tenant): void {
  * same caching without re-reading the tenant row it already has.
  */
 export function tenantDbFromRecord(tenant: Tenant): TenantDb {
-  if(process.env.AUTH_PROVIDER==='supabase'||process.env.BOOKMARK_BUILD_VARIANT==='supabase-qa'){
+  if(process.env.AUTH_PROVIDER==='supabase'||['supabase-qa','supabase-production'].includes(process.env.BOOKMARK_BUILD_VARIANT??'')){
     if (!tenant.legacyOwnerId) assertQaTenantName(tenant.dbName);
     else if (!/^user_[A-Za-z0-9]+$/.test(tenant.legacyOwnerId) || !/^[a-z0-9-]+$/.test(tenant.dbName)) throw new MultiTenantConfigError('Invalid imported tenant provenance');
     const url=new URL(tenant.dbUrl);
@@ -317,6 +319,7 @@ async function provisionOnce(
       // over surfacing a collision error.
       const raced = await getTenant(master, userId);
       if (raced && raced.status === "active") return raced;
+      console.error("[tenant] Account provisioning failed; retry remains available", userId);
       throw err;
     } finally {
       inflightProvision.delete(userId);
@@ -358,7 +361,9 @@ export async function getTenantDb(userId: string): Promise<TenantDb> {
     // No platform client → we genuinely cannot self-heal; let the route 503 and
     // wait for the webhook.
     if (!platform) throw new TenantNotProvisionedError();
-    tenant = await provisionOnce(master.db, platform, userId);
+    const pending = provisionOnce(master.db, platform, userId);
+    tenant = await waitForProvisioning(pending, (work) => after(() => work));
+    if (!tenant) throw new TenantNotProvisionedError();
   }
   if (tenant.status !== "active") throw new TenantNotProvisionedError();
   cacheTenant(tenant);

@@ -7,6 +7,10 @@ node_modules/
 dist/
 build/
 .next/
+.next-supabase-qa/
+.next-supabase-production/
+.playwright-cli/
+/output/playwright/
 out/
 .output/
 .wxt/

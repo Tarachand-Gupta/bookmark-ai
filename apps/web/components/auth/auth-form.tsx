@@ -2,10 +2,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CircleAlert, CircleCheck, Eye, EyeOff, Loader2 } from "lucide-react";
-import { getAuthFlowSupabase, nativeFlowFromLocation, nativeProviderHint } from "@/lib/native-auth-context";
+import { getAuthFlowSupabase, nativeFlowFromLocation, nativeProviderHint, nativeMfaDestination } from "@/lib/native-auth-context";
 import { authDestinationFromSearch, safeAuthDestination } from "@/lib/auth-policy";
+import { passwordUpdateDestination, recoveryPage } from "@/lib/password-recovery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Field, FieldGroup, FieldLabel, FieldSeparator, FieldDescription } from "@/components/ui/field";
 import { AuthShell } from "./auth-shell";
 import { AppleIcon, GoogleIcon } from "./provider-icons";
 
@@ -20,14 +22,16 @@ export function AuthForm({
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [busyAction, setBusyAction] = useState<"form" | "google" | "apple" | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
   const busy = busyAction !== null;
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [mfa, setMfa] = useState(mode === "mfa");
+  const mfa = mode === "mfa";
   const [factor, setFactor] = useState("");
   const [code, setCode] = useState("");
-  const [nativeEmailPending, setNativeEmailPending] = useState(false);
+  const [emailCodePending, setEmailCodePending] = useState(false);
+  const [passwordSessionReady, setPasswordSessionReady] = useState(false);
   const [nextQuery, setNextQuery] = useState("");
   const nativeProviderStarted = useRef(false);
   useEffect(() => {
@@ -51,6 +55,7 @@ export function AuthForm({
   useEffect(() => {
     const destination = authDestinationFromSearch(window.location.search);
     setNextQuery(`?next=${encodeURIComponent(destination)}`);
+    if (mode === "recovery" && new URLSearchParams(window.location.search).get("step") === "code") setEmailCodePending(true);
   }, []);
   useEffect(() => {
     if (mfa)
@@ -67,6 +72,34 @@ export function AuthForm({
           setError("We could not load your authenticator. Return to sign in and try again."),
         );
   }, [mfa]);
+  useEffect(() => {
+    if (mode !== "update-password") return;
+    let active = true;
+    const next = "/auth/update-password?next=" + encodeURIComponent(authDestinationFromSearch(window.location.search));
+    void passwordUpdateDestination(getAuthFlowSupabase().auth, next).then((destination) => {
+      if (!active) return;
+      if (destination) window.location.replace(destination);
+      else setPasswordSessionReady(true);
+    }).catch(() => { if (active) setError("Your password reset session is unavailable. Request a new recovery code, or sign in again."); });
+    return () => { active = false; };
+  }, [mode]);
+  async function sendRecoveryCode() {
+    const next = authDestinationFromSearch(window.location.search);
+    const result = await getAuthFlowSupabase().auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: callback("/auth/update-password?next=" + encodeURIComponent(next)),
+    });
+    if (result.error) throw result.error;
+    setEmailCodePending(true);
+    setCode("");
+    setMessage("If an account exists for this address, we’ve sent a recovery email. Enter its code here. Use the newest email and avoid opening its link in another browser.");
+  }
+  async function resendRecoveryCode() {
+    if (busy || !email.trim()) return;
+    setBusyAction("form"); setError(""); setMessage("");
+    try { await sendRecoveryCode(); }
+    catch { setError("We could not send another code yet. Wait a moment and try again."); }
+    finally { setBusyAction(null); }
+  }
   const title = {
     "sign-in": "Sign in",
     "sign-up": "Create your account",
@@ -83,27 +116,27 @@ export function AuthForm({
     event.preventDefault();
     if (busy) return;
     setBusyAction("form");
+    if (mode === "sign-in" && !mfa && !emailCodePending) setSigningIn(true);
     setError("");
     setMessage("");
     try {
       const auth = getAuthFlowSupabase().auth;
       const next = authDestinationFromSearch(window.location.search);
-      if (nativeEmailPending) {
+      if (emailCodePending) {
         const result = await auth.verifyOtp({email,token:code,type:mode === "recovery" ? "recovery" : "signup"});
         if(result.error)throw result.error;
-        window.location.assign(mode === "recovery" ? "/auth/update-password?next="+encodeURIComponent(next) : next);
+        if (!result.data.session) throw new Error("Verification did not establish a session.");
+        const destination = mode === "recovery" ? "/auth/update-password?next=" + encodeURIComponent(next) : next;
+        window.location.assign(nativeMfaDestination(await auth.mfa.getAuthenticatorAssuranceLevel(), destination) ?? destination);
       } else if (mfa) {
         const result = await auth.mfa.challengeAndVerify({ factorId: factor, code });
         if (result.error) throw result.error;
         window.location.assign(next);
       } else if (mode === "recovery") {
-        const result = await auth.resetPasswordForEmail(email, {
-          redirectTo: callback("/auth/update-password?next=" + encodeURIComponent(next)),
-        });
-        if (result.error) throw result.error;
-        if(nativeFlowFromLocation()){setNativeEmailPending(true);setMessage("Enter the code from your recovery email here. Keep this browser window open.");}
-        else setMessage("If an account exists for this address, check your email for a reset link.");
+        await sendRecoveryCode();
       } else if (mode === "update-password") {
+        const challenge = await passwordUpdateDestination(auth, "/auth/update-password?next=" + encodeURIComponent(next));
+        if (challenge) { window.location.assign(challenge); return; }
         const result = await auth.updateUser({ password });
         if (result.error) throw result.error;
         setPassword("");
@@ -120,20 +153,24 @@ export function AuthForm({
         });
         if (result.error) throw result.error;
         if (result.data.session) window.location.assign(next);
-        else if(nativeFlowFromLocation()){setNativeEmailPending(true);setPassword("");setMessage("Enter the code from your confirmation email here. Keep this browser window open.");}
+        else if(nativeFlowFromLocation()){setEmailCodePending(true);setPassword("");setMessage("Enter the code from your confirmation email here. Keep this browser window open.");}
         else setMessage("Check your email to confirm your account, then return to sign in.");
       } else {
         const result = await auth.signInWithPassword({ email, password });
         if (result.error) throw result.error;
         const assurance = await auth.mfa.getAuthenticatorAssuranceLevel();
-        if (assurance.data?.nextLevel === "aal2" && assurance.data.currentLevel !== "aal2") {
-          setMfa(true);
-          setPassword("");
-          setShowPassword(false);
-        } else window.location.assign(next);
+        // AuthProvider remounts this form when identity changes. Navigate to the
+        // challenge so MFA cannot be lost with state on the previous instance.
+        window.location.assign(nativeMfaDestination(assurance, next) ?? next);
       }
-    } catch {
-      setError("We could not complete that request. Check your details and try again.");
+    } catch (failure) {
+      setSigningIn(false);
+      const expired = typeof failure === "object" && failure !== null && "code" in failure && failure.code === "otp_expired";
+      setError(mode === "recovery" && emailCodePending
+        ? expired
+          ? "This code is invalid, expired, or already used. If you opened the email link, request a new code and enter the newest code here without opening its link."
+          : "We could not verify that code right now. Try again, or request a new code if you opened the email link elsewhere."
+        : "We could not complete that request. Check your details and try again.");
     } finally {
       setBusyAction(null);
     }
@@ -160,14 +197,14 @@ export function AuthForm({
     : {
         "sign-in": "Sign in to access your bookmarks and saved sessions.",
         "sign-up": "Keep your bookmarks and saved sessions together.",
-        recovery: "Enter your email and we’ll send you a reset link.",
+        recovery: emailCodePending ? "Enter the code from your recovery email in this window." : "Enter your email and we’ll send you a recovery email.",
         "update-password": "Choose a new password for your account.",
         mfa: "Enter the six-digit code from your authenticator app.",
       }[mode];
   const action = mfa
     ? "Verify"
     : mode === "recovery"
-      ? "Send reset link"
+      ? "Send recovery email"
       : mode === "update-password"
         ? "Update password"
         : mode === "sign-up"
@@ -176,22 +213,23 @@ export function AuthForm({
   const pendingAction = mfa
     ? "Verifying…"
     : mode === "recovery"
-      ? "Sending reset link…"
+      ? emailCodePending ? "Verifying code…" : "Sending recovery email…"
       : mode === "update-password"
         ? "Updating password…"
         : mode === "sign-up"
           ? "Creating account…"
           : "Signing in…";
-  const showProviders = !mfa && !nativeEmailPending && (mode === "sign-in" || mode === "sign-up");
+  const showProviders = !mfa && !emailCodePending && (mode === "sign-in" || mode === "sign-up");
   const passwordUpdated = mode === "update-password" && Boolean(message);
   return (
     <AuthShell
       title={mfa ? "Verify your authenticator" : mode === "sign-in" ? "Welcome back" : title}
       description={description}
+      signingIn={signingIn}
     >
       {showProviders && (
         <>
-          <div className="grid gap-3">
+          <Field className="gap-3">
             <Button
               type="button"
               variant="outline"
@@ -220,25 +258,23 @@ export function AuthForm({
               )}
               {busyAction === "apple" ? "Connecting to Apple…" : "Continue with Apple"}
             </Button>
-          </div>
-          <div className="relative text-center text-xs text-muted-foreground">
-            <span aria-hidden className="absolute inset-x-0 top-1/2 border-t" />
-            <span className="relative bg-card px-3">Or continue with email</span>
-          </div>
+          </Field>
+          <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">Or continue with email</FieldSeparator>
         </>
       )}
-      {!passwordUpdated && (
+      {!passwordUpdated && (mode !== "update-password" || passwordSessionReady) && (
         <form
           onSubmit={submit}
-          className="space-y-5"
+          className="flex flex-col gap-6"
           aria-busy={busy}
           aria-describedby={error ? "auth-error" : message ? "auth-message" : undefined}
         >
-          {!mfa && !nativeEmailPending && mode === "sign-up" && (
-            <div className="space-y-2">
-              <label htmlFor="auth-name" className="text-sm font-medium">
+          <FieldGroup>
+          {!mfa && !emailCodePending && mode === "sign-up" && (
+            <Field>
+              <FieldLabel htmlFor="auth-name" className="text-sm font-medium">
                 Name <span className="font-normal text-muted-foreground">(optional)</span>
-              </label>
+              </FieldLabel>
               <Input
                 id="auth-name"
                 className="h-11"
@@ -248,13 +284,13 @@ export function AuthForm({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
-            </div>
+            </Field>
           )}
-          {!mfa && !nativeEmailPending && mode !== "update-password" && (
-            <div className="space-y-2">
-              <label htmlFor="auth-email" className="text-sm font-medium">
+          {!mfa && (!emailCodePending || mode === "recovery") && mode !== "update-password" && (
+            <Field>
+              <FieldLabel htmlFor="auth-email" className="text-sm font-medium">
                 Email
-              </label>
+              </FieldLabel>
               <Input
                 id="auth-email"
                 className="h-11"
@@ -263,16 +299,16 @@ export function AuthForm({
                 placeholder="you@example.com"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); setCode(""); }}
               />
-            </div>
+            </Field>
           )}
-          {!mfa && !nativeEmailPending && mode !== "recovery" && (
-            <div className="space-y-2">
+          {!mfa && !emailCodePending && mode !== "recovery" && (
+            <Field>
               <div className="flex items-center justify-between gap-2">
-                <label htmlFor="auth-password" className="text-sm font-medium">
+                <FieldLabel htmlFor="auth-password" className="text-sm font-medium">
                   {mode === "update-password" ? "New password" : "Password"}
-                </label>
+                </FieldLabel>
                 {mode === "sign-in" && (
                   <Link
                     href={`/auth/recovery${nextQuery}`}
@@ -316,39 +352,50 @@ export function AuthForm({
                   Use at least 8 characters.
                 </p>
               )}
-            </div>
+            </Field>
           )}
-          {(mfa || nativeEmailPending) && (
-            <div className="space-y-2">
-              <label htmlFor="auth-code" className="text-sm font-medium">
-                {nativeEmailPending ? "Email code" : "Authenticator code"}
-              </label>
+          {(mfa || emailCodePending) && (
+            <Field>
+              <FieldLabel htmlFor="auth-code" className="text-sm font-medium">
+                {emailCodePending ? "Email code" : "Authenticator code"}
+              </FieldLabel>
               <Input
                 id="auth-code"
                 className="h-11 text-center font-mono tracking-widest"
-                placeholder={nativeEmailPending ? "Email code" : "000000"}
+                placeholder={emailCodePending ? "Email code" : "000000"}
                 required
                 autoComplete="one-time-code"
                 inputMode="numeric"
-                pattern={nativeEmailPending ? "[0-9]{6,10}" : "[0-9]{6}"}
-                maxLength={nativeEmailPending ? 10 : 6}
+                pattern={emailCodePending ? "[0-9]{6,10}" : "[0-9]{6}"}
+                maxLength={emailCodePending ? 10 : 6}
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
               />
-            </div>
+            </Field>
           )}
           <Button
             type="submit"
             className="h-11 w-full"
-            disabled={busy || (mfa && (!factor || code.length !== 6)) || (nativeEmailPending && !/^[0-9]{6,10}$/.test(code))}
+            disabled={busy || (mfa && (!factor || code.length !== 6)) || (emailCodePending && !/^[0-9]{6,10}$/.test(code))}
           >
             {busyAction === "form" && (
               <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
             )}
-            {busyAction === "form" ? pendingAction : nativeEmailPending ? "Verify email code" : action}
+            {busyAction === "form" ? pendingAction : emailCodePending ? "Verify email code" : action}
           </Button>
+          {mode === "recovery" && (
+            <div className="flex flex-col gap-2 text-center text-sm">
+              {emailCodePending ? <>
+                <Button type="button" variant="outline" disabled={busy || !email.trim()} onClick={() => void resendRecoveryCode()}>Send a new code</Button>
+                <Button type="button" variant="ghost" disabled={busy} onClick={() => { setEmailCodePending(false); setCode(""); setError(""); setMessage(""); }}>Change email or start again</Button>
+              </> : <Button type="button" variant="ghost" disabled={busy} onClick={() => { setEmailCodePending(true); setError(""); setMessage(""); }}>I already have a recovery code</Button>}
+            </div>
+          )}
+          </FieldGroup>
         </form>
       )}
+      {mode === "update-password" && !passwordSessionReady && !error && <p role="status" className="text-center text-sm text-muted-foreground">Checking your reset session…</p>}
+      {mode === "update-password" && !passwordSessionReady && error && <Button asChild className="h-11 w-full"><Link href={recoveryPage(authDestinationFromSearch(typeof window === "undefined" ? "" : window.location.search))}>Request a new recovery code</Link></Button>}
       {error && (
         <div
           id="auth-error"
@@ -369,7 +416,7 @@ export function AuthForm({
           <p>{message}</p>
         </div>
       )}
-      <div className="text-center text-sm text-muted-foreground">
+      <FieldDescription className="text-center">
         {mfa ? (
           <Link
             href={`/sign-in${nextQuery}`}
@@ -378,7 +425,7 @@ export function AuthForm({
             Back to sign in
           </Link>
         ) : mode === "sign-in" ? (
-          <p>
+          <span>
             Don’t have an account?{" "}
             <Link
               href={`/sign-up${nextQuery}`}
@@ -386,9 +433,9 @@ export function AuthForm({
             >
               Sign up
             </Link>
-          </p>
+          </span>
         ) : mode === "sign-up" ? (
-          <p>
+          <span>
             Already have an account?{" "}
             <Link
               href={`/sign-in${nextQuery}`}
@@ -396,7 +443,7 @@ export function AuthForm({
             >
               Sign in
             </Link>
-          </p>
+          </span>
         ) : mode === "update-password" ? (
           <Link href={authDestinationFromSearch(typeof window === "undefined" ? "" : window.location.search)} className={`${authLink} inline-flex min-h-11 items-center`}>
             Return to library
@@ -409,7 +456,7 @@ export function AuthForm({
             Back to sign in
           </Link>
         )}
-      </div>
+      </FieldDescription>
     </AuthShell>
   );
 }

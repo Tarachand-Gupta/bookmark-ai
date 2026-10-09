@@ -44,7 +44,7 @@ struct AccountSettingsTab: View {
                         .pointingHandCursor()
                         .accessibilityIdentifier("sign-out-button")
 
-                        if !SupabaseConfiguration.isQA { Button("Delete Account…", role: .destructive) {
+                        if !SupabaseConfiguration.isSupabase { Button("Delete Account…", role: .destructive) {
                             openURL(target.accountSettingsSignInURL)
                         }
                         .pointingHandCursor()
@@ -64,7 +64,7 @@ struct AccountSettingsTab: View {
                 } header: {
                     Text("Account")
                 } footer: {
-                    Text(SupabaseConfiguration.isQA ? "Manage your profile and devices here." : auth.status == .signedIn
+                    Text(SupabaseConfiguration.isSupabase ? "Manage your profile and devices here." : auth.status == .signedIn
                         ? "Delete Account opens web Account settings, where deletion requires a second confirmation."
                         : "Sign-in opens in your default browser.")
                         .font(.caption)
@@ -79,7 +79,7 @@ struct AccountSettingsTab: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            if SupabaseConfiguration.isQA && auth.status == .signedIn { NativeAccountControls() }
+            if SupabaseConfiguration.isSupabase && auth.status == .signedIn { NativeAccountControls() }
         }
         .formStyle(.grouped)
         .frame(minHeight: 540)
@@ -96,7 +96,7 @@ struct AccountSettingsTab: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("account-server-picker")
-            .disabled(SupabaseConfiguration.isQA)
+            .disabled(SupabaseConfiguration.isSupabase)
 
             LabeledContent("Endpoint") {
                 Text(appEnvironment.preferences.serverTarget.baseURL.absoluteString)

@@ -2,36 +2,41 @@
 
 One codebase → three browsers at build time. WXT 0.20 + React 19 + Tailwind v4.
 
-## Current Supabase branch: build and load the correct artifact
+## Supabase production builds — current defaults (9 October 2026)
 
-Production authentication now uses Supabase. From the repository root:
+`pnpm --filter @bookmark-ai/extension build`, `build:firefox`, and `build:safari`
+now use frozen Supabase **production** sources, ordinary store identities, black
+icons and version 0.1.6. Equivalent root commands:
 
 ```bash
-corepack pnpm qa:supabase chrome build --hosted-production
-corepack pnpm qa:supabase firefox build --hosted-production
-corepack pnpm qa:supabase safari build --hosted-production
+corepack pnpm production:supabase chrome build
+corepack pnpm production:supabase firefox build
+corepack pnpm production:supabase safari build
 ```
 
-These commands require the ignored `.env.supabase.production.local` and create
-frozen snapshots under `.work/builds/supabase-qa/`; the wrapper prints each
-snapshot's build manifest. They do not install or reload an extension.
+The ignored `.env.supabase.production.local` supplies exact canonical HTTPS
+endpoints and production public OAuth client IDs. These builds update standard
+`.output/chrome-mv3`, `.output/firefox-mv2` and `.output/safari-mv3`; the original
+folders are archived under `.work/production-oct9/rollback-extension-output/`.
+The stable install kit is `dist/production/` with `ARTIFACTS.json`, `INSTALL.md`,
+browser folders and signed `Bookmark AI for Safari.app`. Frozen source/dependency
+and build manifests remain under `.work/builds/supabase-production/`.
 
-The current tested Chrome artifact is
-`.work/production-clients-oct6/extension-kit/chrome` (name **Bookmark AI Supabase
-QA**, ID `peikdeadpkgjgohdndljbciephekdpfg`). Its installation instructions and
-exact proof boundaries are in that kit's `INSTALL-EXTENSIONS.md` and
-`.work/production-clients-oct6/EXTENSIONS.md`. The preserved
-`apps/extension/.output/chrome-mv3` is the legacy
-**Bookmark AI** / Clerk artifact, ID `ffhbgpgebpmofjkehpjcemepbgcmoelp`; it cannot
-sign into current Supabase production. Both show version `0.1.5`, so verify the
-name, ID and loaded folder rather than using version alone.
+Chrome production ID is `ffhbgpgebpmofjkehpjcemepbgcmoelp`; Firefox GUID is
+`bookmark-ai@bookmark-ai.cloud`; Safari app/appex are `ai.bookmark.safari` and
+`ai.bookmark.safari.Extension`. Supabase production credentials use namespace
+`bookmark-ai:supabase-production`, separate from QA and Clerk. Fresh sign-in is
+required. No installation, browser reload or store submission occurs in builds.
+Safari delivered builds require a real local Apple Development signing identity;
+unsigned fallback is refused. Local signing does not establish notarization.
 
-`wxt-run.mjs` rejects ordinary `build`/`zip` modes on this source. Deliberate
-Clerk rollback can use `node scripts/wxt-run.mjs build --legacy-clerk` from
-`apps/extension`, with its original Clerk environment. Existing output folders
-remain preserved; this guard does not invalidate previously built files.
-`prepare`, the dev server, tests and type checking retain their existing behavior.
-The commands and Clerk architecture below document the retained legacy targets.
+Isolated yellow QA remains available via `qa:supabase ... --hosted-production`
+with its QA identities and separate callback/storage. Earlier oct6/7 QA runtime
+proof does not establish runtime proof for a new production-ID package. Direct
+`wxt-run.mjs build` remains guarded; deliberate Clerk rollback requires
+`--legacy-clerk` and the preserved original Clerk environment. The tables and
+Clerk architecture below describe those retained rollback/dev targets; the
+ordinary production package commands above supersede the historical auth mode.
 
 ```bash
 pnpm --filter @bookmark-ai/extension dev            # LOCAL target, chrome dev w/ HMR

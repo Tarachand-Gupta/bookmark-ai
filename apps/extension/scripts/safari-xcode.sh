@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
 # safari-xcode.sh — the ONE scripted path from the WXT Safari build to an Xcode
-# project that archives for the Mac App Store (and, locally, to a signed Debug
+# project that archives for the Mac App Store (and, locally, to a signed Release
 # build installed in /Applications for Safari).
 #
 #   pnpm --filter @bookmark-ai/extension safari:xcode                       # steps 1-6
-#   pnpm --filter @bookmark-ai/extension safari:xcode -- --build --install  # + Debug build → /Applications
+#   pnpm --filter @bookmark-ai/extension safari:xcode -- --build --install  # + Release build → /Applications
 #   pnpm --filter @bookmark-ai/extension safari:xcode -- --archive          # + Release .xcarchive (signed)
 #   pnpm --filter @bookmark-ai/extension safari:xcode -- --archive --unsigned  # compile proof without a team
 #
@@ -16,10 +16,10 @@
 #   4. rsync                          → safari-app/Extension/Resources (gitignored staging dir)
 #   5. drift guard                    → every top-level entry is listed in project.yml
 #   6. xcodegen generate              → safari-app/BookmarkAISafari.xcodeproj (gitignored)
-#   7. --build    xcodebuild Debug, signed with the "Apple Development" identity in the keychain
+#   7. --build    xcodebuild Release, signed with the "Apple Development" identity in the keychain
 #                 (manual signing so no Xcode account/session is needed; ad-hoc if none)
 #   8. --archive  xcodebuild archive, Release → safari-app/build/BookmarkAISafari.xcarchive
-#   9. --install  quit the running app, ditto the Debug product over /Applications/Bookmark AI for Safari.app
+#   9. --install  quit the running app, ditto the Release product over /Applications/Bookmark AI for Safari.app
 #                 (keeps it the ONLY registered copy), relaunch, print pluginkit row + extension state
 #
 # Never calls `xcrun safari-web-extension-converter` — safari-app/project.yml replaced it.
@@ -68,7 +68,7 @@ log() { printf '\n\033[1m[safari-xcode] %s\033[0m\n' "$*"; }
 # ── 1. WXT production build ──────────────────────────────────────────────────
 if [[ $SKIP_WEB_BUILD -eq 0 ]]; then
   log "1/6 pnpm build:safari"
-  (cd "$EXT_DIR" && pnpm build:safari)
+  (cd "$EXT_DIR" && node ../../scripts/supabase-production.mjs safari bundle)
 else
   log "1/6 skipping build:safari (reusing $BUNDLE_SRC)"
 fi
@@ -81,7 +81,7 @@ const [extDir, bundleDir, allowDev] = process.argv.slice(2);
 const { readFileSync } = require("node:fs");
 const pkg = JSON.parse(readFileSync(`${extDir}/package.json`, "utf8"));
 const manifest = JSON.parse(readFileSync(`${bundleDir}/manifest.json`, "utf8"));
-const PROD = ["https://bookmark-ai.cloud/*", "https://www.bookmark-ai.cloud/*", "https://clerk.bookmark-ai.cloud/*", "https://live.bookmark-ai.cloud/*"];
+const PROD = ["https://www.bookmark-ai.cloud/*", "https://xogqaqtyacmecdbmgqqd.supabase.co/*", "https://live.bookmark-ai.cloud/*"];
 const fail = (m) => { console.error(`ERROR: ${m}`); process.exit(1); };
 if (manifest.manifest_version !== 3) fail(`manifest_version is ${manifest.manifest_version}; Safari 26 needs MV3 (build:safari uses --mv3)`);
 if (manifest.version !== pkg.version) fail(`manifest version ${manifest.version} != package.json ${pkg.version} — stale .output? rebuild`);
@@ -128,7 +128,7 @@ echo "  $(xcodebuild -project "$PROJECT" -showBuildSettings -scheme "$SCHEME" 2>
 
 # ── Signing flags for local (non-App-Store) builds ───────────────────────────
 # The project is Automatic-signing with Tara's team for Xcode/archive. For a
-# scripted Debug build we don't want xcodebuild talking to the developer portal,
+# scripted Release build we don't want xcodebuild talking to the developer portal,
 # so sign MANUALLY with the "Apple Development" identity already in the keychain
 # (a real signature is what makes Safari keep the extension across restarts);
 # fall back to ad-hoc when there is none (Safari then needs "Allow Unsigned
@@ -142,18 +142,29 @@ local_sign_flags() {
     echo "  signing with: $identity"
     SIGN=(CODE_SIGN_STYLE=Manual "CODE_SIGN_IDENTITY=$identity" PROVISIONING_PROFILE_SPECIFIER=)
   else
+    if [[ $ALLOW_DEV -ne 1 ]]; then
+      echo "ERROR: signed production Safari requires an Apple Development identity; unsigned fallback refused" >&2
+      exit 1
+    fi
     echo "  no Apple Development identity in the keychain — ad-hoc signing (Safari will treat the extension as unsigned)"
     SIGN=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER=)
   fi
 }
 
-# ── 7. Debug build ───────────────────────────────────────────────────────────
+# ── 7. Release build ─────────────────────────────────────────────────────────
 if [[ $DO_BUILD -eq 1 ]]; then
-  log "xcodebuild Debug build"
+  log "xcodebuild Release build"
   local_sign_flags
-  xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Debug -derivedDataPath "$DERIVED" \
+  xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release -derivedDataPath "$DERIVED" \
     clean build "${SIGN[@]}" -quiet
-  PRODUCT="$DERIVED/Build/Products/Debug/$APP_NAME.app"
+  PRODUCT="$DERIVED/Build/Products/Release/$APP_NAME.app"
+  if [[ $ALLOW_DEV -eq 0 ]]; then
+    node --input-type=module - "$PRODUCT" "$DERIVED/release-signing" "$EXT_DIR" <<'NODE'
+const [product, scratch, extensionRoot] = process.argv.slice(2);
+const { sanitizeReleaseSigning } = await import(`${extensionRoot}/../../scripts/supabase-production.mjs`);
+sanitizeReleaseSigning(product, process.env, scratch);
+NODE
+  fi
   echo "  built: $PRODUCT"
   codesign -dv --entitlements - "$PRODUCT" 2>&1 | grep -E 'Identifier=|TeamIdentifier=|app-sandbox' | sed 's/^/  /'
 fi
@@ -185,7 +196,7 @@ fi
 # ── 9. Install for Safari ────────────────────────────────────────────────────
 if [[ $DO_INSTALL -eq 1 ]]; then
   log "installing → $INSTALL_DEST (the only registered copy)"
-  PRODUCT="$DERIVED/Build/Products/Debug/$APP_NAME.app"
+  PRODUCT="$DERIVED/Build/Products/Release/$APP_NAME.app"
   [[ -d "$PRODUCT" ]] || { echo "ERROR: $PRODUCT not built" >&2; exit 1; }
   # Graceful quit of the running menu-bar app (never kill -9 it).
   if pgrep -f "$INSTALL_DEST/Contents/MacOS/$APP_NAME" >/dev/null 2>&1; then
@@ -195,7 +206,11 @@ if [[ $DO_INSTALL -eq 1 ]]; then
       sleep 0.5
     done
   fi
-  rm -rf "$INSTALL_DEST"
+  if [[ -d "$INSTALL_DEST" ]]; then
+    BACKUP_DIR="$EXT_DIR/../../.work/safari-installed-backups"
+    mkdir -p "$BACKUP_DIR"
+    mv "$INSTALL_DEST" "$BACKUP_DIR/Bookmark AI for Safari-$(date +%s).app"
+  fi
   ditto "$PRODUCT" "$INSTALL_DEST"
   # Unregister the DerivedData copy and delete it so LaunchServices/pluginkit see ONE app.
   pluginkit -r "$PRODUCT/Contents/PlugIns/$APPEX_NAME" >/dev/null 2>&1 || true

@@ -19,7 +19,7 @@ export default function CompleteNativeAuth() {
       if(!response.ok)throw new Error('This sign-in could not finish. Start again in the app.');
       const result=await response.json();
       const url=new URL(result.callbackUrl);
-      if(!['bookmarkai-macos-supabase-qa://auth/callback','bookmarkai-supabase-qa://sso-callback'].includes(url.protocol+'//'+url.host+url.pathname)||url.hash||url.username||url.password||url.searchParams.size!==3||url.searchParams.get('flow')!==flow.flow||!/^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state')??'')||!/^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('code')??''))throw new Error('Unexpected app callback.');
+      if(!['bookmarkai-macos-supabase-qa://auth/callback','bookmarkai-supabase-qa://sso-callback','bookmarkai-macos://auth/callback','bookmarkai://sso-callback'].includes(url.protocol+'//'+url.host+url.pathname)||url.hash||url.username||url.password||url.searchParams.size!==3||url.searchParams.get('flow')!==flow.flow||!/^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state')??'')||!/^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('code')??''))throw new Error('Unexpected app callback.');
       await clearNativeBrowserContext(flow.flow);history.replaceState(null,'','/auth/native/complete');
       return url.href;
     })()};

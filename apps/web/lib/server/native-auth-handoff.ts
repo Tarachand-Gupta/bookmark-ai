@@ -10,6 +10,12 @@ export const NATIVE_CALLBACKS = {
   android: 'bookmarkai-supabase-qa://sso-callback',
 } as const;
 export type NativeClient = keyof typeof NATIVE_CALLBACKS;
+export const PRODUCTION_NATIVE_CALLBACKS = {
+  macos: 'bookmarkai-macos://auth/callback',
+  ios: 'bookmarkai://sso-callback',
+  android: 'bookmarkai://sso-callback',
+} as const;
+export type NativeBuildVariant = 'supabase-qa' | 'supabase-production';
 export type HandoffSession = { access_token: string; refresh_token: string; user_id: string; session_id: string; expires_at: number };
 const random = () => randomBytes(32).toString('base64url');
 export const challenge = (value: string) => createHash('sha256').update(value).digest('base64url');
@@ -24,12 +30,13 @@ export function assertNativeHandoffPair(before: VerifiedSupabaseSession, after: 
 }
 export class NativeAuthHandoff {
   constructor(private db: PgExecutor, private cipher: CredentialCipher) {}
-  async start(client: NativeClient, codeChallenge: string, state: string, now = Date.now()) {
+  async start(client: NativeClient, codeChallenge: string, state: string, now = Date.now(), variant: NativeBuildVariant = 'supabase-qa') {
+    const callback = (variant === 'supabase-production' ? PRODUCTION_NATIVE_CALLBACKS : NATIVE_CALLBACKS)[client];
     const flow = random(), nonce = random(), expiresAt = now + NATIVE_AUTH_TTL;
     const abandoned=await this.db.query("select provider_user_id,session_id from bmai_qa.native_auth_flows where expires_at<$1 and state='ready'",[now]);
     for(const row of abandoned)await this.db.query("select bmai_qa.manage_sessions($1::uuid,$2::uuid,'local')",[row.provider_user_id,row.session_id]);
     await this.db.query('delete from bmai_qa.native_auth_flows where expires_at<$1', [now]);
-    await this.db.query('insert into bmai_qa.native_auth_flows(flow_id,code_challenge,browser_nonce_hash,native_state,client_type,callback_url,created_at,expires_at) values($1,$2,$3,$4,$5,$6,$7,$8)', [flow, codeChallenge, challenge(nonce), state, client, NATIVE_CALLBACKS[client], now, expiresAt]);
+    await this.db.query('insert into bmai_qa.native_auth_flows(flow_id,code_challenge,browser_nonce_hash,native_state,client_type,callback_url,created_at,expires_at) values($1,$2,$3,$4,$5,$6,$7,$8)', [flow, codeChallenge, challenge(nonce), state, client, callback, now, expiresAt]);
     return { flowId: flow, browserNonce: nonce, expiresAt };
   }
   async view(flow: string, nonce: string, now = Date.now()) {

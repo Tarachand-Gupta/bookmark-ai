@@ -155,13 +155,13 @@ final class AuthStateTests: XCTestCase {
         let env = AppEnvironment(preferences: preferences)
         XCTAssertEqual(env.preferences.serverTarget, .local)
         XCTAssertEqual(env.auth.status, .unknown)
-        XCTAssertEqual(env.gate, SupabaseConfiguration.isQA ? .connecting : .ready)
-        XCTAssertEqual(env.canUseData, !SupabaseConfiguration.isQA)
+        XCTAssertEqual(env.gate, SupabaseConfiguration.isSupabase ? .connecting : .ready)
+        XCTAssertEqual(env.canUseData, !SupabaseConfiguration.isSupabase)
 
         env.auth.mintOverride = { _ in .noSession }
         await env.auth.restore(requiresAuth: preferences.serverTarget.requiresAuth)
         XCTAssertEqual(env.auth.status, .signedOut)
-        XCTAssertEqual(env.gate, SupabaseConfiguration.isQA ? .signedOut : .ready)
+        XCTAssertEqual(env.gate, SupabaseConfiguration.isSupabase ? .signedOut : .ready)
     }
 
     /// Cloud before the first answer is CONNECTING, not signed out.

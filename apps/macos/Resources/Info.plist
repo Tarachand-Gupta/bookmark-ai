@@ -2,6 +2,24 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BOOKMARK_BUILD_VARIANT</key>
+	<string>supabase-production</string>
+	<key>BOOKMARK_HOSTED_TARGET</key>
+	<string>production</string>
+	<key>BOOKMARK_API_URL</key>
+	<string>https://www.bookmark-ai.cloud</string>
+	<key>BOOKMARK_LIVE_URL</key>
+	<string>https://live.bookmark-ai.cloud</string>
+	<key>BOOKMARK_AUTH_STORAGE_NAMESPACE</key>
+	<string>bookmark-ai:supabase-production</string>
+	<key>BOOKMARK_AUTH_CALLBACK_SCHEME</key>
+	<string>bookmarkai-macos</string>
+	<key>SUPABASE_URL</key>
+	<string>https://xogqaqtyacmecdbmgqqd.supabase.co</string>
+	<key>SUPABASE_PUBLISHABLE_KEY</key>
+	<string>$(BOOKMARK_SUPABASE_PUBLISHABLE_KEY)</string>
+	<key>CFBundleURLTypes</key>
+	<array><dict><key>CFBundleURLSchemes</key><array><string>bookmarkai-macos</string></array><key>CFBundleURLName</key><string>ai.bookmarkai.macos</string></dict></array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>

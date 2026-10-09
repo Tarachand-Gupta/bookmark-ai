@@ -10,7 +10,7 @@ import * as Device from "expo-device";
 import * as Application from "expo-application";
 import { createClient, type Session } from "@supabase/supabase-js";
 import { getApiUrl, registerAuthSession, signOutAuthSessions, resetAccountApiState, resetLiveBaseCache, setAuthTokenProvider, setUnauthorizedHandler, setMfaRequiredHandler } from "../api";
-import { AUTH_CALLBACK_URL, AUTH_NAMESPACE, SUPABASE_PUBLIC_KEY, SUPABASE_URL } from "./auth-config";
+import { AUTH_CALLBACK_URL, AUTH_NAMESPACE, BUILD_VARIANT, SUPABASE_PUBLIC_KEY, SUPABASE_URL } from "./auth-config";
 import { displayLabel, nativeAppleExchange, nativeCallback, type NativeFlow, type PendingNativeFlow } from "./auth-policy";
 import { createSecureSessionStorage } from "./secure-session-storage";
 import { adoptHostedSession, createHostedCallbackFlight } from "./hosted-session";
@@ -139,7 +139,7 @@ export async function signInInBrowser(provider?: "google" | "apple"):Promise<voi
     const verifier=base64url(await Crypto.getRandomBytesAsync(32));
     const state=base64url(await Crypto.getRandomBytesAsync(32));
     const challenge=(await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256,verifier,{encoding:Crypto.CryptoEncoding.BASE64})).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
-    const result=await hostedRequest("start",{clientType:Platform.OS,codeChallenge:challenge,state});
+    const result=await hostedRequest("start",{clientType:Platform.OS,codeChallenge:challenge,state,...(BUILD_VARIANT === "supabase-production" ? {buildVariant:BUILD_VARIANT} : {})});
     if(result.state!==state||!Number.isFinite(result.expiresAt)||result.expiresAt<=Date.now()||result.expiresAt>Date.now()+5*60_000)throw new Error("Invalid sign-in response");
     const attempt:HostedAttempt={flowId:result.flowId,state,verifier,expiresAt:result.expiresAt};
     const url=hostedSignInURL(result.browserUrl,getApiUrl(),attempt.flowId,provider);

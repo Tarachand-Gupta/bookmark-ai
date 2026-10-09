@@ -6,9 +6,11 @@
 # JS/TS build outputs and caches (Vercel builds fresh on its servers)
 **/.next
 **/.next-supabase-qa
+**/.next-supabase-production
 **/.turbo
 **/dist
 **/dist-supabase-qa
+**/dist-supabase-production
 **/.vercel
 
 # Docusaurus output + cache. The docs project's Root Directory is apps/docs, so

@@ -1,5 +1,16 @@
-/** Shipped app.json identifiers stay intact; this migration branch builds QA only. */
+/** Native generation always happens in an explicit frozen release snapshot. */
 module.exports = ({ config }) => {
+  if (process.env.BOOKMARK_BUILD_VARIANT === 'supabase-production') {
+    if (!process.env.BOOKMARK_PRODUCTION_STAGE_ROOT) {
+      throw new Error('Production native generation must use the production build wrapper');
+    }
+    return {
+      ...config,
+      ios: { ...config.ios, entitlements: { ...config.ios.entitlements,
+        'com.apple.security.application-groups': ['group.ai.bookmarkai'] } },
+      extra: { ...config.extra, buildVariant: 'supabase-production', authStorageNamespace: 'bookmark-ai:supabase-production' },
+    };
+  }
   if (process.env.BOOKMARK_BUILD_VARIANT !== 'supabase-qa') {
     throw new Error('Supabase migration mobile builds must use scripts/supabase-qa.mjs and the isolated supabase-qa variant');
   }

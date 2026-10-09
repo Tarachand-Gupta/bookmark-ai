@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 /** The active facet shown as the second breadcrumb segment. */
@@ -124,7 +123,6 @@ export function LibraryHeader({
         </div>
       )}
 
-      <ThemeToggle />
       <AuthControls />
     </header>
   );

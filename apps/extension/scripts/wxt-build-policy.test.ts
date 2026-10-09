@@ -7,7 +7,7 @@ import { extensionBuildArguments } from "./wxt-build-policy.mjs";
 test("ordinary build and zip cannot silently produce a Clerk artifact", () => {
   for (const command of ["build", "zip"]) {
     for (const options of [[], ["-m", "production"], ["-m", "development"], ["-m", "dev-remote"]]) {
-      assert.throws(() => extensionBuildArguments([command, ...options]), /qa:supabase chrome build --hosted-production/);
+      assert.throws(() => extensionBuildArguments([command, ...options], {}), /qa:supabase chrome build --hosted-production/);
     }
   }
 });
@@ -17,6 +17,13 @@ test("QA mode accepts supported mode spellings without changing browser argument
     const args = ["build", "-b", "firefox", "--mv2", ...mode];
     assert.deepEqual(extensionBuildArguments(args), { args, legacyClerk: false });
   }
+});
+
+test("production mode requires frozen Supabase production context", () => {
+  const args = ["build", "-b", "chrome", "-m", "production"];
+  const env = { BOOKMARK_BUILD_VARIANT: "supabase-production", BOOKMARK_PRODUCTION_STAGE_ROOT: "/frozen/source", WXT_AUTH_PROVIDER: "supabase" };
+  assert.deepEqual(extensionBuildArguments(args, env), { args, legacyClerk: false });
+  for (const key of Object.keys(env)) assert.throws(() => extensionBuildArguments(args, { ...env, [key]: "" }));
 });
 
 test("missing or conflicting mode arguments fail closed", () => {

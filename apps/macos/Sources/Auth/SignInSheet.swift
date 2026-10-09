@@ -59,17 +59,17 @@ struct SignInSheet: View {
                         .font(.system(size: 38, weight: .medium))
                         .foregroundStyle(.secondary)
 
-                    Text(SupabaseConfiguration.isQA ? "Finish signing in in your browser" : "Confirm this code in your browser")
+                    Text(SupabaseConfiguration.isSupabase ? "Finish signing in in your browser" : "Confirm this code in your browser")
                         .font(.title3.weight(.semibold))
 
-                    if !SupabaseConfiguration.isQA { Text(code)
+                    if !SupabaseConfiguration.isSupabase { Text(code)
                         .font(.system(size: 30, weight: .bold, design: .monospaced))
                         .textSelection(.enabled) }
                         // Keep the selectable text's native accessibility label.
                         // On macOS 27, overriding it recursively asks AppKit for
                         // the same label when an AX client copies the hierarchy.
 
-                    Text(SupabaseConfiguration.isQA ? "Sign in on the Bookmark AI website. You will return to the app automatically." : "Choose the account in your browser, make sure the same code appears there, then approve the sign-in.")
+                    Text(SupabaseConfiguration.isSupabase ? "Sign in on the Bookmark AI website. You will return to the app automatically." : "Choose the account in your browser, make sure the same code appears there, then approve the sign-in.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: 390)

@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppTheme } from "../context/PreferencesContext";
 import { useContentWidth } from "../hooks/useContentWidth";
-import { SettingsScreen } from "../screens/SettingsScreen";
+import { SettingsScreen, SETTINGS_TITLES, type SettingsPage } from "../screens/SettingsScreen";
+import { Symbol } from "../components/Symbol";
 import { ModalSafeArea } from "./ModalSafeArea";
 
 /**
@@ -36,13 +38,15 @@ export function SettingsPresentation({
 }) {
   const { colors } = useAppTheme();
   const { inset } = useContentWidth();
+  const [page, setPage] = useState<SettingsPage>("root");
+  const close = () => { setPage("root"); onClose(); };
 
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="overFullScreen"
-      onRequestClose={onClose}
+      onRequestClose={page === "root" ? close : () => setPage("root")}
     >
       {/* Full-screen means no system chrome inset comes for free — the modal
           owns the status-bar area on both platforms. ModalSafeArea, NOT a
@@ -56,12 +60,13 @@ export function SettingsPresentation({
             { borderBottomColor: colors.border, paddingHorizontal: HEADER_GUTTER + inset },
           ]}
         >
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>Settings</Text>
-          <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button">
+          {page !== "root" && <Pressable onPress={() => setPage("root")} hitSlop={12} accessibilityRole="button" accessibilityLabel="Back to Settings"><Symbol name="chevron.left" color={colors.foreground} size={21} /></Pressable>}
+          <Text style={[styles.headerTitle, { color: colors.foreground, marginLeft: page === "root" ? 0 : 12 }]}>{SETTINGS_TITLES[page]}</Text>
+          <Pressable onPress={close} hitSlop={12} accessibilityRole="button">
             <Text style={[styles.done, { color: colors.foreground }]}>Done</Text>
           </Pressable>
         </View>
-        <SettingsScreen />
+        <SettingsScreen page={page} onNavigate={setPage} />
       </ModalSafeArea>
     </Modal>
   );
@@ -79,6 +84,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  headerTitle: { fontSize: 17, fontWeight: "600" },
+  headerTitle: { flex: 1, fontSize: 17, fontWeight: "600", marginHorizontal: 12 },
   done: { fontSize: 17, fontWeight: "600" },
 });

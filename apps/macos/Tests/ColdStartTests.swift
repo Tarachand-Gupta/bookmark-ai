@@ -11,10 +11,12 @@ final class ColdStartTests: XCTestCase {
     override func setUp() {
         super.setUp()
         AppDelegate.reopenNewWindow = nil
+        AppDelegate.mainWindowCreationPending = false
     }
 
     override func tearDown() {
         AppDelegate.reopenNewWindow = nil
+        AppDelegate.mainWindowCreationPending = false
         super.tearDown()
     }
 

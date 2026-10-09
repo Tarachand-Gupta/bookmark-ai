@@ -9,6 +9,40 @@ It shares nothing with it but knowledge of the API.
 
 ---
 
+## Supabase production package — current release
+
+From the repository root, run `corepack pnpm production:supabase macos build`.
+The ignored `.env.supabase.production.local` supplies the public Supabase
+configuration; source and dependency bytes are frozen before compilation.
+The signed Release output is `dist/production/Bookmark AI.app`, production bundle
+`ai.bookmarkai.macos`, black icon, version 0.1.1 (8). `ARTIFACTS.json` records
+source, configuration and file hashes. Builds do not install or launch.
+
+Production uses `bookmark-ai:supabase-production` Keychain storage and fixed
+`bookmarkai-macos://auth/callback`; Sign In opens the canonical production site
+in the default browser. Earlier yellow QA stays isolated with its own scheme,
+identity and storage. Native Google/Apple sign-in completes on the website.
+The production wrapper requires the existing real Apple Development signing
+identity, retains sandbox/hardened runtime, and omits the native Apple entitlement
+because providers run in the browser. This local signed build is not claimed
+notarized or store-published.
+
+`corepack pnpm production:supabase macos test` runs the full suite in a Debug test
+host using explicit production configuration; the shipped app is Release.
+`--from-run=/absolute/frozen/run` reuses a matching immutable production snapshot.
+Direct Xcode builds require `BOOKMARK_SUPABASE_PUBLISHABLE_KEY`; missing public
+configuration fails closed. Historical local/Clerk instructions below describe
+preserved rollback targets rather than the current production authentication.
+
+The main scene has one fixed identity (`main`). Launch, Dock reopen and native
+auth return reuse its existing window, including deminiaturizing it. After the
+red close button, the app remains running and the next reopen creates one main
+window. A creation latch prevents repeated requests before scene attachment;
+Settings and auth helper windows remain independent. `MainWindowLifecycleTests`
+covers pending bursts, close/reopen, auxiliary isolation and restored duplicates.
+The signed build-8 runtime evidence and direct-Dock automation limitation are
+recorded in `docs/testing/reports/2026-10-09-clients.md`.
+
 ## Build & run
 
 XcodeGen owns the project. `BookmarkAI.xcodeproj` is **generated and gitignored** —
@@ -452,9 +486,10 @@ apps/macos/
   `loadEverything` settles) AND a hydrated model still showing cache-derived
   rows.
 - **Dock reopen** (Tara's spec): closing the window (red button) keeps the app
-  running; clicking the Dock icon re-shows THE SAME window via
-  `applicationShouldHandleReopen` → `AppDelegate.reopen`
-  (`makeKeyAndOrderFront` + activate). The window is captured by
+  running; clicking the Dock icon reuses the visible/minimized main window, or
+  creates one replacement if it was closed, via
+  `applicationShouldHandleReopen` → `AppDelegate.reopen` and the fixed `main`
+  scene key. A creation latch absorbs requests before attachment. The window is captured by
   `MainWindowReader`, an invisible anchor view that lives only in the
   `WindowGroup`'s hierarchy — so the Settings window (its own scene) can never
   hijack the reopen target the way an app-wide `didBecomeKey` listener would.

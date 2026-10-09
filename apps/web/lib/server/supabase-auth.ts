@@ -5,10 +5,10 @@ import { getMasterContext } from './context';
 export { InvalidSessionError, AuthUnavailableError };
 export class MfaRequiredError extends Error {}
 export type WebAuth = VerifiedSupabaseSession & {userId:string};
-export function isSupabaseAuth(){return process.env.AUTH_PROVIDER==='supabase'||process.env.BOOKMARK_BUILD_VARIANT==='supabase-qa';}
+export function isSupabaseAuth(){return process.env.AUTH_PROVIDER==='supabase'||['supabase-qa','supabase-production'].includes(process.env.BOOKMARK_BUILD_VARIANT??'');}
 export async function getWebAuth(options:{allowExtension?:boolean}={}):Promise<WebAuth|null>{
   return withAuthDeadline(async()=>{
-  if(!isSupabaseAuth()||process.env.AUTH_PROVIDER!=='supabase'||process.env.BOOKMARK_BUILD_VARIANT!=='supabase-qa'||!process.env.SUPABASE_URL||!process.env.SUPABASE_PUBLISHABLE_KEY)throw new AuthUnavailableError('Supabase auth not configured');
+  if(!isSupabaseAuth()||process.env.AUTH_PROVIDER!=='supabase'||!['supabase-qa','supabase-production'].includes(process.env.BOOKMARK_BUILD_VARIANT??'')||!process.env.SUPABASE_URL||!process.env.SUPABASE_PUBLISHABLE_KEY)throw new AuthUnavailableError('Supabase auth not configured');
   const h=await headers();const header=h.get('authorization');
   const bearer=header?.startsWith('Bearer ')?header.slice(7).trim():null;
   const token=header?bearer:await (await import('@/lib/auth/server')).getCookieAccessToken();

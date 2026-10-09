@@ -305,10 +305,11 @@ function nativeConfiguration(stagedRoot, env) {
   }
 }
 
-export function stageSources(surface, env) {
+export function stageSources(surface, env, options = {}) {
+  const buildVariant = options.variant || variant;
   const sha = git('rev-parse', '--short=12', 'HEAD').trim();
   const buildId = `${sha}-${Date.now()}-${surface}`;
-  const runRoot = join(repoRoot, '.work/builds', variant, buildId);
+  const runRoot = join(repoRoot, '.work/builds', buildVariant, buildId);
   const stagedRoot = join(runRoot, 'source');
   mkdirSync(stagedRoot, { recursive: true });
   const selected = surface === 'check' ? Object.values(apps) : surface === 'web' ? [apps.web, apps.live] : [apps[surface]];
@@ -338,15 +339,15 @@ export function stageSources(surface, env) {
     }
   }
   const dependencyAudit = auditDependencyLinks(stagedRoot, dependencies.root);
-  env.BOOKMARK_QA_STAGE_ROOT = stagedRoot;
+  env[buildVariant === variant ? 'BOOKMARK_QA_STAGE_ROOT' : 'BOOKMARK_PRODUCTION_STAGE_ROOT'] = stagedRoot;
   env.TMPDIR = join(runRoot, 'tmp');
   env.GRADLE_USER_HOME = join(runRoot, 'gradle-cache');
   env.CP_HOME_DIR = join(runRoot, 'cocoapods');
   env.CP_CACHE_DIR = join(runRoot, 'cocoapods-cache');
   env.COCOAPODS_DISABLE_STATS = 'true';
   mkdirSync(env.TMPDIR, { recursive: true });
-  nativeConfiguration(stagedRoot, env);
-  const manifest = { variant, buildId, gitSha: sha, sourceHash: hash.digest('hex'), surface, stagedRoot,
+  (options.nativeConfiguration || nativeConfiguration)(stagedRoot, env);
+  const manifest = { variant: buildVariant, buildId, gitSha: sha, sourceHash: hash.digest('hex'), surface, stagedRoot,
     lockfileHash: fingerprint(join(repoRoot, 'pnpm-lock.yaml')),
     installedLockfileHash: fingerprint(join(repoRoot, 'node_modules/.pnpm/lock.yaml')),
     dependencyLayer: dependencies,

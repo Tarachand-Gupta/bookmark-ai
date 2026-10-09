@@ -18,6 +18,20 @@ const verifier='v'.repeat(43),state='s'.repeat(43);
 async function call(action:string,body:unknown,token?:string){
   return route.POST(new NextRequest(`https://www.bookmark-ai.cloud/api/auth/native/${action}`,{method:'POST',headers:{origin:'https://www.bookmark-ai.cloud','sec-fetch-site':'same-origin','content-type':'application/json',...(token?{authorization:`Bearer ${token}`}:{})},body:JSON.stringify(body)}),{params:Promise.resolve({action})});
 }
+it('production native starts persist only fixed callbacks and preserve legacy QA requests',async()=>{
+  for(const [clientType,callback] of [['macos','bookmarkai-macos://auth/callback'],['ios','bookmarkai://sso-callback'],['android','bookmarkai://sso-callback']]) {
+    const response=await call('start',{clientType,buildVariant:'supabase-production',codeChallenge:challenge(verifier),state});
+    expect(response.status).toBe(201);
+    const flow=await response.json();
+    const rows=await pg.query('select client_type,callback_url from bmai_qa.native_auth_flows where flow_id=$1',[flow.flowId]);
+    expect(rows.rows[0]).toEqual({client_type:clientType,callback_url:callback});
+  }
+  const legacy=await (await call('start',{clientType:'macos',codeChallenge:challenge(verifier),state})).json();
+  const rows=await pg.query<{callback_url:string}>('select callback_url from bmai_qa.native_auth_flows where flow_id=$1',[legacy.flowId]);
+  expect(rows.rows[0].callback_url).toBe('bookmarkai-macos-supabase-qa://auth/callback');
+  expect((await call('start',{clientType:'macos',buildVariant:'anything',codeChallenge:challenge(verifier),state})).status).toBe(400);
+  expect((await call('start',{clientType:'macos',buildVariant:'supabase-production',callbackUrl:'evil://callback',codeChallenge:challenge(verifier),state})).status).toBe(400);
+});
 beforeEach(async()=>{
   aal='aal2';refreshSid=sid;pg=new PGlite();
   await pg.exec('create schema bmai_qa;create role anon;create role authenticated;create role bmai_qa_backend;');

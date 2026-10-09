@@ -85,16 +85,17 @@ export function SignInScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={[styles.hero, styles.column]}>
-          <View style={[styles.mark, { backgroundColor: colors.primary }]}>
-            <Symbol name="bookmark.fill" size={30} color={colors.primaryForeground} fallback="B" />
+          <View style={[styles.mark, { backgroundColor: colors.primary, borderRadius: radius.lg }]}>
+            <Symbol name="bookmark.fill" size={20} color={colors.primaryForeground} fallback="B" />
           </View>
           <Text style={[styles.title, { color: colors.foreground }]}>Bookmark AI</Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Sign in to browse and search your library.
-          </Text>
         </View>
 
-        <View style={[styles.form, styles.column]}>
+        <View style={[styles.form, styles.column, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: radius.xl }]}>
+          <View style={styles.formHeading}>
+            <Text style={[styles.formTitle, { color: colors.foreground }]}>{phase === "credentials" ? "Welcome back" : mode === "reset" ? "Reset your password" : "Check your email"}</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{phase === "credentials" ? "Sign in to browse and search your library." : "Complete verification to continue."}</Text>
+          </View>
           {finishing ? (
             <View style={styles.finishing} accessibilityLiveRegion="polite">
               <ActivityIndicator color={colors.mutedForeground} />
@@ -155,14 +156,16 @@ export function SignInScreen() {
                     style={({ pressed }) => [
                       styles.primaryBtn,
                       {
-                        backgroundColor: colors.primary,
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        borderWidth: StyleSheet.hairlineWidth,
                         borderRadius: radius.lg,
                         opacity: busy ? 0.6 : pressed ? 0.85 : 1,
                       },
                     ]}
                   >
-                    <Symbol name="globe" size={17} color={colors.primaryForeground} fallback="G" />
-                    <Text style={[styles.primaryBtnText, { color: colors.primaryForeground }]}>
+                    <Ionicons name="logo-google" size={18} color={colors.foreground} />
+                    <Text style={[styles.primaryBtnText, { color: colors.foreground }]}>
                       Continue with Google
                     </Text>
                   </Pressable>
@@ -177,10 +180,12 @@ export function SignInScreen() {
                 </>
               )}
 
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Email</Text>
               <TextInput
                 value={email}
                 onChangeText={setEmail}
                 placeholder="you@example.com"
+                accessibilityLabel="Email"
                 placeholderTextColor={colors.mutedForeground}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -198,10 +203,12 @@ export function SignInScreen() {
                   },
                 ]}
               />
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Password</Text>
               <TextInput
                 value={password}
                 onChangeText={setPassword}
                 placeholder="Password"
+                accessibilityLabel="Password"
                 placeholderTextColor={colors.mutedForeground}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -397,22 +404,23 @@ const styles = StyleSheet.create({
   // 13" iPad the form would otherwise stretch edge to edge (1,000+ pt wide
   // inputs and a button as wide as the screen). Phones are narrower than the cap,
   // so nothing changes there.
-  root: { flexGrow: 1, justifyContent: "center", alignItems: "center", padding: 28, gap: 32 },
-  column: { width: "100%", maxWidth: 440 },
-  hero: { alignItems: "center", gap: 8 },
+  root: { flexGrow: 1, justifyContent: "center", alignItems: "center", padding: 24, gap: 24 },
+  column: { width: "100%", maxWidth: 400 },
+  hero: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   finishing: { alignItems: "center", gap: 12, paddingVertical: 24 },
   finishingTitle: { fontSize: 17, fontWeight: "600" },
   mark: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 36,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8,
   },
-  title: { fontSize: 28, fontWeight: "700", letterSpacing: -0.4 },
-  subtitle: { fontSize: 15, textAlign: "center", maxWidth: 280, lineHeight: 20 },
-  form: { gap: 14 },
+  title: { fontSize: 20, fontWeight: "600", letterSpacing: -0.3 },
+  subtitle: { fontSize: 14, textAlign: "center", lineHeight: 20 },
+  form: { gap: 12, padding: 20, borderWidth: StyleSheet.hairlineWidth },
+  formHeading: { alignItems: "center", gap: 6, marginBottom: 8 },
+  formTitle: { fontSize: 24, fontWeight: "600", letterSpacing: -0.5 },
+  fieldLabel: { fontSize: 14, fontWeight: "500", marginBottom: -6 },
   // The system Apple button needs an explicit width and height (it renders
   // nothing without them) and refuses backgroundColor/borderRadius via style —
   // its colour comes from buttonStyle, its radius from cornerRadius.

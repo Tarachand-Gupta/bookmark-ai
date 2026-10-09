@@ -8,7 +8,7 @@ final class AccountFooterTests: XCTestCase {
 
     private let tara = AccountInfo(signedIn: true, name: "Tara Gupta", email: "tara@bookmark-ai.cloud")
     private var cloudHost: String {
-        guard SupabaseConfiguration.isQA else { return "bookmark-ai.cloud" }
+        guard SupabaseConfiguration.isSupabase else { return "bookmark-ai.cloud" }
         return URL(string: Bundle.main.object(forInfoDictionaryKey: "BOOKMARK_API_URL") as? String ?? "")?.host ?? "Configuration unavailable"
     }
 
@@ -72,7 +72,7 @@ final class AccountFooterTests: XCTestCase {
     func testLocalAndGateStatesUseTargetCopy() {
         // Local has no session concept — whatever auth says, even a stale identity.
         for status in [AuthController.Status.unknown, .signedOut, .signedIn, .unreachable] {
-            if SupabaseConfiguration.isQA {
+            if SupabaseConfiguration.isSupabase {
                 // Isolated native builds pin both targets to the configured,
                 // authenticated endpoint; Local cannot bypass sign-in.
                 let expectedPrimary = status == .signedIn ? "Tara Gupta" : status == .signedOut ? "Not signed in" : "Connecting…"

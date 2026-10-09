@@ -1,5 +1,5 @@
 import { Github } from "lucide-react";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemePicker } from "@/components/theme-picker";
 import { cn } from "@/lib/utils";
 import { BookmarkMark, DOCS_URL, mono, REPO, Wordmark } from "./primitives";
 
@@ -62,7 +62,7 @@ export function Nav({ hideAuthActions = false }: { hideAuthActions?: boolean } =
           >
             <Github className="size-[1.15rem]" aria-hidden />
           </a>
-          <ThemeToggle />
+          <ThemePicker />
           {!hideAuthActions && (
             <a
               href="/sign-in"

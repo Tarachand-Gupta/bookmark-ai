@@ -5,75 +5,68 @@ floating tab bar (real Liquid Glass on iOS 26, frosted blur on iOS 18/Android), 
 titles and the iOS type scale, SF Symbols, native bottom-sheet filters, day-grouped
 lists, long-press action sheets, and haptics.
 
-## Signing in
+## Production builds and sign-in
 
-The app is Clerk-gated like the web app: email + password (or an emailed one-time code),
-Google SSO, and — on iOS — native **Sign in with Apple** (App Store guideline 4.8 requires
-it once Google is offered). The session token is stored in the iOS keychain (SecureStore)
-and attached to every API request, which the Next.js route handlers in `apps/web` verify.
+Supabase owns mobile authentication. The original native screen supports email/password,
+verified email codes, signup and password recovery. Google and Apple are available on
+both iOS and Android through the canonical hosted provider screen and a state-checked
+PKCE handoff. The approved Apple button remains on iOS. MFA admission blocks private
+screens and requests until verification completes. Sessions live in SecureStore under
+`bookmark-ai:supabase-production`, separate from preserved QA and former Clerk storage.
 
-Clerk SDK: `@clerk/expo` 4.x (the renamed successor of `@clerk/clerk-expo`). The screens use
-the Core 2 resources from `@clerk/expo/legacy` (`useSignIn`/`useSignUp` — `signIn.create`,
-`attemptFirstFactor`, `setActive`), `useSSO` from the main entry for Google, and
-`useSignInWithApple` from `@clerk/expo/apple`, which drives `expo-apple-authentication`'s
-system sheet and posts the identity token to Clerk (`oauth_token_apple`). The package also
-ships a native module (Clerk's SwiftUI/Compose components, iOS 17+, pulls the clerk-ios and
-clerk-android SDKs); it is **excluded from autolinking** in `package.json`
-(`expo.autolinking.exclude`) because nothing here uses those components and the app keeps
-its iOS 16.4 floor — remove the exclusion (and add the `@clerk/expo` config plugin) if you
-ever adopt `@clerk/expo/native`.
+Production uses **Bookmark AI**, package/bundle ID `ai.bookmarkai`, callback
+`bookmarkai://sso-callback`, API `https://www.bookmark-ai.cloud` and Live
+`https://live.bookmark-ai.cloud`. Version **1.0.2**, iOS build **102**, Android code **102**.
 
-Sign in with Apple needs, per Clerk instance: the Apple social connection enabled, and the
-iOS app registered under **Native applications** (App ID Prefix = Team ID `L3PP7DQZWS`,
-Bundle ID `ai.bookmarkai`). The native flow needs no Services ID or `.p8` key — those
-are only for Apple login on the web. On the Apple side the App ID needs the *Sign in with
-Apple* capability (the `com.apple.developer.applesignin` entitlement comes from
-`ios.usesAppleSignIn` + the `expo-apple-authentication` plugin in `app.json`). Account
-deletion cannot revoke the Apple authorization (Clerk's token-only flow never yields a
-refresh token), so `DeleteAccountSheet` tells Apple users the Settings path, per Apple's
-TN3194 fallback.
+Current simulator screens are exposed through Xcode **Device Hub** (`com.apple.dt.Devices`).
+Select the matching simulator row there; the historical `Simulator.app` entry is absent
+on this installation. See [the production QA report](../../docs/testing/reports/2026-10-09-mobile.md)
+for exact package, runtime, and evidence limits.
+A new or unconfirmed account sees full-screen setup feedback; a failed setup offers
+Retry and never opens an empty library as evidence of readiness.
 
-### Server target (build-time, not an in-app switch)
+From the repository root, create embedded Release packages without a local server:
 
-There is **no in-app server switch** — which API the build talks to is decided once at
-bundle time by `resolveServerTarget()` in `src/api.ts`:
-
-1. `EXPO_PUBLIC_SERVER_TARGET=local|production` — explicit override, wins.
-2. else `__DEV__` — a dev run (`expo start` / `expo run:*`) → `local`, a release build
-   (`eas build`) → `production`.
-
-`local` means the Next dev server (`localhost:3000`, `10.0.2.2:3000` on the Android
-emulator); `production` means `https://bookmark-ai.cloud`. To point a dev run at prod:
-
-```bash
-EXPO_PUBLIC_SERVER_TARGET=production npx expo run:ios
+```sh
+node apps/mobile/scripts/production-release.mjs ios-simulator
+node apps/mobile/scripts/production-release.mjs ios-device --from-run=/absolute/ios/run
+node apps/mobile/scripts/production-release.mjs android
 ```
 
-`EXPO_PUBLIC_API_URL` (and `EXPO_PUBLIC_LIVE_API_URL` for the live server) hard-override
-the resolved host in any build. Settings shows the target read-only.
+Run iOS targets sequentially: Expo shares a temporary native build directory inside the snapshot. The iPhone command may reuse the simulator’s printed frozen source run. Each new run
+uses an isolated native dependency overlay, generated native projects and explicit
+Supabase production guards. iOS simulator, provisioned-device IPA, Android APK and AAB
+are saved in `dist/production`; `mobile-manifest.json` records identity, configuration,
+source provenance, production URLs and artifact hashes. The wrapper reads the private
+`.env.supabase.production.local`; Android signing reads only the four approved fields
+from `.keys/android-release.env`. Missing production signing fails the release build.
+The device IPA uses Apple Development provisioning and is installable only on devices
+covered by its profile; it is not an App Store submission artifact.
 
-### Clerk instance
+Run the private artifact audit after building. It compares backend values against
+embedded JS/public configuration without printing them, and checks the APK/AAB signing
+certificates against the owner-held release keystore:
 
-The publishable key **follows the server target** (`src/lib/clerk.ts`) so a session is
-never sent to the other environment's API — no manual pairing needed:
+```sh
+node apps/mobile/scripts/audit-production.mjs ios /absolute/BookmarkAI.app /absolute/audit.json
+node apps/mobile/scripts/audit-production.mjs android /absolute/app.apk /absolute/audit.json /absolute/app.aab
+```
 
-| Server target | Clerk instance | Publishable key |
-| --- | --- | --- |
-| `production` | `clerk.bookmark-ai.cloud` | `pk_live_Y2xlcmsuYm9va21hcmstYWkuY2xvdWQk` |
-| `local` | dev (`darling-baboon-13.accounts.dev`) | `pk_test_ZGFybGluZy1iYWJvb24tMTMuY2xlcmsuYWNjb3VudHMuZGV2JA` |
+Install only after verifying the actual package identity, signer and manifest. Preserve
+existing apps and user data; a signer mismatch is not a reason to uninstall. Simulator
+source/build proof does not prove physical provider callbacks or OS share-sheet placement.
+The independent `qa:supabase` workflow retains its named QA IDs/callback and isolated
+storage. Unqualified Expo generation is intentionally rejected rather than silently
+building a different authentication provider.
 
-`EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` overrides it (escape hatch for a throwaway/staging
-instance). `EXPO_PUBLIC_*` values are inlined at bundle time, so **rebuild** after
-changing any of them.
+## Settings
 
-> **Never set an `EXPO_PUBLIC_*` var to `""` to mean "no override" — leave it UNSET.** An empty
-> string is still a value: it is inlined into the bundle as the literal `""`, which is falsy but not
-> nullish. Android 1.0.0 (versionCode 1) shipped that way — the release workflow declared
-> `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ""`, `src/lib/clerk.ts` fell back with `?? ` (nullish only), so
-> the key was `""`, Metro folded both real keys out of the bundle, and `<ClerkProvider>` threw
-> `@clerk/expo: Missing publishableKey` on the first render: the app closed instantly, before the
-> splash, on every device. Fallbacks here must test truthiness, and the workflow now fails if any
-> `EXPO_PUBLIC_*` is set at all.
+Settings is a short native menu. Account & Security keeps profile, email, password,
+recovery, local sign-out and account deletion. Devices separates Apps & Web from
+Browser Extensions using registered client types; rows open details with Rename and
+confirmed sign-out. Equal names never combine separate sessions. Appearance, AI & Plan,
+and Help & About keep the existing controls and legal/support links. Back returns to
+Settings and Done closes it.
 
 ## "Save to Bookmark AI" (system share sheet)
 
@@ -92,11 +85,11 @@ JS side is `src/lib/share-intent.ts`: extract the first URL from the shared text
 prose as often as a bare link), auto-save it via `createBookmark`, confirm in
 `ShareSavedBanner` (the scraped title replaces the raw link when the refetch lands). A
 failed save opens the Add Bookmark sheet prefilled instead of losing the link; a share that
-arrives while signed out is held in memory (never persisted) and completes right after
-sign-in.
+arrives while signed out is retained in the encrypted pending-share workflow and
+completes after the correct authenticated account is ready.
 
-Both native folders are generated, so after touching any of this: `npx expo prebuild
---clean` and rebuild both apps.
+Both native folders are generated. Edit app/config/plugin source, then use the production
+release runner to regenerate and rebuild both apps in frozen snapshots.
 
 ## Update banner
 

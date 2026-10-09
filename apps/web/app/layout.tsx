@@ -4,7 +4,6 @@ import { ThemeProvider } from "next-themes";
 import { ThemeColorMeta } from "@/components/theme-color-meta";
 import { THEME_COLOR } from "@/lib/theme-colors";
 import { ThemePreferencesProvider } from "@/components/theme-preferences-provider";
-import { ThemePicker } from "@/components/theme-picker";
 import { themeBootstrapScript } from "@/lib/theme-picker/bootstrap";
 import "./globals.css";
 
@@ -87,7 +86,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <ThemeColorMeta />
             {/* shadcn theme keeps Clerk's UserButton + sign-in modal on-brand. */}
             <AuthProvider>{children}</AuthProvider>
-            <ThemePicker />
           </ThemePreferencesProvider>
         </ThemeProvider>
       </body>

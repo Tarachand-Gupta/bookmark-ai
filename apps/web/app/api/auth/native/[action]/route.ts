@@ -14,7 +14,7 @@ const id = z.string().regex(opaque);
 const pair = z.object({ flowId: id, verifier: id }).strict();
 const exchange = pair.extend({completionCode:id}).strict();
 const browser = z.object({ flowId: id, browserNonce: id }).strict();
-const start = z.object({ clientType: z.enum(['macos','ios','android']), codeChallenge: id, state: id }).strict();
+const start = z.object({ clientType: z.enum(['macos','ios','android']), buildVariant: z.enum(['supabase-qa','supabase-production']).optional(), codeChallenge: id, state: id }).strict();
 const complete = browser.extend({ accessToken: z.string().min(1).max(16384), refreshToken: z.string().min(1).max(16384) }).strict();
 const json = (body: unknown, status=200) => NextResponse.json(body,{status,headers:{'cache-control':'no-store, max-age=0','pragma':'no-cache'}});
 async function handler(request: NextRequest, context: {params: Promise<{action:string}>}) {
@@ -29,7 +29,7 @@ async function handler(request: NextRequest, context: {params: Promise<{action:s
     const input = await readLimitedJson(request, 36_000);
     if(action==='start') {
       const parsed=start.safeParse(input); if(!parsed.success) return json({error:'Invalid request'},400);
-      const value=await store.start(parsed.data.clientType,parsed.data.codeChallenge,parsed.data.state);
+      const value=await store.start(parsed.data.clientType,parsed.data.codeChallenge,parsed.data.state,Date.now(),parsed.data.buildVariant);
       const origin=new URL(request.url).origin;
       const next='/auth/native/complete?'+new URLSearchParams({flow:value.flowId,browser_nonce:value.browserNonce});
       return json({flowId:value.flowId,browserUrl:origin+'/sign-in?'+new URLSearchParams({next}),expiresAt:value.expiresAt,state:parsed.data.state},201);

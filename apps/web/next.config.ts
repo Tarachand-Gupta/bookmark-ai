@@ -5,10 +5,12 @@ import type { NextConfig } from "next";
 // Next only auto-loads env files from the app dir; the monorepo keeps its
 // single .env at the repo root (GEMINI_API_KEY etc.). Real env always wins.
 const supabaseQa = process.env.BOOKMARK_BUILD_VARIANT === "supabase-qa";
-if (supabaseQa && !process.env.BOOKMARK_QA_STAGE_ROOT) {
-  throw new Error("Supabase QA must use scripts/supabase-qa.mjs (isolated sources/env/output)");
+const supabaseBuild = supabaseQa || process.env.BOOKMARK_BUILD_VARIANT === "supabase-production";
+const stageRoot = supabaseQa ? process.env.BOOKMARK_QA_STAGE_ROOT : process.env.BOOKMARK_PRODUCTION_STAGE_ROOT;
+if (supabaseBuild && !stageRoot) {
+  throw new Error("Supabase builds must use the explicit QA or production staging script");
 }
-if (!supabaseQa) try {
+if (!supabaseBuild) try {
   const text = readFileSync(resolve(process.cwd(), "../../.env"), "utf8");
   for (const line of text.split("\n")) {
     const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
@@ -21,10 +23,10 @@ if (!supabaseQa) try {
 }
 
 const nextConfig: NextConfig = {
-  ...(supabaseQa ? {
-    distDir: ".next-supabase-qa",
-    outputFileTracingRoot: process.env.BOOKMARK_QA_STAGE_ROOT,
-    turbopack: { root: process.env.BOOKMARK_QA_STAGE_ROOT },
+  ...(supabaseBuild ? {
+    distDir: supabaseQa ? ".next-supabase-qa" : ".next-supabase-production",
+    outputFileTracingRoot: stageRoot,
+    turbopack: { root: stageRoot },
   } : {}),
   transpilePackages: [
     "@bookmark-ai/server-logging",

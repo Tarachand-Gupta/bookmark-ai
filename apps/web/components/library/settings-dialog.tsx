@@ -11,6 +11,7 @@ import {
   Download,
   Loader2,
   Plug,
+  Palette,
   Sparkles,
   Trash2,
   Upload,
@@ -46,6 +47,7 @@ import { ReleasesIcon, ReleasesSection } from "./releases-settings";
 import { SettingsGroup, SettingsSection } from "./settings-section";
 import { SkillsIcon, SkillsSection } from "./skills-settings";
 import { SyncSection } from "./sync-settings";
+import { ThemeChoices } from "@/components/theme-picker";
 
 export interface SettingsDialogProps {
   open: boolean;
@@ -60,6 +62,7 @@ export interface SettingsDialogProps {
 const SECTIONS = [
   { id: "ai", label: "AI", icon: Sparkles },
   { id: "skills", label: "Skills", icon: SkillsIcon },
+  { id: "appearance", label: "Appearance", icon: Palette },
   { id: "data", label: "Data", icon: Database },
   { id: "sync", label: "Sync", icon: FEATURE_ICONS.bookmarks },
   { id: "devices", label: "Live sessions", icon: FEATURE_ICONS.live },
@@ -232,6 +235,12 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
                 {/* The card draws its own border/padding — it's the pane's single
                     block, so it doesn't need a SettingsGroup around it. */}
                 <AiSetupCard />
+              </SettingsSection>
+            )}
+
+            {section === "appearance" && (
+              <SettingsSection title="Appearance" icon={Palette} description="Choose a theme and light, dark, or system appearance. Saved in this browser.">
+                <ThemeChoices />
               </SettingsSection>
             )}
 

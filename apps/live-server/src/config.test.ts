@@ -19,6 +19,12 @@ const VALID = randomBytes(32).toString("base64");
 
 /** Minimum env for a dev-mode config (no prod fail-closed checks apply). */
 const base = { NODE_ENV: "development" } as NodeJS.ProcessEnv;
+test("Supabase production variant preserves native auth requirements", () => {
+  const env = { ...base, AUTH_PROVIDER: "supabase", BOOKMARK_BUILD_VARIANT: "supabase-production", SUPABASE_URL: "https://project.supabase.co", SUPABASE_PUBLISHABLE_KEY: "public", SUPABASE_DATABASE_URL: "postgres://localhost/control" };
+  assert.equal(loadConfig(env).authProvider, "supabase");
+  assert.throws(() => loadConfig({ ...env, AUTH_PROVIDER: "clerk" }), /requires native auth/);
+  assert.throws(() => loadConfig({ ...env, SUPABASE_DATABASE_URL: "" }), /unavailable/);
+});
 
 test("LIVE_ENCRYPTION_SECRET unset → plaintext mode, no throw", () => {
   const config = loadConfig({ ...base });

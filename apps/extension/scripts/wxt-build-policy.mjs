@@ -1,5 +1,5 @@
 /** This migration source keeps Clerk builds available only for deliberate rollback. */
-export function extensionBuildArguments(input) {
+export function extensionBuildArguments(input, env = process.env) {
   const legacyClerk = input.includes("--legacy-clerk");
   const args = input.filter((argument) => argument !== "--legacy-clerk");
   if (!["build", "zip"].includes(args[0])) return { args, legacyClerk: false };
@@ -15,7 +15,8 @@ export function extensionBuildArguments(input) {
     else if (argument.startsWith("--mode=")) modes.push(argument.slice(7));
     else if (argument.startsWith("-m=")) modes.push(argument.slice(3));
   }
-  if (modes.length !== 1 || modes[0] !== "supabase-qa") {
+  const production = modes.length === 1 && modes[0] === "production" && env.BOOKMARK_BUILD_VARIANT === "supabase-production" && !!env.BOOKMARK_PRODUCTION_STAGE_ROOT && env.WXT_AUTH_PROVIDER === "supabase";
+  if (!production && (modes.length !== 1 || modes[0] !== "supabase-qa")) {
     throw new Error(
       "This Supabase source requires a Supabase extension build. From the repo root use " +
       "corepack pnpm qa:supabase chrome build --hosted-production " +

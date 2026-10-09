@@ -115,7 +115,7 @@ final class AppEnvironment {
         // Show LAST SESSION'S data before any network work: hydrate the models
         // the main window renders at rest. A snapshot from another target is
         // dropped; the pill only arms if something actually hydrated.
-        if SupabaseConfiguration.isQA { cache.delete() }
+        if SupabaseConfiguration.isSupabase { cache.delete() }
         else { hydrateFromCache(cache.read()) }
     }
 

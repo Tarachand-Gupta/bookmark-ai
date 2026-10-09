@@ -2,7 +2,7 @@
   "expo": {
     "name": "Bookmark AI",
     "slug": "bookmark-ai",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "scheme": "bookmarkai",
     "orientation": "default",
     "icon": "./assets/icon.png",
@@ -11,7 +11,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "ai.bookmarkai",
       "appleTeamId": "L3PP7DQZWS",
-      "buildNumber": "2",
+      "buildNumber": "102",
       "usesAppleSignIn": true,
       "infoPlist": {
         "NSAppTransportSecurity": {
@@ -102,7 +102,7 @@
     },
     "android": {
       "package": "ai.bookmarkai",
-      "versionCode": 4,
+      "versionCode": 102,
       "adaptiveIcon": {
         "backgroundColor": "#171717",
         "foregroundImage": "./assets/android-icon-foreground.png",

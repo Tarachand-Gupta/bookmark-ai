@@ -1,4 +1,4 @@
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 
@@ -15,18 +15,16 @@ import { useAppTheme } from "../context/PreferencesContext";
  * sees. Owning the screen also lets it carry the brand mark, same treatment as
  * the sign-in hero.
  *
- * Tone matches the web word for word: a normal 10-15 seconds of signup, never an
- * error. No destructive color, no warning glyph, no retry button (the 2s poll IS
- * the retry). The privacy line is the honest reason the wait exists at all.
+ * The setup gate remains mounted on timeout/network failure with an explicit
+ * retry; only a successful protected read admits the user's library.
  */
-export function AccountSetupScreen() {
+export function AccountSetupScreen({ failed = false, onRetry }: { failed?: boolean; onRetry?: () => void }) {
   const { colors, radius } = useAppTheme();
 
   return (
     <View
       style={[styles.root, { backgroundColor: colors.background }]}
-      accessibilityRole="progressbar"
-      accessibilityLabel="Setting up your account"
+      accessibilityLabel={failed ? "Account setup needs a retry" : "Setting up your account"}
       accessibilityLiveRegion="polite"
     >
       <View style={styles.brand}>
@@ -43,21 +41,24 @@ export function AccountSetupScreen() {
         ]}
       >
         <Text style={[styles.cardTitle, { color: colors.cardForeground }]}>
-          Setting up your account
+          {failed ? "We couldn't finish account setup" : "Setting up your account"}
         </Text>
         <Text style={[styles.cardBody, { color: colors.mutedForeground }]}>
-          This usually takes 10–15 seconds.
+          {failed ? "Check your connection, then try again. Your library will open when it's ready." : "This usually takes 10–20 seconds."}
         </Text>
         {/* Indeterminate on purpose: provisioning reports no percentage, and a
             fake bar that stalls at 90% is worse than honest motion. The web uses
             a travelling CSS sliver; the platform spinner is the native
             equivalent and needs no animation code of our own. */}
-        <ActivityIndicator style={styles.spinner} color={colors.mutedForeground} />
+        {failed ? (
+          <Pressable accessibilityRole="button" onPress={onRetry} style={[styles.retry, { backgroundColor: colors.primary, borderRadius: radius.lg }]}>
+            <Text style={{ color: colors.primaryForeground, fontWeight: "600" }}>Retry account setup</Text>
+          </Pressable>
+        ) : <ActivityIndicator style={styles.spinner} color={colors.mutedForeground} />}
       </View>
 
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-        We take privacy seriously — every account gets its own isolated database, and we’re
-        creating yours right now.
+        Your bookmarks stay in your private library.
       </Text>
     </View>
   );
@@ -79,5 +80,6 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 16, fontWeight: "600", textAlign: "center" },
   cardBody: { fontSize: 15, textAlign: "center", marginTop: 4, lineHeight: 20 },
   spinner: { marginTop: 18 },
+  retry: { marginTop: 18, paddingVertical: 14, paddingHorizontal: 20 },
   footnote: { fontSize: 13, textAlign: "center", maxWidth: 320, lineHeight: 19 },
 });

@@ -122,7 +122,7 @@ final class ApiClientAuthTests: XCTestCase {
 
         _ = try await api.meta()
 
-        XCTAssertEqual(providerCalls, SupabaseConfiguration.isQA ? 1 : 0)
-        XCTAssertEqual(StubURLProtocol.requests.first?.value(forHTTPHeaderField: "Authorization"), SupabaseConfiguration.isQA ? "Bearer never" : nil)
+        XCTAssertEqual(providerCalls, SupabaseConfiguration.isSupabase ? 1 : 0)
+        XCTAssertEqual(StubURLProtocol.requests.first?.value(forHTTPHeaderField: "Authorization"), SupabaseConfiguration.isSupabase ? "Bearer never" : nil)
     }
 }

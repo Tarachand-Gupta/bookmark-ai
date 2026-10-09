@@ -94,8 +94,9 @@ export function getLiveUrl(): string {
 
 /**
  * The web/extension let a user pin a personal live-server URL in their account
- * settings (GET /api/settings → `{settings.liveServerUrl}`); mobile honors the
- * same override so all clients follow one source of truth. Resolution:
+ * settings (GET /api/settings → `{settings.liveServerUrl}`). Supabase builds
+ * always pin their validated live origin. Legacy authentication builds may
+ * honor the personal-server override. Their resolution:
  *   1. `settings.liveServerUrl` when truthy, else
  *   2. `getLiveUrl()` — the target-based (or EXPO_PUBLIC_LIVE_API_URL) default.
  * Any failure (offline, 401, provisioning) falls back to `getLiveUrl()` exactly
@@ -108,9 +109,9 @@ const LIVE_BASE_TTL_MS = 5 * 60 * 1000;
 let liveBaseCache: { url: string; expires: number } | null = null;
 
 export async function getLiveBaseUrl(): Promise<string> {
-  // QA origins are fixed together by the wrapper; settings cannot reroute
-  // bearer credentials into a saved production/custom server URL.
-  if (BUILD_VARIANT === "supabase-qa") return getLiveUrl();
+  // Supabase builds bind bearer credentials to their validated live origin.
+  // A persisted personal-server setting must never reroute that credential.
+  if (BUILD_VARIANT === "supabase-qa" || BUILD_VARIANT === "supabase-production") return getLiveUrl();
   const now = Date.now();
   if (liveBaseCache && liveBaseCache.expires > now) {
     return liveBaseCache.url;

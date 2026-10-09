@@ -135,7 +135,7 @@ async function POSTHandler(req: NextRequest) {
   let db: Db;
   let ready: Promise<void>;
   try {
-    if ((process.env.AUTH_PROVIDER === 'supabase' || process.env.BOOKMARK_BUILD_VARIANT === 'supabase-qa') && !await mcpAccountAccessible(verified.userId)) {
+    if ((process.env.AUTH_PROVIDER === 'supabase' || ['supabase-qa', 'supabase-production'].includes(process.env.BOOKMARK_BUILD_VARIANT ?? '')) && !await mcpAccountAccessible(verified.userId)) {
       return unauthorized(version, 'Account or integration credential no longer available');
     }
     ({ db, ready } = await resolveDb(verified.userId));

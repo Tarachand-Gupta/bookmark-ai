@@ -40,6 +40,18 @@ beforeEach(async () => {
   vi.stubEnv("WXT_APP_URL", "http://localhost:3100");
   vi.stubEnv("WXT_SUPABASE_OAUTH_CLIENT_ID", "public-client");
 });
+it("production OAuth uses its own credentials and cannot reuse QA storage", async () => {
+  vi.stubEnv("MODE", "production");
+  vi.stubEnv("WXT_AUTH_PROVIDER", "supabase");
+  vi.stubEnv("WXT_APP_URL", "https://www.bookmark-ai.cloud");
+  values.set(key, { accessToken: "qa-access", refreshToken: "qa-refresh", expiresAt: Date.now() + 3600000 });
+  const { SUPABASE_AUTH, getOAuthToken } = await import("./supabase-oauth");
+  expect(SUPABASE_AUTH).toBe(true);
+  expect(await getOAuthToken()).toBeNull();
+  values.set("local:bookmark-ai:supabase-production:oauth", { accessToken: "production-access", refreshToken: "production-refresh", expiresAt: Date.now() + 3600000 });
+  expect(await getOAuthToken()).toBe("production-access");
+  expect(values.get(key)).toMatchObject({ accessToken: "qa-access" });
+});
 it.each(["http://localhost:3100", "https://www.bookmark-ai.cloud"])(
   "exchanges scoped OAuth credentials against the configured target %s",
   async (appUrl) => {

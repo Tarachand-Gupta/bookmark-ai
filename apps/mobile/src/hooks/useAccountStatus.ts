@@ -2,172 +2,85 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "../lib/auth";
 import { AUTH_NAMESPACE } from "../lib/auth-config";
+import { accountProbeFailure, type AccountStatus } from "../lib/account-readiness";
 import { ForbiddenError, getMeta, ProvisioningError, SERVER_TARGET } from "../api";
 import { usePreferences } from "../context/PreferencesContext";
 
-/**
- * Where the signed-in account stands with the API, as far as the whole app is
- * concerned:
- *
- *  - `checking`      — the first probe is still in flight and we have no prior
- *                      evidence about this account (see the READY marker).
- *  - `ok`            — the API answered; the app is usable.
- *  - `provisioning`  — 503 `{code:"provisioning"}`: this account's own isolated
- *                      database is still being created (a fresh signup waits
- *                      ~10-15s). We poll until it's ready.
- *  - `forbidden`     — 403 `{code:"forbidden"}`: signed in fine, but this SDK
- *                      identity isn't on the API's allowlist.
- *
- * Anything else (offline, 500, a timeout) resolves to `ok` ON PURPOSE: those are
- * transient / per-screen problems that each screen already reports in its own
- * error state with a retry. Only the two states that make the WHOLE app
- * unusable — and that no per-screen retry can fix — take over the screen.
- */
-export type AccountStatus = "checking" | "ok" | "provisioning" | "forbidden";
-
-/** Same 2s cadence as the web client's provisioning retry (PROVISION_RETRY_MS in
- * apps/web/hooks/use-library.ts) so both surfaces feel identical and neither
- * hammers the API while a Turso DB is being created. */
+export type { AccountStatus } from "../lib/account-readiness";
 const POLL_MS = 2_000;
-
-/**
- * How long we keep polling before giving up and letting the app through, mirroring
- * the web's PROVISION_MAX_MS. Provisioning a Turso DB takes ~10-15s; a minute of
- * 503s means something is actually wrong, and a permanently broken account must
- * not sit on "Setting up your account" forever — better to show the app, whose
- * screens have their own error states and pull-to-refresh.
- */
 const POLL_MAX_MS = 60_000;
-
-/**
- * "This account has reached a working API at least once" — per server target and
- * per SDK user, so a dev build's marker never speaks for the prod target and a
- * second account on the same phone is judged on its own.
- *
- * Why persist it: the probe is one request, and blocking the first paint on it
- * would add its latency to EVERY cold start. With the marker we only block for a
- * user we've never seen succeed (i.e. a fresh signup — exactly the case that can
- * be provisioning), and returning users paint immediately while the probe runs
- * behind the already-rendered app.
- */
+const REQUEST_MAX_MS = 15_000;
 const readyKey = (userId: string) => `${AUTH_NAMESPACE}:account:${userId}:${SERVER_TARGET}:ready`;
+export interface AccountStatusState { status: AccountStatus; recheck: () => void }
 
-export interface AccountStatusState {
-  status: AccountStatus;
-  /** Re-run the probe now (the provisioning screen's manual retry). */
-  recheck: () => void;
-}
-
-/**
- * One probe for the whole app: `GET /api/meta` (the cheapest authenticated read
- * that touches the tenant DB) classified into an AccountStatus.
- *
- * Mounted once above the tab shell (App.tsx). While the status is `provisioning`
- * or `forbidden` the Shell is NOT rendered — which is deliberately different
- * from the web's overlay: mobile keeps all five screens mounted, so leaving them
- * up would mean five screens each caching a failure behind the takeover. Not
- * rendering them means that when provisioning finishes the Shell mounts fresh
- * and every screen's first fetch already sees a ready database.
- */
+/** An unconfirmed account stays in setup until a successful protected meta read.
+ * Returning accounts may paint their existing shell while checking the network. */
 export function useAccountStatus(): AccountStatusState {
   const { isLoaded, userId } = useAuth();
   const { serverTarget } = usePreferences();
-  const [status, setStatus] = useState<AccountStatus>("checking");
+  const [state, setState] = useState<{ userId: string | null; status: AccountStatus }>({ userId: null, status: "checking" });
   const [attempt, setAttempt] = useState(0);
-  // Guards stale async writes: only the newest probe run may touch state.
   const runId = useRef(0);
-
-  const recheck = useCallback(() => setAttempt((n) => n + 1), []);
+  const recheck = useCallback(() => setAttempt(n => n + 1), []);
 
   useEffect(() => {
     const id = ++runId.current;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let cancelled = false;
+    let cancelled = false, previouslyReady = false, sawProvisioning = false;
+    let poll: ReturnType<typeof setTimeout> | undefined;
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let requestTimer: ReturnType<typeof setTimeout> | undefined;
+    let controller: AbortController | undefined;
+    let deadline = Date.now() + POLL_MAX_MS;
+    const current = () => !cancelled && id === runId.current;
+    const settle = (status: AccountStatus) => { if (current()) setState({ userId, status }); };
+    settle(!isLoaded ? "checking" : userId ? "provisioning" : "ok");
+    if (!isLoaded || !userId) return () => { cancelled = true; };
 
-    // SDK hasn't restored the session yet: stay `checking` rather than
-    // reporting `ok` on a not-yet-known user, which would let the tab shell
-    // mount for a split second in front of the provisioning screen.
-    if (!isLoaded) {
-      setStatus("checking");
-      return;
-    }
-
-    // Loaded, but no SDK user (open/keyless mode): nothing to provision and
-    // nothing to allowlist — never gate the app.
-    if (!userId) {
-      setStatus("ok");
-      return;
-    }
-
-    const settle = (next: AccountStatus) => {
-      if (cancelled || runId.current !== id) return;
-      setStatus(next);
+    const startDeadline = () => {
+      if (deadlineTimer) clearTimeout(deadlineTimer);
+      deadlineTimer = setTimeout(() => {
+        if (poll) clearTimeout(poll);
+        controller?.abort();
+        settle("setup-error");
+      }, Math.max(0, deadline - Date.now()));
     };
-
-    // When to stop polling and let the app through (see POLL_MAX_MS). Set on the
-    // FIRST provisioning answer, so the window covers the wait itself rather than
-    // the time SDK took to hand us a user.
-    let deadline = 0;
-    /** True once this run has seen the server say "still provisioning". */
-    let sawProvisioning = false;
-
-    const probe = async (): Promise<void> => {
+    const probe = async () => {
+      controller = new AbortController();
+      requestTimer = setTimeout(() => controller?.abort(), REQUEST_MAX_MS);
       try {
-        await getMeta();
+        await getMeta(controller.signal);
+        if (!current()) return;
+        if (deadlineTimer) clearTimeout(deadlineTimer);
         settle("ok");
-        // Remember the success so later launches paint without waiting.
         void AsyncStorage.setItem(readyKey(userId), "1").catch(() => {});
-      } catch (err) {
-        if (cancelled || runId.current !== id) return;
-        if (err instanceof ForbiddenError) {
-          settle("forbidden");
-          return;
+      } catch (error) {
+        if (!current()) return;
+        const kind = error instanceof ForbiddenError ? "forbidden" : error instanceof ProvisioningError ? "provisioning" : "unavailable";
+        if (kind === "provisioning" && !sawProvisioning) {
+          sawProvisioning = true;
+          deadline = Date.now() + POLL_MAX_MS;
+          startDeadline();
         }
-        if (err instanceof ProvisioningError) {
-          if (!sawProvisioning) {
-            sawProvisioning = true;
-            deadline = Date.now() + POLL_MAX_MS;
-          }
-          if (Date.now() < deadline) {
-            settle("provisioning");
-            // Keep polling — this IS the retry the provisioning screen promises.
-            timer = setTimeout(() => void probe(), POLL_MS);
-            return;
-          }
-          // Past the deadline: stop pretending it's a normal signup wait.
-          settle("ok");
-          return;
-        }
-        // Anything else (offline, 500, timeout). Mid-provisioning this is almost
-        // always the API being briefly unreachable — a deploy, or a dev server
-        // restarting — and dropping into a shell whose every screen will fail is
-        // worse than waiting, so keep the provisioning screen up and keep polling
-        // until the deadline. Outside that window it's a per-screen problem the
-        // screens report themselves (see AccountStatus), so let the app through.
-        if (sawProvisioning && Date.now() < deadline) {
-          timer = setTimeout(() => void probe(), POLL_MS);
-          return;
-        }
-        settle("ok");
-      }
+        const status = accountProbeFailure(kind, previouslyReady, sawProvisioning, Date.now() >= deadline);
+        settle(status);
+        if (status === "provisioning") poll = setTimeout(() => void probe(), POLL_MS);
+        else if (deadlineTimer) clearTimeout(deadlineTimer);
+      } finally { if (requestTimer) clearTimeout(requestTimer); }
     };
-
-    // Paint immediately for an account we've already seen working; only a
-    // never-confirmed account holds the first frame on the probe.
-    void AsyncStorage.getItem(readyKey(userId))
-      .then((seen) => {
-        if (cancelled || runId.current !== id) return;
-        if (seen === "1") setStatus("ok");
-      })
-      .catch(() => {});
-
-    void probe();
-
+    void AsyncStorage.getItem(readyKey(userId)).catch(() => null).then(seen => {
+      if (!current()) return;
+      previouslyReady = seen === "1";
+      if (previouslyReady) settle("ok");
+      else startDeadline();
+      void probe();
+    });
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      if (poll) clearTimeout(poll);
+      if (deadlineTimer) clearTimeout(deadlineTimer);
+      if (requestTimer) clearTimeout(requestTimer);
+      controller?.abort();
     };
   }, [isLoaded, userId, serverTarget, attempt]);
-
-  return { status, recheck };
+  return { status: state.userId === userId ? state.status : "checking", recheck };
 }

@@ -5,19 +5,34 @@ import ts from "typescript";
 
 // Execute the actual API module with only native/config boundaries substituted.
 // Response parsing stays asynchronous so an account switch can occur mid-body.
-function apiWith(fetch: typeof globalThis.fetch) {
+function apiWith(fetch: typeof globalThis.fetch, buildVariant = "supabase-qa") {
   const source = readFileSync(new URL("../api.ts", import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const module = { exports: {} as Record<string, any> };
   const require = (name: string) => {
     if (name === "react-native") return { Platform: { OS: "ios", isPad: false } };
-    if (name === "./lib/auth-config") return { BUILD_VARIANT: "supabase-qa" };
+    if (name === "./lib/auth-config") return { BUILD_VARIANT: buildVariant };
     if (name === "./lib/native-endpoints") return { nativeEndpoint: (url: string) => url };
     if (name === "./lib/appUpdate") return {};
     throw new Error(`Unexpected boundary: ${name}`);
   };
   new Function("require", "module", "exports", "fetch", "process", "__DEV__", code)(require, module, module.exports, fetch, { env: { EXPO_PUBLIC_API_URL: "http://fixture.invalid", EXPO_PUBLIC_LIVE_API_URL: "http://fixture.invalid" } }, true);
   return module.exports;
+}
+for (const variant of ["supabase-qa", "supabase-production"]) {
+  test(`${variant}: live requests cannot send bearer to persisted personal-server settings`, async () => {
+    const calls: string[] = [];
+    const api = apiWith(async (url) => {
+      calls.push(String(url));
+      if (String(url).endsWith("/api/settings")) return { ok: true, json: async () => ({ settings: { liveServerUrl: "https://untrusted.invalid" } }) } as Response;
+      return { ok: true, json: async () => ({ devices: [] }) } as Response;
+    }, variant);
+    api.setAuthTokenProvider(async () => "fixture-token");
+    await api.listLiveDevices();
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].startsWith("http://fixture.invalid/"));
+    assert.ok(!calls.some(url => url.includes("untrusted.invalid") || url.endsWith("/api/settings")));
+  });
 }
 for (const surface of ["main", "live"]) {
   test(`${surface}: delayed old-account MFA error cannot gate the new account`, async () => {

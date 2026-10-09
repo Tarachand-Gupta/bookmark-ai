@@ -15,7 +15,9 @@
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "dev:live": "./scripts/dev-live.sh",
     "qa:supabase": "node scripts/supabase-qa.mjs",
-    "test:supabase:isolation": "node --test scripts/supabase-qa.test.mjs"
+    "test:supabase:isolation": "node --test scripts/supabase-qa.test.mjs",
+    "production:supabase": "node scripts/supabase-production.mjs",
+    "test:supabase:production": "node --test scripts/supabase-production.test.mjs"
   },
   "devDependencies": {
     "prettier": "^3.4.2",

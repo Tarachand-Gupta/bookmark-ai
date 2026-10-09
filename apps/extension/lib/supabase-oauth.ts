@@ -5,8 +5,9 @@ import { base64url, oauthCallback, isApprovedOAuthApp } from "./oauth-policy";
 import { detectOs } from "./detect";
 import type { UserInfo } from "./messages";
 
-export const SUPABASE_AUTH = import.meta.env.MODE === "supabase-qa";
-const namespace = "bookmark-ai:supabase-qa";
+export const SUPABASE_AUTH = import.meta.env.MODE === "supabase-qa" ||
+  (import.meta.env.MODE === "production" && import.meta.env.WXT_AUTH_PROVIDER === "supabase");
+const namespace = import.meta.env.MODE === "production" ? "bookmark-ai:supabase-production" : "bookmark-ai:supabase-qa";
 const origin = import.meta.env.WXT_SUPABASE_URL?.replace(/\/$/, "") ?? "";
 const app = import.meta.env.WXT_APP_URL?.replace(/\/$/, "") ?? "";
 const clientId = import.meta.env.WXT_SUPABASE_OAUTH_CLIENT_ID ?? "";
@@ -65,6 +66,7 @@ function configuration() {
     !origin.startsWith("https://") ||
     new URL(origin).hostname !== "xogqaqtyacmecdbmgqqd.supabase.co" ||
     !clientId ||
+    (import.meta.env.MODE === "production" && app !== "https://www.bookmark-ai.cloud") ||
     !isApprovedOAuthApp(app)
   )
     throw new Error("Extension authentication is not configured");

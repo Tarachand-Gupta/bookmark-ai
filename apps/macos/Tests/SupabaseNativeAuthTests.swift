@@ -52,6 +52,22 @@ final class SupabaseNativeAuthTests: XCTestCase {
         XCTAssertTrue(config.acceptsCallback(URL(string: "bookmarkai-macos-supabase-qa://auth/callback?code=one-use")!))
         for value in ["bookmarkai://auth/callback", "bookmarkai-macos-supabase-qa://evil/callback", "bookmarkai-macos-supabase-qa://auth/other"] { XCTAssertFalse(config.acceptsCallback(URL(string: value)!)) }
     }
+    func testProductionConfigurationUsesExactOriginsAndSeparateStorageAndCallback() {
+        var info = Self.info
+        info["BOOKMARK_BUILD_VARIANT"] = "supabase-production"
+        info["BOOKMARK_HOSTED_TARGET"] = "production"
+        info["BOOKMARK_API_URL"] = "https://www.bookmark-ai.cloud"
+        info["BOOKMARK_LIVE_URL"] = "https://live.bookmark-ai.cloud"
+        info["BOOKMARK_AUTH_STORAGE_NAMESPACE"] = "bookmark-ai:supabase-production"
+        info["BOOKMARK_AUTH_CALLBACK_SCHEME"] = "bookmarkai-macos"
+        let config = SupabaseConfiguration.parse(info)
+        XCTAssertNotNil(config)
+        XCTAssertTrue(config!.acceptsCallback(URL(string: "bookmarkai-macos://auth/callback?code=one-use")!))
+        XCTAssertFalse(config!.acceptsCallback(URL(string: "bookmarkai-macos-supabase-qa://auth/callback")!))
+        for (key, value) in [("BOOKMARK_HOSTED_TARGET", ""), ("BOOKMARK_API_URL", "http://localhost:3100"), ("BOOKMARK_AUTH_STORAGE_NAMESPACE", "bookmark-ai:supabase-qa"), ("BOOKMARK_AUTH_CALLBACK_SCHEME", "bookmarkai-macos-supabase-qa")] {
+            var invalid = info; invalid[key] = value; XCTAssertNil(SupabaseConfiguration.parse(invalid))
+        }
+    }
     @MainActor func testSDKRefreshesPersistedSessionAfterSimulated21DayAbsence() async throws {
         let storage = MemoryStorage()
         let config = SupabaseConfiguration.parse(Self.info)!

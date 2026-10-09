@@ -16,7 +16,7 @@ struct BookmarkAIApp: App {
         // The id lets the dock-reopen path ask for THIS scene by name via
         // the `openWindow` environment action → OpenWindowAction has no
         // no-argument call, so the scene must be addressable.
-        WindowGroup(id: "main") {
+        WindowGroup(id: "main", for: String.self) { _ in
             ContentView()
                 .environment(appEnvironment)
                 .frame(minWidth: 760, minHeight: 480)
@@ -24,19 +24,23 @@ struct BookmarkAIApp: App {
                 // System choice lands here, before first paint.
                 .onAppear { appEnvironment.preferences.applyAppearance() }
                 .task { await appEnvironment.start() }
-                .onOpenURL { url in Task { await appEnvironment.auth.handleNativeCallback(url) } }
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+                .onOpenURL { url in
+                    AppDelegate.reopen(hasVisibleWindows: false, window: AppDelegate.mainWindow)
+                    Task { await appEnvironment.auth.handleNativeCallback(url) }
+                }
                 // Remember THE MAIN window so a later dock click can bring it
                 // back with its state. The reader anchors in this scene's
                 // hierarchy only — the Settings window (its own scene) never
                 // touches it, so ⌘, can't hijack the reopen target the way an
                 // app-wide didBecomeKey listener would.
-                .background(MainWindowReader { AppDelegate.mainWindow = $0 })
+                .background(MainWindowReader { AppDelegate.registerMainWindow($0) })
                 // Reopen bridge: give the app delegate the scene's openWindow
                 // action so a dock click can create a fresh window after the
                 // red button destroyed the old one. The delegate is
                 // AppKit-side and can't read the SwiftUI environment itself.
                 .background(ReopenBridge { AppDelegate.reopenNewWindow = $0 })
-        }
+        } defaultValue: { "main" }
         .defaultSize(width: 1120, height: 760)
         // Title and toolbar share one bar, so the sidebar's material runs
         // straight up into the title bar — the standard modern Mac app look.
@@ -79,8 +83,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// (-30000, 30477) and an off-screen helper — no main window appeared),
     /// so the delegate must call this itself.
     static var reopenNewWindow: (() -> Void)?
+    static var mainWindowCreationPending = false
+    private var closeObserver: NSObjectProtocol?
+
+    /// Only a MainWindowReader can enter this registry. Settings, auth sheets
+    /// and offscreen transport windows never participate.
+    static func registerMainWindow(_ window: NSWindow) {
+        window.tabbingMode = .disallowed
+        mainWindowCreationPending = false
+        if let existing = mainWindow, existing !== window {
+            // Old state restoration and external events can still hand us a
+            // second scene. Keep the admitted main window and retire only the
+            // duplicate main scene after SwiftUI finishes attaching its view.
+            DispatchQueue.main.async {
+                window.close()
+                existing.makeKeyAndOrderFront(nil)
+            }
+            return
+        }
+        mainWindow = window
+    }
+
+    static func mainWindowDidClose(_ window: NSWindow) {
+        guard mainWindow === window else { return }
+        mainWindow = nil
+        mainWindowCreationPending = false
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: nil, queue: .main
+        ) { notification in
+            guard let window = notification.object as? NSWindow else { return }
+            Self.mainWindowDidClose(window)
+        }
         #if DEBUG
         // Diagnostics for the dock-reopen path: DEBUG builds log every close
         // and reopen with the full window list, so a repro can be read from
@@ -153,8 +193,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             return true
         }
-        Self.reopenNewWindow?()
-        return Self.reopenNewWindow != nil
+        if mainWindowCreationPending { return true }
+        guard let createWindow = reopenNewWindow else { return false }
+        mainWindowCreationPending = true
+        createWindow()
+        return true
     }
 }
 
@@ -206,7 +249,7 @@ private struct ReopenBridge: View {
         var body: some View {
             Color.clear
                 .frame(width: 0, height: 0)
-                .onAppear { onCapture { openWindow(id: "main") } }
+                .onAppear { onCapture { openWindow(id: "main", value: "main") } }
         }
     }
 }

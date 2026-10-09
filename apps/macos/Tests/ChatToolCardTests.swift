@@ -347,7 +347,7 @@ final class ChatToolCardTests: XCTestCase {
 
     func testLocalTargetStaysOpenUnlessTheEnvironmentAsksForSignIn() {
         // The test host never sets BOOKMARKAI_LOCAL_AUTH, so Local is the open target…
-        XCTAssertEqual(ServerTarget.local.requiresAuth, SupabaseConfiguration.isQA)
+        XCTAssertEqual(ServerTarget.local.requiresAuth, SupabaseConfiguration.isSupabase)
         XCTAssertEqual(ServerTarget.local.authOrigin, ServerTarget.cloud.baseURL)
         // …and Cloud always signs in against itself.
         XCTAssertTrue(ServerTarget.cloud.requiresAuth)

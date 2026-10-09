@@ -57,7 +57,7 @@ const RELEASE_SIGNING_CONFIG = `
             }
         }`;
 
-function patchBuildGradle(contents) {
+function patchBuildGradle(contents, requireReleaseSigning = false) {
   if (contents.includes(MARKER)) return contents;
 
   // 1. Add a `release` signing config next to the template's `debug` one.
@@ -66,7 +66,11 @@ function patchBuildGradle(contents) {
   if (!sc) {
     throw new Error("[withReleaseSigning] android/app/build.gradle has no `signingConfigs { debug {…} }` block — template changed?");
   }
-  contents = contents.replace(sc[0], sc[0] + RELEASE_SIGNING_CONFIG.replace(/^\n/, "") + "\n");
+  const signingConfig = requireReleaseSigning ? RELEASE_SIGNING_CONFIG.replace(
+    /            \} else \{[\s\S]*?\n            \}/,
+    '            } else {\n                throw new GradleException("Production release requires all four ANDROID_KEYSTORE signing fields")\n            }',
+  ) : RELEASE_SIGNING_CONFIG;
+  contents = contents.replace(sc[0], sc[0] + signingConfig.replace(/^\n/, "") + "\n");
 
   // 2. Point the `release` build type at it. The template has exactly two
   //    `signingConfig signingConfigs.debug` lines: the first under `debug {`,
@@ -84,7 +88,7 @@ module.exports = function withReleaseSigning(config) {
     if (config.modResults.language !== "groovy") {
       throw new Error("[withReleaseSigning] expected a Groovy build.gradle");
     }
-    config.modResults.contents = patchBuildGradle(config.modResults.contents);
+    config.modResults.contents = patchBuildGradle(config.modResults.contents, config.extra?.buildVariant === 'supabase-production');
     return config;
   });
 };

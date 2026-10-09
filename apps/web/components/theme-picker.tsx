@@ -8,58 +8,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useThemePreferences } from "./theme-preferences-provider";
 import { THEME_PRESETS, themeTokens } from "@/lib/theme-picker/catalog";
 
-export function ThemePicker() {
+/** Shared complete appearance controls for public navigation and Settings. */
+export function ThemeChoices() {
   const { preference, ready, update } = useThemePreferences();
   const { theme, resolvedTheme, setTheme } = useTheme();
-  const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const mode = resolvedTheme === "dark" ? "dark" : "light";
-  if (!ready) return null;
-  const matches = THEME_PRESETS.filter((preset) =>
-    preset.label.toLowerCase().includes(search.trim().toLowerCase()),
-  );
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setSearch("");
-      }}
-    >
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          className="theme-picker-trigger fixed z-40 h-11 gap-2 rounded-full px-4 shadow-md"
-          aria-label="Choose theme"
-        >
-          <Palette className="size-4" aria-hidden />
-          <span>Theme</span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="end"
-        sideOffset={8}
-        collisionPadding={16}
-        className="theme-picker-panel flex w-[min(20rem,calc(100vw-2rem))] max-h-[min(80dvh,var(--radix-popover-content-available-height))] flex-col gap-3 p-3"
-        aria-labelledby="theme-picker-title"
-      >
-        <div className="flex items-center justify-between pl-1">
-          <h2 id="theme-picker-title" className="text-sm font-semibold">
-            Choose theme
-          </h2>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-11"
-            aria-label="Close theme picker"
-            onClick={() => setOpen(false)}
-          >
-            <X className="size-4" aria-hidden />
-          </Button>
-        </div>
+  if (!ready) return <p className="text-sm text-muted-foreground">Loading appearance…</p>;
+  const matches = THEME_PRESETS.filter((preset) => preset.label.toLowerCase().includes(search.trim().toLowerCase()));
+  return <div className="flex min-h-0 flex-col gap-3">
         <div role="group" aria-label="Color mode" className="grid grid-cols-3 gap-1">
           {(
             [
@@ -133,6 +90,25 @@ export function ThemePicker() {
         <p className="px-1 text-xs text-muted-foreground">
           Tweakcn presets · Saved in this browser
         </p>
+  </div>;
+}
+
+export function ThemePicker() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="ghost" size="icon" className="size-9" aria-label="Choose theme">
+          <Palette className="size-[1.15rem]" aria-hidden />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="bottom" align="end" sideOffset={8} collisionPadding={16}
+        className="flex w-[min(20rem,calc(100vw-2rem))] max-h-[min(80dvh,var(--radix-popover-content-available-height))] flex-col gap-3 overflow-y-auto p-3">
+        <div className="flex items-center justify-between pl-1">
+          <h2 className="text-sm font-semibold">Choose theme</h2>
+          <Button type="button" variant="ghost" size="icon" className="size-9" aria-label="Close theme picker" onClick={() => setOpen(false)}><X className="size-4" aria-hidden /></Button>
+        </div>
+        {open && <ThemeChoices />}
       </PopoverContent>
     </Popover>
   );

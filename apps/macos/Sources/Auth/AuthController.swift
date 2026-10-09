@@ -131,7 +131,7 @@ final class AuthController {
     var webSignOutOverride: (() async -> Void)?
     #endif
 
-    init(origin: URL, nativeMode: Bool = SupabaseConfiguration.isQA) {
+    init(origin: URL, nativeMode: Bool = SupabaseConfiguration.isSupabase) {
         self.nativeMode = nativeMode
         self.web = nativeMode ? nil : ClerkWebAuth(origin: origin)
         self.native = nativeMode ? SupabaseConfiguration.current.map { SupabaseNativeAuth(configuration: $0) } : nil

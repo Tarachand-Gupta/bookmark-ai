@@ -97,13 +97,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`Invalid live-server config: ${first?.path.join(".")} — ${first?.message}`);
   }
   const e = parsed.data;
-  if (e.BOOKMARK_BUILD_VARIANT === "supabase-qa" && e.AUTH_PROVIDER !== "supabase") throw new Error("Supabase QA requires native auth configuration");
+  if (["supabase-qa", "supabase-production"].includes(e.BOOKMARK_BUILD_VARIANT || "") && e.AUTH_PROVIDER !== "supabase") throw new Error("Supabase requires native auth configuration");
   const isProduction = e.NODE_ENV === "production";
   const devOpen = e.DEV_OPEN_API && !isProduction;
 
   // Fail closed: in production we must be able to verify Clerk tokens, unless the
   // operator explicitly opted into open mode (which prod ignores anyway).
-  if (e.AUTH_PROVIDER === "supabase" && (e.BOOKMARK_BUILD_VARIANT !== "supabase-qa" || !e.SUPABASE_URL || !e.SUPABASE_PUBLISHABLE_KEY || !e.SUPABASE_DATABASE_URL)) throw new Error("Supabase Live configuration unavailable");
+  if (e.AUTH_PROVIDER === "supabase" && (!["supabase-qa", "supabase-production"].includes(e.BOOKMARK_BUILD_VARIANT || "") || !e.SUPABASE_URL || !e.SUPABASE_PUBLISHABLE_KEY || !e.SUPABASE_DATABASE_URL)) throw new Error("Supabase Live configuration unavailable");
   if (e.AUTH_PROVIDER !== "supabase" && isProduction && !e.CLERK_SECRET_KEY && !(e.CLERK_JWT_KEY && e.CLERK_ISSUER)) {
     throw new Error(
       "live-server: production requires CLERK_SECRET_KEY, or CLERK_JWT_KEY + CLERK_ISSUER, to verify tokens.",

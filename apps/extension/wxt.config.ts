@@ -71,6 +71,11 @@ export default defineConfig({
       throw new Error("Supabase QA extension must use scripts/supabase-qa.mjs");
     }
     const qa = mode === "supabase-qa";
+    const production = mode === "production" && process.env.BOOKMARK_BUILD_VARIANT === "supabase-production";
+    if (production && (!process.env.BOOKMARK_PRODUCTION_STAGE_ROOT || process.env.WXT_AUTH_PROVIDER !== "supabase" || process.env.WXT_API_URL !== "https://www.bookmark-ai.cloud" || process.env.WXT_LIVE_URL !== "https://live.bookmark-ai.cloud" || process.env.WXT_SUPABASE_URL !== "https://xogqaqtyacmecdbmgqqd.supabase.co")) {
+      throw new Error("Production Supabase extension requires validated frozen production staging");
+    }
+    const supabase = qa || production;
     const qaHosts = [process.env.WXT_API_URL, process.env.WXT_LIVE_URL, process.env.WXT_SUPABASE_URL]
       .filter((url): url is string => !!url).map((url) => `${new URL(url).origin}/*`);
     const qaPages = [`${new URL(process.env.WXT_API_URL || "http://localhost:3100").origin}/*`];
@@ -119,8 +124,8 @@ export default defineConfig({
       "tabs",
       "storage",
       "alarms",
-      ...(!qa ? ["cookies"] : []),
-      ...(qa && browser !== "safari" ? ["identity"] : []),
+      ...(!supabase ? ["cookies"] : []),
+      ...(supabase && browser !== "safari" ? ["identity"] : []),
       ...(browser === "chrome" ? ["bookmarks", "readingList", "tabGroups"] : []),
       // `webRequest`/`webRequestBlocking` (Firefox-only, MV2): the ONE thing
       // they are used for is stripping the `Origin` header off the extension's
@@ -131,7 +136,7 @@ export default defineConfig({
       // listener is filtered to the Clerk FAPI host alone and reads nothing;
       // see lib/clerk-origin-strip.ts. Chrome's extension id IS allowlisted, so
       // neither permission is requested there.
-      ...(browser === "firefox" ? ["bookmarks", ...(!qa ? ["webRequest", "webRequestBlocking"] : [])] : []),
+      ...(browser === "firefox" ? ["bookmarks", ...(!supabase ? ["webRequest", "webRequestBlocking"] : [])] : []),
       ...(browser === "safari" ? ["scripting", "nativeMessaging"] : []),
     ],
     // MODE-AWARE (lib/app-origins.ts): a `production` build — every store zip —
@@ -141,7 +146,7 @@ export default defineConfig({
     // `permissions`, where Firefox expects host patterns in MV2;
     // `lib/manifest-shim.ts` re-derives a `host_permissions` view from whatever
     // host patterns are present at runtime for the Clerk SDK.
-    host_permissions: qa ? qaHosts : [...hostPermissionsFor(mode)],
+    host_permissions: supabase ? qaHosts : [...hostPermissionsFor(mode)],
     ...(browser === "chrome" && {
       // Per-target key → distinct, stable id per install (prod/dev/local).
       key: targetFor(mode).key,
@@ -160,7 +165,7 @@ export default defineConfig({
       // Both of those targets get `entrypoints/marker.content.ts` instead, which
       // stamps a `<html>` attribute the page reads synchronously.
       // Mode-aware like host_permissions: production = apex + www only.
-      externally_connectable: { matches: qa ? qaPages : [...appPageMatchesFor(mode)] },
+      externally_connectable: { matches: supabase ? qaPages : [...appPageMatchesFor(mode)] },
     }),
     ...(browser === "firefox" && {
       browser_specific_settings: {
@@ -208,7 +213,7 @@ export default defineConfig({
   },
   hooks: {
     "build:manifestGenerated": (_wxt, manifest) => {
-      if (process.env.BOOKMARK_BUILD_VARIANT !== "supabase-qa") return;
+      if (!["supabase-qa", "supabase-production"].includes(process.env.BOOKMARK_BUILD_VARIANT || "")) return;
       // QA presence/auth bridges must never inject into an existing production tab.
       const page = `${new URL(process.env.WXT_API_URL!).origin}/*`;
       for (const script of manifest.content_scripts ?? []) script.matches = [page];

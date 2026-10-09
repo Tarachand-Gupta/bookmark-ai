@@ -60,7 +60,15 @@ const SERVER_HOST = getApiUrl().replace(/^https?:\/\//, "");
  * read-only info row rather than a toggle. No longer a tab and no longer its own
  * large title: SettingsPresentation (src/navigation) presents it full-screen
  * with a "Settings" header, so there's no tab bar to clear either. */
-export function SettingsScreen() {
+export type SettingsPage = "root" | "account" | "devices" | "appearance" | "ai" | "help";
+export const SETTINGS_TITLES: Record<SettingsPage, string> = {
+  root: "Settings", account: "Account & Security", devices: "Devices",
+  appearance: "Appearance", ai: "AI & Plan", help: "Help & About",
+};
+
+// Hallmark · pre-emit critique: P4 H5 E4 S5 R5 V4 · existing native tokens;
+// short grouped menu → focused destinations, no decorative enrichment.
+export function SettingsScreen({ page, onNavigate }: { page: SettingsPage; onNavigate: (page: SettingsPage) => void }) {
   const { colors } = useAppTheme();
   const { themePreference, setThemePreference } = usePreferences();
   // Tablet widths: the groups sit in the shared centered column (0 on phones).
@@ -117,7 +125,7 @@ export function SettingsScreen() {
         style={{ backgroundColor: colors.background }}
         contentContainerStyle={[styles.content, { paddingHorizontal: CONTENT_GUTTER + inset }]}
       >
-        <View style={styles.profile}>
+        {(page === "root" || page === "account") && <View style={styles.profile}>
           {imageUrl && !avatarFailed ? (
             // The picture gets a hairline RING, never shown bare. Profile images
             // are routinely a white silhouette on a colored disc (Google's default
@@ -154,14 +162,23 @@ export function SettingsScreen() {
             <Text style={[styles.profileMeta, { color: colors.mutedForeground }]}>{email}</Text>
           )}
           <PlanBadge plan={ai.plan} />
-        </View>
+        </View>}
 
-        <PlanCard plan={ai.plan} />
+        {page === "root" && <>
+          <Group>
+            <GroupRow first symbol="person.fill" label="Account & Security" chevron onPress={() => onNavigate("account")} />
+            <GroupRow symbol="desktopcomputer" label="Devices" chevron onPress={() => onNavigate("devices")} />
+            <GroupRow symbol="gearshape" label="Appearance" detail={THEME_OPTIONS.find(option => option.value === themePreference)?.label} chevron onPress={() => onNavigate("appearance")} />
+            <GroupRow symbol="sparkles" label="AI & Plan" chevron onPress={() => onNavigate("ai")} />
+            <GroupRow symbol="questionmark.circle" label="Help & About" chevron onPress={() => onNavigate("help")} />
+          </Group>
+          {APP_VERSION && <GroupFootnote>Bookmark AI {APP_VERSION}</GroupFootnote>}
+        </>}
 
-        <AiSettingsGroup state={ai} />
-        {signedIn && <AuthAccountControls />}
+        {page === "ai" && <><PlanCard plan={ai.plan} /><AiSettingsGroup state={ai} /></>}
+        {signedIn && (page === "account" || page === "devices") && <AuthAccountControls section={page} />}
 
-        <GroupLabel>Appearance</GroupLabel>
+        {page === "appearance" && <><GroupLabel>Appearance</GroupLabel>
         <Group>
           {THEME_OPTIONS.map((option, i) => (
             <GroupRow
@@ -178,7 +195,9 @@ export function SettingsScreen() {
           ))}
         </Group>
 
-        <GroupLabel>About</GroupLabel>
+        <GroupFootnote>System follows your device’s light or dark appearance.</GroupFootnote></>}
+
+        {page === "help" && <><GroupLabel>About</GroupLabel>
         <Group>
           {/* Which backend a build talks to is a build-time decision (api.ts
               resolveServerTarget), not a user choice — surface it only in dev
@@ -230,7 +249,8 @@ export function SettingsScreen() {
           />
         </Group>
 
-        <GroupLabel>Account</GroupLabel>
+        </>}
+        {page === "account" && <><GroupLabel>Account</GroupLabel>
         <Group>
           {signedIn ? (
             <>
@@ -255,7 +275,7 @@ export function SettingsScreen() {
             Deleting your account permanently removes your bookmarks, sessions, and sign-in. This
             cannot be undone.
           </GroupFootnote>
-        )}
+        )}</>}
       </ScrollView>
       {/* Step 2 of deletion: the typed-confirmation sheet. A sibling of the
           list, not a scrollable child. */}
