@@ -10,7 +10,17 @@
 
 ## Firefox AMO
 
-Public add-on GUID: `bookmark-ai@bookmark-ai.cloud`; intended current listing is [bookmark-ai-cloud](https://addons.mozilla.org/en-US/firefox/addon/bookmark-ai-cloud/). Production 0.1.6 package and matching reproducible source archive are prepared. **NOT SUBMITTED**: Mozilla publisher sign-in remains pending. Do not use the retired `bookmark-ai` / `@purecode.ai` listing. Package/source reproduction and actual Firefox auth/save checks are separate from submission or approval.
+- Public add-on GUID: `bookmark-ai@bookmark-ai.cloud`; listing: [bookmark-ai-cloud](https://addons.mozilla.org/en-US/firefox/addon/bookmark-ai-cloud/). The retired `bookmark-ai` / `@purecode.ai` listing was not used.
+- Final status: **APPROVED / PUBLISHED — 0.1.6**. Root verified the public listing shows version **0.1.6**, updated **October 9**, and the publisher's manage-versions page shows **Currently on AMO: Version 0.1.6 — Approved**. The live signed download is [bookmark_ai_cloud-0.1.6.xpi](https://addons.mozilla.org/firefox/downloads/file/5102872/bookmark_ai_cloud-0.1.6.xpi).
+- Submission history: root first observed `/versions/submit/6558734/finish`, then [version 6558734](https://addons.mozilla.org/en-US/developers/addon/bookmark-ai-cloud/versions/6558734) Awaiting Review, file **5102872**. It subsequently moved to Approved and replaced public version 0.1.4 during the same release run.
+- Uploaded package SHA256: `aedda812debdf1b981124f2eb5817bfd080c15af55ccd8952f1877da8952ec29`.
+- Matching source archive SHA256: `36c8096b1ef1f28c56dd9e75bc1c4afba8444786c094339d46836c1c74131358`. Root uploaded it through the source step and confirmed the current source link `/firefox/downloads/source/6558734`. Its `BUILD.md` and public build configuration previously reproduced all 21 Firefox output hashes exactly.
+- Server validation: **0 errors, 11 warnings**. The warnings remain retained review evidence; approval/publication is established by the separate portal and public-listing observations above.
+- Root verified the updated public description states independent Supabase extension authorization, included free credits and optional Firefox usage analytics.
+- The AMO-hosted privacy policy was also updated and verified publicly: Supabase replaces the old Clerk/shared-session wording, with the required data categories, consent-gated PostHog analytics, operational diagnostics and the canonical service policy link. Existing authors and the MIT license were unchanged.
+- Receipts: `.work/production-oct9/firefox-016-approved.png` and `.work/production-oct9/firefox-016-submitted.png`. The safe approval screenshot is preserved below; the [earlier submission receipt](assets/2026-10-09-firefox-016-submitted.png) is retained as history. Public signed-XPI installation/restart was not rerun after publication.
+
+![AMO Approved and currently listed Firefox 0.1.6](assets/2026-10-09-firefox-016-approved.png)
 
 ## Runtime boundary
 
