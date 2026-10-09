@@ -8,6 +8,13 @@ sidebar_custom_props:
 
 # API reference
 
+:::note Hosted authentication
+The hosted service now uses **Supabase** authentication. Browser extensions
+authorize a separate, individually revocable session rather than sharing the
+website session. The Clerk and `bkd_` credential descriptions below document the
+retained legacy/self-host adapter, not the current hosted production credentials.
+:::
+
 All responses are JSON. The API is served by the Next.js app at the same origin
 as the web app — `https://bookmark-ai.cloud/api/*` in the hosted service, or
 `http://localhost:3000/api/*` in local dev.

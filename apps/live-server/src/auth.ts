@@ -40,18 +40,21 @@ function allowRequest(key: string, max: number) {
  * Open/dev mode (no Clerk keys, or DEV_OPEN_API=1 outside production) short-circuits
  * to the "local" namespace so curl / the desktop client can smoke-test.
  */
-export function makeAuthPreHandler(config: Config) {
+export function makeAuthPreHandler(config: Config, dependencies: {
+  verify?: ReturnType<typeof createSupabaseVerifier>;
+  master?: Pick<ReturnType<typeof connectPostgres>, "query">;
+} = {}) {
   const supabase = config.authProvider === "supabase";
   const openMode = !supabase && (config.devOpen || (!config.clerkSecretKey && !config.clerkJwtKey));
   const verifier = supabase
-    ? createSupabaseVerifier({
+    ? dependencies.verify ?? createSupabaseVerifier({
         url: config.supabaseUrl ?? "",
         publishableKey: config.supabasePublishableKey ?? "",
       })
     : null;
   const master =
     supabase && config.supabaseDatabaseUrl
-      ? connectPostgres(config.supabaseDatabaseUrl, { caBase64: config.supabaseDatabaseCaBase64 })
+      ? dependencies.master ?? connectPostgres(config.supabaseDatabaseUrl, { caBase64: config.supabaseDatabaseCaBase64 })
       : null;
 
   return async function authenticate(req: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -96,14 +99,16 @@ export function makeAuthPreHandler(config: Config) {
             [identity.providerUserId],
           );
           if (!accounts[0]) throw new InvalidSessionError("Account unavailable");
-          return String(accounts[0].id);
+          return { userId: String(accounts[0].id), sessionId: identity.sessionId, isExtension: capability === "extension" };
         });
-        req.userId = await check();
+        const approved = await check();
+        req.userId = approved.userId;
+        req.liveAuthSession = { sessionId: approved.sessionId, isExtension: approved.isExtension };
         if (!allowRequest(`account:${req.userId}`, 240)) {
           await reply.code(429).send({ error: "Too many requests" });
           return;
         }
-        (req as any).revalidateSession = async () => (await check()) === req.userId;
+        (req as any).revalidateSession = async () => (await check()).userId === req.userId;
         return;
       } catch (error) {
         await reply

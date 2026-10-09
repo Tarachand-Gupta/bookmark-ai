@@ -10,6 +10,8 @@ Use the normal black **Bookmark AI** apps and the packages in `dist/production`;
 6. On mobile, Settings opens a short menu. Open **Devices** to see **Apps & Web** and **Browser Extensions**, with the current device first. Open one disposable session's details, rename it, and revoke only that test session; confirm that client requires sign-in again.
 7. For an iOS PWA password reset, stay in the PWA after requesting the email and enter its code in the recovery form. If you already opened the email link in Safari and the original code no longer works, choose **Send a new code**, then enter the new email's code directly in the PWA. Set a new password and check that sign-in succeeds.
 
-Remove only your named test bookmarks afterward. Report the client, build/version, action, visible error and screenshot if anything fails.
+8. With controlled test tabs in two or more extensions, turn **Live Tabs OFF** in one extension: only that browser should disappear; the other should keep updating. Turn it ON again. The website’s account-wide Live switch still stops all browsers.
+
+Remove only the exact test bookmarks you created afterward. Report the client, build/version, action, visible error and screenshot if anything fails.
 
 These are short acceptance checks. The [full matrix](MATRIX.md), [runbook](RUNBOOK.md), and [release reports](reports/2026-10-09-production-release.md) distinguish tested behavior from remaining provider, device and store checks.

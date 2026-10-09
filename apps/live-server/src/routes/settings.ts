@@ -3,9 +3,10 @@ import type { FastifyInstance } from "fastify";
 import type { Deps } from "../deps";
 
 /**
- * POST /live/settings — the account-wide opt-in flag (durable consent, now in
- * Redis). Turning it OFF purges every device in the same call (invariant), and
- * the purge publishes a `reset` so open SSE streams flip to the empty/off state.
+ * POST /live/settings — first-party account-wide opt-in; OFF purges all devices.
+ * Verified extensions use their existing request as their own publishing switch:
+ * OFF atomically stops/deletes only that session, ON re-arms it and account opt-in.
+ * Device preferences remain independent of stopping publication.
  *
  * PATCH /live/:deviceId/settings — the per-device "new windows share by default"
  * policy. Off means windows opened on that device after the change don't auto-join
@@ -18,8 +19,14 @@ export function registerSettings(app: FastifyInstance, { store, auth }: Deps): v
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Invalid body" });
     }
-    await store.setEnabled(req.userId, parsed.data.enabled);
-    if (!parsed.data.enabled) await store.deleteAllDevices(req.userId);
+    if (req.liveAuthSession?.isExtension) {
+      // Existing extension packages use this endpoint for their local switch.
+      // Ownership comes from verified auth, not a body/device label.
+      await store.setExtensionPublishing(req.userId, req.liveAuthSession.sessionId, parsed.data.enabled);
+    } else {
+      await store.setEnabled(req.userId, parsed.data.enabled);
+      if (!parsed.data.enabled) await store.deleteAllDevices(req.userId);
+    }
     return reply.send({ enabled: parsed.data.enabled });
   });
 

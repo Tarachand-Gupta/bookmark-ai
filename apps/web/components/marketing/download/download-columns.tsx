@@ -210,7 +210,7 @@ export function DownloadColumns() {
           ))}
         </div>
         <p className="border-t border-border/60 pt-5 text-xs leading-5 text-muted-foreground">
-          Marketplace versions update automatically. Sign in to Bookmark AI in the same browser and the extension uses that session.
+          Marketplace versions update automatically. Choose Sign in in the extension popup to authorize its separate session in your browser.
         </p>
       </section>
     </div>

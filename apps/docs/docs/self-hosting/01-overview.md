@@ -8,6 +8,12 @@ sidebar_custom_props:
 
 # Self-hosting overview
 
+:::note Authentication scope
+These self-hosting instructions describe the retained Clerk/keyless adapter.
+The hosted Bookmark AI service and current production client packages use
+Supabase; extensions authorize their own session separately from the website.
+:::
+
 Bookmark AI is open source and self-hostable. The code lives at
 [github.com/Tarachand-Gupta/bookmark-ai](https://github.com/Tarachand-Gupta/bookmark-ai).
 

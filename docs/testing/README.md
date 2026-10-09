@@ -17,9 +17,15 @@ Use `corepack pnpm production:supabase <surface> <action>` for production (`supa
 
 The web auth pages adapt upstream shadcn login-03 with one centered logo/form, no navbar and a standalone top-right theme icon. Marketing retains its navbar and complete theme dropdown; authenticated Appearance controls live in Settings. Password submission immediately shows truthful full-screen sign-in feedback, followed by account setup until readiness is confirmed, with retry on failure. The [production release report](reports/2026-10-09-production-release.md), [client report](reports/2026-10-09-clients.md), [mobile report](reports/2026-10-09-mobile.md) and [web UI report](reports/2026-10-09-web-ui.md) distinguish deployed/runtime evidence from package/source checks and uncompleted provider journeys.
 
-## Starting gaps — 6 October 2026
+## Current release status — 9 October 2026
 
-This is a handoff snapshot, not a current universal-pass claim. Recheck it when starting a new run and append new evidence rather than promoting old build proof into runtime proof.
+Web deployment `dpl_6naNLjTs1FxkztXCgB1W5x9G3n3N` and documentation deployment `dpl_58S4xhaR5HYVb8q8P2jdcuAkpm4U` are promoted, with canonical public-copy checks passed. The per-extension Live OFF backend is deployed; **72 backend tests passed**, health200 and anonymous401 passed. Actual post-deployment Chrome/Firefox Live checks are underway; Safari's controlled fixture OFF/ON remains a separate check.
+
+Chrome and Firefox production authentication/callback/save checks passed; Firefox's save used the documented full-tab popup view, distinct from toolbar authentication. Chrome **0.1.6 is submitted and pending review**, with automatic publication selected; this is not approval or live publication. Firefox still awaits Mozilla publisher sign-in and has not been submitted. See the [store receipt report](reports/2026-10-09-extension-stores.md). Physical iPhone installation is verified; fresh physical auth/share, completed Google/Apple login, actual MFA completion and installed-iOS-PWA recovery remain unrun. Delivered recovery emails and cross-browser PKCE/code/password checks passed against the patched local UI with production Supabase; canonical deployed recovery presentation/safeguard smoke passed separately.
+
+## Historical starting gaps — 6 October 2026
+
+The following is the preserved 6 October handoff snapshot, superseded only by the dated cases in the current reports; it is not a current universal-pass claim. Recheck it when starting a new run and append new evidence rather than promoting old build proof into runtime proof.
 
 | Surface | Observed boundary at this handoff | Next proof |
 |---|---|---|
@@ -43,6 +49,8 @@ The Chrome restore patch preserves the store ID, discovers the fixed QA ID with 
 - [9 October production release report](reports/2026-10-09-production-release.md): final deployment/package identity, observed release results and remaining gates.
 - [9 October clients report](reports/2026-10-09-clients.md): browser/Mac production packages, source checks and actual client runtime boundaries.
 - [9 October mobile report](reports/2026-10-09-mobile.md): signed production mobile artifacts, endpoint checks, simulator results and physical-device boundaries.
+- [9 October extension store report](reports/2026-10-09-extension-stores.md): Chrome submission receipt and pending review; Firefox publisher-login boundary.
+- [9 October Live Tabs report](reports/2026-10-09-live-tabs.md): deployed per-extension OFF correction, real Redis race/restart proof and hosted-client acceptance boundaries.
 - [9 October web UI report](reports/2026-10-09-web-ui.md): local and deployed login-03, Appearance, setup timing, session revocation and provider launch evidence, with completion limits.
 - [7 October Chrome authentication report](reports/2026-10-07-chrome-auth.md): wrong-provider artifact cause, actual personal-Chrome same-www-profile reuse/callback PASS, and Google return/authenticated apex repeat NOT RUN; supersedes only the cases it exercises.
 - [Runbook](RUNBOOK.md): environments, build/install commands, harness alternatives, sequencing, platform failure patterns and evidence/cleanup.

@@ -23,14 +23,22 @@ export function registerPush(app: FastifyInstance, { store, auth }: Deps): void 
       return reply.code(403).send({ ok: false, enabled: false });
     }
 
+    const sessionId = req.liveAuthSession?.isExtension ? req.liveAuthSession.sessionId : undefined;
+    const epoch = sessionId ? await store.getExtensionPublishingEpoch(userId, sessionId) : undefined;
+    if (epoch === null) return reply.code(403).send({ ok: false, enabled: false });
+
     const dayUtc = new Date().toISOString().slice(0, 10);
     const underQuota = await store.checkAndBumpQuota(userId, parsed.data.deviceId, dayUtc);
     if (!underQuota) {
       return reply.code(429).send({ error: "Daily push limit reached for this device." });
     }
 
-    const { changed, newWindowsShared } = await store.writeSnapshot(userId, parsed.data);
-    if (changed) {
+    const { changed, newWindowsShared, disabled } = await store.writeSnapshot(
+      userId, parsed.data, sessionId ? { sessionId, epoch: epoch! } : undefined,
+    );
+    if (disabled) return reply.code(403).send({ ok: false, enabled: false });
+    // Extension commits publish atomically with their admission fence.
+    if (changed && !sessionId) {
       await store.publish(userId, { type: "push", deviceId: parsed.data.deviceId });
     }
     // Echo the per-device new-window policy so the extension mirrors it off the

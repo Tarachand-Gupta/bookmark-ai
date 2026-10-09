@@ -20,6 +20,11 @@ export function enabledKey(userId: string): string {
   return `live:{${userId}}:enabled`;
 }
 
+/** Durable extension publishing fence. Only verified OAuth session IDs select this key. */
+export function publishingKey(userId: string, sessionId: string): string {
+  return `live:{${userId}}:publishing:${sessionId}`;
+}
+
 /** Daily push counter, keyed per device per UTC day so it self-cleans on rollover. */
 export function quotaKey(userId: string, deviceId: string, dayUtc: string): string {
   return `live:{${userId}}:quota:${deviceId}:${dayUtc}`;

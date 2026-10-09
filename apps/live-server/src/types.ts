@@ -14,5 +14,7 @@ declare module "fastify" {
     /** Set by the auth preHandler. The Redis namespace for this request.
      * In open/dev mode it is the "local" sentinel, never a real Clerk id. */
     userId: string;
+    /** Only populated from an online-verified Supabase identity, never request metadata. */
+    liveAuthSession?: { sessionId: string; isExtension: boolean };
   }
 }

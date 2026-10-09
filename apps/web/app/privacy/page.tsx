@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: "What Bookmark AI collects, how it's used, and the control you have over it.",
 };
 
-const UPDATED = "September 22, 2026";
+const UPDATED = "October 9, 2026";
 const CONTACT_EMAIL = "admin@bookmark-ai.cloud";
 
 export default function PrivacyPage() {
@@ -50,7 +50,7 @@ export default function PrivacyPage() {
             <li>
               <span className="font-medium text-foreground">Your account details</span> — your email
               address and name, provided through sign-in and handled by our
-              authentication provider (Clerk).
+              authentication provider (Supabase).
             </li>
             <li>
               <span className="font-medium text-foreground">Page metadata</span> — when you save a
@@ -80,12 +80,14 @@ export default function PrivacyPage() {
           <h2 className="text-lg font-semibold text-foreground">Apps and the browser extension</h2>
           <p>
             The web app, the browser extension and the mobile apps all talk to the
-            same service, and this policy applies to all of them. The extension has
-            no sign-in of its own — it mirrors the session you already have on
-            bookmark-ai.cloud. The mobile apps keep your sign-in in the device&rsquo;s
-            secure storage; photos and files you attach go through the system
+            same service, and this policy applies to all of them. The extension
+            opens a browser authorization page and receives its own sign-in session,
+            separate from your website session. You can sign out that extension
+            session from account settings. The mobile apps keep your sign-in in the
+            device&rsquo;s secure storage; photos and files you attach go through the system
             picker, so the apps never get blanket access to your library or files.
-            None of our apps include advertising, analytics or tracking SDKs.
+            Our apps do not include advertising. Server-side product usage analytics
+            is described below.
           </p>
           <p>
             Server operational diagnostics may be sent to New Relic when enabled.
@@ -205,7 +207,7 @@ export default function PrivacyPage() {
           </p>
           <ul className="list-disc space-y-2 pl-5">
             <li>
-              <span className="font-medium text-foreground">Clerk</span> — sign-in and account
+              <span className="font-medium text-foreground">Supabase</span> — sign-in and account
               management.
             </li>
             <li>

@@ -166,9 +166,65 @@ Verify web extension detection and actual saved-session New window/Tab group on 
 
 **Firefox:** use a disposable/existing empty QA profile. Normal `about:debugging#/runtime/this-firefox` → Load Temporary Add-on → current kit `firefox/manifest.json`; choose the QA toolbar action alongside retained legacy addons. ID `bookmark-ai-supabase-qa@bookmark-ai.cloud`; moz-extension UUID is per install/profile and must be observed. Current OAuth callback allowlist must match the actual identity redirect. Prefer existing pinned web-ext only when authorized and functional. macOS `profiles.ini` EPERM persisted even elevated; GUI loading worked, so do not bypass TCC or disable signature/security settings. After copying an updated kit, normal Reload must happen before final-runtime claims. Temporary addons disappear on quit: relaunch/reload the same addon, then test saved auth; distinguish this from persistent signed-XPI installation.
 
+### Firefox official driver fallback
+
+Verified on Firefox157.0.1 with the production0.1.6 ID `bookmark-ai@bookmark-ai.cloud`; [exact release evidence and limits](reports/2026-10-09-firefox.md). This is independent of the historical isolated QA ID above.
+
+If CUA binding times out, first preserve the disposable QA profile and identify its exact web-ext owner/process. Stop only its owning session normally; never quit Firefox globally or kill personal processes. Install Selenium into a run-local Python environment and obtain the architecture-matched geckodriver from [Mozilla's official release](https://github.com/mozilla/geckodriver/releases), verifying its vendor digest. The successful run used Selenium4.50.0/geckodriver0.37.1. Do not remove quarantine or bypass a macOS warning.
+
+Use [official web-ext arguments](https://extensionworkshop.com/documentation/develop/web-ext-command-reference/) to relaunch the **verified delivered** production directory with that profile:
+
+```sh
+MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1 corepack pnpm dlx web-ext@10.7.0 run \
+  --source-dir apps/extension/.output/firefox-mv2 \
+  --firefox-profile /absolute/disposable-qa-profile \
+  --keep-profile-changes --no-reload --no-input \
+  --arg=--marionette --pref marionette.port=2830
+```
+
+Wait for temporary add-on installation. [Mozilla](https://firefox-source-docs.mozilla.org/testing/geckodriver/Flags.html) requires `--allow-system-access` for browser UI control; current [Firefox security documentation](https://firefox-source-docs.mozilla.org/remote/Security.html) uses the process-local environment above. This privileged test scope must stay local to the authorized QA process; no global preferences or certificate exceptions. geckodriver0.37.1 no longer supports the old browser `--remote-allow-system-access` option.
+
+```python
+from pathlib import Path
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+
+profile = Path("/absolute/disposable-qa-profile").resolve()
+options = Options()
+options.binary_location = "/Applications/Firefox.app/Contents/MacOS/firefox"
+options.accept_insecure_certs = False
+service = Service("/absolute/run-local/geckodriver", service_args=[
+    "--connect-existing", "--marionette-host", "127.0.0.1",
+    "--marionette-port", "2830", "--host", "127.0.0.1",
+    "--allow-system-access",
+])
+driver = webdriver.Firefox(service=service, options=options)
+assert Path(driver.capabilities["moz:profile"]).resolve() == profile
+
+driver.set_context("chrome")
+driver.find_element(By.ID, "unified-extensions-button").click()
+# Observe the actual installed widget first; do not assume the QA/production ID.
+driver.find_element(By.ID, "bookmark-ai_bookmark-ai_cloud-BAP").click()
+popup = driver.find_element(By.CSS_SELECTOR, "browser.webextension-popup-browser")
+popup.click()
+popup.send_keys(Keys.TAB, Keys.ENTER)
+driver.set_context("content")
+```
+
+This final keyboard step was verified for the **signed-out popup's single Sign In button**. Do not reuse an assumed tab order on signed-in/settings UI: it could invoke Sign Out or Live controls. Identify the new hosted window by parsed canonical host/path, privately fill the fixture through ordinary `auth-email`/`auth-password` inputs, submit, then observe `/oauth/consent`, **Authorize extension**, provider-window closure, and authenticated extension UI. Never log URL code/state/token parameters. A launched provider window alone is not callback completion.
+
+Opening popup.html as a tab for Sign In intentionally fails the trusted sender guard (`!sender.tab`). Preserve it. Standard `switch_to.frame` on Firefox's remote extension `browser` raised NoSuchFrameException; driver chrome screenshots also omitted its native popup. Native AX traversal denied(-1719) must stop without bypass. A focus check/raise is separate from a denied AX traversal, and screenshots must contain only the scoped QA surface. Standalone [official BiDi](https://developer.mozilla.org/en-US/docs/Web/WebDriver/How_to/Create_BiDi_connection) can attach on a process-local remote-debugging endpoint, but was not needed here; the normal realm tree omitted the extension popup. geckodriver rejects `--connect-existing` together with `--websocket-port`; classic and standalone BiDi sessions cannot run simultaneously.
+
+For an explicitly authorized **non-auth** full-tab save alternative, keep the owned article active while loading the already observed extension popup URL in a background tab. In chrome context, `gBrowser.addTab(observedPopupUrl, {inBackground:true, triggeringPrincipal:Services.scriptSecurityManager.getSystemPrincipal()})` opens that UI without changing extension state. Wait for mount/capture before switching to its content handle; verify the article title/domain and enabled Save button, then use its normal DOM button. Label this full-tab save separately from a toolbar save. Require both an exact link in the canonical web library and an independent API read of the same owned URL/ID. Never click Live or bulk/session actions as part of this fallback.
+
+Finally stop the driver and its exact owning web-ext session; preserve the profile and requested fixtures. Temporary add-on installation does not establish AMO-signed persistence or store publication.
+
 **Safari:** build the QA snapshot's XcodeGen companion Release with the approved identity/team. The generic legacy `safari:xcode --install` script installs its standard target and can collide with the Mac app; do not invoke it blindly for isolated QA. Inspect script flags/project/QA IDs first. Use distinct installed companion name `Bookmark AI Supabase QA for Safari.app`, appID `ai.bookmark.safari.supabaseqa`, appexID `ai.bookmark.safari.supabaseqa.Extension`; the main Mac yellow app is a different file. Verify both signatures, embedded resource hashes and pluginkit/LaunchServices paths. Use a clean build when embedding updated resources: an incremental native build can keep stale appex resources. Stale owned DerivedData registrations can create duplicate QA rows: remove only exact observed registrations, preserve artifacts and legacy rows, register intended companion. Require one intended enabled QA row.
 
-Use normal Safari Settings → Extensions enablement and requested website access; no Allow Unsigned Extensions. A grant for example.com does not cover www production callback. Use real QA toolbar popup; manual click is acceptable evidence when accessibility targeting dismisses it without dispatching the handler. Develop/Web Inspector can corroborate current worker source/listeners, not authenticated UI success. Do not toggle a denied checkbox as a reload workaround. The popup now awaits START_OAUTH acknowledgement before explicit close; Chrome/Firefox acknowledgement may wait through the full provider journey. Do not treat a pending acknowledgement alone as failed dispatch, and do not leave an expired native/browser flow indefinitely waiting after a stopped run. Old companion tutorial may describe Clerk; it is not the Supabase flow's source of truth. Safari exposes no native bookmark/Reading List API to this extension, and the current client's web restore/tab-group bridge supports Chrome only; record those Safari cases N/A, not FAIL. Recheck capabilities when source/platform support changes.
+Use normal Safari Settings → Extensions enablement and requested website access; no Allow Unsigned Extensions. A grant for example.com does not cover www production callback. Use the verified intended production or separate QA toolbar popup; manual click is acceptable evidence when accessibility targeting dismisses it without dispatching the handler. Develop/Web Inspector can corroborate current worker source/listeners, not authenticated UI success. Do not toggle a denied checkbox as a reload workaround. The popup now awaits START_OAUTH acknowledgement before explicit close; Chrome/Firefox acknowledgement may wait through the full provider journey. Do not treat a pending acknowledgement alone as failed dispatch, and do not leave an expired native/browser flow indefinitely waiting after a stopped run. Old companion tutorial may describe Clerk; it is not the Supabase flow's source of truth. Safari exposes no native bookmark/Reading List API to this extension, and the current client's web restore/tab-group bridge supports Chrome only; record those Safari cases N/A, not FAIL. Recheck capabilities when source/platform support changes.
 
 ## 9. iOS and Android
 
@@ -199,3 +255,11 @@ Do not conceal FAIL as BLOCKED: a real wrong endpoint, lost callback or wrong wi
 Clean exact newly created IDs on A with normal authorized API/UI; verify absence and all pre-existing IDs preserved. Restore settings/Live/sync/privacy/browser appearance to baseline. Never delete by URL/title/time/prefix alone, unknown imported/native nodes, personal sessions or another agent's fixtures. Revoke only this run's tokens/sessions; keep an observer session for revoke tests. If account deletion was explicitly in scope, do it last only for a confirmed disposable newly created account; imported legacy-account automatic deletion is not ready. Record residue if ownership/cleanup is blocked.
 
 Store sanitized evidence and the completed report under a durable run folder (for example `qa-runs/<run-id>` or an approved external artifact location). Machine-local `.work` is staging, not the only handoff. Before sharing, redact secrets/personal content and copy the report/evidence manifest to durable storage. Update this guide only with reproducible procedure improvements; append dated results/gaps separately. A new PASS names the exact artifact/mode/action and never erases another platform's blocked case.
+
+### Live publishing switches
+
+For `LIVE-01/02`, use three exact owned extension sessions and an independent reader, with only controlled fixture tabs. An extension OFF must remove only its verified session snapshot, emit its device-delete update and keep sibling writers/account opt-in active. Sibling next pushes succeed. Explicit own ON resumes; website account-wide OFF retains its all-device purge/stop behavior. New-window and window-name preferences survive an extension stop. Foreign device IDs or body capability labels never grant ownership.
+
+Run the isolated backend race fixture from `apps/live-server` with `node --import tsx --test src/extension-publishing.integration.test.ts`. It starts its own Redis UNIX socket (TCP disabled), owns an ephemeral AOF directory and removes only that directory. `LIVE_TEST_REDIS_SERVER` optionally selects the Redis binary; no provider/production credentials or Redis URL are used. Provider verification/account lookup are simulated while actual auth policy, routes and Redis Lua commits execute. Pause each commit branch, test OFF and OFF→ON, account-wide OFF, retry and actual Redis AOF restart. A stale epoch after ON returns success without writing: unchanged extensions interpret an OFF response as a command to stop. This local integration proof does not establish installed Safari or hosted production behavior. Never flush production Redis or stop its service for fault testing.
+
+An inherited child-agent sandbox can still reject loopback socket binding with `EPERM` after the parent enables full access. Hand the parent the exact scoped command/profile and review its retained result; do not broaden access or claim the child executed it. In the October 9 production run, a Python canonical HTTP probe returned non-JSON403 outside the application's JSON auth response. That does not prove app auth/scope rejection. No User-Agent, route or protection workaround was used: normal revealed fixture identity, actual Chrome toolbar OFF and a subsequent owned Firefox tab visible in the canonical viewer supplied the bounded browser proof. If cleanup times out after a switch click, inspect existing normal UI checked/enabled state before another action; never blindly toggle again.

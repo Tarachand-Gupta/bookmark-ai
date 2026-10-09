@@ -20,7 +20,7 @@ const FAQ: { q: string; a: ReactNode }[] = [
       <>
         Yes. Everything in Bookmark AI is your own synced library, so every surface — the
         web app, the extension and the mobile apps — asks you to sign in first. Sign-in is
-        handled by Clerk with email and password or Google.
+        handled by Supabase with email and password, Google or Apple.
       </>
     ),
   },
@@ -39,9 +39,10 @@ const FAQ: { q: string; a: ReactNode }[] = [
     q: "The extension says I'm signed out — why?",
     a: (
       <>
-        The browser extension has no sign-in of its own: it mirrors the session you have on
-        bookmark-ai.cloud in the same browser. Open the website, sign in there, and the
-        extension picks it up. Signing out of the website signs the extension out too.
+        Open the extension popup and choose Sign in to authorize it in your browser.
+        The extension receives a separate session from your website session. You can
+        sign out the extension from its popup or from account settings without ending
+        your other sessions.
       </>
     ),
   },

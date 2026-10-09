@@ -14,10 +14,12 @@ import {
   indexKey,
   newWindowsKey,
   quotaKey,
+  publishingKey,
   winNamesKey,
 } from "./keys";
 import type { RedisBundle } from "./redis";
 import type { LiveEvent } from "./types";
+import { SET_EXTENSION_PUBLISHING, COMMIT_EXTENSION_SNAPSHOT } from "./publishing-scripts";
 
 const QUOTA_TTL_SECONDS = 26 * 60 * 60; // > 24h so the counter self-cleans past UTC midnight
 
@@ -40,7 +42,11 @@ export interface WriteResult {
    * request. Independent of `changed`; a heartbeat reports it too.
    */
   newWindowsShared: boolean;
+  /** The extension or account is OFF at the atomic commit boundary. */
+  disabled?: boolean;
 }
+
+export interface ExtensionPublishingFence { sessionId: string; epoch: string }
 
 /**
  * The device-hash fields that constitute VISIBLE state. `windowsJson` is the
@@ -105,6 +111,34 @@ export class LiveStore {
     await this.redis.command.set(enabledKey(userId), enabled ? "1" : "0");
   }
 
+  /** Absence preserves already-running extensions across backend rollout.
+   * Once stopped, the durable record can only be re-armed by explicit ON. */
+  async getExtensionPublishingEpoch(userId: string, sessionId: string): Promise<string | null> {
+    const [enabled, epoch] = await this.redis.command.hmget(publishingKey(userId, sessionId), "enabled", "epoch");
+    return enabled === "0" ? null : epoch ?? "0";
+  }
+
+  async setExtensionPublishing(userId: string, sessionId: string, enabled: boolean): Promise<void> {
+    await this.redis.command.eval(SET_EXTENSION_PUBLISHING, 5,
+      enabledKey(userId), publishingKey(userId, sessionId), devKey(userId, sessionId),
+      indexKey(userId), channelKey(userId),
+      enabled ? "1" : "0", sessionId, JSON.stringify({ type: "delete", deviceId: sessionId }),
+    );
+  }
+
+  private async commitExtensionSnapshot(
+    userId: string, fence: ExtensionPublishingFence, fields: Record<string, string>,
+    mode: "full" | "refresh" | "heartbeat", now: number, changed: boolean,
+  ): Promise<number> {
+    const result = await this.redis.command.eval(COMMIT_EXTENSION_SNAPSHOT, 5,
+      enabledKey(userId), publishingKey(userId, fence.sessionId), devKey(userId, fence.sessionId),
+      indexKey(userId), channelKey(userId),
+      fence.epoch, mode, JSON.stringify(fields), new Date(now).toISOString(), String(now), String(this.ttlSeconds),
+      changed ? "1" : "0", JSON.stringify({ type: "push", deviceId: fence.sessionId }), fence.sessionId,
+    );
+    return Number(result);
+  }
+
   // ── daily push quota ──────────────────────────────────────────────────────
   /** INCR the per-device UTC-day counter; true = under the cap. */
   async checkAndBumpQuota(userId: string, deviceId: string, dayUtc: string): Promise<boolean> {
@@ -132,7 +166,8 @@ export class LiveStore {
    * so it compares unequal and publishes. Every write is one MULTI so a device is
    * never observed half-updated.
    */
-  async writeSnapshot(userId: string, input: PushLiveStateInput): Promise<WriteResult> {
+  async writeSnapshot(userId: string, input: PushLiveStateInput, fence?: ExtensionPublishingFence): Promise<WriteResult> {
+    if (fence && fence.sessionId !== input.deviceId) throw new Error("Invalid publishing owner");
     const now = Date.now();
     const nowIso = new Date(now).toISOString();
     const dk = devKey(userId, input.deviceId);
@@ -144,6 +179,10 @@ export class LiveStore {
       (await this.redis.command.get(newWindowsKey(userId, input.deviceId))) !== "0";
 
     if (input.windows === undefined) {
+      if (fence) {
+        const accepted = await this.commitExtensionSnapshot(userId, fence, { lastSeenAt: nowIso }, "heartbeat", now, false);
+        return { changed: false, newWindowsShared, ...(accepted === 0 ? { disabled: true } : {}) };
+      }
       const exists = await this.redis.command.exists(dk);
       if (!exists) return { changed: false, newWindowsShared };
       await this.redis.command
@@ -212,6 +251,10 @@ export class LiveStore {
           ? { windowsJson: encryptWindows(display.windowsJson, aad, this.encryptionSecret) }
           : {}),
       };
+      if (fence) {
+        const accepted = await this.commitExtensionSnapshot(userId, fence, liveness, "refresh", now, false);
+        return { changed: false, newWindowsShared, ...(accepted === 0 ? { disabled: true } : {}) };
+      }
       await this.redis.command
         .multi()
         .hset(dk, liveness)
@@ -224,14 +267,19 @@ export class LiveStore {
     // Encrypt ONLY windowsJson at rest (its value carries the real tab URLs/titles/
     // favicons); label/os/timestamps/tabCount and the separate winnames hash stay
     // plaintext. The Redis field name is unchanged — the value is just ciphertext now.
+    const replacement = {
+      ...display,
+      windowsJson: encryptWindows(display.windowsJson, aad, this.encryptionSecret),
+      capturedAt: input.capturedAt,
+      lastSeenAt: nowIso,
+    };
+    if (fence) {
+      const accepted = await this.commitExtensionSnapshot(userId, fence, replacement, "full", now, true);
+      return { changed: accepted === 1, newWindowsShared, ...(accepted === 0 ? { disabled: true } : {}) };
+    }
     await this.redis.command
       .multi()
-      .hset(dk, {
-        ...display,
-        windowsJson: encryptWindows(display.windowsJson, aad, this.encryptionSecret),
-        capturedAt: input.capturedAt,
-        lastSeenAt: nowIso,
-      })
+      .hset(dk, replacement)
       .hsetnx(dk, "createdAt", nowIso)
       .zadd(ik, now, input.deviceId)
       .expire(dk, this.ttlSeconds)
