@@ -1,5 +1,7 @@
 # Supabase production release — 9 October 2026
 
+Continuation on 10 October: Chrome 0.1.6 is now publicly available, as is Firefox 0.1.6. Apple and Google Play preparation/submission were subsequently authorized; see the [Apple distribution report](2026-10-10-apple-distribution.md), [mobile report](2026-10-10-mobile.md), and [web/auth report](2026-10-10-web.md) for newer evidence and remaining gates. Historical submission statuses below describe the 9 October run. Physical-phone testing is now prohibited at the owner's request; mobile agent work uses simulators/emulators only.
+
 ## Scope and evidence boundaries
 
 This release promotes Supabase from the isolated QA identities to production web and locally installable Chrome, Firefox, Safari, macOS, iOS and Android packages. The owner subsequently authorized Chrome Web Store and Firefox AMO submissions after production extension checks and the recovery repair pass; actual submission receipts must be recorded before claiming publication. Apple/Google Play store submissions are outside this release. The original Clerk checkpoint and previously installed Apple apps remain available for rollback. Existing user data is preserved; the earlier nine-account migration was not repeated.
