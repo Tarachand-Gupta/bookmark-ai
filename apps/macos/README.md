@@ -34,6 +34,42 @@ Direct Xcode builds require `BOOKMARK_SUPABASE_PUBLISHABLE_KEY`; missing public
 configuration fails closed. Historical local/Clerk instructions below describe
 preserved rollback targets rather than the current production authentication.
 
+### App Store export from a tested archive
+
+`scripts/export-app-store.py` copies an existing tested archive, signs nested
+resource bundles inside out with the certificate in the explicitly selected
+App Store profile, then signs the host and exports a separate installer. Xcode
+export alone can leave Swift Package resource bundles signed for development,
+causing App Store Connect error 90284. No compilation, installation or upload
+occurs. The original archive, matching dSYMs and installed test kit are preserved.
+
+From the repository root:
+
+```bash
+python3 apps/macos/scripts/export-app-store.py \
+  --archive /absolute/path/BookmarkAI.xcarchive \
+  --output-dir /absolute/path/new-store-export \
+  --export-options /absolute/path/Mac-ExportOptions.plist \
+  --build 9
+python3 apps/macos/scripts/test_export_app_store.py
+```
+
+The output directory must not exist and must be outside the source archive.
+Omit `--build` to retain the source build, or choose a higher numeric build.
+Export options must use manual `app-store-connect`, `destination=export`,
+`manageAppVersionAndBuildNumber=false`, explicit profile mapping/team and an
+explicit installer certificate SHA1. The script finds the one usable app signing
+certificate allowed by that profile; it never selects an arbitrary key.
+Separate-profile nested processes are rejected rather than silently re-signed.
+`--audit-app /absolute/path/BookmarkAI.app` audits an existing exported app using
+the same export options and a fresh output directory, without signing or export.
+
+The output audits check every Mach-O and signable bundle against the profile,
+strict signatures, host entitlements, installer certificate, dSYM preservation,
+and equality of compiled code/resources after stripping only signatures,
+the embedded profile and the host build number. `RESULT.json` records the
+package hash and local completion; App Store processing remains a separate check.
+
 The main scene has one fixed identity (`main`). Launch, Dock reopen and native
 auth return reuse its existing window, including deminiaturizing it. After the
 red close button, the app remains running and the next reopen creates one main

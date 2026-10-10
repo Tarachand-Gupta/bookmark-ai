@@ -179,7 +179,10 @@ export function main(argv = process.argv.slice(2)) {
       if (action === 'build') {
         const product=join(derived,'Build/Products/Release/BookmarkAI.app');
         sanitizeReleaseSigning(product,env,join(runRoot,'release-signing'));
-        publishDirectory(product,'Bookmark AI.app',manifest,{bundleId:'ai.bookmarkai.macos',version:'0.1.1',build:8,configuration:'Release',callback:'bookmarkai-macos://auth/callback',namespace:'bookmark-ai:supabase-production',signing:'Apple Development'});
+        const metadata=spawnSync('python3',['-c','import sys,json,plistlib; d=plistlib.load(open(sys.argv[1],"rb")); print(json.dumps({"version":d["CFBundleShortVersionString"],"build":int(d["CFBundleVersion"])}))',join(product,'Contents/Info.plist')],{encoding:'utf8'});
+        if(metadata.status!==0)throw new Error('Cannot inspect built Mac version/build');
+        const {version,build}=JSON.parse(metadata.stdout);
+        publishDirectory(product,'Bookmark AI.app',manifest,{bundleId:'ai.bookmarkai.macos',version,build,configuration:'Release',callback:'bookmarkai-macos://auth/callback',namespace:'bookmark-ai:supabase-production',signing:'Apple Development'});
       }
     } else throw new Error('Only prepare is supported here for web/live/mobile; use the owning release procedure');
     manifest.status='success';
