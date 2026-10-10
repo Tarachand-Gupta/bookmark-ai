@@ -107,7 +107,7 @@ struct SetupView: View {
                 return "\(account). Click the bookmark button in Safari's toolbar to save."
             }
             if model.authState == .signedOut {
-                return "Not signed in yet — sign in on bookmark-ai.cloud (step 2), then save from the toolbar."
+                return "Not signed in yet — choose Sign In in Safari's Bookmark AI toolbar popup, then authorize the extension (step 2)."
             }
             return "Click the bookmark button in Safari's toolbar to save the page you're on."
         case .disabled: return "Turn it on under Safari ▸ Settings ▸ Extensions."
@@ -139,9 +139,9 @@ struct SetupView: View {
             StepRow(
                 number: 2,
                 done: isSignedIn,
-                title: isSignedIn ? "Signed in on the web" : "Sign in once on the web",
+                title: isSignedIn ? "Extension is signed in" : "Authorize the extension",
                 detail: model.signedInLabel
-                    ?? "Open bookmark-ai.cloud and sign in. When Safari asks, allow Bookmark AI on that site — that's how the extension picks up your session. It never asks for a password itself.",
+                    ?? "Click Bookmark AI in Safari's toolbar and choose Sign In. Complete sign-in on the authorization page, then choose Authorize extension. The extension has its own session, separate from the website.",
                 singleLineDetail: isSignedIn
             )
             StepRow(
@@ -155,7 +155,7 @@ struct SetupView: View {
                 if !isSignedIn {
                     Button("Sign In") { model.open(CompanionModel.signInURL) }
                         .controlSize(.large)
-                        .help("Opens the sign-in page in Safari — the extension picks up that session.")
+                        .help("Opens website sign-in in Safari. Choose Sign In in the extension's toolbar popup to authorize its separate session.")
                 } else {
                     Button("Delete Account…", role: .destructive) {
                         model.open(CompanionModel.accountSettingsURL)

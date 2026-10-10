@@ -29,6 +29,7 @@ export const XCCONFIG_PATH = join(EXT_DIR, "safari-app", "Version.xcconfig");
 /** Committed Safari-only re-upload counters. A new marketing version falls back to 0. */
 export const REUPLOAD_SUFFIXES = Object.freeze({
   "0.1.4": 1,
+  "0.1.6": 1,
 });
 
 export function resolveBuildSuffix(version, env = process.env) {
