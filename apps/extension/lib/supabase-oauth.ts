@@ -4,6 +4,7 @@ import { fetchWithTimeout } from "./net";
 import { base64url, oauthCallback, isApprovedOAuthApp } from "./oauth-policy";
 import { detectOs } from "./detect";
 import type { UserInfo } from "./messages";
+import { diag } from "./diag";
 
 export const SUPABASE_AUTH = import.meta.env.MODE === "supabase-qa" ||
   (import.meta.env.MODE === "production" && import.meta.env.WXT_AUTH_PROVIDER === "supabase");
@@ -32,6 +33,14 @@ let refreshing: Promise<string | null> | null = null;
 let exchanging: Promise<void> | null = null;
 let starting = false;
 let epoch = 0;
+// Storage calls are asynchronous. Serialize account writes so a delayed identity
+// write/removal cannot land after a newer authorization or sign-out commits.
+let accountWrites: Promise<unknown> = Promise.resolve();
+function writeAccount<T>(write: () => Promise<T>): Promise<T> {
+  const result = accountWrites.then(write);
+  accountWrites = result.catch(() => undefined);
+  return result;
+}
 export function oauthGeneration(): number {
   return epoch;
 }
@@ -80,6 +89,7 @@ async function exchange(body: URLSearchParams): Promise<Credential | null> {
     credentials: "omit",
     redirect: "error",
   });
+  diag("oauth", "token response", { grant: body.get("grant_type"), status: response.status });
   if (!response.ok) {
     if (response.status === 400 || response.status === 401) return null;
     throw new Error("Authentication temporarily unavailable");
@@ -103,6 +113,10 @@ async function exchange(body: URLSearchParams): Promise<Credential | null> {
   };
 }
 export async function getOAuthToken(force = false): Promise<string | null> {
+  // A callback owns the transition until its credential is committed. A cold
+  // popup must not inspect the old/empty credential in the middle of that write.
+  if (exchanging) await exchanging.catch(() => undefined);
+  await accountWrites;
   if (refreshing) return refreshing;
   const generation = epoch;
   const current = await credential.getValue();
@@ -118,9 +132,11 @@ export async function getOAuthToken(force = false): Promise<string | null> {
         refresh_token: current.refreshToken,
       }),
     );
-    if (generation !== epoch) return null;
-    await credential.setValue(next);
-    return next?.accessToken ?? null;
+    return writeAccount(async () => {
+      if (generation !== epoch) return null;
+      await credential.setValue(next);
+      return generation === epoch ? next?.accessToken ?? null : null;
+    });
   })();
   try {
     return await refreshing;
@@ -131,16 +147,30 @@ export async function getOAuthToken(force = false): Promise<string | null> {
 export async function completeOAuth(url: string, tabId?: number): Promise<void> {
   if (exchanging) throw new Error("Authorization already in progress");
   const generation = epoch;
+  let stage = "pending";
   exchanging = (async () => {
     const attempt = await pending.getValue();
     if (
       !attempt ||
       attempt.expiresAt < Date.now() ||
       (attempt.tabId !== undefined && attempt.tabId !== tabId)
-    )
+    ) {
+      diag("oauth", "callback rejected", {
+        pending: !!attempt,
+        expired: !!attempt && attempt.expiresAt < Date.now(),
+        tabMatches: !!attempt && (attempt.tabId === undefined || attempt.tabId === tabId),
+      });
       throw new Error("Authorization expired");
+    }
     const code = oauthCallback(url, attempt.redirect, attempt.state);
+    if (generation !== epoch) throw new Error("Authorization superseded");
+    // Claim the transition before network/storage awaits, fencing probes of an
+    // older credential while this single-use code is being exchanged.
+    const completionGeneration = ++epoch;
+    diag("oauth", "callback accepted");
+    stage = "consume";
     await pending.removeValue();
+    stage = "exchange";
     const next = await exchange(
       new URLSearchParams({
         grant_type: "authorization_code",
@@ -151,28 +181,57 @@ export async function completeOAuth(url: string, tabId?: number): Promise<void> 
       }),
     );
     if (!next) throw new Error("Authorization failed");
-    if (generation !== epoch) return;
-    epoch++;
-    await resetAccountCaches();
-    await credential.setValue(next);
-    await fetchWithTimeout(`${app}/api/auth/sessions/current`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${next.accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        clientType: `${import.meta.env.BROWSER}-extension`,
-        deviceName: `${import.meta.env.BROWSER} extension`,
-        browser: import.meta.env.BROWSER,
-        os: typeof navigator !== "undefined" ? detectOs() : undefined,
-      }),
-      credentials: "omit",
-      redirect: "error",
+    stage = "commit";
+    const committed = await writeAccount(async () => {
+      if (completionGeneration !== epoch) return false;
+      await resetAccountCaches();
+      if (completionGeneration !== epoch) return false;
+      await credential.setValue(next);
+      return completionGeneration === epoch;
     });
+    if (!committed) throw new Error("Authorization superseded");
+    diag("oauth", "credential committed");
+    stage = "registration";
+    let registration: Response | undefined;
+    try {
+      registration = await fetchWithTimeout(`${app}/api/auth/sessions/current`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${next.accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientType: `${import.meta.env.BROWSER}-extension`,
+          deviceName: `${import.meta.env.BROWSER} extension`,
+          browser: import.meta.env.BROWSER,
+          os: typeof navigator !== "undefined" ? detectOs() : undefined,
+        }),
+        credentials: "omit",
+        redirect: "error",
+      });
+      diag("oauth", "session registration", { status: registration.status });
+    } catch {
+      // Registration supplies display metadata; transport failure does not
+      // undo an already persisted OAuth credential. Never retry the code.
+      diag("oauth", "session registration unavailable");
+    }
+    if (registration?.status === 401) {
+      await clearRejectedCredential(completionGeneration, next.accessToken, true);
+      throw new Error("Authorization rejected");
+    }
+    if (completionGeneration !== epoch) throw new Error("Authorization superseded");
+    diag("oauth", "callback complete");
   })();
   try {
     await exchanging;
+  } catch (error) {
+    diag("oauth", "callback failed", { stage });
+    throw error;
   } finally {
     exchanging = null;
   }
+}
+/** Harmless readiness probe: never consumes state or exchanges a code. */
+export async function oauthCallbackReady(tabId: number): Promise<boolean> {
+  const attempt = await pending.getValue();
+  return !!attempt && attempt.expiresAt >= Date.now() && attempt.tabId === tabId;
 }
 export async function startOAuth(): Promise<void> {
   if (starting) throw new Error("Authorization already in progress");
@@ -233,37 +292,75 @@ async function beginOAuth(): Promise<void> {
   }
 }
 export async function oauthIdentity(): Promise<UserInfo> {
-  try {
-    const token = await getOAuthToken();
-    if (!token) return { signedIn: false, name: null, email: null };
-    const response = await fetchWithTimeout(`${app}/api/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: "omit",
-      redirect: "error",
-    });
-    if (response.status === 401) {
-      await clearOAuth();
-      return { signedIn: false, name: null, email: null };
+  // Re-resolve superseded probes rather than publishing an old account result.
+  // Bound restarts if the user repeatedly changes accounts while requests run.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await accountWrites;
+    const generation = epoch;
+    try {
+      const token = await getOAuthToken();
+      if (generation !== epoch) continue;
+      if (!token) return { signedIn: false, name: null, email: null };
+      const response = await fetchWithTimeout(`${app}/api/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "omit",
+        redirect: "error",
+      });
+      if (generation !== epoch) {
+        diag("oauth", "identity superseded", { status: response.status });
+        continue;
+      }
+      if (response.status === 401) {
+        if (!await clearRejectedCredential(generation, token)) continue;
+        return { signedIn: false, name: null, email: null };
+      }
+      if (!response.ok) throw new Error("Authentication temporarily unavailable");
+      const identity = await response.json();
+      const info: UserInfo = {
+        signedIn: true,
+        name: typeof identity.name === "string" ? identity.name.slice(0, 80) : null,
+        email: typeof identity.email === "string" ? identity.email.slice(0, 254) : null,
+      };
+      const saved = await writeAccount(async () => {
+        if (generation !== epoch) return false;
+        await cachedIdentity.setValue(info);
+        return generation === epoch;
+      });
+      if (saved) return info;
+    } catch (error) {
+      if (generation !== epoch) continue;
+      const display = await cachedIdentity.getValue();
+      const current = await credential.getValue();
+      if (generation !== epoch) continue;
+      if (display && current) return { ...display, stale: true };
+      throw error;
     }
-    if (!response.ok) throw new Error("Authentication temporarily unavailable");
-    const identity = await response.json();
-    const info: UserInfo = {
-      signedIn: true,
-      name: typeof identity.name === "string" ? identity.name.slice(0, 80) : null,
-      email: typeof identity.email === "string" ? identity.email.slice(0, 254) : null,
-    };
-    await cachedIdentity.setValue(info);
-    return info;
-  } catch (error) {
-    const display = await cachedIdentity.getValue();
-    if (display && (await credential.getValue())) return { ...display, stale: true };
-    throw error;
   }
+  throw new Error("Authentication changed while resolving identity");
+}
+async function removeAccount(generation: number, removePending = true): Promise<boolean> {
+  await resetAccountCaches();
+  if (generation !== epoch) return false;
+  await Promise.all([credential.removeValue(), ...(removePending ? [pending.removeValue()] : [])]);
+  return generation === epoch;
+}
+async function clearRejectedCredential(generation: number, token: string, completing = false): Promise<boolean> {
+  return writeAccount(async () => {
+    // An old credential rejection must not cancel a callback that is still
+    // validating its persisted state. Its reader will wait for the transition.
+    if (exchanging && !completing) return false;
+    const current = await credential.getValue();
+    if (generation !== epoch || current?.accessToken !== token || (exchanging && !completing)) return false;
+    // Invalid credentials and a pending new sign-in are independent. Only an
+    // explicit logout cancels an unconsumed authorization attempt.
+    return removeAccount(++epoch, false);
+  });
 }
 export async function clearOAuth(): Promise<void> {
-  epoch++;
-  await resetAccountCaches();
-  await Promise.all([credential.removeValue(), pending.removeValue()]);
+  const generation = ++epoch;
+  await writeAccount(async () => {
+    if (generation === epoch) await removeAccount(generation);
+  });
 }
 export async function signOutOAuth(): Promise<{ ok: boolean }> {
   const token = await getOAuthToken();

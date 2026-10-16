@@ -5,8 +5,10 @@ import {
   oauthIdentity,
   startOAuth,
   completeOAuth,
+  oauthCallbackReady,
   signOutOAuth,
 } from "@/lib/supabase-oauth";
+import { isOAuthCallbackReadySender } from "@/lib/oauth-callback-sender";
 import { defineBackground, storage } from "#imports";
 import { browser } from "wxt/browser";
 import type { createClerkClient } from "@clerk/chrome-extension/background";
@@ -1178,6 +1180,19 @@ export default defineBackground(() => {
     ) => {
       if (SUPABASE_AUTH && typeof message === "object" && message !== null) {
         const payload = message as { type?: string; url?: string };
+        if (payload.type === "OAUTH_CALLBACK_READY" && import.meta.env.BROWSER === "safari") {
+          const trusted = isOAuthCallbackReadySender(_sender, browser.runtime.id, import.meta.env.WXT_APP_URL?.replace(/\/$/, "") ?? "");
+          diag("oauth", "callback readiness", { trusted });
+          if (!trusted) {
+            sendResponse({ ok: false });
+            return undefined;
+          }
+          void oauthCallbackReady(_sender.tab!.id!).then(
+            ok => sendResponse({ ok }),
+            () => sendResponse({ ok: false }),
+          );
+          return true;
+        }
         if (payload.type === "START_OAUTH") {
           const trusted = _sender.id === browser.runtime.id && !_sender.tab;
           diag("oauth", "launch request", { trusted, sameExtension: _sender.id === browser.runtime.id, hasTab: !!_sender.tab });
@@ -1202,6 +1217,7 @@ export default defineBackground(() => {
           _sender.url &&
           typeof payload.url === "string"
         ) {
+          diag("oauth", "callback request");
           const expected = `${import.meta.env.WXT_APP_URL}/auth/extension-callback`;
           const senderUrl = new URL(_sender.url);
           if (senderUrl.origin + senderUrl.pathname !== expected || payload.url !== _sender.url)

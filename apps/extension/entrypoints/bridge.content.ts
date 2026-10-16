@@ -4,6 +4,8 @@ import { defineContentScript } from "#imports";
 import { browser } from "wxt/browser";
 import { isAllowedBridgePath } from "@/lib/bridge-guard";
 import { fetchWithTimeout } from "@/lib/net";
+import { connectOAuthCallbackPage } from "@/lib/oauth-callback-bridge";
+import { diag } from "@/lib/diag";
 import {
   isBridgeFetchMessage,
   isBridgeMeMessage,
@@ -86,16 +88,14 @@ export default defineContentScript({
       if (!isOAuthBridgeCallback(location.href, import.meta.env.WXT_APP_URL?.replace(/\/$/, "") ?? ""))
         return;
       // No page messages or page credentials: the browser URL is the only input.
-      void browser.runtime
-        .sendMessage({ type: "OAUTH_CALLBACK", url: location.href })
-        .then((reply) => {
-          document.dispatchEvent(
-            new CustomEvent("bookmark-extension-authorization", {
-              detail: reply?.ok === true ? "complete" : "failed",
-            }),
-          );
-          history.replaceState(null, "", location.pathname);
-        });
+      const callbackUrl = location.href;
+      connectOAuthCallbackPage(
+        document,
+        () => browser.runtime.sendMessage({ type: "OAUTH_CALLBACK_READY" }),
+        () => browser.runtime.sendMessage({ type: "OAUTH_CALLBACK", url: callbackUrl }),
+        () => history.replaceState(null, "", location.pathname),
+        (stage) => diag("oauth", "callback bridge", { stage }),
+      );
       return;
     }
     // Double-injection guard: the background re-injects this file into tabs
