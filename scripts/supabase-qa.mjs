@@ -306,6 +306,12 @@ function nativeConfiguration(stagedRoot, env) {
   }
 }
 
+export function isExcludedSourcePath(path) {
+  return /(?:^|\/)(?:\.env[^/]*|node_modules|\.keys|\.next[^/]*|\.output[^/]*|\.wxt|\.expo|DerivedData|ios|android)(?:\/|$)/.test(path)
+    || /(?:^|\/)build[^/]*\//.test(path)
+    || /\.xcodeproj\//.test(path);
+}
+
 export function stageSources(surface, env, options = {}) {
   const buildVariant = options.variant || variant;
   const sha = git('rev-parse', '--short=12', 'HEAD').trim();
@@ -321,7 +327,7 @@ export function stageSources(surface, env, options = {}) {
   const hash = createHash('sha256');
   for (const path of [...new Set(paths)].sort()) {
     if (!(rootFiles.has(path) || path.startsWith('packages/') || path.startsWith('scripts/') || path.startsWith('supabase/') || selected.some((app) => path.startsWith(`apps/${app}/`)))) continue;
-    if (/(?:^|\/)(?:\.env[^/]*|node_modules|\.keys|\.next[^/]*|\.output[^/]*|\.wxt|\.expo|DerivedData|build[^/]*|ios|android)(?:\/|$)/.test(path) || /\.xcodeproj\//.test(path)) continue;
+    if (isExcludedSourcePath(path)) continue;
     const from = join(repoRoot, path);
     if (!existsSync(from) || !lstatSync(from).isFile()) continue;
     const to = join(stagedRoot, path);

@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
-import { parseEnv, qaEnvironment, mirrorDependencies, auditDependencyLinks, nativeDependencyOverlay, macSigningArguments, repoRoot } from './supabase-qa.mjs';
+import { parseEnv, qaEnvironment, mirrorDependencies, auditDependencyLinks, nativeDependencyOverlay, macSigningArguments, repoRoot, isExcludedSourcePath } from './supabase-qa.mjs';
+
+test('snapshots preserve build helpers while excluding generated builds and private files', () => {
+  for (const path of ['scripts/build-retention.mjs', 'scripts/build-retention.test.mjs', 'apps/extension/scripts/build.mjs']) assert.equal(isExcludedSourcePath(path), false, path);
+  for (const path of ['apps/extension/build/output.js', 'apps/extension/build-release/output.js', '.env.supabase.production.local', 'apps/extension/.keys/key.pem', 'apps/extension/.output/firefox-mv2/background.js']) assert.equal(isExcludedSourcePath(path), true, path);
+});
 
 test('caller production credentials are not inherited; only explicit QA credentials survive', () => {
   const env = qaEnvironment({ SUPABASE_URL: 'https://xogqaqtyacmecdbmgqqd.supabase.co' }, {

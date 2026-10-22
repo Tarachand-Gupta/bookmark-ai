@@ -11,6 +11,9 @@ const entry = JSON.parse(readFileSync(join(release, 'ARTIFACTS.json'), 'utf8')).
 if (entry.variant !== 'supabase-production') throw new Error('Verified frozen production Firefox package required');
 const frozen = JSON.parse(readFileSync(entry.buildManifest, 'utf8'));
 const source = frozen.stagedRoot;
+for (const required of ['scripts/supabase-qa.mjs', 'scripts/supabase-production.mjs', 'scripts/build-retention.mjs']) {
+  if (!existsSync(join(source, required))) throw new Error(`Frozen Firefox source is missing ${required}; rebuild before packaging`);
+}
 const version = JSON.parse(readFileSync(join(source, 'apps/extension/package.json'), 'utf8')).version;
 if (!/^\d+\.\d+\.\d+$/.test(version) || entry.manifest?.version !== version) throw new Error('Frozen Firefox source and package versions must match');
 const publicEnvironment = parseEnv(readFileSync(join(repoRoot, '.env.supabase.production.local'), 'utf8'));
