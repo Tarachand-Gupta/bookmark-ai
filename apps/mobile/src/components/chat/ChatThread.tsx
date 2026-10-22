@@ -10,8 +10,8 @@ import {
 } from "react-native";
 import type { UIMessage } from "ai";
 import { useAppTheme } from "../../context/PreferencesContext";
-import { useAiChat } from "../../hooks/useAiChat";
-import { useChatAttachments } from "../../hooks/useChatAttachments";
+import type { AiChatState } from "../../hooks/useAiChat";
+
 import { useContentWidth } from "../../hooks/useContentWidth";
 import { useKeyboardOverlap } from "../../hooks/useKeyboardOverlap";
 import { toFileParts } from "../../lib/chatAttachments";
@@ -21,7 +21,7 @@ import {
   type FilePartLike,
   type LoosePart,
 } from "../../lib/chatParts";
-import { ChatComposer } from "./ChatComposer";
+
 import { ChatEmptyState } from "./ChatEmptyState";
 import { ChatMessage } from "./ChatMessage";
 import {
@@ -39,43 +39,15 @@ import { ImageLightbox } from "./ImageLightbox";
 const STICK_THRESHOLD = 120;
 
 /**
- * The live transcript + composer for ONE conversation. Owns `useChat` (via
- * useAiChat), so it MUST be mounted with a key per conversation: the SDK reads
- * the seeded transcript once, at construction.
+ * Transcript presentation only. The shell retains chat runtime and composer
+ * independently of this view, including while the conversation is closed.
  *
  * @param initialMessages stored transcript (empty = new chat)
  * @param initialConversationId null = the server mints one on the first turn
  */
-export function ChatThread({
-  initialMessages,
-  initialConversationId,
-  onConversationId,
-  onTurnFinished,
-  bottomInset,
-}: {
-  initialMessages: UIMessage[];
-  initialConversationId: string | null;
-  /** The server-minted id for a brand-new thread (X-Conversation-Id). */
-  onConversationId?: (id: string) => void;
-  /** A turn finished streaming — the history list is now stale. */
-  onTurnFinished?: () => void;
-  /** Safe-area bottom inset; the composer sits on top of it while the keyboard is
-   * down — once it's up the keyboard's own frame (which already spans that inset)
-   * takes over. */
-  bottomInset: number;
-}) {
+export function ChatThread({chat,onPick}: {chat:AiChatState;onPick:(text:string)=>void}) {
   const { colors } = useAppTheme();
-  const keyboardOverlap = useKeyboardOverlap();
-  // Tablet widths: transcript, empty state and (below) the composer share the
-  // centered content column, so a reply never runs 1000pt wide. 0 on phones.
-  const { inset } = useContentWidth();
-  const chat = useAiChat({
-    initialMessages,
-    conversationId: initialConversationId,
-    onConversationId,
-    onFinish: onTurnFinished,
-  });
-  const attachments = useChatAttachments();
+  const inset=0;
   const [lightbox, setLightbox] = useState<FilePartLike | null>(null);
 
   const listRef = useRef<FlatList<UIMessage>>(null);
@@ -139,17 +111,6 @@ export function ChatThread({
   // the transcript.
   const rows = useMemo(() => chat.messages.filter(hasContent), [chat.messages]);
 
-  const send = useCallback(
-    (text: string) => {
-      // A send always re-anchors: you asked something, you want to see the answer.
-      stuckToBottom.current = true;
-      setShowJumpHint(false);
-      chat.send(text, toFileParts(attachments.items));
-      attachments.clear();
-    },
-    [chat, attachments],
-  );
-
   const footer = (
     <View style={styles.footer}>
       {awaitingFirstToken && <ChatThinking />}
@@ -196,10 +157,7 @@ export function ChatThread({
       style={[
         styles.flex,
         {
-          paddingBottom:
-            Platform.OS === "android"
-              ? keyboardOverlap + bottomInset
-              : Math.max(keyboardOverlap, bottomInset),
+          paddingBottom: 0,
         },
       ]}
     >
@@ -217,7 +175,7 @@ export function ChatThread({
           // the content is taller than the list and the stick-to-bottom scroll
           // below parks the prompts right above the composer instead.
           <View style={styles.empty}>
-            <ChatEmptyState onPick={send} />
+            <ChatEmptyState onPick={onPick} />
           </View>
         }
         onScroll={onScroll}
@@ -246,14 +204,6 @@ export function ChatThread({
       {showJumpHint && rows.length > 0 && (
         <JumpToLatest onPress={() => scrollToEnd(true)} />
       )}
-      <ChatComposer
-        streaming={streaming}
-        onSend={send}
-        onStop={chat.stop}
-        attachments={attachments}
-        // Short enough to sit on one line beside the paperclip and Send.
-        placeholder={chat.messages.length === 0 ? "Ask about your bookmarks…" : "Ask a follow-up…"}
-      />
       <ImageLightbox file={lightbox} onClose={() => setLightbox(null)} />
     </View>
   );

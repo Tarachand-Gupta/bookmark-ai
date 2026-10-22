@@ -2,13 +2,30 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import type { Bookmark, OrganizationFolder, OrganizationOperation } from "@bookmark-ai/types";
+import { useAuth } from "@/lib/auth";
+import { readBatchJob, type OrganizationBatchJob } from "@/lib/organization-batches";
+import { useOrganization } from "@/hooks/use-organization";
+import { freezeOrganizationSelection, getBookmark } from "@/lib/api";
+import { expectedBookmarkVersions, operationSummary } from "@/lib/organization-ui";
+import { FOLDERS_PATH, folderHref } from "@/lib/folder-browser";
+import { type FolderAction } from "./organization/folder-browser";
+import { FolderActionDialog } from "./organization/folder-action-dialog";
+import { FolderBookmarkPicker } from "./organization/folder-bookmark-picker";
+import { OrganizationLibraryControls } from "./organization/library-controls";
+import { OrganizationManager } from "./organization/manager";
+import { BookmarkEditor } from "./organization/bookmark-editor";
+import { BulkEditor, type BulkAction } from "./organization/bulk-editor";
+import { RecentChanges } from "./organization/recent-changes";
+import { GettingStartedCard } from "./getting-started-card";
+import { ImportBookmarksDialog } from "./import-bookmarks-dialog";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   CalendarDays,
   Chrome,
   Compass,
   Flame,
-  Folder,
+  CircleDot,
   Globe,
   Laptop,
   Monitor,
@@ -48,7 +65,8 @@ import { LibraryHeader, type HeaderCrumb } from "./library-header";
 import { MobileFilterBar } from "./mobile-filter-bar";
 import { SelectionBar } from "./selection-bar";
 import { TagChips } from "./tag-chips";
-import { ViewToggle, type LibraryView } from "./view-toggle";
+import { ViewToggle } from "./view-toggle";
+import { useBookmarkView } from "@/hooks/use-bookmark-view";
 import { DateRangeFilter } from "./date-range-filter";
 import { SessionCard } from "./sessions-view";
 import { SessionsPanel } from "./sessions-panel";
@@ -61,13 +79,12 @@ import { OnboardingDialog } from "./onboarding-dialog";
  * low enough to stay clear of the API's 120-req/60s window with room to spare. */
 const DELETE_CONCURRENCY = 6;
 
-const VIEW_STORAGE_KEY = "bookmark-ai:view";
 /** First-run tour fast-path: set once this account has dismissed the tour (on
  * this browser). The server flag `settings.onboardedAt` is the authority — this
  * only avoids a flash/refetch on subsequent loads before settings resolve. */
 const ONBOARDED_KEY = "bmk:onboarded";
 
-const FILTER_KEYS = ["category", "browser", "device", "day", "tag", "from", "to"] as const;
+const FILTER_KEYS = ["category", "browser", "device", "day", "tag", "from", "to", "folderId", "includeSubfolders", "categoryId", "tagId", "readingState"] as const;
 
 // The `?ai=1` flag (AI_PARAM, from the layout store) opens the Ask AI dock. The
 // dock itself lives at the /app layout level (see AppChatDock) — this page only
@@ -82,7 +99,7 @@ const FILTER_KEYS = ["category", "browser", "device", "day", "tag", "from", "to"
 export function LibraryPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  // Only for leaving this route (Home). Everything WITHIN the library is shallow
+  // Only for leaving the shared library (Home). Folder/library navigation is shallow
   // history state — see shallowPush below.
   const router = useRouter();
   // Home is one click away in the sidebar; warm it so the hop is instant.
@@ -116,8 +133,18 @@ export function LibraryPage() {
       const value = searchParams.get(key);
       if (value) out[key] = value;
     }
+    if (out.folderId && out.folderId !== "unsorted" && !out.includeSubfolders) out.includeSubfolders = "false";
     return out;
   }, [searchParams]);
+
+  useEffect(() => {
+    const id = searchParams.get("folderId");
+    const normalizeFolder = id && id !== "unsorted" && !searchParams.has("includeSubfolders");
+    if (pathname !== FOLDERS_PATH && !normalizeFolder) return;
+    const params = new URLSearchParams(searchParams);
+    if (normalizeFolder) params.set("includeSubfolders", "false");
+    shallowReplace(`/app/library${params.size ? `?${params}` : ""}`);
+  }, [pathname, searchParams, shallowReplace]);
 
   const setFilters = useCallback(
     (next: LibraryFilters, opts?: { clearSearch?: boolean }) => {
@@ -138,7 +165,8 @@ export function LibraryPage() {
       // walks the filter states, as docs/TESTING.md promises. Shallow: pushState
       // keeps the URL in sync without an RSC round-trip (no scroll-to-top either,
       // which matches the previous { scroll: false }).
-      shallowPush(params.size ? `${pathname}?${params}` : pathname);
+      const target = "/app/library";
+      shallowPush(params.size ? `${target}?${params}` : target);
     },
     [shallowPush, pathname, searchParams],
   );
@@ -191,69 +219,37 @@ export function LibraryPage() {
   // doesn't get a flash before settings resolve. Read in an effect so the
   // server-rendered markup hydrates cleanly; the footer "Tour" item reopens it.
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [showGettingStarted, setShowGettingStarted] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   useEffect(() => {
-    if (localStorage.getItem(ONBOARDED_KEY)) return; // already toured on this browser
-    let cancelled = false;
-    getSettings()
-      .then(({ settings }) => {
-        if (cancelled) return;
-        if (settings.onboardedAt) {
-          // Toured on another device — remember locally so we don't flash next load.
-          localStorage.setItem(ONBOARDED_KEY, "1");
-        } else {
-          setOnboardingOpen(true);
-        }
-      })
-      // Settings unavailable (offline / still provisioning) — don't pop the tour
-      // on an error; a later successful load will decide.
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  const closeOnboarding = useCallback((open: boolean) => {
-    setOnboardingOpen(open);
-    if (!open) {
-      // Fast-path for this browser, plus persist per-account so every device
-      // skips the tour from now on. Fire-and-forget: a failed PUT just means the
-      // tour may reappear on another device until it succeeds.
-      localStorage.setItem(ONBOARDED_KEY, "1");
-      updateSettings({ onboarded: true }).catch(() => {});
-    }
-  }, []);
+    if (searchParams.get("import") !== "1") return;
+    setImportOpen(true); const params = new URLSearchParams(searchParams); params.delete("import");
+    window.history.replaceState(null, "", `${pathname}${params.size ? `?${params}` : ""}`);
+  }, [searchParams, pathname]);
+  useEffect(() => { let active = true; void getSettings().then(({ settings }) => { if (active) setShowGettingStarted(!settings.onboardedAt); }).catch(() => {}); return () => { active = false; }; }, []);
+  const closeOnboarding = useCallback((open: boolean) => setOnboardingOpen(open), []);
+  const dismissGettingStarted = () => { setShowGettingStarted(false); void updateSettings({ onboarded: true }).catch(() => setShowGettingStarted(true)); };
 
-  // Display preference, not shareable state → localStorage, not the URL.
-  // Read in an effect so the server-rendered markup (grid) hydrates cleanly.
-  const [view, setView] = useState<LibraryView>("grid");
-  useEffect(() => {
-    const saved = localStorage.getItem(VIEW_STORAGE_KEY);
-    if (saved === "grid" || saved === "list" || saved === "compact") setView(saved);
-  }, []);
-  const changeView = useCallback((next: LibraryView) => {
-    setView(next);
-    localStorage.setItem(VIEW_STORAGE_KEY, next);
-  }, []);
+  const { view, changeView } = useBookmarkView();
 
-  // Mirror search state into the URL so refresh/share keeps it, like facets.
-  // replace (not push) — keystrokes must not pollute history.
+  // URL navigation owns the query; pending typing cannot overwrite Back/Forward.
+  const queryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const params = new URLSearchParams(searchParams);
-      const trimmed = query.trim();
-      if (trimmed) {
-        params.set("q", trimmed);
-        params.delete("section"); // starting a search leaves the Sessions view
-      } else {
-        params.delete("q");
-      }
-      const next = params.size ? `${pathname}?${params}` : pathname;
-      const current = searchParams.size ? `${pathname}?${searchParams}` : pathname;
-      // Search results come from the client useSearch hook; the URL is only for
-      // refresh/share, so mirror it shallowly (no RSC round-trip per keystroke).
-      if (next !== current) shallowReplace(next);
+    if (queryTimer.current) clearTimeout(queryTimer.current);
+    setQuery(searchParams.get("q") ?? "");
+  }, [pathname, searchParams]);
+  useEffect(() => () => { if (queryTimer.current) clearTimeout(queryTimer.current); }, []);
+  const changeQuery = (value: string) => {
+    setQuery(value);
+    if (queryTimer.current) clearTimeout(queryTimer.current);
+    queryTimer.current = setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      if (value.trim()) { params.set("q", value.trim()); params.delete("section"); } else params.delete("q");
+      // Searching from the Folders root searches All bookmarks, not an invisible root collection.
+      const target = window.location.pathname === FOLDERS_PATH && !params.has("folderId") ? "/app/library" : window.location.pathname;
+      shallowReplace(`${target}${params.size ? `?${params}` : ""}`);
     }, 250);
-    return () => clearTimeout(timer);
-  }, [query, pathname, shallowReplace, searchParams]);
+  };
 
   const [refreshKey, refresh] = useRefresh();
   const meta = useMeta(refreshKey);
@@ -261,7 +257,7 @@ export function LibraryPage() {
   const list = useBookmarks(filters, refreshKey);
   // The grid shows hybrid results (keyword + semantic lists fused with RRF,
   // most relevant first); the Ask AI dock (?ai) opens beside that, not over it.
-  const search = useSearch(query, "hybrid", refreshKey);
+  const search = useSearch(query, "hybrid", refreshKey, filters);
   const sessions = useSessions(refreshKey);
 
   // A fresh signup's DB may still be provisioning; every hook hits the same API,
@@ -304,6 +300,46 @@ export function LibraryPage() {
         : exactMatches
       : null
     : list.bookmarks;
+  const { userId } = useAuth();
+  const [resumeBatch, setResumeBatch] = useState<OrganizationBatchJob | null>(null);
+  useEffect(() => {
+    const update = () => { try { setResumeBatch(userId ? readBatchJob(localStorage, userId) : null); } catch { setResumeBatch(null); } };
+    update(); window.addEventListener("bookmark-batch-changed", update);
+    return () => window.removeEventListener("bookmark-batch-changed", update);
+  }, [userId]);
+  const [selectionVersions, setSelectionVersions] = useState<Record<string, Record<string, string>>>({});
+  const organization = useOrganization(refreshKey);
+  const [editorBookmark, setEditorBookmark] = useState<Bookmark | null>(null);
+  const [managerOpen, setManagerOpen] = useState(false);
+  const [managerInitialAction, setManagerInitialAction] = useState<"create-folder">();
+  const [managerParent, setManagerParent] = useState<string | null>(null);
+  const [recentOpen, setRecentOpen] = useState(false);
+  const [latestOperation, setLatestOperation] = useState<OrganizationOperation | null>(null);
+  const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
+  const [bulkIds, setBulkIds] = useState<string[]>([]);
+  const [bulkResumeJob, setBulkResumeJob] = useState<OrganizationBatchJob | null>(null);
+  const [bulkExpected, setBulkExpected] = useState<Record<string, Record<string, string>>>({});
+  const [moveSelection, setMoveSelection] = useState<{ bookmarks: Bookmark[]; destination?: string | null; fromPicker?: boolean } | null>(null);
+  const [folderEdit, setFolderEdit] = useState<{ folder: OrganizationFolder; action: FolderAction } | null>(null);
+  const [addExisting, setAddExisting] = useState(false);
+  const [pickerDraft, setPickerDraft] = useState<{ bookmarks: Bookmark[]; query: string }>({ bookmarks: [], query: "" });
+  const currentFolder = organization.data?.folders.find(folder => folder.id === filters.folderId);
+  const folderBrowsing = !!filters.folderId && filters.folderId !== "unsorted";
+  const browseFolder = (id: string | null) => { setQuery(""); shallowPush(folderHref(id, searchParams.get(AI_PARAM) === "1")); };
+  const moveBookmark = (bookmark: Bookmark) => setMoveSelection({ bookmarks: [bookmark] });
+
+  const [selectingAll, setSelectingAll] = useState(false);
+  const [selectionNote, setSelectionNote] = useState<string | null>(null);
+  useEffect(() => { setMoveSelection(null); setFolderEdit(null); setAddExisting(false); setPickerDraft({ bookmarks: [], query: "" }); }, [userId, filters.folderId]);
+  useEffect(() => { setBulkAction(null); setBulkIds([]); setBulkExpected({}); setBulkResumeJob(null); }, [userId]);
+  const operationResult = (operation: OrganizationOperation) => { setLatestOperation(operation); refresh(); organization.refresh(); };
+  useEffect(() => {
+    const id = searchParams.get("bookmark"); if (!id || !organization.supported) return;
+    let cancelled = false;
+    void getBookmark(id).then(({ bookmark }) => { if (!cancelled) setEditorBookmark(bookmark); }).catch(err => { if (!cancelled) setSelectionNote(err.message); });
+    return () => { cancelled = true; };
+  }, [searchParams.get("bookmark"), organization.supported]);
+  const folderNames = Object.fromEntries((organization.data?.folders ?? []).map(f => [f.id, f.path]));
   const [showRelated, setShowRelated] = useState(false);
   // Two result kinds → two tabs (Bookmarks default); only shown when
   // sessions actually matched.
@@ -327,7 +363,7 @@ export function LibraryPage() {
 
   // Group the content by relative date unless searching or a specific date
   // filter (range or single day) is active — then show a flat, filtered list.
-  const grouped = !searching && !filters.from && !filters.to && !filters.day;
+  const grouped = !folderBrowsing && !searching && !filters.from && !filters.to && !filters.day;
 
   // How many bookmarks the facet the user just clicked is known to hold, from
   // /api/meta — so the skeleton draws roughly the right number of shapes instead
@@ -336,6 +372,7 @@ export function LibraryPage() {
   // back to its per-layout default.
   const expectedCount = useMemo(() => {
     const m = meta.data;
+    if (currentFolder && !searching) return filters.includeSubfolders === "true" ? currentFolder.count : currentFolder.directCount;
     if (!m || searching) return undefined;
     if (filters.from || filters.to) return undefined; // no per-range counts
     if (filters.category) return m.categories.find((c) => c.name === filters.category)?.count;
@@ -344,14 +381,14 @@ export function LibraryPage() {
     if (filters.day) return m.days.find((d) => d.day === filters.day)?.count;
     if (filters.tag) return m.tags.find((t) => t.name === filters.tag)?.count;
     return m.total;
-  }, [meta.data, searching, filters]);
+  }, [meta.data, searching, filters, currentFolder]);
 
   // A genuinely empty library — no bookmarks at all, nothing filtering them out
   // — is a new user's first screen, so the grid onboards there. meta.total is
   // the authority on "zero overall"; list.total only counts what the active
   // filter matched, and a search that found nothing is a different message.
   const anyFilter = FILTER_KEYS.some((key) => filters[key]);
-  const firstRun = !searching && !anyFilter && meta.data?.total === 0;
+  const firstRun = !folderBrowsing && !searching && !anyFilter && meta.data?.total === 0;
 
   // ── Selection, deletion ───────────────────────────────────────────────────
   // One selection per PAGE: the scope key names what's on screen, so any facet
@@ -362,17 +399,38 @@ export function LibraryPage() {
     () =>
       [
         sessionsActive ? "sessions" : liveActive ? "live" : "library",
-        searching ? "search" : "browse",
+        searching ? `search:${query}` : "browse",
         FILTER_KEYS.map((k) => `${k}=${filters[k] ?? ""}`).join("&"),
       ].join("|"),
-    [sessionsActive, liveActive, searching, filters],
+    [sessionsActive, liveActive, searching, query, filters],
   );
-  const selection = useSelection(scopeKey);
+  useEffect(() => { setSelectionVersions({}); setSelectionNote(null); }, [scopeKey]);
+  const selection = useSelection(scopeKey, !!bulkAction || !!editorBookmark || !!moveSelection);
   // Live sessions aren't deletable rows (they're a mirror of open tabs), and
   // search results are deliberately out of scope.
-  const selectable = !searching && !liveActive;
+  const selectable = !liveActive && !showingSessionsTab;
   const gridSelection = selectable && !sessionsActive ? selection : null;
   const sessionSelection = selectable && sessionsActive ? selection : null;
+  const allVisibleBookmarks = searching ? (searchResults ?? []).map(r => r.bookmark) : list.bookmarks ?? [];
+  const displayedBookmarks = searching && !noExact && showRelated ? [...(bookmarks ?? []), ...(relatedMatches ?? [])] : bookmarks ?? [];
+  const selectAllMatches = async () => {
+    setSelectingAll(true); setSelectionNote(null);
+    try {
+      const { selection: snapshot } = await freezeOrganizationSelection(searching ? { search: { ...filters, q: query, mode: "hybrid" } } : { query: filters });
+      const label = snapshot.limited ? `Select the top ${snapshot.count} ranked results? This is a limited ranked set, not every possible match.` : `Select all ${snapshot.count} matching bookmarks?`;
+      if (window.confirm(label)) { selection.set(snapshot.bookmarkIds); setSelectionVersions(snapshot.fieldVersions ?? {}); setSelectionNote(snapshot.limited ? `${snapshot.count} top ranked results selected. IDs are frozen.` : `${snapshot.count} matching bookmarks selected. IDs are frozen.`); }
+    } catch (err) { setSelectionNote((err as Error).message); } finally { setSelectingAll(false); }
+  };
+  useEffect(() => {
+    const context = selection.ids.size && selection.ids.size <= 1000 ? { type: "bookmarks", bookmarkIds: [...selection.ids] } : undefined;
+    window.dispatchEvent(new CustomEvent("bookmark-chat-context", { detail: { context } }));
+    return () => { window.dispatchEvent(new CustomEvent("bookmark-chat-context", { detail: {} })); };
+  }, [selection.ids]);
+  const askSelection = () => {
+    if (selection.ids.size > 1000) { setSelectionNote("Ask AI accepts up to 1,000 selected bookmarks. Reduce this selection, or open a folder as context."); return; }
+    window.dispatchEvent(new CustomEvent("bookmark-chat-context", { detail: { context: { type: "bookmarks", bookmarkIds: [...selection.ids] }, open: true, adopt: true } }));
+  };
+
 
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   /** What the confirmation dialog is about to delete. */
@@ -486,7 +544,7 @@ export function LibraryPage() {
       const params = new URLSearchParams();
       params.set("section", section);
       if (searchParams.get(AI_PARAM) === "1") params.set(AI_PARAM, "1");
-      shallowPush(`${pathname}?${params}`);
+      shallowPush(`/app/library?${params}`);
     },
     [shallowPush, pathname, searchParams],
   );
@@ -494,8 +552,8 @@ export function LibraryPage() {
   const showLive = useCallback(() => showSection("live"), [showSection]);
 
   // Breadcrumb: root view + the active facet; search presents in the content area.
-  const crumb = sessionsActive || liveActive ? null : headerCrumb(filters);
-  const title = sessionsActive ? "Saved sessions" : liveActive ? "Live sessions" : "All bookmarks";
+  const crumb = folderBrowsing || sessionsActive || liveActive ? null : headerCrumb(filters);
+  const title = sessionsActive ? "Saved sessions" : liveActive ? "Live sessions" : folderBrowsing ? currentFolder?.name ?? (filters.folderId ? "Folder" : "Folders") : filters.folderId === "unsorted" ? "Unsorted" : filters.readingState ? "Reading list" : "All bookmarks";
 
   // The Ask AI dock is mounted at the layout level (AppChatDock) and driven
   // purely by ?ai — this page only reflects the button's pressed state and
@@ -527,8 +585,13 @@ export function LibraryPage() {
         metaLoading={meta.loading}
         aiEnabled={health.data ? health.data.ai : health.error ? false : null}
         filters={filters}
-        onFilterChange={setFilters}
+        onFilterChange={next => { setQuery(""); setFilters(next, { clearSearch: true }); }}
         onShowHome={() => router.push(DASHBOARD_PATH)}
+        onBrowseFolder={browseFolder}
+        foldersActive={folderBrowsing}
+        aiActive={aiActive}
+        onCreateFolder={parentId => { setManagerParent(parentId); setManagerInitialAction("create-folder"); setManagerOpen(true); }}
+        onFolderAction={(folder, action) => setFolderEdit({ folder, action })}
         sessionsActive={sessionsActive}
         sessionCount={sessions.data?.sessions.length ?? null}
         sessionsLoading={sessions.loading}
@@ -538,15 +601,19 @@ export function LibraryPage() {
         onAdd={() => setAddOpen(true)}
         onOpenSettings={openSettings}
         onOpenTour={() => setOnboardingOpen(true)}
+        organization={organization.data}
+        onManageOrganization={intent => { setManagerInitialAction(intent); setManagerOpen(true); }}
       />
       <SidebarInset>
         <LibraryHeader
+          onOpenAccount={() => openSettings("account")}
           title={title}
           crumb={crumb}
           onRootClick={() => setFilters({})}
           query={query}
+          searchPlaceholder={folderBrowsing ? "Search this folder…" : undefined}
           aiActive={aiActive}
-          onQueryChange={setQuery}
+          onQueryChange={changeQuery}
           onAskAi={toggleAi}
         />
         {/* Reserve right-side space for the layout-level docked chat (side mode
@@ -560,10 +627,16 @@ export function LibraryPage() {
         >
         {/* p-3 at mobile widths — 16px gutters either side of a 390px screen left
             the cards noticeably narrower than they need to be. */}
-        <main className="min-w-0 flex-1 p-3 sm:p-4">
+        <main className="min-w-0 flex-1 p-3 sm:p-4" style={{ paddingBottom: "calc(7rem + var(--floating-composer-h, 0px))" }}>
           {/* Width-capped and centered so content isn't stretched thin on
               widescreen/desktop; full-bleed below the cap on smaller screens. */}
           <div className="mx-auto w-full max-w-7xl">
+            {showGettingStarted && !folderBrowsing && <div className="mb-4"><GettingStartedCard onSaveLink={() => setAddOpen(true)} onImport={() => setImportOpen(true)} onBrowserSetup={() => setOnboardingOpen(true)} onDismiss={dismissGettingStarted} /></div>}
+
+            {organization.error && <p className="mb-4 text-sm text-muted-foreground" role="status">Organization editing is unavailable. Check your connection, or update an older server to use organization editing. <button className="underline" onClick={organization.refresh}>Retry</button></p>}
+            {resumeBatch && !bulkAction && <div role="status" className="mb-3 flex items-center gap-3 rounded border p-3 text-sm"><span className="flex-1">A bulk edit of {resumeBatch.bookmarkIds.length} bookmarks is paused or awaiting confirmation.</span><Button size="sm" onClick={() => { setBulkIds(resumeBatch.bookmarkIds); setBulkResumeJob(resumeBatch); setBulkAction("reading"); }}>Review and resume</Button></div>}
+            {selectionNote && <p role="status" className="mb-3 text-sm">{selectionNote}</p>}
+            {latestOperation && <div role="status" className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm"><span className="flex-1">{operationSummary(latestOperation)}</span><Button size="sm" variant="outline" onClick={() => setRecentOpen(true)}>{latestOperation.failedCount ? "View results / Retry failed" : "Undo / View results"}</Button></div>}
             {/* Above the section switch, not inside the library branch: a bulk
                 delete of SESSIONS has to be able to report itself too. */}
             {notice && <ActionNotice notice={notice} onDismiss={() => setNotice(null)} />}
@@ -590,11 +663,15 @@ export function LibraryPage() {
               />
             ) : (
               <>
+                {folderBrowsing && organization.data && !currentFolder && <div className="py-8 text-sm"><p>This folder is no longer available.</p><Button variant="link" className="mt-2 min-h-11 px-0" onClick={() => setFilters({})}>Go to All bookmarks</Button></div>}
+                {folderBrowsing && !organization.data && !organization.error && <p role="status" className="py-6 text-sm text-muted-foreground">Loading bookmarks…</p>}
+                {(!folderBrowsing || !!currentFolder) && <>
+                {organization.data && !showingSessionsTab && <OrganizationLibraryControls data={organization.data} filters={filters} onFilters={setFilters} count={gridFresh ? null : searching ? displayedBookmarks.length : list.total} onSelect={() => selection.setMode(!selection.active)} selected={selection.active} onSelectLoaded={() => { setSelectionVersions({}); selection.set(displayedBookmarks.map(b => b.id)); }} onSelectAll={() => void selectAllMatches()} selectingAll={selectingAll} search={searching} onAddBookmarks={currentFolder ? () => setAddExisting(true) : undefined} view={currentFolder ? view : undefined} onViewChange={currentFolder ? changeView : undefined} />}
                 {/* Two filter surfaces, one per breakpoint. ≥md keeps the tag
                     rail + date-range popover beside the view toggle; <md hides
                     the rail (a sideways-scrolling strip of 11px chips) and shows
                     the drawer-backed control row instead. */}
-                <div className="mb-4 flex flex-wrap items-start gap-3">
+                {!folderBrowsing && <div className="mb-4 flex flex-wrap items-start gap-3">
                   {searching ? (
                     <>
                       <h2 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">
@@ -627,7 +704,7 @@ export function LibraryPage() {
                         <TagChips
                           tags={meta.data?.tags}
                           active={filters.tag}
-                          onPick={(tag) => setFilters(tag ? { tag } : {})}
+                          onPick={(tag) => setFilters({ ...filters, tag: tag ?? undefined })}
                           expanded={tagsExpanded}
                           onExpandedChange={setTagsExpanded}
                         />
@@ -645,15 +722,13 @@ export function LibraryPage() {
                         meta={meta.data}
                         filters={filters}
                         onFilterChange={setFilters}
-                        view={view}
-                        onViewChange={changeView}
                         onSelectMode={gridSelection ? selection.setMode : undefined}
                         selectionActive={selection.active}
                       />
                     </>
                   )}
-                </div>
-                {!searching && filters.tag && (
+                </div>}
+                {!folderBrowsing && !searching && filters.tag && (
                   <div className="mb-4 flex items-baseline gap-2">
                     <h2 className="text-lg font-semibold tracking-tight">#{filters.tag}</h2>
                     {/* Hidden mid-facet-switch: the count still belongs to the
@@ -710,7 +785,7 @@ export function LibraryPage() {
                     No exact matches — showing the closest results by meaning.
                   </p>
                 )}
-                <BookmarkGrid
+                {currentFolder && !searching && !list.loading && !list.error && bookmarks?.length === 0 ? <div className="py-12 text-center space-y-2"><h3 className="font-medium">No bookmarks in this folder yet</h3><p className="text-sm text-muted-foreground">Use Add bookmarks above to bring saved links here.</p></div> : <BookmarkGrid
                   bookmarks={bookmarks}
                   view={view}
                   grouped={grouped}
@@ -726,9 +801,15 @@ export function LibraryPage() {
                       : "Save a page with the browser extension, or add a URL with the button above."
                   }
                   onDelete={askDeleteBookmark}
+                  onEdit={organization.supported ? setEditorBookmark : undefined}
+                  onMove={organization.supported ? moveBookmark : undefined}
+                  folderNames={folderNames}
+                  currentFolderId={currentFolder?.id}
+                  currentCategory={filters.category}
+                  currentCategoryId={filters.categoryId}
                   skeletonCount={expectedCount}
                   selection={gridSelection}
-                />
+                />}
                 {searching && !noExact && (relatedMatches?.length ?? 0) > 0 && (
                   <section className="mt-8">
                     {showRelated ? (
@@ -757,6 +838,13 @@ export function LibraryPage() {
                           error={null}
                           emptyHint=""
                           onDelete={askDeleteBookmark}
+                          onEdit={organization.supported ? setEditorBookmark : undefined}
+                          onMove={organization.supported ? moveBookmark : undefined}
+                          folderNames={folderNames}
+                          currentFolderId={currentFolder?.id}
+                  currentCategory={filters.category}
+                  currentCategoryId={filters.categoryId}
+                          selection={gridSelection}
                         />
                       </>
                     ) : (
@@ -788,6 +876,7 @@ export function LibraryPage() {
                     </Button>
                   </div>
                 )}
+                </>}
               </>
             )}
           </div>
@@ -803,6 +892,17 @@ export function LibraryPage() {
         onExport={exportSelected}
         onClear={selection.clear}
         busy={!!deleting}
+        onOrganize={!sessionsActive && organization.supported ? action => {
+          const ids = [...selection.ids];
+          const expected: Record<string, Record<string, string>> = {};
+          for (const id of ids) {
+            const bookmark = allVisibleBookmarks.find(item => item.id === id);
+            if (!bookmark && !selectionVersions[id]) { setSelectionNote("Some selected bookmarks changed. Refresh and select them again before editing."); return; }
+            expected[id] = selectionVersions[id] ? { title: "0", folderId: "0", categoryId: "0", tags: "0", readingState: "0", ...selectionVersions[id] } : expectedBookmarkVersions(bookmark!);
+          }
+          setBulkResumeJob(null); setBulkExpected(expected); setBulkIds(ids); setBulkAction(action);
+        } : undefined}
+        onAsk={!sessionsActive ? askSelection : undefined}
       />
       <ConfirmDeleteDialog
         open={pending !== null}
@@ -823,7 +923,15 @@ export function LibraryPage() {
         }
         onConfirm={() => void runDelete()}
       />
-      <AddBookmarkDialog open={addOpen} onOpenChange={setAddOpen} onSaved={refresh} />
+      <AddBookmarkDialog open={addOpen} onOpenChange={setAddOpen} onSaved={refresh} onEdit={organization.supported ? bookmark => currentFolder ? setMoveSelection({ bookmarks: [bookmark], destination: currentFolder.id }) : setEditorBookmark(bookmark) : undefined} folderNames={folderNames} />
+      {organization.data && folderEdit && <FolderActionDialog key={`${userId}:${folderEdit.folder.id}:${folderEdit.action}`} folder={folderEdit.folder} action={folderEdit.action} data={organization.data} onClose={() => setFolderEdit(null)} onResult={operationResult} />}
+      {addExisting && currentFolder && <FolderBookmarkPicker key={`${userId}:${currentFolder.id}`} folder={currentFolder} initialSelection={pickerDraft.bookmarks} initialQuery={pickerDraft.query} onClose={() => { setAddExisting(false); setPickerDraft({ bookmarks: [], query: "" }); }} onChoose={(bookmarks, query) => { setPickerDraft({ bookmarks, query }); setAddExisting(false); setMoveSelection({ bookmarks, destination: currentFolder.id, fromPicker: true }); }} />}
+      {organization.data && moveSelection && <BulkEditor key={`${userId}:single-move`} action="move" ids={moveSelection.bookmarks.map(bookmark => bookmark.id)} bookmarks={moveSelection.bookmarks} data={organization.data} initialDestination={moveSelection.destination} expected={Object.fromEntries(moveSelection.bookmarks.map(bookmark => [bookmark.id, expectedBookmarkVersions(bookmark)]))} onBack={moveSelection.fromPicker ? () => { setMoveSelection(null); setAddExisting(true); } : undefined} onClose={() => { setMoveSelection(null); setPickerDraft({ bookmarks: [], query: "" }); }} onResult={operationResult} />}
+      {organization.data && editorBookmark && <BookmarkEditor key={editorBookmark.id} bookmark={editorBookmark} data={organization.data} onClose={() => { setEditorBookmark(null); const params = new URLSearchParams(window.location.search); params.delete("bookmark"); window.history.replaceState(null, "", `${window.location.pathname}?${params}`); }} onResult={operationResult} onRefresh={organization.refresh} />}
+      {organization.data && <OrganizationManager initialAction={managerInitialAction} open={managerOpen} onClose={() => setManagerOpen(false)} data={organization.data} onResult={operationResult} defaultParent={managerParent} />}
+      {organization.data && bulkAction && <BulkEditor key={`${userId}:${bulkResumeJob?.id ?? "selection"}`} resumeJob={bulkResumeJob} action={bulkAction} ids={bulkIds} bookmarks={allVisibleBookmarks} data={organization.data} expected={bulkExpected} onClose={() => { setBulkAction(null); setBulkResumeJob(null); }} onResult={operationResult} />}
+      <RecentChanges open={recentOpen} onClose={() => setRecentOpen(false)} onResult={operationResult} latest={latestOperation} />
+      <ImportBookmarksDialog open={importOpen} onOpenChange={setImportOpen} onImported={refresh} />
       <SettingsDialog
         open={settings.open}
         initialSection={settings.section}
@@ -832,7 +940,7 @@ export function LibraryPage() {
           if (!open) clearSettingsParam();
         }}
       />
-      <OnboardingDialog open={onboardingOpen} onOpenChange={closeOnboarding} />
+      <OnboardingDialog open={onboardingOpen} onOpenChange={closeOnboarding} onSaveLink={() => setAddOpen(true)} onImported={refresh} />
     </SidebarProvider>
   );
 }
@@ -891,7 +999,7 @@ const CRUMB_DEVICE_ICONS: Record<string, React.ElementType> = {
 // Tags are deliberately absent: a tag is a filter presented in the content area
 // (chip rail + "#tag" heading), so the top bar keeps naming the selected view.
 function headerCrumb(filters: LibraryFilters): HeaderCrumb | null {
-  if (filters.category) return { label: filters.category, Icon: Folder };
+  if (filters.category) return { label: filters.category, Icon: CircleDot };
   if (filters.browser)
     return { label: capitalize(filters.browser), Icon: CRUMB_BROWSER_ICONS[filters.browser] ?? Globe };
   if (filters.device)

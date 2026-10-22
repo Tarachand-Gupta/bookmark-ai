@@ -23,29 +23,42 @@ final class SettingsModel {
     /// to Free today (also when the route isn't there).
     private(set) var plan: PlanInfo?
 
+    private var generation = UUID()
+    private var cachedUsage: AiUsage?
     private let api: ApiClient
 
     init(api: ApiClient) {
         self.api = api
     }
 
-    var aiUsage: AiUsage? { settings?.aiUsage }
+    var aiUsage: AiUsage? { settings?.aiUsage ?? cachedUsage }
     var hasOwnKey: Bool { settings?.apiKeySet ?? false }
     /// The persisted mode (or the legacy derivation on an older server).
     var aiMode: AiMode { settings?.resolvedAiMode ?? .included }
 
+    func restoreSnapshot(planId: String?, usage: AiUsage?) {
+        if let planId { plan = PlanInfo.resolve(planId) }
+        cachedUsage = usage
+    }
     func load() async {
+        let ticket = generation
         isLoading = true
-        defer { isLoading = false }
-        settings = try? await api.settings().settings
-        if plan == nil {
-            // A 404 (older server) still means Free; only a transport failure
-            // leaves it unknown for the next load.
-            switch await planResponse() {
-            case .success(let account): plan = PlanInfo.resolve(account.plan)
-            case .failure(ApiError.server(status: 404, _)): plan = .free
-            case .failure: break
-            }
+        defer { if ticket == generation { isLoading = false } }
+        do {
+            let response = try await api.settings()
+            guard ticket == generation, !Task.isCancelled else { return }
+            settings = response.settings; cachedUsage = response.settings.aiUsage
+            statusMessage = nil; statusIsError = false
+        } catch {
+            guard ticket == generation else { return }
+            statusMessage = "Couldn't refresh settings. Saved information is still shown."; statusIsError = true
+        }
+        let response = await planResponse()
+        guard ticket == generation, !Task.isCancelled else { return }
+        switch response {
+        case .success(let account): plan = PlanInfo.resolve(account.plan)
+        case .failure(ApiError.server(status: 404, _)): if plan == nil { plan = .free }
+        case .failure: break
         }
     }
 
@@ -57,15 +70,19 @@ final class SettingsModel {
     /// (e.g. reconnect the live stream after a URL change).
     @discardableResult
     func save(_ body: UpdateSettingsBody) async -> Bool {
+        let ticket = generation
         isSaving = true
-        defer { isSaving = false }
+        defer { if ticket == generation { isSaving = false } }
         statusMessage = nil
         do {
-            settings = try await api.updateSettings(body).settings
+            let response = try await api.updateSettings(body)
+            guard ticket == generation, !Task.isCancelled else { return false }
+            settings = response.settings
             statusMessage = "Saved."
             statusIsError = false
             return true
         } catch {
+            guard ticket == generation else { return false }
             statusMessage = (error as? ApiError)?.errorDescription ?? error.localizedDescription
             statusIsError = true
             return false
@@ -102,6 +119,7 @@ final class SettingsModel {
     #endif
 
     func reset() {
+        generation = UUID(); cachedUsage = nil; isSaving = false; isLoading = false
         settings = nil
         statusMessage = nil
         statusIsError = false

@@ -1,4 +1,5 @@
 import type { Db } from "./client";
+import { ORGANIZATION_DDL } from "./organization-schema";
 
 /**
  * Dimension of stored embedding vectors. Matches Gemini's
@@ -410,7 +411,10 @@ export const TENANT_MIGRATIONS: Migration[] = [
     version: 13,
     name: "session-embedding",
     statements: [
-      { sql: `ALTER TABLE sessions ADD COLUMN embedding F32_BLOB(${EMBEDDING_DIM})`, tolerant: true },
+      {
+        sql: `ALTER TABLE sessions ADD COLUMN embedding F32_BLOB(${EMBEDDING_DIM})`,
+        tolerant: true,
+      },
       {
         sql: "CREATE INDEX IF NOT EXISTS idx_sessions_embedding ON sessions(libsql_vector_idx(embedding))",
         tolerant: true,
@@ -455,4 +459,5 @@ export const TENANT_MIGRATIONS: Migration[] = [
       { sql: "ALTER TABLE user_settings ADD COLUMN ai_mode TEXT", tolerant: true },
     ],
   },
+  { version: 15, name: "manual-organization-and-composer", statements: [ORGANIZATION_DDL] },
 ];

@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDb,
   ensureSchema,
@@ -13,7 +16,7 @@ import type { Source } from "@bookmark-ai/types";
 import { embedAfterSave, STRAGGLER_LIMIT } from "@/lib/server/post-save-embed";
 
 /**
- * The post-save embedding hook, against a REAL in-memory libSQL database with
+ * The post-save embedding hook, against a REAL isolated local libSQL database with
  * the real schema (only Gemini is a stub — the whole point is which rows get a
  * vector and how many model calls that costs).
  *
@@ -46,8 +49,19 @@ function stubGemini() {
   return { gemini: { embed } as unknown as GeminiClient, embed };
 }
 
+const fixtures: { db: Db; dir: string }[] = [];
+afterEach(() => {
+  for (const { db, dir } of fixtures.splice(0)) {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 async function freshDb(): Promise<Db> {
-  const db = createDb(":memory:");
+  // libSQL interactive transactions detach their connection; a private :memory:
+  // client reconnects to an empty DB. A disposable file exercises real commits.
+  const dir = mkdtempSync(join(tmpdir(), "bmai-db-test-"));
+  const db = createDb(`file:${join(dir, "fixture.db")}`);
+  fixtures.push({ db, dir });
   await ensureSchema(db);
   return db;
 }

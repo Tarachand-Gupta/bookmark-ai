@@ -1,3 +1,4 @@
+import { handleReleaseCommand, clearReleasePrivateState, RELEASE_MESSAGE, type ReleaseCommand } from "@/lib/release-background";
 import {
   SUPABASE_AUTH,
   initializeOAuthStorage,
@@ -798,6 +799,7 @@ async function handleGetUser(): Promise<UserInfo> {
  * (which ends the same client session the WEB app uses — signing out of the
  * extension signs out of the site too, which is the honest behavior). */
 async function handleSignOut(): Promise<SignOutResult> {
+  await clearReleasePrivateState();
   if (SUPABASE_AUTH) {
     const result = await signOutOAuth();
     if (result.ok) void reportAuthState({ signedIn: false });
@@ -1178,6 +1180,17 @@ export default defineBackground(() => {
           | { ok: boolean },
       ) => void,
     ) => {
+      if (typeof message === "object" && message !== null && (message as { type?: string }).type === RELEASE_MESSAGE) {
+        // Extension documents only: web content scripts cannot read drafts or mutate organization.
+        const extensionRoot = browser.runtime.getURL("/");
+        const trusted = _sender.id === browser.runtime.id && !!_sender.url?.startsWith(extensionRoot);
+        if (!trusted) { sendResponse({ ok: false }); return undefined; }
+        void handleReleaseCommand((message as { command: ReleaseCommand }).command).then(
+          value => sendResponse({ ok: true, value } as { ok: boolean }),
+          error => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Request failed" } as { ok: boolean }),
+        );
+        return true;
+      }
       if (SUPABASE_AUTH && typeof message === "object" && message !== null) {
         const payload = message as { type?: string; url?: string };
         if (payload.type === "OAUTH_CALLBACK_READY" && import.meta.env.BROWSER === "safari") {

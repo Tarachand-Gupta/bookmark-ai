@@ -21,7 +21,7 @@ import { storedChatMessageSchema } from "./chat";
  *    migration v14's `skills` table). New user-data table, so this bumps + adds
  *    a v4→v5 upgrader (`skills: []`); import upserts them by name.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * A single bookmark, flattened to mirror its real DB columns (see
@@ -31,6 +31,16 @@ export const SCHEMA_VERSION = 5;
  * the scraped Open Graph payload is lost.
  */
 export const exportedBookmarkSchema = z.object({
+  folderId: z.string().nullable().default(null),
+  readingState: z.enum(["not_on_list", "unread", "read"]).default("not_on_list"),
+  manualOverrides: z
+    .object({
+      title: z.boolean().optional(),
+      category: z.boolean().optional(),
+      addedTags: z.array(z.string()).optional(),
+      removedTags: z.array(z.string()).optional(),
+    })
+    .default({}),
   url: httpUrlSchema,
   title: z.string(),
   description: z.string().nullable(),
@@ -82,9 +92,7 @@ export const exportedConversationSchema = z.object({
   updatedAt: z.string(),
   // SECURITY: cap messages per conversation so an oversized import can't exhaust
   // memory during validation. Generous relative to any real chat history.
-  messages: z
-    .array(storedChatMessageSchema.extend({ createdAt: z.string() }))
-    .max(5_000),
+  messages: z.array(storedChatMessageSchema.extend({ createdAt: z.string() })).max(5_000),
 });
 export type ExportedConversation = z.infer<typeof exportedConversationSchema>;
 
@@ -127,6 +135,32 @@ export const exportBundleSchema = z.object({
   conversations: z.array(exportedConversationSchema).max(5_000).default([]),
   // v5. Defaulted so an upgraded pre-v5 bundle (no `skills` key) parses cleanly.
   skills: z.array(exportedSkillSchema).max(1_000).default([]),
+  organization: z
+    .object({
+      folders: z
+        .array(
+          z.object({
+            id: z.string(),
+            name: z.string().min(1).max(80),
+            parentId: z.string().nullable(),
+          }),
+        )
+        .max(10000)
+        .default([]),
+      labels: z
+        .array(
+          z.object({
+            id: z.string(),
+            kind: z.enum(["category", "tag"]),
+            name: z.string().min(1).max(80),
+            deleted: z.boolean().default(false),
+            aliasTo: z.string().nullable().default(null),
+          }),
+        )
+        .max(10000)
+        .default([]),
+    })
+    .default({ folders: [], labels: [] }),
 });
 export type ExportBundle = z.infer<typeof exportBundleSchema>;
 
@@ -211,6 +245,27 @@ export function migrateExportBundle(raw: unknown): ExportBundle {
           },
         };
         version = 5;
+        break;
+      case 5:
+        data = {
+          ...(data as Record<string, unknown>),
+          schemaVersion: 6,
+          organization: { folders: [], labels: [] },
+        };
+        // The legacy reading queue is seeded once on import, just as on migration.
+        if (Array.isArray((data as any).bookmarks))
+          (data as any).bookmarks = (data as any).bookmarks.map((b: any) => ({
+            ...b,
+            readingState:
+              Array.isArray(b.tags) &&
+              b.tags.some(
+                (t: unknown) =>
+                  typeof t === "string" && ["reading", "article"].includes(t.toLowerCase()),
+              )
+                ? "unread"
+                : "not_on_list",
+          }));
+        version = 6;
         break;
       default:
         throw new Error(`No upgrade path from export schemaVersion ${version}`);

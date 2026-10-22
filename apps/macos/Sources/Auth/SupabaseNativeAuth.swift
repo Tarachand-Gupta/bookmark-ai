@@ -10,6 +10,7 @@ final class SupabaseNativeAuth: NSObject, ASWebAuthenticationPresentationContext
     let client: AuthClient
     let configuration: SupabaseConfiguration
     private(set) var needsBrowserVerification = false
+    private(set) var rejectedPersistedSession = false
     private var webSession: ASWebAuthenticationSession?
     private var appleController: ASAuthorizationController?
     private var appleContinuation: CheckedContinuation<ASAuthorizationAppleIDCredential, Error>?
@@ -49,6 +50,7 @@ final class SupabaseNativeAuth: NSObject, ASWebAuthenticationPresentationContext
 
     func mint(fresh: Bool) async -> MintOutcome {
         needsBrowserVerification = false
+        rejectedPersistedSession = false
         let snapshot = client.currentSession?.refreshToken
         do {
             let session = try await (fresh ? client.refreshSession() : client.session)
@@ -62,6 +64,7 @@ final class SupabaseNativeAuth: NSObject, ASWebAuthenticationPresentationContext
         } catch {
             guard Self.isDefinitive(error) else { return .unavailable }
             guard client.currentSession?.refreshToken == snapshot else { return .unavailable }
+            rejectedPersistedSession = snapshot != nil
             await clearLocalSession()
             return .noSession
         }

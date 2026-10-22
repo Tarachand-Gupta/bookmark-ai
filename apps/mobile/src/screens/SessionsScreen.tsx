@@ -11,6 +11,8 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import type { LiveDevice, LiveWindow, Session } from "@bookmark-ai/types";
+import {CacheStatus} from "../components/CacheStatus";
+import {useWorkspace} from "../context/WorkspaceContext";
 import { createSession } from "../api";
 import { LiveDeviceSection } from "../components/LiveDeviceSection";
 import { LiveEmptyState } from "../components/LiveEmptyState";
@@ -65,6 +67,7 @@ export function SessionsScreen({
   onRequestedSegmentHandled?: () => void;
 }) {
   const { colors } = useAppTheme();
+  const workspace=useWorkspace();
   const tabBarClearance = useTabBarClearance();
   // Tablet widths: header and both lists share the centered content column.
   const { inset } = useContentWidth();
@@ -83,7 +86,7 @@ export function SessionsScreen({
    */
   const [picked, setPicked] = useState<SessionsSegment | null>(null);
   const [auto, setAuto] = useState<SessionsSegment | null>(null);
-  const decided = picked ?? auto;
+  const decided = picked ?? (workspace.readOnly?"saved":auto);
   const segment: SessionsSegment = decided ?? "ongoing";
 
   useEffect(() => {
@@ -115,7 +118,7 @@ export function SessionsScreen({
   const windowKey = (deviceId: string, windowId: number) => `${deviceId}:${windowId}`;
 
   const live = useLiveDevices({
-    active,
+    active:active&&!workspace.readOnly,
     segment,
     // Any expanded window tightens the poll to a few seconds; nothing expanded
     // keeps it slow. Stale keys are pruned below, so a vanished device can't pin
@@ -309,6 +312,7 @@ export function SessionsScreen({
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingHorizontal: GUTTER + inset }]}>
         <Text style={[styles.largeTitle, { color: colors.foreground }]}>Sessions</Text>
+          <CacheStatus updatedAt={saved.updatedAt} refreshing={saved.refreshing} error={saved.error} readOnly={saved.readOnly} onRetry={saved.refresh}/>
         <SegmentedControl
           // Live first: it's the tab's headline (and the tab bar's radio icon),
           // Saved is the archive behind it.

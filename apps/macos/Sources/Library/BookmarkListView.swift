@@ -10,23 +10,25 @@ struct BookmarkListView: View {
     @Environment(AppEnvironment.self) private var appEnvironment
     @Environment(\.openURL) private var openURL
 
-    @State private var selectedID: Bookmark.ID?
+    private var selectedID: String? { appEnvironment.library.selectionAnchor }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 8) {
                     ForEach(appEnvironment.library.visibleBookmarks) { bookmark in
-                        BookmarkRow(bookmark: bookmark, isSelected: selectedID == bookmark.id)
+                        BookmarkRow(bookmark: bookmark, isSelected: appEnvironment.library.selectedIDs.contains(bookmark.id))
                             .contentShape(Rectangle())
                             // Single click selects instantly; a double-click ALSO
                             // opens (simultaneous, so selection never lags the
                             // 250ms double-click timeout).
-                            .onTapGesture { selectedID = bookmark.id }
+                            .onTapGesture { appEnvironment.library.choose(bookmark.id, modifiers: NSEvent.modifierFlags) }
                             .simultaneousGesture(
                                 TapGesture(count: 2).onEnded { open(bookmark) }
                             )
                             .contextMenu { BookmarkContextMenu(bookmark: bookmark) }
+                            .onDrag { NSItemProvider(object: bookmark.id as NSString) }
+                            .accessibilityAddTraits(appEnvironment.library.selectedIDs.contains(bookmark.id) ? .isSelected : [])
                             .id(bookmark.id)
                     }
                 }
@@ -45,6 +47,7 @@ struct BookmarkListView: View {
                 return .handled
             }
             .onDeleteCommand(perform: deleteSelected)
+            .onCommand(#selector(NSResponder.selectAll(_:))) { appEnvironment.library.selectedIDs = Set(appEnvironment.library.visibleBookmarks.map(\.id)) }
         }
     }
 
@@ -62,7 +65,7 @@ struct BookmarkListView: View {
         } else {
             next = delta > 0 ? 0 : bookmarks.count - 1
         }
-        selectedID = bookmarks[next].id
+        appEnvironment.library.choose(bookmarks[next].id, modifiers: NSEvent.modifierFlags)
         proxy.scrollTo(bookmarks[next].id, anchor: nil)
     }
 
@@ -73,7 +76,7 @@ struct BookmarkListView: View {
 
     private func deleteSelected() {
         guard let bookmark = selectedBookmark else { return }
-        selectedID = nil
+        appEnvironment.library.selectedIDs.remove(bookmark.id)
         Task { await appEnvironment.library.delete(bookmark) }
     }
 }

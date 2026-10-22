@@ -1,13 +1,23 @@
+import { persistTurnContext, type ResolvedChatContext } from "./composer-context";
 import { randomUUID } from "node:crypto";
 import {
   createSession,
+  getBookmarkOrganization,
+  putBookmarkOrganization,
+  organizationFolders,
+  organizationLabels,
+  ensureImportFolderPath,
+  canonicalLabel,
+  putLabel,
+  normalizeOrganizationName,
+  getBookmarkByUrl,
   getSkillByName,
   insertBookmark,
   insertConversation,
   insertMessage,
   insertSkill,
   listConversations,
-  listMessages,
+  json,
   listSkills,
   updateSkill,
   type Db,
@@ -39,10 +49,11 @@ export type ImportUserDataOptions = Record<string, never>;
 export async function exportUserData(db: Db, exportedAt: string): Promise<ExportBundle> {
   const [bookmarkRows, sessionRows] = await Promise.all([
     db.execute(`
-      SELECT url, domain, title, description, og_json, browser, device,
-             device_name, os, saved_at, saved_day, category, tags_json, created_at
-      FROM bookmarks
-      ORDER BY created_at ASC
+      SELECT b.url, b.domain, b.title, b.description, b.og_json, b.browser, b.device,
+             b.device_name, b.os, b.saved_at, b.saved_day, b.category, b.tags_json, b.created_at,
+             o.folder_id, o.reading_state, o.overrides_json
+      FROM bookmarks b LEFT JOIN bookmark_organization o ON o.bookmark_id = b.id
+      ORDER BY b.created_at ASC
     `),
     db.execute(`
       SELECT name, tabs_json, tab_count, browser, device, os, description, saved_at, created_at
@@ -52,21 +63,24 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
   ]);
 
   const bookmarks: ExportedBookmark[] = bookmarkRows.rows.map((r) => ({
-    url: String(r.url),
-    title: String(r.title),
-    description: (r.description as string | null) ?? null,
-    category: String(r.category),
-    tags: parseStringArray(r.tags_json),
-    browser: String(r.browser),
-    device: String(r.device),
-    deviceName: (r.device_name as string | null) ?? null,
-    os: (r.os as string | null) ?? null,
-    domain: String(r.domain),
-    ogJson: (r.og_json as string | null) ?? "{}",
-    savedAt: String(r.saved_at),
-    savedDay: String(r.saved_day),
-    createdAt: String(r.created_at),
-  }));
+      folderId: (r.folder_id as string | null) ?? null,
+      readingState: (r.reading_state as ExportedBookmark["readingState"]) ?? "not_on_list",
+      manualOverrides: json<ExportedBookmark["manualOverrides"]>(r.overrides_json, {}) ?? {},
+      url: String(r.url),
+      title: String(r.title),
+      description: (r.description as string | null) ?? null,
+      category: String(r.category),
+      tags: parseStringArray(r.tags_json),
+      browser: String(r.browser),
+      device: String(r.device),
+      deviceName: (r.device_name as string | null) ?? null,
+      os: (r.os as string | null) ?? null,
+      domain: String(r.domain),
+      ogJson: (r.og_json as string | null) ?? "{}",
+      savedAt: String(r.saved_at),
+      savedDay: String(r.saved_day),
+      createdAt: String(r.created_at),
+    }));
 
   const sessions: ExportedSession[] = sessionRows.rows.map((r) => ({
     name: String(r.name),
@@ -81,25 +95,34 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
     createdAt: String(r.created_at),
   }));
 
-  // Persisted AI chat (v2): each conversation with its full message history.
-  const conversationRows = await listConversations(db);
-  const conversations: ExportedConversation[] = await Promise.all(
-    conversationRows.map(async (c) => {
-      const messages = await listMessages(db, c.id);
-      return {
-        id: c.id,
-        title: c.title,
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-        messages: messages.map((m) => ({
-          id: m.id,
-          role: m.role,
-          parts: m.parts,
-          createdAt: m.createdAt,
-        })),
-      };
-    }),
-  );
+  // Read messages and frozen turn contexts once for the entire tenant. Export
+  // already materializes the full bundle; per-conversation loads add latency
+  // without reducing memory and used to read every message twice.
+  const [conversationRows, messageRows] = await Promise.all([
+    listConversations(db),
+    db.execute(`SELECT m.id, m.conversation_id, m.role, m.parts_json, m.created_at, t.context_json
+      FROM chat_messages m LEFT JOIN chat_turn_contexts t
+        ON t.conversation_id = m.conversation_id AND t.message_id = m.id
+      ORDER BY m.created_at ASC`),
+  ]);
+  const messagesByConversation = new Map<string, ExportedConversation["messages"]>();
+  for (const row of messageRows.rows) {
+    const context = json<ResolvedChatContext | null>(row.context_json, null);
+    const parts = json<unknown>(row.parts_json, []);
+    const message: ExportedConversation["messages"][number] = {
+      id: String(row.id), role: String(row.role),
+      parts: Array.isArray(parts) ? parts : [], createdAt: String(row.created_at),
+      ...(context ? { context: context.context, contextBookmarkIds: context.bookmarkIds,
+        contextSources: context.sources, unavailableContext: context.unavailable } : {}),
+    };
+    const conversationId = String(row.conversation_id);
+    const messages = messagesByConversation.get(conversationId) ?? [];
+    messages.push(message); messagesByConversation.set(conversationId, messages);
+  }
+  const conversations: ExportedConversation[] = conversationRows.map(c => ({
+    id: c.id, title: c.title, createdAt: c.createdAt, updatedAt: c.updatedAt,
+    messages: messagesByConversation.get(c.id) ?? [],
+  }));
 
   // Skills (v5): the user's reusable Ask AI instructions, minus the per-DB id.
   const skills: ExportedSkill[] = (await listSkills(db)).map((s) => ({
@@ -119,6 +142,20 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
       sessions: sessions.length,
       conversations: conversations.length,
       skills: skills.length,
+    },
+    organization: {
+      folders: (await organizationFolders(db)).map(({ id, name, parentId }) => ({
+        id,
+        name,
+        parentId,
+      })),
+      labels: (await organizationLabels(db, true)).map(({ id, kind, name, deleted, aliasTo }) => ({
+        id,
+        kind,
+        name,
+        deleted,
+        aliasTo,
+      })),
     },
     bookmarks,
     sessions,
@@ -145,6 +182,49 @@ export async function importUserData(
 ): Promise<{ bookmarks: number; sessions: number; conversations: number; skills: number }> {
   const migrated = migrateExportBundle(bundle);
 
+  const folderMap = new Map<string, string | null>();
+  const visiting = new Set<string>();
+  const paths = new Map<string, string[]>();
+  const pathFor = (id: string): string[] => {
+    const known = paths.get(id);
+    if (known) return known;
+    if (visiting.has(id)) throw new Error("Invalid export folder cycle");
+    const folder = migrated.organization.folders.find((f) => f.id === id);
+    if (!folder) throw new Error("Invalid export folder reference");
+    visiting.add(id);
+    const path = [...(folder.parentId ? pathFor(folder.parentId) : []), folder.name];
+    visiting.delete(id);
+    paths.set(id, path);
+    return path;
+  };
+  // Validate the complete graph before writing any imported rows.
+  for (const f of migrated.organization.folders) pathFor(f.id);
+  for (const b of migrated.bookmarks)
+    if (b.folderId && !paths.has(b.folderId))
+      throw new Error("Invalid export bookmark folder reference");
+  for (const f of migrated.organization.folders)
+    folderMap.set(f.id, await ensureImportFolderPath(db, pathFor(f.id)));
+  const labelMap = new Map<string, string>();
+  for (const l of migrated.organization.labels.filter((l) => !l.deleted)) {
+    const target = await canonicalLabel(db, l.kind, l.name);
+    if (target) labelMap.set(l.id, target.id);
+  }
+  for (const l of migrated.organization.labels.filter((l) => l.deleted)) {
+    const existing = (await organizationLabels(db, true)).find(
+      (x) =>
+        x.kind === l.kind &&
+        normalizeOrganizationName(x.name) === normalizeOrganizationName(l.name),
+    );
+    if (!existing)
+      await putLabel(db, {
+        id: randomUUID(),
+        kind: l.kind,
+        name: l.name,
+        deleted: true,
+        aliasTo: l.aliasTo ? (labelMap.get(l.aliasTo) ?? null) : null,
+        versions: {},
+      });
+  }
   let bookmarks = 0;
   for (const b of migrated.bookmarks) {
     // insertBookmark derives saved_day from source.savedAt.slice(0,10) — the
@@ -167,6 +247,21 @@ export async function importUserData(
       tags: b.tags,
       createdAt: b.createdAt,
     });
+    const saved = await getBookmarkByUrl(db, b.url);
+    if (saved) {
+      const state = await getBookmarkOrganization(db, saved.id);
+      state.folderId = b.folderId ? (folderMap.get(b.folderId) ?? null) : null;
+      state.readingState = b.readingState;
+      state.overrides = b.manualOverrides;
+      state.versions = {
+        title: randomUUID(),
+        categoryId: randomUUID(),
+        tags: randomUUID(),
+        folderId: randomUUID(),
+        readingState: randomUUID(),
+      };
+      await putBookmarkOrganization(db, saved.id, state);
+    }
     bookmarks++;
   }
 
@@ -215,6 +310,14 @@ export async function importUserData(
         parts: m.parts,
         createdAt: m.createdAt,
       });
+      if (m.context) {
+        await persistTurnContext(db, c.id, m.id, {
+          context: m.context,
+          bookmarkIds: m.contextBookmarkIds ?? (m.context.type === "library" ? null : []),
+          sources: m.contextSources ?? [],
+          unavailable: m.unavailableContext ?? [],
+        });
+      }
     }
     conversations++;
   }
@@ -231,7 +334,12 @@ export async function importUserData(
       await updateSkill(
         db,
         existing.id,
-        { name: s.name, description: s.description, instructions: s.instructions, enabled: s.enabled },
+        {
+          name: s.name,
+          description: s.description,
+          instructions: s.instructions,
+          enabled: s.enabled,
+        },
         s.updatedAt,
       );
     } else {
@@ -277,3 +385,4 @@ function parseOpenGraph(raw: string): OpenGraph {
     return {};
   }
 }
+

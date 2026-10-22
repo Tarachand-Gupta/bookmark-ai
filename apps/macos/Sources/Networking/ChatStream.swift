@@ -141,12 +141,13 @@ struct ChatTurnBody: Encodable, Equatable {
     var message: ChatMessage?
     var conversationId: String?
     var timezone: String
+    var context: ChatContext?
 
-    static func make(message: ChatMessage, conversationId: String?, timezone: String) -> ChatTurnBody {
+    static func make(message: ChatMessage, conversationId: String?, timezone: String, context: ChatContext? = nil) -> ChatTurnBody {
         if let conversationId {
-            return ChatTurnBody(messages: nil, message: message, conversationId: conversationId, timezone: timezone)
+            return ChatTurnBody(messages: nil, message: message, conversationId: conversationId, timezone: timezone, context: context)
         }
-        return ChatTurnBody(messages: [message], message: nil, conversationId: nil, timezone: timezone)
+        return ChatTurnBody(messages: [message], message: nil, conversationId: nil, timezone: timezone, context: context)
     }
 }
 
@@ -158,15 +159,15 @@ extension ApiClient {
     /// this response is consumed as a byte stream, not a body.
     func startChatTurn(
         message: ChatMessage,
-        conversationId: String?
+        conversationId: String?, context: ChatContext? = nil, scope: OrganizationScope? = nil
     ) async throws -> ChatStreamHandle {
-        try await startChatTurn(message: message, conversationId: conversationId, allowRetry: true)
+        try await startChatTurn(message: message, conversationId: conversationId, context: context, scope: scope, allowRetry: true)
     }
 
     private func startChatTurn(
         message: ChatMessage,
         conversationId: String?,
-        allowRetry: Bool
+        context: ChatContext?, scope: OrganizationScope?, allowRetry: Bool
     ) async throws -> ChatStreamHandle {
         guard let url = Self.makeURL(base: target.baseURL, path: "/api/chat", query: []) else {
             throw ApiError.invalidURL
@@ -182,13 +183,15 @@ extension ApiClient {
         request.timeoutInterval = 90
 
         let body = ChatTurnBody.make(
-            message: message, conversationId: conversationId, timezone: TimeZone.current.identifier
+            message: message, conversationId: conversationId, timezone: TimeZone.current.identifier, context: context
         )
         request.httpBody = try JSONEncoder().encode(body)
 
+        if let scope, target.baseURL.absoluteString != scope.origin { throw ApiError.noToken }
         if target.requiresAuth, let tokenProvider {
             // Same rule as `ApiClient.send`: never POST bare to the cloud.
             guard let token = await tokenProvider(!allowRetry) else { throw ApiError.noToken }
+            if let scope, Self.importSubject(token) != scope.accountId { throw ApiError.noToken }
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
@@ -217,7 +220,7 @@ extension ApiClient {
             let apiError = ApiError.fromResponse(status: http.statusCode, body: body)
             if case .unauthorized = apiError, target.requiresAuth, tokenProvider != nil {
                 if allowRetry {
-                    return try await startChatTurn(message: message, conversationId: conversationId, allowRetry: false)
+                    return try await startChatTurn(message: message, conversationId: conversationId, context: context, scope: scope, allowRetry: false)
                 }
                 onUnauthorized?()
             }

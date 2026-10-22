@@ -43,19 +43,22 @@ export interface SelectionState {
  * delete confirmation must not also throw away the selection it was about to act
  * on. The listener is attached only while something is selected.
  */
-export function useSelection(scopeKey: string): SelectionState {
+export function useSelection(scopeKey: string, locked = false): SelectionState {
   const [ids, setIds] = useState<ReadonlySet<string>>(() => new Set());
   const [mode, setModeState] = useState(false);
   /** Range-select anchor: the id of the last plain (non-shift) toggle. */
   const anchor = useRef<string | null>(null);
+  const previousScope = useRef(scopeKey);
 
   // Reset on scope change. An effect, not a render-time compare, so the two
   // state updates land together and no render ever sees a stale selection.
   useEffect(() => {
+    if (locked || previousScope.current === scopeKey) return;
+    previousScope.current = scopeKey;
     setIds((prev) => (prev.size === 0 ? prev : new Set()));
     setModeState(false);
     anchor.current = null;
-  }, [scopeKey]);
+  }, [scopeKey, locked]);
 
   const clear = useCallback(() => {
     setIds((prev) => (prev.size === 0 ? prev : new Set()));
@@ -108,7 +111,7 @@ export function useSelection(scopeKey: string): SelectionState {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       const target = e.target as Element | null;
-      if (target?.closest?.("[role=dialog], [role=alertdialog], [role=menu], [role=listbox]")) {
+      if (target?.closest?.("input, textarea, [contenteditable=true], [role=dialog], [role=alertdialog], [role=menu], [role=listbox]")) {
         return;
       }
       clear();

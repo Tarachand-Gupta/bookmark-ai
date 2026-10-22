@@ -4,9 +4,7 @@ import { CHAT_SAMPLE_PROMPTS } from "../../lib/chatPrompts";
 import { Symbol } from "../Symbol";
 
 /**
- * The empty thread's "try asking" chips. Tapping one SENDS it — the user picked a
- * complete question, and making them tap again in the composer would be busywork
- * (same call the web makes).
+ * Suggested questions fill the draft. Sending always requires the Send button.
  */
 export function ChatSamplePrompts({ onPick }: { onPick: (text: string) => void }) {
   const { colors, radius } = useAppTheme();

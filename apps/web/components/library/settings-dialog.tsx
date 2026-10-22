@@ -1,4 +1,8 @@
 "use client";
+import { useAccountDetails, useSettingsResource } from "./account-details-provider";
+import { preloadAccountSecurity } from "@/lib/account-security-cache";
+import { preloadSettingsResources, settingsResourceCache } from "@/lib/settings-resource-cache";
+import { ImportBookmarksDialog } from "./import-bookmarks-dialog";
 
 import { useEffect, useRef, useState } from "react";
 import { useUser, getBrowserSupabase } from "@/lib/auth";
@@ -18,6 +22,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,11 +38,11 @@ import {
   exportData,
   getAccount,
   getMe,
-  getObservability,
   importData,
 } from "@/lib/api";
 import { DEFAULT_PLAN, PLAN_FEATURES, type PlanId } from "@/lib/plan";
 import { cn } from "@/lib/utils";
+import { AiCreditsMeter } from "./ai-credits-meter";
 import { AiSetupCard } from "./ai-setup-card";
 import { DevicesSection } from "./devices-settings";
 import { FEATURE_ICONS } from "./feature-icons";
@@ -66,10 +71,11 @@ const SECTIONS = [
   { id: "data", label: "Data", icon: Database },
   { id: "sync", label: "Sync", icon: FEATURE_ICONS.bookmarks },
   { id: "devices", label: "Live sessions", icon: FEATURE_ICONS.live },
-  { id: "mcp", label: "MCP", icon: Plug },
+  { id: "mcp", label: "Connections", icon: Plug },
   { id: "observability", label: "Observability", icon: Activity },
   // Same admin gate as Observability (CONTRACT §12).
   { id: "releases", label: "Releases", icon: ReleasesIcon },
+  { id: "plan", label: "Plan & usage", icon: Activity },
   { id: "account", label: "Account", icon: UserRound },
 ] as const;
 export type SectionId = (typeof SECTIONS)[number]["id"];
@@ -85,36 +91,37 @@ export const SECTION_IDS = SECTIONS.map((s) => s.id) as SectionId[];
  * free-limit wall render, so there is exactly one AI form in the app.
  */
 export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsDialogProps) {
+  const admin = useSettingsResource("observability", false);
+  const accountId = admin.accountId;
   const [section, setSection] = useState<SectionId>("ai");
   // Read at open time only, so re-renders that change the prop don't yank the
   // user off the section they navigated to.
   const initialSectionRef = useRef(initialSection);
   initialSectionRef.current = initialSection;
   const railRef = useRef<HTMLUListElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (paneRef.current) paneRef.current.scrollTop = 0; }, [section]);
 
-  // ADMIN-ONLY Observability section: probe the admin-gated endpoint once per
-  // open. Success → the section (and its data) exists; 403/any failure → the
-  // section is omitted entirely, so non-admins never see the chip. A previous
-  // open's payload is kept while re-probing to avoid the chip flickering out.
-  const [observability, setObservability] = useState<ObservabilityResponse | null>(null);
-
-  // Open-time reset: land on the requested section (each pane fetches its own
-  // data when it mounts, so there's nothing else to (re)load here).
+  // Every open rechecks the server permission. A cached admin payload alone
+  // never grants access, and another identity cannot inherit the admin rail.
+  const [adminGrant, setAdminGrant] = useState<{ accountId: string; data: ObservabilityResponse } | null>(null);
+  const observability = open && admin.active && adminGrant?.accountId === accountId ? adminGrant.data : null;
   useEffect(() => {
-    if (!open) return;
+    setAdminGrant(null);
+    if (!open || !accountId || !admin.active) return;
     setSection(initialSectionRef.current ?? "ai");
+    void preloadSettingsResources(accountId);
+    void preloadAccountSecurity(accountId);
     let cancelled = false;
-    getObservability()
-      .then((response) => {
-        if (!cancelled) setObservability(response);
-      })
-      .catch(() => {
-        if (!cancelled) setObservability(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
+    const current = admin.isCurrent;
+    void admin.refresh().then(data => {
+      if (!cancelled && current() && data) {
+        setAdminGrant({ accountId, data });
+        void settingsResourceCache.read(accountId, "releases");
+      }
+    });
+    return () => { cancelled = true; };
+  }, [open, accountId, admin.active, admin.refresh]);
 
   // MOBILE: keep the ACTIVE section chip on screen. The rail is one horizontally
   // scrollable strip on narrow screens, and every deep link that opens the dialog
@@ -150,7 +157,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
           left only ~430px of content, which is where the AI card's rows, the MCP
           setup commands and the device list were all wrapping. 768px gives the
           pane ~574px — measured — and stays well inside a 1024px laptop. */}
-      <DialogContent className="flex max-h-[92svh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+      <DialogContent className="flex h-[calc(100dvh-32px)] max-h-[calc(100dvh-32px)] flex-col gap-0 overflow-hidden p-0 sm:h-[min(720px,calc(100dvh-64px))] sm:max-w-3xl">
         <DialogDescription className="sr-only">
           Configure Bookmark AI, including the AI provider and default model.
         </DialogDescription>
@@ -168,12 +175,12 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             the viewport being TALL enough to spare it, because a min-height
             beats a max-height in CSS and would re-break scrolling on a short
             landscape window. */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col sm:flex-row [@media(min-width:640px)_and_(min-height:40rem)]:min-h-[27rem]">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col sm:flex-row">
           <nav
             aria-label="Settings sections"
-            className="shrink-0 border-b bg-muted/30 p-3 sm:w-48 sm:border-r sm:border-b-0"
+            className="flex min-h-0 shrink-0 flex-col border-b bg-muted/30 p-3 sm:w-48 sm:border-r sm:border-b-0"
           >
-            <DialogHeader className="px-2 pb-3 text-left">
+            <DialogHeader className="shrink-0 px-2 pb-3 text-left">
               <DialogTitle className="text-base">Settings</DialogTitle>
             </DialogHeader>
             {/* Mobile: one scrollable strip of section chips (six full-width
@@ -183,7 +190,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
                 width — see the min-w-0 note above. */}
             <ul
               ref={railRef}
-              className="-mb-2 flex scroll-smooth gap-1 overflow-x-auto pb-2 [contain:inline-size] sm:mb-0 sm:flex-col sm:overflow-x-visible sm:pb-0 sm:[contain:none]"
+              className="-mb-2 flex min-h-0 scroll-smooth gap-1 overflow-x-auto pb-2 [contain:inline-size] sm:mb-0 sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto sm:pb-0 sm:[contain:none]"
             >
               {SECTIONS.filter(
                 (s) => (s.id !== "observability" && s.id !== "releases") || observability !== null,
@@ -221,7 +228,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             </ul>
           </nav>
 
-          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <div key={`${accountId ?? "signed-out"}:${admin.active}`} ref={paneRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
             {/* The AI pane IS the shared card (free-credits callout, optional
                 bring-your-own-provider form, test-&-list-models) — this pane used
                 to duplicate the whole form inline, so a fix in one place silently
@@ -262,6 +269,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
               <ObservabilitySection initial={observability} />
             )}
 
+            {section === "plan" && <SettingsSection title="Plan & usage" icon={Activity} description="Your plan and included AI usage."><PlanGroup /><UsageGroup /></SettingsSection>}
             {section === "account" && <AccountSection onRequestClose={() => onOpenChange(false)} />}
           </div>
         </div>
@@ -282,6 +290,7 @@ function DataSection() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [linksImportOpen, setLinksImportOpen] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -371,7 +380,15 @@ function DataSection() {
 
       <SettingsGroup
         divided
-        title="Import"
+        title="Import existing links"
+        description="Preview links from browser exports, reading lists or notes files before importing."
+      >
+        <Button variant="outline" size="sm" onClick={() => setLinksImportOpen(true)}>Import existing links</Button>
+        <ImportBookmarksDialog open={linksImportOpen} onOpenChange={setLinksImportOpen} onImported={() => window.dispatchEvent(new Event("bookmark-library-changed"))} />
+      </SettingsGroup>
+      <SettingsGroup
+        divided
+        title="Restore backup"
         description="Merges an exported file by URL and keeps original timestamps — re-importing the same file is safe and won’t create duplicates."
       >
         <input
@@ -396,7 +413,7 @@ function DataSection() {
           ) : (
             <>
               <Upload aria-hidden />
-              Import data
+              Restore backup
             </>
           )}
         </Button>
@@ -443,9 +460,8 @@ function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
     <SettingsSection
       title="Account"
       icon={UserRound}
-      description="Your plan, and everything account-shaped."
+      description="Your profile, sign-in methods, and account security."
     >
-      <PlanGroup />
       <IdentityGroup />
 
       <AccountSecurity />
@@ -523,20 +539,13 @@ function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
  * back to Free for a server that predates the field — everyone is on Free.
  */
 function PlanGroup() {
-  const [plan, setPlan] = useState<PlanId | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    getAccount(controller.signal)
-      .then((account) => setPlan(account.plan))
-      .catch(() => setPlan(DEFAULT_PLAN));
-    return () => controller.abort();
-  }, []);
-
+  const details = useAccountDetails();
+  const plan = details?.account?.plan ?? null;
   const info = PLAN_FEATURES[plan ?? DEFAULT_PLAN];
 
   return (
     <SettingsGroup title="Plan" description="What your account includes today.">
+      {details?.errors.account && <p role="alert" className="text-sm text-destructive">Couldn’t refresh your plan. {details.errors.account} <button className="underline" onClick={details.refresh}>Try again</button></p>}
       <div className="rounded-lg border bg-card p-4">
         <div className="flex flex-wrap items-center gap-2">
           {plan === null ? (
@@ -569,53 +578,23 @@ function PlanGroup() {
 
 type Identity = { name: string | null; email: string | null; imageUrl: string | null };
 
-/**
- * Who is signed in — avatar, display name, email (parity with the Mac app's
- * Settings). Name/email come from `GET /api/me` (the server's view of the
- * session); Clerk's client user fills any gap (open dev modes return nulls) and
- * supplies the avatar image, which the API doesn't carry. Read-only on purpose:
- * changing any of it is Clerk's "Manage profile & security" flow below.
- * Skeleton while loading; renders nothing when signed out.
- */
+/** Signed-in identity is available from the session immediately; the server
+ * profile fills gaps while refreshing. Avatar failures fall back to initials. */
 function IdentityGroup() {
   const { isLoaded, isSignedIn, user } = useUser();
-  // undefined = loading · null = signed out · object = show it
-  const [me, setMe] = useState<Identity | null | undefined>(undefined);
+  const details = useAccountDetails();
+  const me = details?.me;
+  if (isLoaded && !isSignedIn) return null;
 
-  useEffect(() => {
-    const controller = new AbortController();
-    getMe(controller.signal)
-      .then((res) => {
-        if (!res.signedIn) {
-          setMe(null);
-          return;
-        }
-        setMe({ name: res.name, email: res.email, imageUrl: null });
-      })
-      .catch((e: unknown) => {
-        if ((e as Error).name === "AbortError") return;
-        // A 401 ("Unauthorized" body, or the bare status) means signed out;
-        // anything else, fall back to the client session.
-        setMe(
-          /unauthorized|\b401\b/i.test((e as Error).message)
-            ? null
-            : { name: null, email: null, imageUrl: null },
-        );
-      });
-    return () => controller.abort();
-  }, []);
-
-  if (me === null) return null;
-  if (isLoaded && !isSignedIn && me !== undefined && !me.name && !me.email) return null;
-
-  const name = me?.name ?? (user?.fullName || user?.username) ?? null;
+  const name = user?.fullName || me?.name || user?.username || null;
   const email = me?.email ?? user?.primaryEmailAddress?.emailAddress ?? null;
   const imageUrl = user?.hasImage ? user.imageUrl : null;
-  const loading = me === undefined || (!isLoaded && !name && !email);
+  const loading = !isLoaded && !name && !email;
   const initials = initialsFor(name, email);
 
   return (
     <SettingsGroup title="Signed in as" description="The account this library belongs to.">
+      {details?.errors.me && <p role="alert" className="text-sm text-destructive">Couldn’t refresh account details. Your signed-in profile is shown. <button className="underline" onClick={details.refresh}>Try again</button></p>}
       <div
         data-identity-row={loading ? "loading" : "ready"}
         className="flex items-center gap-3 rounded-lg border bg-card p-3"
@@ -630,23 +609,10 @@ function IdentityGroup() {
           </>
         ) : (
           <>
-            {imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- Clerk-hosted avatar, already sized
-              <img
-                src={imageUrl}
-                alt=""
-                width={40}
-                height={40}
-                className="size-10 shrink-0 rounded-full border bg-muted object-cover"
-              />
-            ) : (
-              <span
-                aria-hidden
-                className="flex size-10 shrink-0 select-none items-center justify-center rounded-full border bg-muted text-sm font-semibold text-muted-foreground"
-              >
-                {initials}
-              </span>
-            )}
+            <Avatar className="size-10 border">
+              <AvatarImage src={imageUrl ?? undefined} alt="" />
+              <AvatarFallback className="text-sm font-semibold text-muted-foreground">{initials}</AvatarFallback>
+            </Avatar>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium" title={name ?? undefined}>
                 {name ?? email ?? "Signed in"}
@@ -671,4 +637,10 @@ function initialsFor(name: string | null, email: string | null): string {
   if (parts.length === 1) return parts[0][0].toUpperCase();
   const e = (email ?? "").trim();
   return e ? e[0].toUpperCase() : "?";
+}
+
+function UsageGroup() {
+  const details = useAccountDetails();
+  const usage = details?.settings?.aiUsage;
+  return <SettingsGroup title="Included AI" description="Usage refreshes in the background.">{usage ? <AiCreditsMeter usage={usage} /> : <p className="text-sm text-muted-foreground">{details?.errors.settings ? "Usage is temporarily unavailable." : "Checking usage…"}</p>}{details?.errors.settings && <Button variant="outline" size="sm" onClick={details.refresh}>Try again</Button>}</SettingsGroup>;
 }

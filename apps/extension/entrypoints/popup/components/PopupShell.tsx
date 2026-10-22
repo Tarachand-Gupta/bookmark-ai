@@ -9,5 +9,9 @@ import type { ReactNode } from "react";
  * on four separate roots.)
  */
 export function PopupShell({ children }: { children: ReactNode }) {
-  return <div className="flex w-full flex-col gap-3 p-3.5">{children}</div>;
+  return (
+    <div className="flex max-h-[600px] w-full flex-col gap-3 overflow-y-auto overscroll-contain p-3.5">
+      {children}
+    </div>
+  );
 }

@@ -12,6 +12,42 @@ Supabase credential storage. Read the generated `dist/production/INSTALL.md` and
 directories are updated from the production snapshots; verify loaded provider,
 version, ID and hash before testing. A version label alone is insufficient.
 
+Snapshot caches now have bounded retention after QA/production wrapper actions.
+Per variant and surface, keep the latest successful build and previous successful
+rollback build warm, plus one recent extra snapshot (expires after seven days).
+Legacy native `built` status counts as successful. Tests/typechecks/prepares do
+not replace successful builds. Exact runs referenced by `dist/production/ARTIFACTS.json`
+and `mobile-manifest.json`, operator pins, active builds and consumers remain
+protected. Source, build manifests, final products, archives and dSYMs remain;
+shared dependency snapshots are never garbage-collected by this tool.
+
+`node scripts/build-retention.mjs` previews exact cache paths; add `--apply` to
+prune. `--variant=supabase-production` and `--surface=ios` narrow scope.
+Manual `--cold` may prune the same caches of latest/rollback/release-referenced
+runs while retaining their source/products/provenance; pins and active consumers
+still protect them. Pin a run with `--pin=/absolute/path/to/run`; remove its
+`.retention-pin` marker manually to release it. Pruned snapshots are recorded
+as nonreusable and `--from-run` refuses them; packages/archives remain usable.
+Per-run native overlays are eligible only with exact manifest ownership. Vendored
+frameworks and dependency ZIPs in dependency caches are disposable; actual
+archives, dSYMs and signed distribution packages found inside eligible caches are
+moved intact by same-volume rename into that run's `retained-cache-assets/`, with
+original/destination and pending/completed move provenance in the build manifest.
+Nested bundles move once as a whole. All eligible protected assets and their links
+are inspected before the first asset move/cache deletion, reusing that inventory
+for preservation. Destination collisions, unsafe asset links and unreadable or
+oversized inspections abort the whole pass before cleanup; resolve the reported
+path or narrow scope before retrying.
+Direct release-metadata references to assets inside a cache protect that cache,
+including in cold mode, so release references are never silently invalidated.
+Cleanup fails closed when process/open-file inventory or metadata cannot be read.
+CLI apply and automatic retention examine at most 40 cache paths per call,
+with asset checks bounded per cache/asset and at five million total entries across
+the whole plan. Legacy protected-asset `cacheRetention.skipped` entries are
+reconsidered by the asset-preserving policy. Inspect other historical skips
+manually before removing a skip entry to retry. Never remove a retention lock without first
+verifying its owner has exited. No build/install/deploy is triggered by cleanup.
+
 `qa:supabase` remains an explicitly isolated development tool. Previous yellow QA
 apps and Clerk checkpoints are rollback/history artifacts, not the current user
 test kit. Do not restore old credentials or repeat the completed data migration.

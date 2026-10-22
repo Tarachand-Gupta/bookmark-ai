@@ -93,6 +93,7 @@ struct ChatMessage: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var role: String
     var parts: [JSONValue]
+    var context: ChatContext?
 }
 
 /// `GET /api/chat/conversations` row.

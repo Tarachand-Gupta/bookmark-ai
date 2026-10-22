@@ -1,23 +1,23 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getAccessToken, getBrowserSupabase, signOut, useAuth } from "@/lib/auth";
 import { displayName, profileName, profileNameUpdate } from "@/lib/auth-policy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ChevronDown, KeyRound, LogOut, Monitor, Pencil, Save } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { announceExplicitSignOut } from "@/lib/account-private-state";
+import {
+  readAccountDevices,
+  invalidateAccountSecurity,
+  type AccountDevice as Device,
+} from "@/lib/account-security-cache";
 import { AccountFactors } from "./account-factors";
-type Device = {
-  id: string;
-  displayName: string;
-  clientType: string;
-  browser: string | null;
-  os: string | null;
-  createdAt: string;
-  lastActiveAt: string | null;
-  isCurrent: boolean;
-};
-async function request(path: string, method = "GET", body?: unknown) {
+async function request(accountId: string, path: string, method = "GET", body?: unknown) {
   const token = await getAccessToken();
-  if (!token) throw new Error("Sign in to manage your account.");
+  const { data } = await getBrowserSupabase().auth.getSession();
+  if (!token || data.session?.user.id !== accountId)
+    throw new Error("Sign in to manage your account.");
   const response = await fetch(path, {
     method,
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -34,30 +34,64 @@ async function request(path: string, method = "GET", body?: unknown) {
 }
 export function AccountSecurity() {
   const { session } = useAuth();
-  const [name, setName] = useState(
-    profileName(session?.user.user_metadata),
-  );
+  return session ? <AccountSecurityContent key={session.user.id} /> : null;
+}
+function AccountSecurityContent() {
+  const { session } = useAuth();
+  const accountId = session!.user.id;
+  const mounted = useRef(true);
+  const dirtyName = useRef(false);
+  const dirtyEmail = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [name, setName] = useState(profileName(session?.user.user_metadata));
   const [email, setEmail] = useState(session?.user.email ?? "");
   const [password, setPassword] = useState("");
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const passwordTrigger = useRef<HTMLButtonElement>(null);
+  function disclosePassword(open: boolean) {
+    setPasswordOpen(open);
+    setPassword("");
+    if (!open) passwordTrigger.current?.focus();
+  }
+  useEffect(() => {
+    if (!dirtyName.current) setName(profileName(session?.user.user_metadata));
+    if (!dirtyEmail.current) setEmail(session?.user.email ?? "");
+  }, [session?.user.user_metadata, session?.user.email]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deviceError, setDeviceError] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [label, setLabel] = useState("");
   async function load() {
-    const data = await request("/api/auth/sessions");
-    setDevices(data.sessions);
+    invalidateAccountSecurity(accountId, "devices");
+    if (!mounted.current) return;
+    setDeviceError("");
+    setLoading(true);
+    try {
+      const data = await readAccountDevices(accountId);
+      if (mounted.current) setDevices(data);
+    } catch (error) {
+      if (mounted.current) setDeviceError(error instanceof Error ? error.message : "Devices could not be loaded.");
+    } finally {
+      if (mounted.current) setLoading(false);
+    }
   }
   useEffect(() => {
     let active = true;
-    void request("/api/auth/sessions")
+    void readAccountDevices(accountId)
       .then((data) => {
-        if (active) setDevices(data.sessions);
+        if (active) setDevices(data);
       })
       .catch((e) => {
-        if (active) setError(e.message);
+        if (active) setDeviceError(e.message);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -71,11 +105,13 @@ export function AccountSecurity() {
     setError("");
     setMessage("");
     try {
+      const { data } = await getBrowserSupabase().auth.getSession();
+      if (!mounted.current || data.session?.user.id !== accountId) return;
       await action();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The request failed.");
+      if (mounted.current) setError(e instanceof Error ? e.message : "The request failed.");
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   async function profile() {
@@ -83,6 +119,8 @@ export function AccountSecurity() {
       data: profileNameUpdate(name),
     });
     if (error) throw new Error("Profile could not be updated.");
+    if (!mounted.current) return;
+    dirtyName.current = false;
     setMessage("Profile updated.");
   }
   async function changeEmail() {
@@ -101,7 +139,8 @@ export function AccountSecurity() {
       throw new Error(
         "Password could not be changed. Try password recovery if fresh authentication is required.",
       );
-    setPassword("");
+    if (!mounted.current) return;
+    disclosePassword(false);
     setMessage("Password updated.");
   }
   async function revoke(device: Device) {
@@ -111,178 +150,247 @@ export function AccountSecurity() {
       )
     )
       return;
-    await request(`/api/auth/sessions/${encodeURIComponent(device.id)}`, "DELETE");
+    await request(accountId, `/api/auth/sessions/${encodeURIComponent(device.id)}`, "DELETE");
     if (device.isCurrent) {
+      if (!mounted.current) return;
+      announceExplicitSignOut(accountId);
       await getBrowserSupabase().auth.signOut({ scope: "local" });
       window.location.assign("/sign-in");
     } else await load();
   }
   return (
-    <section className="space-y-5 rounded-lg border p-4">
-      <h3 className="font-medium">Profile & security</h3>
-      <div className="space-y-2">
-        <label className="block text-sm">
-          Display name
-          <Input maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        <Button size="sm" disabled={busy} onClick={() => void run(profile)}>
-          Save name
-        </Button>
-      </div>
-      <div className="space-y-2">
-        <label className="block text-sm">
-          Email
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy || !email}
-          onClick={() => void run(changeEmail)}
-        >
-          Change email
-        </Button>
-      </div>
-      <div className="space-y-2">
-        <label className="block text-sm">
-          New password
-          <Input
-            type="password"
-            autoComplete="new-password"
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy || password.length < 8}
-          onClick={() => void run(changePassword)}
-        >
-          Change password
-        </Button>
-        <a href="/auth/recovery" className="ml-3 text-sm underline">
-          Password recovery
-        </a>
-      </div>
-      <AccountFactors />
-      <div>
-        <h3 className="font-medium">Signed-in devices</h3>
-        <p className="text-xs text-muted-foreground">
-          Sign out a device to end its access. Device names are labels only.
-        </p>
-      </div>
-      {loading ? (
-        <p role="status">Loading devices…</p>
-      ) : (
-        <ul className="divide-y rounded-md border">
-          {devices.map((device) => (
-            <li className="space-y-2 p-3" key={device.id}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-medium">
-                    {device.displayName}
-                    {device.isCurrent && (
-                      <span className="ml-2 text-xs text-muted-foreground">This device</span>
-                    )}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {[device.browser, device.os].filter(Boolean).join(" · ")}{" "}
-                    {device.lastActiveAt
-                      ? `Last active ${new Date(device.lastActiveAt).toLocaleString()}`
-                      : ""}
-                  </p>
+    <div className="space-y-6">
+      <section aria-labelledby="account-profile-heading" className="space-y-3">
+        <h3 id="account-profile-heading" className="text-sm font-semibold">
+          Profile
+        </h3>
+        <div className="space-y-2">
+          <label className="block text-sm">
+            Display name
+            <Input
+              disabled={busy}
+              maxLength={80}
+              value={name}
+              onChange={(e) => {
+                dirtyName.current = true;
+                setName(e.target.value);
+              }}
+            />
+          </label>
+          <Button size="sm" disabled={busy} onClick={() => void run(profile)}>
+            <Save aria-hidden className="size-4" /> Save name
+          </Button>
+        </div>
+      </section>
+      <AccountFactors
+        signInFields={
+          <div className="space-y-2">
+            <label className="block text-sm">
+              Email
+              <Input
+                disabled={busy}
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  dirtyEmail.current = true;
+                  setEmail(e.target.value);
+                }}
+              />
+            </label>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || !email}
+              onClick={() => void run(changeEmail)}
+            >
+              Change email
+            </Button>
+          </div>
+        }
+      >
+        <Collapsible open={passwordOpen} onOpenChange={disclosePassword} className="space-y-3">
+          <CollapsibleTrigger asChild>
+            <Button ref={passwordTrigger} size="sm" variant="outline" disabled={busy}>
+              <KeyRound aria-hidden className="size-4" /> Change password
+              <ChevronDown aria-hidden
+                className={`size-4 transition-transform ${passwordOpen ? "rotate-180" : ""}`}
+              />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <form
+              className="space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void run(changePassword);
+              }}
+            >
+              <label className="block space-y-1.5 text-sm">
+                <span>New password</span>
+                <Input
+                  disabled={busy}
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" disabled={busy || password.length < 8}>
+                  <Save aria-hidden className="size-4" /> Save password
+                </Button>
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => disclosePassword(false)}
+                >
+                  Cancel
+                </Button>
+                <a href="/auth/recovery" className="text-sm underline">
+                  Password recovery
+                </a>
+              </div>
+            </form>
+          </CollapsibleContent>
+        </Collapsible>
+      </AccountFactors>
+      <section aria-labelledby="account-devices-heading" className="space-y-3 border-t pt-5">
+        <div>
+          <h3 id="account-devices-heading" className="text-sm font-semibold">
+            Devices
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Sign out a device to end its access. Device names are labels only.
+          </p>
+        </div>
+        {deviceError && <div role="alert" className="text-sm text-destructive">{deviceError} <Button size="sm" variant="ghost" disabled={loading} onClick={() => void load()}>Retry devices</Button></div>}
+        {loading && devices.length === 0 ? (
+          <p role="status">Loading devices…</p>
+        ) : (
+          <ul className="divide-y">
+            {devices.map((device) => (
+              <li className="space-y-2 py-3" key={device.id}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-medium">
+                      <Monitor aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                      {device.displayName}
+                      {device.isCurrent && (
+                        <span className="ml-2 text-xs text-muted-foreground">This device</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {[device.browser, device.os].filter(Boolean).join(" · ")}{" "}
+                      {device.lastActiveAt
+                        ? `Last active ${new Date(device.lastActiveAt).toLocaleString()}`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => {
+                        setRenaming(device.id);
+                        setLabel(device.displayName);
+                      }}
+                    >
+                      <Pencil aria-hidden className="size-3.5" /> Rename
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => void run(() => revoke(device))}
+                    >
+                      <LogOut aria-hidden className="size-3.5" /> Sign out
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy}
-                    onClick={() => {
-                      setRenaming(device.id);
-                      setLabel(device.displayName);
+                {renaming === device.id && (
+                  <form
+                    className="flex gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void run(async () => {
+                        await request(
+                          accountId,
+                          `/api/auth/sessions/${encodeURIComponent(device.id)}`,
+                          "PATCH",
+                          { displayName: displayName(label) },
+                        );
+                        setRenaming(null);
+                        await load();
+                      });
                     }}
                   >
-                    Rename
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void run(() => revoke(device))}
-                  >
-                    Sign out
-                  </Button>
-                </div>
-              </div>
-              {renaming === device.id && (
-                <form
-                  className="flex gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void run(async () => {
-                      await request(
-                        `/api/auth/sessions/${encodeURIComponent(device.id)}`,
-                        "PATCH",
-                        { displayName: displayName(label) },
-                      );
-                      setRenaming(null);
-                      await load();
-                    });
-                  }}
-                >
-                  <Input
-                    aria-label="Device name"
-                    maxLength={80}
-                    value={label}
-                    onChange={(e) => setLabel(e.target.value)}
-                  />
-                  <Button size="sm" disabled={busy || !displayName(label)}>
-                    Save
-                  </Button>
-                  <Button size="sm" type="button" variant="ghost" onClick={() => setRenaming(null)}>
-                    Cancel
-                  </Button>
-                </form>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              if (window.confirm("Sign out every other device?")) {
-                await signOut({ scope: "others" });
-                await load();
-              }
-            })
-          }
-        >
-          Sign out other devices
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              if (window.confirm("Sign out all devices, including this one?"))
-                await signOut({ scope: "global" });
-            })
-          }
-        >
-          Sign out all devices
-        </Button>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => signOut())}>
-          Sign out this device
-        </Button>
-      </div>
+                    <Input
+                      aria-label="Device name"
+                      maxLength={80}
+                      value={label}
+                      onChange={(e) => setLabel(e.target.value)}
+                    />
+                    <Button size="sm" disabled={busy || !displayName(label)}>
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setRenaming(null)}
+                    >
+                      Cancel
+                    </Button>
+                  </form>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                if (window.confirm("Sign out every other device?")) {
+                  await signOut({ scope: "others" });
+                  await load();
+                }
+              })
+            }
+          >
+            <LogOut aria-hidden className="size-4" /> Sign out other devices
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                if (window.confirm("Sign out all devices, including this one?"))
+                  await signOut({ scope: "global" });
+              })
+            }
+          >
+            <LogOut aria-hidden className="size-4" /> Sign out all devices
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => void run(() => signOut())}
+          >
+            <LogOut aria-hidden className="size-4" /> Sign out this device
+          </Button>
+        </div>
+      </section>
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -293,6 +401,6 @@ export function AccountSecurity() {
           {message}
         </p>
       )}
-    </section>
+    </div>
   );
 }

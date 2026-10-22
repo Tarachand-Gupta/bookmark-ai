@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /** Frozen Supabase production packages. Never installs, deploys or submits. */
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, cpSync, renameSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, cpSync, renameSync, rmSync, lstatSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { repoRoot, parseEnv, qaEnvironment, stageSources } from './supabase-qa.mjs';
+import { beginBuildRun, endBuildRun, automaticRetention } from './build-retention.mjs';
 
 export const variant = 'supabase-production';
 export const releaseRoot = join(repoRoot, 'dist/production');
@@ -129,12 +130,19 @@ export function main(argv = process.argv.slice(2)) {
   if (reuse) {
     const runRoot = resolve(reuse.slice('--from-run='.length));
     if (!runRoot.startsWith(join(repoRoot, '.work/builds', variant) + '/')) throw new Error('Reuse requires an existing production snapshot');
-    const manifest = JSON.parse(readFileSync(join(runRoot, 'build-manifest.json'), 'utf8'));
-    if (manifest.variant !== variant || manifest.surface !== surface) throw new Error('Frozen snapshot surface/variant mismatch');
+    const manifest = beginBuildRun(repoRoot, runRoot, () => {
+      const manifestPath = join(runRoot, 'build-manifest.json');
+      if (!lstatSync(manifestPath).isFile()) throw new Error('Build manifest must be a regular file');
+      const value = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      if (value.variant !== variant || value.surface !== surface || resolve(value.stagedRoot) !== join(runRoot, 'source')) throw new Error('Frozen snapshot surface/variant mismatch');
+      if (value.cacheRetention?.prunedAt) throw new Error('Snapshot caches were pruned; create a fresh snapshot instead of --from-run');
+      return value;
+    });
     staged = { runRoot, stagedRoot: manifest.stagedRoot, manifest };
     env.BOOKMARK_PRODUCTION_STAGE_ROOT = manifest.stagedRoot;
   } else staged = stageSources(surface, env, { variant, nativeConfiguration: configureNative });
   const { runRoot, stagedRoot, manifest } = staged;
+  manifest.action = action;
   const app = join(stagedRoot, 'apps', browsers.includes(surface) ? 'extension' : surface === 'macos' ? 'macos' : ['ios','android'].includes(surface) ? 'mobile' : surface === 'live' ? 'live-server' : 'web');
   env.PATH = `${join(app, 'node_modules/.bin')}:${env.PATH}`;
   console.log(`Supabase production ${surface}: ${runRoot}`);
@@ -187,7 +195,11 @@ export function main(argv = process.argv.slice(2)) {
     } else throw new Error('Only prepare is supported here for web/live/mobile; use the owning release procedure');
     manifest.status='success';
   } catch(error) { manifest.status='failed'; throw error; }
-  finally { writeFileSync(join(runRoot,'build-manifest.json'),JSON.stringify(manifest,null,2)+'\n'); }
+  finally {
+    try { writeFileSync(join(runRoot,'build-manifest.json'),JSON.stringify(manifest,null,2)+'\n'); }
+    finally { endBuildRun(runRoot); }
+    automaticRetention(repoRoot, variant, surface);
+  }
   console.log(`Packages: ${releaseRoot}`);
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

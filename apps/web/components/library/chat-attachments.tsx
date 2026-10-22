@@ -22,6 +22,8 @@ import {
   formatBytes,
 } from "@/lib/chat-attachments";
 import { cn } from "@/lib/utils";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Plus } from "lucide-react";
 
 /**
  * Ask AI attachments — the UI half (CONTRACT §4). Composer pills (thumbnail
@@ -54,11 +56,11 @@ function kindLabel(mediaType: string): string {
 // ── Composer ─────────────────────────────────────────────────────────────────
 
 /** The pills above the textarea for files waiting to be sent. */
-export function ComposerAttachments() {
+export function ComposerAttachments({ hidden = false }: { hidden?: boolean }) {
   const attachments = usePromptInputAttachments();
   if (attachments.files.length === 0) return null;
   return (
-    <PromptInputHeader className="gap-1.5 pb-0 pt-2.5" aria-label="Attachments">
+    <PromptInputHeader className={hidden ? "hidden" : "gap-1.5 pb-0 pt-2.5"} aria-label="Attachments">
       {attachments.files.map((file) => (
         <ComposerPill key={file.id} file={file} onRemove={() => attachments.remove(file.id)} />
       ))}
@@ -104,8 +106,15 @@ function ComposerPill({ file, onRemove }: { file: FileUIPart; onRemove: () => vo
 }
 
 /** The paperclip: opens the file picker. Lives in the composer footer. */
-export function AttachButton({ disabled }: { disabled?: boolean }) {
+export function AttachButton({ disabled, onOpen, onSelectBookmarks }: { disabled?: boolean; onOpen?: () => void; onSelectBookmarks?: () => void }) {
   const attachments = usePromptInputAttachments();
+  if (onSelectBookmarks) return <DropdownMenu onOpenChange={visible => { if (visible) onOpen?.(); }}>
+    <DropdownMenuTrigger asChild><PromptInputButton disabled={disabled || attachments.preparing} aria-label="Add attachments or context"><Plus className="size-4" aria-hidden /></PromptInputButton></DropdownMenuTrigger>
+    <DropdownMenuContent align="start" side="top">
+      <DropdownMenuItem onSelect={() => attachments.openFileDialog()}>Upload file</DropdownMenuItem>
+      <DropdownMenuItem onSelect={onSelectBookmarks}>Choose saved bookmarks or context</DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>;
   return (
     <PromptInputButton
       onClick={() => attachments.openFileDialog()}

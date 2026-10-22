@@ -1,3 +1,12 @@
+import { randomUUID } from "node:crypto";
+import {
+  canonicalContent,
+  getBookmarkOrganization,
+  putBookmarkOrganization,
+  normalizeOrganizationName,
+  organizationFilterSql,
+  type SqlExecutor,
+} from "./organization";
 import type {
   Bookmark,
   ListBookmarksQuery,
@@ -22,29 +31,16 @@ export interface InsertBookmark {
   createdAt: string;
 }
 
-/** Insert a bookmark. Re-saving the same URL updates it in place (upsert). */
-export async function insertBookmark(db: Db, b: InsertBookmark): Promise<Bookmark> {
-  const savedDay = b.source.savedAt.slice(0, 10);
-  await db.execute({
+/** Plain insert for a caller that owns canonicalization and the surrounding transaction.
+ * URL conflicts throw; this helper never changes an existing bookmark. */
+export function insertBookmarkStatement(b: InsertBookmark) {
+  return {
     sql: `
       INSERT INTO bookmarks
         (id, url, domain, title, description, og_json,
          browser, device, device_name, os, saved_at, saved_day,
          category, tags_json, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT (url) DO UPDATE SET
-        title = excluded.title,
-        description = excluded.description,
-        og_json = excluded.og_json,
-        browser = excluded.browser,
-        device = excluded.device,
-        device_name = excluded.device_name,
-        os = excluded.os,
-        saved_at = excluded.saved_at,
-        saved_day = excluded.saved_day,
-        category = excluded.category,
-        tags_json = excluded.tags_json,
-        embedding = NULL
     `,
     args: [
       b.id,
@@ -58,11 +54,81 @@ export async function insertBookmark(db: Db, b: InsertBookmark): Promise<Bookmar
       b.source.deviceName ?? null,
       b.source.os ?? null,
       b.source.savedAt,
-      savedDay,
+      b.source.savedAt.slice(0, 10),
       b.category,
       JSON.stringify(b.tags),
       b.createdAt,
     ],
+  };
+}
+
+/** Insert a bookmark. Re-saving the same URL updates it in place (upsert). */
+export async function insertBookmark(db: Db, b: InsertBookmark): Promise<Bookmark> {
+  const tx = await db.transaction("write");
+  try {
+    const result = await insertBookmarkInTransaction(tx, b);
+    await tx.commit();
+    return result;
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  } finally {
+    tx.close();
+  }
+}
+
+export async function insertBookmarkIfAbsentInTransaction(
+  db: SqlExecutor,
+  b: InsertBookmark,
+): Promise<{ bookmark: Bookmark; inserted: boolean }> {
+  const existing = await getBookmarkByUrl(db, b.url);
+  if (existing) return { bookmark: existing, inserted: false };
+  return { bookmark: await insertBookmarkInTransaction(db, b), inserted: true };
+}
+
+export async function insertBookmarkInTransaction(
+  db: SqlExecutor,
+  b: InsertBookmark,
+): Promise<Bookmark> {
+  const existing = await getBookmarkByUrl(db, b.url);
+  const id = existing?.id ?? b.id;
+  const state = await getBookmarkOrganization(db, id);
+  const content = await canonicalContent(
+    db,
+    state.overrides.category && existing ? existing.category : b.category,
+    [...b.tags, ...(state.overrides.addedTags ?? [])].filter(
+      (t) => !(state.overrides.removedTags ?? []).includes(normalizeOrganizationName(t)),
+    ),
+  );
+  b = {
+    ...b,
+    id,
+    title: state.overrides.title && existing ? existing.title : b.title,
+    category: content.category,
+    tags: content.tags,
+  };
+  for (const field of ["title", "category", "tags"] as const)
+    if (!existing || JSON.stringify(existing[field]) !== JSON.stringify(b[field]))
+      state.versions[field === "category" ? "categoryId" : field] = randomUUID();
+  await putBookmarkOrganization(db, id, state);
+  const statement = insertBookmarkStatement(b);
+  await db.execute({
+    ...statement,
+    sql: `${statement.sql}
+      ON CONFLICT (url) DO UPDATE SET
+        title = excluded.title,
+        description = excluded.description,
+        og_json = excluded.og_json,
+        browser = excluded.browser,
+        device = excluded.device,
+        device_name = excluded.device_name,
+        os = excluded.os,
+        saved_at = excluded.saved_at,
+        saved_day = excluded.saved_day,
+        category = excluded.category,
+        tags_json = excluded.tags_json,
+        embedding = NULL
+`,
   });
   const saved = await getBookmarkByUrl(db, b.url);
   if (!saved) throw new Error("insertBookmark: row not found after upsert");
@@ -87,16 +153,53 @@ export async function updateBookmarkContent(
   id: string,
   c: BookmarkContent,
 ): Promise<Bookmark | null> {
-  await db.execute({
-    sql: `UPDATE bookmarks
-          SET title = ?, description = ?, og_json = ?, category = ?, tags_json = ?, embedding = NULL
-          WHERE id = ?`,
-    args: [c.title, c.description, JSON.stringify(c.og), c.category, JSON.stringify(c.tags), id],
-  });
-  return getBookmark(db, id);
+  const tx = await db.transaction("write");
+  try {
+    const existing = await getBookmark(tx, id);
+    if (!existing) {
+      await tx.commit();
+      return null;
+    }
+    const state = await getBookmarkOrganization(tx, id);
+    const canonical = await canonicalContent(
+      tx,
+      state.overrides.category ? existing.category : c.category,
+      [...c.tags, ...(state.overrides.addedTags ?? [])].filter(
+        (t) => !(state.overrides.removedTags ?? []).includes(normalizeOrganizationName(t)),
+      ),
+    );
+    const title = state.overrides.title ? existing.title : c.title;
+    for (const field of ["title", "categoryId", "tags"]) {
+      const before =
+        field === "categoryId" ? existing.category : existing[field as "title" | "tags"];
+      const after =
+        field === "title" ? title : field === "categoryId" ? canonical.category : canonical.tags;
+      if (JSON.stringify(before) !== JSON.stringify(after)) state.versions[field] = randomUUID();
+    }
+    await tx.execute({
+      sql: "UPDATE bookmarks SET title=?,description=?,og_json=?,category=?,tags_json=?,embedding=NULL WHERE id=?",
+      args: [
+        title,
+        c.description,
+        JSON.stringify(c.og),
+        canonical.category,
+        JSON.stringify(canonical.tags),
+        id,
+      ],
+    });
+    await putBookmarkOrganization(tx, id, state);
+    const result = await getBookmark(tx, id);
+    await tx.commit();
+    return result;
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  } finally {
+    tx.close();
+  }
 }
 
-export async function getBookmark(db: Db, id: string): Promise<Bookmark | null> {
+export async function getBookmark(db: SqlExecutor, id: string): Promise<Bookmark | null> {
   const rs = await db.execute({
     sql: `SELECT ${BOOKMARK_COLUMNS} FROM bookmarks WHERE id = ?`,
     args: [id],
@@ -105,7 +208,7 @@ export async function getBookmark(db: Db, id: string): Promise<Bookmark | null> 
   return row ? rowToBookmark(row) : null;
 }
 
-export async function getBookmarkByUrl(db: Db, url: string): Promise<Bookmark | null> {
+export async function getBookmarkByUrl(db: SqlExecutor, url: string): Promise<Bookmark | null> {
   const rs = await db.execute({
     sql: `SELECT ${BOOKMARK_COLUMNS} FROM bookmarks WHERE url = ?`,
     args: [url],
@@ -123,10 +226,11 @@ export async function listBookmarks(
   db: Db,
   q: ListBookmarksQuery,
 ): Promise<{ bookmarks: Bookmark[]; total: number }> {
-  const where: string[] = [];
-  const args: (string | number)[] = [];
+  const filters = organizationFilterSql(q);
+  const where: string[] = filters.clauses;
+  const args: (string | number)[] = filters.args;
   if (q.category) {
-    where.push("category = ?");
+    where.push("lower(category) = lower(?)");
     args.push(q.category);
   }
   if (q.browser) {
@@ -159,7 +263,9 @@ export async function listBookmarks(
   }
   if (q.tag) {
     // tags_json is a JSON array of lowercased strings.
-    where.push("EXISTS (SELECT 1 FROM json_each(bookmarks.tags_json) WHERE json_each.value = ?)");
+    where.push(
+      "EXISTS (SELECT 1 FROM json_each(bookmarks.tags_json) WHERE lower(json_each.value) = lower(?))",
+    );
     args.push(q.tag);
   }
   if (q.url) {

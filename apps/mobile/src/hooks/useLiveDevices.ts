@@ -1,3 +1,4 @@
+import { useWorkspace } from "../context/WorkspaceContext";
 import { useCallback, useEffect, useState } from "react";
 import { AppState } from "react-native";
 import EventSource from "react-native-sse";
@@ -69,6 +70,7 @@ export function useLiveDevices({
   expanded: boolean;
 }): LiveDevicesState {
   const { session } = useAuth();
+  const { readOnly } = useWorkspace();
   const { serverTarget } = usePreferences(); // switching servers reconnects
   const [devices, setDevices] = useState<LiveDevice[]>([]);
   const [enabled, setEnabled] = useState(false); // never assume enabled (§4.9 hydration)
@@ -101,7 +103,7 @@ export function useLiveDevices({
   // active; reconnect whenever the server target changes or a refresh is
   // requested. Mirrors the old effect's dependency shape.
   useEffect(() => {
-    if (!onOngoing || !appActive) return;
+    if (!onOngoing || !appActive || readOnly) return;
     let cancelled = false;
     let es: EventSource<LiveStreamEvent> | null = null;
 
@@ -175,7 +177,7 @@ export function useLiveDevices({
       es?.removeAllEventListeners();
       es?.close();
     };
-  }, [onOngoing, appActive, serverTarget, reloadKey, applySnapshot, session?.access_token]);
+  }, [onOngoing, appActive, readOnly, serverTarget, reloadKey, applySnapshot, session?.access_token]);
 
   const refresh = useCallback(() => {
     setRefreshing(true);
@@ -191,7 +193,7 @@ export function useLiveDevices({
     ttlHours,
     loading,
     refreshing,
-    error,
+    error: readOnly ? "Reconnect to refresh live sessions. Saved sessions remain available." : error,
     provisioning,
     paused: false,
     loaded,

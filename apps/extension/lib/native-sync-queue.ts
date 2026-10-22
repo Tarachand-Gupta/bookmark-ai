@@ -87,6 +87,7 @@ export interface DrainResult {
 export async function drainMirrorQueue(
   send: (entry: QueuedMirrorAdd) => Promise<boolean>,
   isCurrent: () => boolean = () => true,
+  shouldAttempt: (entry: QueuedMirrorAdd) => Promise<boolean> = async () => true,
 ): Promise<DrainResult> {
   if (draining) return { sent: 0, kept: 0, dropped: 0 };
   draining = true;
@@ -99,6 +100,12 @@ export async function drainMirrorQueue(
     let dropped = 0;
     const keep: QueuedMirrorAdd[] = [];
     for (const entry of queue) {
+      if (!isCurrent()) return { sent, kept: 0, dropped: queue.length - sent };
+      // Permission or consent pauses must not consume network retry attempts.
+      if (!(await shouldAttempt(entry).catch(() => false))) {
+        keep.push(entry);
+        continue;
+      }
       if (!isCurrent()) return { sent, kept: 0, dropped: queue.length - sent };
       const ok = await send(entry).catch(() => false);
       if (ok) {

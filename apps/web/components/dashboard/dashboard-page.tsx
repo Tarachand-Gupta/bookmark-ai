@@ -3,6 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@/lib/auth";
+import { useOrganization } from "@/hooks/use-organization";
+import { GettingStartedCard } from "@/components/library/getting-started-card";
+import { ImportBookmarksDialog } from "@/components/library/import-bookmarks-dialog";
+import { OnboardingDialog } from "@/components/library/onboarding-dialog";
+import { folderHref } from "@/lib/folder-browser";
+import { BulkEditor } from "@/components/library/organization/bulk-editor";
+import { BookmarkEditor } from "@/components/library/organization/bookmark-editor";
+import { FolderActionDialog } from "@/components/library/organization/folder-action-dialog";
+import type { FolderAction } from "@/components/library/organization/folder-browser";
+import { OrganizationManager } from "@/components/library/organization/manager";
+import { RecentChanges } from "@/components/library/organization/recent-changes";
+import { expectedBookmarkVersions, operationSummary } from "@/lib/organization-ui";
+import { Button } from "@/components/ui/button";
+import type { Bookmark, OrganizationFolder, OrganizationOperation } from "@bookmark-ai/types";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { NoAccessNotice } from "@/components/no-access-notice";
 import { AccountSetup } from "@/components/library/account-setup";
@@ -80,6 +94,19 @@ export function DashboardPage() {
   const { user, isLoaded } = useUser();
   const [refreshKey, refresh] = useRefresh();
   const meta = useMeta(refreshKey);
+  const organization = useOrganization(refreshKey);
+  const [importOpen, setImportOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [recentOpen, setRecentOpen] = useState(false);
+  const [latestOperation, setLatestOperation] = useState<OrganizationOperation | null>(null);
+  const [managerOpen, setManagerOpen] = useState(false);
+  const [managerInitialAction, setManagerInitialAction] = useState<"create-folder">();
+  const [managerParent, setManagerParent] = useState<string | null>(null);
+  const [folderEdit, setFolderEdit] = useState<{ folder: OrganizationFolder; action: FolderAction } | null>(null);
+  useEffect(() => setFolderEdit(null), [user?.id]);
+  const [moveBookmark, setMoveBookmark] = useState<Bookmark | null>(null);
+  useEffect(() => setMoveBookmark(null), [user?.id]);
+  const [editorBookmark, setEditorBookmark] = useState<Bookmark | null>(null);
 
   // Snapshot namespace: the Clerk user id once known ("anon" in keyless
   // self-host mode, which has exactly one user). null until Clerk resolves, so
@@ -88,6 +115,8 @@ export function DashboardPage() {
   // The same SSE stream the live view uses, so the Live now card updates itself
   // after paint without another dashboard fetch.
   const live = useLiveDevices({ fast: false });
+  const operationResult = (operation: OrganizationOperation) => { setLatestOperation(operation); refresh(); dashboard.refresh(); organization.refresh(); };
+  useEffect(() => { const changed = () => dashboard.refresh(); window.addEventListener("bookmark-library-changed", changed); return () => window.removeEventListener("bookmark-library-changed", changed); }, [dashboard.refresh]);
 
   const [addOpen, setAddOpen] = useState(false);
   const [settings, setSettings] = useState<{ open: boolean; section: SectionId }>({
@@ -137,8 +166,12 @@ export function DashboardPage() {
   // Sidebar navigation from the dashboard: all of it goes to the library route
   // (client-side push, the /app layout and its chat dock stay mounted).
   const goToLibrary = useCallback(
-    (search?: string) => router.push(search ? `${LIBRARY_PATH}?${search}` : LIBRARY_PATH),
-    [router],
+    (search?: string) => {
+      const params = new URLSearchParams(search);
+      if (searchParams.get(AI_PARAM) === "1") params.set(AI_PARAM, "1");
+      router.push(`${LIBRARY_PATH}${params.size ? `?${params}` : ""}`);
+    },
+    [router, searchParams],
   );
   const onFilterChange = useCallback(
     (filters: LibraryFilters) => {
@@ -191,6 +224,10 @@ export function DashboardPage() {
         filters={{}}
         onFilterChange={onFilterChange}
         homeActive
+        onBrowseFolder={id => router.push(folderHref(id, searchParams.get(AI_PARAM) === "1"))}
+        aiActive={searchParams.get(AI_PARAM) === "1"}
+        onCreateFolder={parentId => { setManagerParent(parentId); setManagerInitialAction("create-folder"); setManagerOpen(true); }}
+        onFolderAction={(folder, action) => setFolderEdit({ folder, action })}
         onShowHome={() => {}}
         sessionCount={data?.totalSessions ?? null}
         sessionsLoading={dashboard.loading}
@@ -198,16 +235,19 @@ export function DashboardPage() {
         onShowLive={() => goToLibrary("section=live")}
         onAdd={() => setAddOpen(true)}
         onOpenSettings={openSettings}
+        onOpenTour={() => setOnboardingOpen(true)}
+        organization={organization.data}
+        onManageOrganization={intent => { setManagerInitialAction(intent); setManagerOpen(true); }}
       />
       <SidebarInset>
         {/* Same header as the library, minus the search box — search lives in the
             omnibox here (passing no query handlers hides that block). */}
-        <LibraryHeader title="Home" />
+        <LibraryHeader title="Home" onOpenAccount={() => openSettings("account")} />
         <div
           className="flex min-w-0 flex-1 items-stretch"
           style={{ paddingRight: "var(--chat-dock-w, 0px)" }}
         >
-          <main className="min-w-0 flex-1 p-3 sm:p-4">
+          <main className="min-w-0 flex-1 p-3 sm:p-4" style={{ paddingBottom: "calc(1rem + var(--floating-composer-h, 0px))" }}>
             <div className="mx-auto w-full max-w-7xl">
               {view === "provisioning" ? (
                 <AccountSetup />
@@ -237,7 +277,7 @@ export function DashboardPage() {
                     // saying "nothing yet" four different ways is worse than one
                     // panel that says what to do first.
                     (view === "first-run" ? (
-                      <FirstRunPanel onAdd={() => setAddOpen(true)} />
+                      <GettingStartedCard onSaveLink={() => setAddOpen(true)} onImport={() => setImportOpen(true)} onBrowserSetup={() => setOnboardingOpen(true)} />
                     ) : (
                       <>
                         {/* TWO EQUAL COLUMNS. Reading order IS the hierarchy —
@@ -255,6 +295,8 @@ export function DashboardPage() {
                             bookmarks={data.recentBookmarks}
                             otherDeviceBookmarks={data.otherDeviceBookmarks}
                             total={data.totalBookmarks}
+                            onMove={organization.supported ? setMoveBookmark : undefined}
+                            onEdit={organization.supported ? setEditorBookmark : undefined}
                           />
                           <SavedSessionsCard
                             sessions={data.recentSessions}
@@ -290,11 +332,21 @@ export function DashboardPage() {
       <AddBookmarkDialog
         open={addOpen}
         onOpenChange={setAddOpen}
+        onEdit={organization.supported ? setEditorBookmark : undefined}
+        folderNames={Object.fromEntries((organization.data?.folders ?? []).map(f => [f.id, f.path]))}
         onSaved={() => {
           refresh();
           dashboard.refresh();
         }}
       />
+      <ImportBookmarksDialog open={importOpen} onOpenChange={setImportOpen} onImported={() => { refresh(); dashboard.refresh(); }} />
+      <OnboardingDialog open={onboardingOpen} onOpenChange={setOnboardingOpen} onSaveLink={() => setAddOpen(true)} onImported={() => { refresh(); dashboard.refresh(); }} />
+      {organization.data && moveBookmark && <BulkEditor key={moveBookmark.id} action="move" ids={[moveBookmark.id]} bookmarks={[moveBookmark]} data={organization.data} expected={{ [moveBookmark.id]: expectedBookmarkVersions(moveBookmark) }} onClose={() => setMoveBookmark(null)} onResult={operationResult} />}
+      {organization.data && editorBookmark && <BookmarkEditor key={editorBookmark.id} bookmark={editorBookmark} data={organization.data} onClose={() => setEditorBookmark(null)} onResult={operationResult} onRefresh={organization.refresh} />}
+      {organization.data && folderEdit && <FolderActionDialog key={`${user?.id}:${folderEdit.folder.id}:${folderEdit.action}`} folder={folderEdit.folder} action={folderEdit.action} data={organization.data} onClose={() => setFolderEdit(null)} onResult={operationResult} />}
+      {organization.data && <OrganizationManager defaultParent={managerParent} initialAction={managerInitialAction} open={managerOpen} onClose={() => setManagerOpen(false)} data={organization.data} onResult={operationResult} />}
+      <RecentChanges open={recentOpen} onClose={() => setRecentOpen(false)} onResult={operationResult} latest={latestOperation} />
+      {latestOperation && <div role="status" className="fixed top-16 right-4 z-30 max-w-sm rounded border bg-card p-3 shadow text-sm"><p>{operationSummary(latestOperation)}</p><Button variant="ghost" size="sm" onClick={() => setRecentOpen(true)}>Results / Undo</Button><Button variant="ghost" size="sm" onClick={() => setLatestOperation(null)}>Dismiss</Button></div>}
       <SettingsDialog
         open={settings.open}
         initialSection={settings.section}

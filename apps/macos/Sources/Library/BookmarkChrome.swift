@@ -56,9 +56,19 @@ struct BookmarkContextMenu: View {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(bookmark.url, forType: .string)
         }
+        if appEnvironment.organization.available {
+            Button("Edit details…") { appEnvironment.organization.editing = bookmark }
+            Button("Move to folder…") { appEnvironment.organization.editing = bookmark }
+            Menu("Reading state") {
+                ForEach(ReadingState.allCases) { state in
+                    Button(state.title) { Task { await appEnvironment.organization.edit(bookmark, changes: ["readingState": .string(state.rawValue)]) } }
+                }
+            }
+            Button("Ask about this bookmark") { appEnvironment.chat.show(context: .bookmarks([bookmark.id])) }
+        }
         Divider()
         Button("Delete", role: .destructive) {
             Task { await appEnvironment.library.delete(bookmark) }
-        }
+        }.disabled(!appEnvironment.canUseData)
     }
 }

@@ -1,4 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
+import type {ChatContext} from "@bookmark-ai/types";
+import {contextLabel} from "../../lib/composer-state";
 import type { UIMessage } from "ai";
 import { useAppTheme } from "../../context/PreferencesContext";
 import {
@@ -36,9 +38,13 @@ export function ChatMessage({
 
   if (message.role === "user") {
     const { text, files } = userContent(parts);
+    const saved=message as UIMessage & {context?:ChatContext;unavailableContext?:string[]};
+    const context=saved.context??(message.metadata as {context?:ChatContext}|undefined)?.context;
     if (!text && files.length === 0) return null;
     return (
       <View style={styles.userRow}>
+        {context&&<Text style={{color:colors.mutedForeground,fontSize:12}}>{contextLabel(context)}</Text>}
+        {!!saved.unavailableContext?.length&&<Text style={{color:colors.mutedForeground,fontSize:12}}>Some original context is no longer available.</Text>}
         {files.length > 0 && <ChatUserAttachments files={files} onOpenImage={onOpenImage} />}
         {text.length > 0 && (
           <View

@@ -8,7 +8,7 @@ import {
   Chrome,
   Compass,
   Flame,
-  Folder,
+  CircleDot,
   Globe,
   Laptop,
   Monitor,
@@ -31,7 +31,7 @@ import type { LibraryFilters } from "@/lib/api";
 import { formatRangeLabel } from "@/lib/date-range";
 import { cn } from "@/lib/utils";
 import { DateRangeFilter } from "./date-range-filter";
-import { ViewMenu, type LibraryView } from "./view-toggle";
+
 
 const BROWSER_ICONS: Record<string, React.ElementType> = {
   chrome: Chrome,
@@ -69,38 +69,13 @@ const TOUCH_TARGET = "h-11";
 const CHIP_TOUCH =
   "relative h-9 after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']";
 
-/**
- * Container-query threshold (see the `@container` comment on the control row)
- * below which the Filters/Tags/Select buttons drop their text and become
- * icon-only. The labels come off only when they genuinely stop fitting, so the
- * number is measured, not guessed — at the app's own type scale the fully
- * labeled row in its WIDEST realistic state measures (Chrome, default 16px root):
- *
- *   Filters+badge 104.8 + Tags+badge 95.1 + Select 85.6 + view trigger 58
- *   + 3 × 8px gap = 367.6px
- *
- * (badges are always single-digit: the facet filters are mutually exclusive, so
- * filterCount tops out at 2 — one facet + a date range — and tagCount at 1.)
- * 24rem = 384px is that width plus ~16px of slack. Reserving for the widest
- * state, not the current one, is deliberate: keying the threshold off whether a
- * badge happens to be showing would make every label vanish the moment you
- * applied a filter. Unlabeled the same row is 327.6px, so nothing overflows
- * below the threshold either.
- *
- * Container width, NOT viewport: `main` insets this row by p-3/p-4 and the
- * sidebar insets it again on tablets, so a 430px phone only offers 406px here
- * and a viewport-keyed breakpoint of the same number collapses too early —
- * which is the bug this replaced (26rem/416px hid the labels on every phone).
- * In rem so the threshold scales with the root font size the labels do.
- */
-const LABEL_VISIBLE = "hidden @min-[24rem]:inline";
+// With no desktop layout chooser on phones, all three action labels fit.
+const LABEL_VISIBLE = "inline";
 
 export interface MobileFilterBarProps {
   meta: MetaResponse | null;
   filters: LibraryFilters;
   onFilterChange: (next: LibraryFilters) => void;
-  view: LibraryView;
-  onViewChange: (view: LibraryView) => void;
   /** Turn touch selection mode on/off (Part B). Omit to hide the button. */
   onSelectMode?: (on: boolean) => void;
   selectionActive?: boolean;
@@ -133,8 +108,6 @@ export function MobileFilterBar({
   meta,
   filters,
   onFilterChange,
-  view,
-  onViewChange,
   onSelectMode,
   selectionActive,
   className,
@@ -172,19 +145,12 @@ export function MobileFilterBar({
   };
 
   const active = activeChips(filters);
+  // The page heading already identifies the topic. Keep its removable chip
+  // inside Filters instead of repeating the navigation context above the list.
+  const visibleChips = active.filter(chip => !chip.keys.includes("category"));
 
   return (
     <div className={cn("flex flex-col gap-2 @container", className)}>
-      {/* `@container` above (not a viewport breakpoint) because this bar sits
-          inside a main that the sidebar insets — viewport width overstates the
-          room this row actually has. flex-nowrap, not flex-wrap: wrapping used
-          to be how this row avoided overflowing on narrow phones, but it broke
-          the view switcher onto its own line, which is worse than the overflow
-          it was avoiding. Now nothing here wraps — the buttons drop their text
-          (LABEL_VISIBLE, icon + badge survive) below the measured threshold on
-          that constant, and the view switcher is a single dropdown button
-          instead of three segments, so the row's natural width never gets close
-          to overflowing at any phone size. */}
       <div className="flex min-w-0 flex-nowrap items-center gap-2">
         <Button
           variant={filterCount ? "secondary" : "outline"}
@@ -229,17 +195,12 @@ export function MobileFilterBar({
             <span className={LABEL_VISIBLE}>{selectionActive ? "Done" : "Select"}</span>
           </Button>
         )}
-        {/* A single dropdown button, not the desktop's three-segment ViewToggle:
-            three squares plus their own touch targets is exactly the chrome that
-            forced this row to wrap in the first place. `ViewMenu` (view-toggle.tsx)
-            shares the same VIEWS table as ViewToggle, so the two surfaces can't
-            drift on labels/icons even though they render differently. */}
-        <ViewMenu view={view} onChange={onViewChange} className="ml-auto" />
+
       </div>
 
-      {active.length > 0 && (
+      {visibleChips.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          {active.map((chip) => (
+          {visibleChips.map((chip) => (
             <button
               key={chip.label}
               type="button"
@@ -255,7 +216,7 @@ export function MobileFilterBar({
               <span className="sr-only">Remove filter</span>
             </button>
           ))}
-          {active.length > 1 && (
+          {visibleChips.length > 1 && (
             <Button
               variant="ghost"
               size="sm"
@@ -274,7 +235,7 @@ export function MobileFilterBar({
         description={
           openDrawer === "tags"
             ? "Filter the library by one of the tags the AI applied."
-            : "Filter the library by category, source, device or date."
+            : "Filter the library by topic, source, device or date."
         }
         onOpenChange={(next) => setOpenDrawer(next ? openDrawer : null)}
         active={active}
@@ -309,13 +270,13 @@ export function MobileFilterBar({
               />
             </div>
             {categories.length > 0 && (
-              <ChipSection title="Categories">
+              <ChipSection title="Topics">
                 {categories.map((c) => (
                   <FacetChip
                     key={c.name}
                     label={c.name}
                     count={c.count}
-                    Icon={Folder}
+                    Icon={CircleDot}
                     active={filters.category === c.name}
                     onClick={() => pickFacet("category", c.name)}
                   />
@@ -401,7 +362,7 @@ interface ActiveChip {
 /** Every applied filter as one dismissible chip, in the drawer's own order. */
 function activeChips(filters: LibraryFilters): ActiveChip[] {
   const chips: ActiveChip[] = [];
-  if (filters.category) chips.push({ label: filters.category, Icon: Folder, keys: ["category"] });
+  if (filters.category) chips.push({ label: filters.category, Icon: CircleDot, keys: ["category"] });
   if (filters.browser) {
     chips.push({
       // Facet values are stored lowercase; the chip is prose, so capitalize here

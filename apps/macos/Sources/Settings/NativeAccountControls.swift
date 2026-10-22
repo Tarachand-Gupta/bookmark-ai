@@ -83,7 +83,7 @@ struct NativeAccountControls: View {
         }
         .alert("Delete your account and bookmarks?", isPresented: $confirmDelete) {
             Button("Cancel", role: .cancel) { }
-            Button("Delete Account", role: .destructive) { run { try await environment.api.deleteNativeAccount(); await environment.auth.nativeAccountDeleted() } }
+            Button("Delete Account", role: .destructive) { run { try await environment.api.deleteNativeAccount(); environment.clearPrivateData(); await environment.auth.nativeAccountDeleted() } }
         }
         .disabled(busy)
     }

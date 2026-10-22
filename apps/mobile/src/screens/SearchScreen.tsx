@@ -20,6 +20,7 @@ import { useAppTheme } from "../context/PreferencesContext";
 import { useContentWidth } from "../hooks/useContentWidth";
 import type { LiveDeviceMatchGroup } from "../hooks/useLiveSearchMatches";
 import { useLiveSearchMatches } from "../hooks/useLiveSearchMatches";
+import { useBookmarkSelection } from "../hooks/useBookmarkSelection";
 import { useSearch } from "../hooks/useSearch";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
 
@@ -33,9 +34,9 @@ export function SearchScreen({
    * rather than in a new screen. A counter (not a boolean) so repeat taps
    * re-focus every time.
    */
-  focusRequest = 0,
+  focusRequest = 0, active=true,
 }: {
-  focusRequest?: number;
+  focusRequest?: number; active?:boolean;
 }) {
   const { colors, radius } = useAppTheme();
   const tabBarClearance = useTabBarClearance();
@@ -43,6 +44,7 @@ export function SearchScreen({
   const { inset } = useContentWidth();
   const onScroll = useTabBarScroll();
   const search = useSearch();
+  const selection=useBookmarkSelection("search",active,{search:{q:search.query,mode:search.keywordOnly?"keyword":"hybrid"}});
   // Live devices are searched entirely client-side and independently of
   // useSearch — see the hook's doc comment for why (optional-everywhere,
   // never blocks or errors alongside the bookmark/session results).
@@ -134,7 +136,7 @@ export function SearchScreen({
               <ActivityIndicator size="small" color={colors.mutedForeground} />
             ) : (
               <Text style={[styles.statusText, { color: colors.mutedForeground }]}>
-                Keyword matches only — AI ranking is unavailable right now.
+                {search.offline ? "Searching saved results and links available on this device. Reconnect for the full library." : "Keyword matches only — AI ranking is unavailable right now."}
               </Text>
             )}
           </View>
@@ -151,6 +153,7 @@ export function SearchScreen({
         )}
       </View>
 
+      {hasQuery&&!showingSessions&&selection.controls}
       {showingSessions ? (
         <SectionList
           sections={sessionSections}
@@ -192,7 +195,7 @@ export function SearchScreen({
         sections={sections}
         keyExtractor={(b) => b.id}
         renderItem={({ item, index, section }) => (
-          <BookmarkRow bookmark={item} last={index === section.data.length - 1} />
+          <BookmarkRow bookmark={item} last={index === section.data.length - 1} selecting={selection.selecting} selected={selection.ids.includes(item.id)} onSelect={selection.toggle} />
         )}
         renderSectionHeader={({ section }) =>
           section.key === "matches" ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Pencil, Plus, Trash2, Upload, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { createSkill, deleteSkill, listSkills, updateSkill } from "@/lib/api";
+import { createSkill, deleteSkill, updateSkill } from "@/lib/api";
 import {
   SKILL_FILE_ACCEPT,
   SKILL_IMPORT_COPY,
@@ -44,6 +44,7 @@ import {
   validateSkillDraft,
 } from "@/lib/skills";
 import { cn } from "@/lib/utils";
+import { useSettingsResource } from "./account-details-provider";
 import { Switch } from "./devices-settings";
 import { SettingsSection } from "./settings-section";
 
@@ -118,10 +119,16 @@ const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? [])
  * the server before the row goes). Nothing here knows whether it's inside the
  * Settings dialog or the chat's dialog.
  */
-export function SkillsManager({ className }: { className?: string }) {
+export function SkillsManager(props: { className?: string }) {
+  const resource = useSettingsResource("skills");
+  return <SkillsManagerContent key={`${resource.accountId ?? "signed-out"}:${resource.active}`} {...props} />;
+}
+
+function SkillsManagerContent({ className }: { className?: string }) {
+  const resource = useSettingsResource("skills");
   // null = loading; [] = loaded, empty.
-  const [skills, setSkills] = useState<Skill[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [skills, setSkills] = useState<Skill[] | null>(resource.data ? sortSkills(resource.data) : null);
+  const loadError = resource.error;
   const [actionError, setActionError] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -131,35 +138,16 @@ export function SkillsManager({ className }: { className?: string }) {
   const dragDepth = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const { skills: list } = await listSkills();
-      setSkills(sortSkills(list));
-      setLoadError(null);
-    } catch (e: unknown) {
-      setLoadError((e as Error).message);
-    }
-  }, []);
-
   useEffect(() => {
-    let cancelled = false;
-    listSkills()
-      .then(({ skills: list }) => {
-        if (!cancelled) setSkills(sortSkills(list));
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setLoadError((e as Error).message);
-      });
-    // Ask AI's createSkill / installSkill add rows behind our back.
-    const onChanged = () => {
-      if (!cancelled) void load();
-    };
+    if (resource.data && !busyId) setSkills(sortSkills(resource.data));
+    if (!resource.active) { setSkills(null); setEditor(null); }
+  }, [resource.data, resource.active, busyId]);
+  useEffect(() => {
+    // Ask AI can create/install skills while this manager is open.
+    const onChanged = () => { void resource.invalidate(); };
     window.addEventListener(SKILLS_CHANGED_EVENT, onChanged);
-    return () => {
-      cancelled = true;
-      window.removeEventListener(SKILLS_CHANGED_EVENT, onChanged);
-    };
-  }, [load]);
+    return () => window.removeEventListener(SKILLS_CHANGED_EVENT, onChanged);
+  }, [resource.invalidate]);
 
   // ── Import a SKILL.md / .txt (CONTRACT §3b): parse client-side, then open
   // the editor PREFILLED so the user reviews before anything is saved.
@@ -225,6 +213,9 @@ export function SkillsManager({ className }: { className?: string }) {
   };
 
   const upsert = (skill: Skill) => {
+    if (!resource.isCurrent()) return;
+    resource.update(prev => sortSkills([skill, ...(prev ?? []).filter(s => s.id !== skill.id)]));
+    void resource.invalidate();
     setSkills((prev) => sortSkills([skill, ...(prev ?? []).filter((s) => s.id !== skill.id)]));
   };
 
@@ -251,6 +242,9 @@ export function SkillsManager({ className }: { className?: string }) {
     setBusyId(skill.id);
     try {
       await deleteSkill(skill.id);
+      if (!resource.isCurrent()) return;
+      resource.update(prev => (prev ?? []).filter(s => s.id !== skill.id));
+      void resource.invalidate();
       setSkills((prev) => (prev ?? []).filter((s) => s.id !== skill.id));
     } catch (e: unknown) {
       setActionError((e as Error).message);
@@ -319,9 +313,8 @@ export function SkillsManager({ className }: { className?: string }) {
           dragging && "ring-2 ring-ring ring-offset-2 ring-offset-background",
         )}
       >
-      {loadError ? (
-        <p className="text-sm text-destructive">Couldn’t load skills: {loadError}</p>
-      ) : skills === null ? (
+      {loadError && <p role="alert" className="text-sm text-destructive">Couldn’t load skills: {loadError} <Button variant="ghost" size="sm" onClick={() => void resource.refresh()}>Retry</Button></p>}
+      {skills === null && loadError ? null : skills === null ? (
         <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" aria-hidden />
           Loading…

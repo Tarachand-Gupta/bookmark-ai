@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { getSettings, updateSettings } from "@/lib/api";
+import { updateSettings } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { useSettingsResource } from "./account-details-provider";
 import { FEATURE_ICONS } from "./feature-icons";
 import { Switch } from "./devices-settings";
 import { SettingsGroup, SettingsRow, SettingsSection } from "./settings-section";
@@ -20,30 +22,18 @@ const SyncIcon = FEATURE_ICONS.bookmarks;
  * the Reading List.
  */
 export function SyncSection() {
-  const [loading, setLoading] = useState(true);
+  const resource = useSettingsResource("settings");
+  const loading = resource.loading;
   const [error, setError] = useState<string | null>(null);
-  const [syncEnabled, setSyncEnabled] = useState(true);
-  const [fullSync, setFullSync] = useState(false);
+  const [syncEnabled, setSyncEnabled] = useState(resource.data?.nativeSyncEnabled ?? true);
+  const [fullSync, setFullSync] = useState(resource.data?.nativeSyncFull ?? false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    getSettings()
-      .then(({ settings }) => {
-        if (cancelled) return;
-        setSyncEnabled(settings.nativeSyncEnabled);
-        setFullSync(settings.nativeSyncFull);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setError((e as Error).message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!resource.data || busy) return;
+    setSyncEnabled(resource.data.nativeSyncEnabled);
+    setFullSync(resource.data.nativeSyncFull);
+  }, [resource.data, busy]);
 
   /** Optimistic single-field PATCH; revert the other state on failure. */
   const apply = async (
@@ -54,6 +44,8 @@ export function SyncSection() {
     setError(null);
     try {
       const { settings } = await updateSettings(patch);
+      if (!resource.isCurrent()) return;
+      resource.remember(settings);
       setSyncEnabled(settings.nativeSyncEnabled);
       setFullSync(settings.nativeSyncFull);
     } catch (e) {
@@ -93,6 +85,7 @@ export function SyncSection() {
       icon={SyncIcon}
       description="Mirror bookmarks you add in Chrome or Firefox — and items you add to Chrome’s Reading List — into your library here. Applies to every browser where you’re signed in to the extension."
     >
+      {resource.error && <p role="alert" className="text-sm text-destructive">{resource.error} <Button variant="ghost" size="sm" onClick={() => void resource.refresh()}>Retry</Button></p>}
       {loading ? (
         <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -107,7 +100,7 @@ export function SyncSection() {
               <Switch
                 id="native-sync-enabled"
                 checked={syncEnabled}
-                disabled={busy}
+                disabled={busy || !resource.data || !resource.active}
                 onChange={toggleSync}
               />
             }
@@ -134,7 +127,7 @@ export function SyncSection() {
                 <Switch
                   id="native-sync-full"
                   checked={fullSync}
-                  disabled={busy || !syncEnabled}
+                  disabled={busy || !resource.data || !resource.active || !syncEnabled}
                   onChange={toggleFull}
                 />
               }

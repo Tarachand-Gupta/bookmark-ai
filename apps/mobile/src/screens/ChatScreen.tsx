@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -17,9 +17,9 @@ import { Symbol } from "../components/Symbol";
 import { useAppTheme } from "../context/PreferencesContext";
 import { useChatConversations } from "../hooks/useChatConversations";
 import { useContentWidth } from "../hooks/useContentWidth";
-import { ConversationPresentation } from "../navigation/ConversationPresentation";
+import { useComposer } from "../context/ComposerContext";
 import { useTabBarClearance, useTabBarScroll } from "../navigation/TabBar";
-import type { ConversationTarget } from "./ConversationScreen";
+
 
 /**
  * Ask AI tab — history first, like a messaging app's chat list: past
@@ -40,7 +40,8 @@ export function ChatScreen({ active = true }: { active?: boolean }) {
   const onScroll = useTabBarScroll();
   const history = useChatConversations(active);
 
-  const [target, setTarget] = useState<ConversationTarget | null>(null);
+  const composer=useComposer();
+  useEffect(()=>{if(composer.historyRevision)history.revalidate()},[composer.historyRevision]);
   const [query, setQuery] = useState("");
 
   // Client-side title filter: the whole list is already in memory (conversation
@@ -53,22 +54,12 @@ export function ChatScreen({ active = true }: { active?: boolean }) {
 
   const openNew = useCallback(() => {
     void Haptics.selectionAsync();
-    setTarget({ kind: "new" });
-  }, []);
+    composer.newChat();
+  }, [composer.newChat]);
 
   const openExisting = useCallback((conversation: ChatConversation) => {
-    setTarget({ kind: "existing", id: conversation.id, title: conversation.title });
+    composer.openExisting(conversation.id,conversation.title);
   }, []);
-
-  const closeThread = useCallback(
-    (changed: boolean) => {
-      setTarget(null);
-      // The thread created a conversation or bumped one's `updatedAt` — pull the
-      // fresh list, silently (the rows are already on screen).
-      if (changed) history.revalidate();
-    },
-    [history],
-  );
 
   const confirmDelete = useCallback(
     (conversation: ChatConversation) => {
@@ -181,7 +172,7 @@ export function ChatScreen({ active = true }: { active?: boolean }) {
         scrollEventThrottle={16}
         contentContainerStyle={{ paddingBottom: tabBarClearance, paddingHorizontal: inset }}
       />
-      <ConversationPresentation target={target} onClose={closeThread} />
+
     </View>
   );
 }

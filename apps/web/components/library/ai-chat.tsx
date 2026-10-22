@@ -1,9 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
+import { useChatWorkspace } from "@/hooks/use-chat-workspace";
+import { contextLabel } from "@/lib/chat-workspace";
+import type { ChatContext } from "@bookmark-ai/types";
+import { ChatContextPreview } from "./organization/chat-context-preview";
+import { ChatContextPicker } from "./organization/chat-context-picker";
 import {
   DefaultChatTransport,
   isFileUIPart,
@@ -55,7 +59,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  apiHeaders,
+  apiHeadersForAccount,
   deleteChatConversation,
   getChatConversation,
   getSettings,
@@ -81,6 +85,11 @@ import { SkillsDialog, SkillsIcon } from "./skills-settings";
 
 export interface AiChatProps {
   onClose: () => void;
+  onOpen: () => void;
+  open: boolean;
+  accountId: string;
+  suggestedContext?: ChatContext;
+  requestedContext?: { id: string; context: ChatContext };
   /** Jump back to the library with a facet applied (the page closes the chat). */
   onFilter?: (filters: LibraryFilters) => void;
 }
@@ -129,172 +138,37 @@ function hasVisibleContent(message: UIMessage): boolean {
  * in all four states, files — renders here (CONTRACT §6), plus attachments in
  * the composer (§4) and the `{ message, conversationId }` protocol (§5).
  */
-export function AiChat({ onClose, onFilter }: AiChatProps) {
-  // The adopted conversation id — a ref so the transport reads the CURRENT value
-  // when building each request body without re-instantiating the transport.
-  const conversationIdRef = useRef<string | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [limitInfo, setLimitInfo] = useState<ChatLimitInfo | null>(null);
-
-  // `X-Ai-Source` per reply: the in-flight value (state, for the message being
-  // streamed) and, once a turn finishes, a message-id → source map so the note
-  // stays under the right reply as the thread grows.
-  const [liveAiSource, setLiveAiSource] = useState<string | null>(null);
-  const liveAiSourceRef = useRef<string | null>(null);
-  const aiSourceByMessage = useRef(new Map<string, string>());
-  // `X-Ai-Note` (BYOK rule): "own-key-incomplete" earns a sentence + a link to
-  // Settings under the reply. Same live/per-message bookkeeping as the source.
-  const [liveAiNote, setLiveAiNote] = useState<string | null>(null);
-  const liveAiNoteRef = useRef<string | null>(null);
-  const aiNoteByMessage = useRef(new Map<string, string>());
-
-  // ── Attachments: rejections surface as one line under the composer ──────────
-  // Both the client-side pipeline (prepareAttachments) and the server's typed
-  // 400/413/415 bodies land here. A server rejection also flags the turn so the
-  // generic "Something went wrong" box stays hidden and the un-sent user message
-  // is lifted back out of the transcript (see the effect below).
-  const [attachError, setAttachError] = useState<string | null>(null);
-  const attachErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showAttachError = useCallback((message: string, ms = 8000) => {
-    setAttachError(message);
-    if (attachErrorTimer.current) clearTimeout(attachErrorTimer.current);
-    attachErrorTimer.current = setTimeout(() => setAttachError(null), ms);
-  }, []);
-  useEffect(
-    () => () => {
-      if (attachErrorTimer.current) clearTimeout(attachErrorTimer.current);
-    },
-    [],
-  );
-  const [attachmentRejected, setAttachmentRejected] = useState(false);
-
-  // Custom fetch = the persistence + budget hook. It attaches auth (matching the
-  // rest of lib/api), adopts the server-minted conversation id from the
-  // X-Conversation-Id response header, reads X-Ai-Source / X-Ai-Note, and
-  // detects the 402 free-limit body and the typed attachment rejections before
-  // the SDK turns them into an opaque stream error.
-  const chatFetch = useCallback<typeof fetch>(
-    async (input, init) => {
-      const headers = {
-        ...(init?.headers as Record<string, string> | undefined),
-        ...(await apiHeaders()),
-      };
-      const res = await fetch(input, { ...init, headers });
-      const cid = res.headers.get(CONVERSATION_ID_HEADER);
-      if (cid && conversationIdRef.current !== cid) {
-        conversationIdRef.current = cid;
-        setActiveId(cid);
-      }
-      const source = res.headers.get(AI_SOURCE_HEADER);
-      liveAiSourceRef.current = source;
-      setLiveAiSource(source);
-      const note = res.headers.get(AI_NOTE_HEADER);
-      liveAiNoteRef.current = note;
-      setLiveAiNote(note);
-      if (res.status === 402) {
-        const body = (await res
-          .clone()
-          .json()
-          .catch(() => null)) as
-          | { error?: string; usedTokens?: number; limitTokens?: number }
-          | null;
-        if (body?.error === "free-limit-exceeded") {
-          setLimitInfo({ usedTokens: body.usedTokens, limitTokens: body.limitTokens });
-        }
-      } else if (!res.ok) {
-        const body: unknown = await res
-          .clone()
-          .json()
-          .catch(() => null);
-        const copy = describeAttachmentServerError(res.status, body);
-        if (copy) {
-          setAttachmentRejected(true);
-          showAttachError(copy, 12000);
-        }
-      }
-      return res;
-    },
-    [showAttachError],
-  );
-
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: "/api/chat",
-        fetch: chatFetch,
-        // Wire format (CONTRACT §5): history lives on the server, so once a
-        // conversation exists only the NEW user message travels, with the id.
-        // The first turn (no id yet) and a regenerate (the server must replace
-        // its stored tail, not append) send the full array — the legacy shape
-        // the route still accepts. `timezone` rides along for the prompt's "today".
-        prepareSendMessagesRequest: ({ messages, trigger }) => {
-          const conversationId = conversationIdRef.current ?? undefined;
-          const timezone = clientTimezone();
-          if (conversationId && trigger === "submit-message") {
-            return { body: { message: messages.at(-1), conversationId, timezone } };
-          }
-          return { body: { messages, conversationId, timezone } };
-        },
-      }),
-    [chatFetch],
-  );
-
-  // ── History list ────────────────────────────────────────────────────────────
+export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, requestedContext, onFilter }: AiChatProps) {
+  const workspace = useChatWorkspace(accountId);
+  const active = workspace.active;
+  useEffect(() => { if (requestedContext) workspace.patch({ context: requestedContext.context }); }, [requestedContext?.id, workspace]);
+  const { messages, sendMessage, setMessages, regenerate, clearError, status, error, stop } = useChat({ chat: active.chat });
+  const activeId = active.conversationId;
+  const limitInfo = active.limit;
+  const liveAiSource = active.source;
+  const liveAiNote = active.note;
+  const aiSourceByMessage = { current: active.sourceByMessage };
+  const aiNoteByMessage = { current: active.noteByMessage };
+  const attachmentRejected = !!active.rejection;
+  const [attachErrors, setAttachErrors] = useState<Record<string, string | null>>({});
+  const attachError = attachErrors[active.key];
+  const setAttachError = (message: string | null) => setAttachErrors(errors => ({ ...errors, [active.key]: message }));
+  const showAttachError = useCallback((message: string) => setAttachErrors(errors => ({ ...errors, [active.key]: message })), [active.key]);
   const [conversations, setConversations] = useState<ChatConversationSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
-  // Title for a just-loaded thread until the list refresh carries its own.
-  const [pendingTitle, setPendingTitle] = useState<string | null>(null);
-  // Loading a stored conversation: the GET + setMessages can take a few seconds,
-  // so we show an immediate title swap + ghost-bubble skeleton meanwhile. A load
-  // failure surfaces `loadError` and restores the previous thread.
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-
+  const [contextPicker, setContextPicker] = useState(false);
+  const textarea = useRef<HTMLTextAreaElement>(null);
   const refreshConversations = useCallback(async () => {
     setHistoryLoading(true);
-    try {
-      const { conversations } = await listChatConversations();
-      setConversations(conversations);
-    } catch {
-      // History is a convenience layer — a failed list never blocks chatting.
-    } finally {
-      setHistoryLoading(false);
-    }
+    try { setConversations((await listChatConversations()).conversations); }
+    catch { /* A failed history read does not block an active draft. */ }
+    finally { setHistoryLoading(false); }
   }, []);
-
-  const { messages, sendMessage, setMessages, regenerate, clearError, status, error, stop } =
-    useChat({
-      transport,
-      // A finished turn may have created the conversation (or renamed it) — pull
-      // the fresh list so the header title + history reflect it. It also SPENT
-      // credits: refresh the usage too, so a "New conversation" greeting shows
-      // this session's spend instead of the mount-time snapshot (QA finding).
-      onFinish: ({ message }) => {
-        if (liveAiSourceRef.current) {
-          aiSourceByMessage.current.set(message.id, liveAiSourceRef.current);
-        }
-        if (liveAiNoteRef.current) {
-          aiNoteByMessage.current.set(message.id, liveAiNoteRef.current);
-        }
-        void refreshConversations();
-        void refreshAiSettings();
-        // createSkill / installSkill added rows: an open Skills manager refreshes.
-        if (skillsCreatedIn(message.parts) > 0) notifySkillsChanged();
-      },
-    });
-
-  // A server-side attachment rejection means the message never left: take the
-  // optimistic user bubble back out of the thread (the composer line says why)
-  // and clear the SDK's error so the retry box doesn't offer to resend it.
-  useEffect(() => {
-    if (status !== "error" || !attachmentRejected) return;
-    setMessages((prev) => (prev.at(-1)?.role === "user" ? prev.slice(0, -1) : prev));
-    clearError();
-  }, [status, attachmentRejected, setMessages, clearError]);
-
   // FREE CREDITS, FIRST OPEN. A user on the included free AI is metered weekly —
   // so the first thing an empty conversation shows is what they've got (credit
   // meter) and, secondarily, that their own key is an option. Living in the
@@ -306,11 +180,11 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [greetingDismissed, setGreetingDismissed] = useState(false);
   useEffect(() => {
-    setGreetingDismissed(localStorage.getItem(GREETING_DISMISSED) === "1");
+    try { setGreetingDismissed(localStorage.getItem(GREETING_DISMISSED) === "1"); } catch { /* Session-only dismissal. */ }
   }, []);
   const dismissGreeting = useCallback(() => {
     setGreetingDismissed(true);
-    localStorage.setItem(GREETING_DISMISSED, "1");
+    try { localStorage.setItem(GREETING_DISMISSED, "1"); } catch { /* Session-only dismissal. */ }
   }, []);
   /** The full setup card, opened only from the free-limit wall's CTA. */
   const [keyFormOpen, setKeyFormOpen] = useState(false);
@@ -360,109 +234,69 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
     [showAttachError],
   );
 
-  /** The single send path (composer submit and sample-prompt click both use it).
-   * A new send clears any stale limit card; a fresh 402 re-raises it. Files
-   * arrive as data-URL `file` parts already classified and downscaled. */
-  const send = useCallback(
-    (text: string, files: FileUIPart[] = []) => {
-      const trimmed = text.trim();
-      if (!trimmed && files.length === 0) return;
-      setLimitInfo(null);
-      setAttachError(null);
-      setAttachmentRejected(false);
-      liveAiSourceRef.current = null;
-      setLiveAiSource(null);
-      liveAiNoteRef.current = null;
-      setLiveAiNote(null);
-      if (trimmed) void sendMessage({ text: trimmed, files });
-      else void sendMessage({ files });
-    },
-    [sendMessage],
-  );
-
-  const handleSubmit = (message: PromptInputMessage) => {
-    send(message.text ?? "", message.files ?? []);
+  workspace.onFinish = (message) => {
+    void refreshConversations(); void refreshAiSettings();
+    if (skillsCreatedIn(message.parts) > 0) notifySkillsChanged();
   };
-
-  // ── Thread lifecycle: new / load / delete ─────────────────────────────────────
-  const startNewConversation = useCallback(() => {
-    setHistoryOpen(false);
-    conversationIdRef.current = null;
-    setActiveId(null);
-    setPendingTitle(null);
-    setLimitInfo(null);
-    setLoadError(null);
-    setLoadingConversation(false);
-    setMessages([]);
-    clearError();
-  }, [setMessages, clearError]);
-
-  const loadConversation = useCallback(
-    async (id: string) => {
-      // Snapshot the current thread so a failed load can restore it instead of
-      // leaving a dead empty panel.
-      const prev = {
-        messages,
-        conversationId: conversationIdRef.current,
-        activeId,
-        pendingTitle,
-      };
-
-      // IMMEDIATE feedback on click: close the popover, adopt the row's known
-      // title, clear the thread, and show the skeleton — the network round-trip
-      // then swaps real messages in (or restores `prev` on failure).
-      setHistoryOpen(false);
-      setLimitInfo(null);
-      setLoadError(null);
-      clearError();
-      const knownTitle = conversations.find((c) => c.id === id)?.title ?? null;
-      conversationIdRef.current = id;
-      setActiveId(id);
-      setPendingTitle(knownTitle);
-      setMessages([]);
-      setLoadingConversation(true);
-
-      try {
-        const { conversation, messages: loaded } = await getChatConversation(id);
-        conversationIdRef.current = conversation.id;
-        setActiveId(conversation.id);
-        setPendingTitle(conversation.title);
-        // Stored messages are UIMessage-compatible ({id, role, parts}) with the
-        // parts kept verbatim — file, reasoning and tool parts render exactly
-        // like the live ones. The structural cast is the seam until
-        // packages/types/chat.ts types the parts.
-        setMessages(loaded as unknown as UIMessage[]);
-      } catch {
-        conversationIdRef.current = prev.conversationId;
-        setActiveId(prev.activeId);
-        setPendingTitle(prev.pendingTitle);
-        setMessages(prev.messages);
-        setLoadError("Couldn't load that conversation. Check your connection and try again.");
-      } finally {
-        setLoadingConversation(false);
-      }
-    },
-    [messages, activeId, pendingTitle, conversations, setMessages, clearError],
-  );
-
-  const handleDeleteConversation = useCallback(
-    (id: string) => {
-      setConversations((prev) => prev.filter((c) => c.id !== id));
-      if (id === conversationIdRef.current) {
-        conversationIdRef.current = null;
-        setActiveId(null);
-        setPendingTitle(null);
-        setMessages([]);
-        clearError();
-      }
-      deleteChatConversation(id).catch(() => {
-        // Re-sync if the server rejected the delete (row reappears).
-        void refreshConversations();
-      });
-    },
-    [setMessages, clearError, refreshConversations],
-  );
-
+  const send = (text: string, files: FileUIPart[] = []) => workspace.send(text, files);
+  const handleSubmit = (message: PromptInputMessage) => {
+    if (!open) onOpen();
+    workspace.send(message.text, message.files);
+  };
+  const startNewConversation = () => {
+    workspace.create({ context: suggestedContext ?? { type: "library" } }); setHistoryOpen(false); setLoadError(null); setAttachError(null);
+    textarea.current?.focus();
+  };
+  const loadConversation = async (id: string) => {
+    setHistoryOpen(false); setLoadError(null);
+    const known = workspace.threads.get(id) ?? workspace.findConversation(id);
+    if (known) { workspace.select(known.key); return; }
+    setLoadingConversation(true);
+    try {
+      const { conversation, messages: loaded } = await getChatConversation(id);
+      if (!workspace.isActive) return;
+      const thread = workspace.create({ conversationId: id, title: conversation.title });
+      thread.chat.messages = loaded as unknown as UIMessage[];
+      workspace.notify();
+    } catch { setLoadError("Couldn't load that conversation. Your current draft is still here."); }
+    finally { setLoadingConversation(false); }
+  };
+  const handleDeleteConversation = async (id: string) => {
+    const thread = workspace.threads.get(id) ?? workspace.findConversation(id);
+    try {
+      if (thread?.conversationId || !thread) await deleteChatConversation(thread?.conversationId ?? id);
+      if (thread) workspace.remove(thread.key);
+      setConversations(prev => prev.filter(c => c.id !== id));
+    } catch { setLoadError("Couldn't delete this conversation. Try again."); }
+  };
+  useEffect(() => {
+    // A reload restores the authoritative transcript; an unfinished previous
+    // process is reported as interrupted, never as background completion.
+    const thread = workspace.active;
+    if (!thread.conversationId || thread.chat.messages.length || thread.chat.status !== "ready") return;
+    let cancelled = false;
+    void getChatConversation(thread.conversationId).then(({ messages: loaded }) => {
+      if (!cancelled) { thread.chat.messages = loaded as unknown as UIMessage[]; workspace.notify(); }
+    }).catch(() => { if (!cancelled) setLoadError("Couldn't restore the conversation. Your draft is retained."); });
+    return () => { cancelled = true; };
+  }, [workspace, active.key, active.conversationId]);
+  useEffect(() => { if (!open) setExpanded(false); }, [open]);
+  useEffect(() => {
+    const handoffId = searchParams.get("handoff");
+    if (!handoffId) return;
+    let cancelled = false;
+    void apiHeadersForAccount(accountId).then(headers => { if (cancelled || !workspace.isActive) throw new Error("This account is no longer active."); return fetch(`/api/composer/handoffs/${encodeURIComponent(handoffId)}/claim`, { method: "POST", headers }); }).then(async response => {
+      if (!response.ok) throw new Error(response.status === 410 ? "This transfer expired. Return to the extension and continue again." : "Couldn't open this transfer. Check that you're signed in to the same account.");
+      return response.json();
+    }).then(({ handoff }) => {
+      if (cancelled || !handoff?.draft) return;
+      const key = `handoff:${handoffId}`;
+      if (workspace.threads.has(key)) workspace.select(key);
+      else workspace.create({ key, text: handoff.draft.text, context: handoff.draft.context });
+      onOpen();
+    }).catch(err => { if (!cancelled) setLoadError(err.message); });
+    return () => { cancelled = true; };
+  }, [searchParams.get("handoff"), workspace]);
   // After the user saves their own key from the limit card, retry the send —
   // their key is unmetered, so the same last message now succeeds. The card
   // also calls this on a mode switch / key removal, so re-read the mode rather
@@ -471,19 +305,19 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
     void refreshAiSettings();
     setKeyFormOpen(false);
     if (limitInfo) {
-      setLimitInfo(null);
+      active.limit = null; workspace.notify();
       clearError();
       void regenerate();
     }
   }, [limitInfo, clearError, regenerate, refreshAiSettings]);
 
   const headerTitle =
-    conversations.find((c) => c.id === activeId)?.title ?? pendingTitle ?? "New conversation";
+    conversations.find((c) => c.id === activeId)?.title ?? active.title;
 
   const history = (variant: "popover" | "panel") => (
     <ConversationHistory
-      conversations={conversations}
-      activeId={activeId}
+      conversations={[...workspace.threads.values()].filter(t => !t.conversationId && (t.text || t.files.length || t.missingFiles.length)).map(t => ({ id: t.key, title: `${t.title} · Draft`, createdAt: t.updatedAt, updatedAt: t.updatedAt } as ChatConversationSummary)).concat(conversations.map(c => ({ ...c, title: `${c.title}${workspace.findConversation(c.id)?.text ? " · Draft" : ""}` })))}
+      activeId={activeId ?? active.key}
       loading={historyLoading}
       variant={variant}
       onSelect={loadConversation}
@@ -694,9 +528,8 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
                   <div className="space-y-1">
                     <h3 className="text-sm font-medium">Ask anything about your bookmarks</h3>
                     <p className="text-sm text-muted-foreground">
-                      The agent searches your library, runs SQL for counts and trends, and can
-                      search the web — then answers with citations. Attach an image or a document
-                      to ask about it.
+                      Find a saved article, compare ideas, or pick up your research.
+                      Choose specific links or a folder for a focused answer, and attach a document or image when it helps.
                     </p>
                   </div>
                 </div>
@@ -709,6 +542,8 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
               const isLast = mi === messages.length - 1;
               const live = isLast && busy;
               const files = message.parts.filter(isFileUIPart);
+              const stored = message as UIMessage & { context?: ChatContext; contextSources?: { id: string; title: string; url: string }[]; unavailableContext?: { id: string; reason: string }[] };
+              const submittedContext = stored.context ?? (message.metadata as { context?: ChatContext } | undefined)?.context;
               const source =
                 aiSourceByMessage.current.get(message.id) ?? (live ? liveAiSource : null);
               const noteCopy = describeAiNote(
@@ -719,6 +554,7 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
                   {/* w-full (not w-fit) so wide tool cards truncate instead of
                       propagating their intrinsic width and stretching the page. */}
                   <MessageContent className={message.role === "assistant" ? "w-full" : undefined}>
+                    {message.role === "user" && submittedContext && <details className="mb-2 text-xs"><summary className="cursor-pointer">Context: {contextLabel(submittedContext)}</summary>{stored.contextSources?.map(source => <p key={source.id} className="mt-1 break-words">{source.title || source.url}</p>)}{stored.unavailableContext?.map(source => <p key={source.id} className="mt-1">{source.reason}</p>)}{!stored.contextSources && <p className="mt-1">This context was fixed when you sent this message.</p>}</details>}
                     {files.length > 0 && <MessageFiles files={files} />}
                     {message.parts.map((part, i) => renderPart(message, part, i, live))}
                     {message.role === "assistant" && source === OWN_FALLBACK_SOURCE && (
@@ -797,23 +633,39 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
   );
 
   const composer = (
-    <div className="shrink-0 border-t p-2">
-      <PromptInput onSubmit={handleSubmit} accept={ATTACHMENT_ACCEPT} multiple>
+    <div className={open ? "shrink-0 border-t p-2" : "p-0"}>
+      <div className={open ? "contents" : "hidden"}>
+      {active.context.type !== "library" && <div className="flex items-center gap-2 px-2 pb-2 text-xs">
+        <Popover><PopoverTrigger asChild><Button variant="secondary" size="sm">{contextLabel(active.context)}</Button></PopoverTrigger><PopoverContent className="text-sm break-words"><ChatContextPreview context={active.context} accountId={accountId} /></PopoverContent></Popover>
+        <button type="button" onClick={() => workspace.patch({ context: { type: "library" } })} aria-label="Remove context"><X className="size-4" /></button>
+      </div>}
+      {open && suggestedContext && JSON.stringify(suggestedContext) !== JSON.stringify(active.context) && <Button variant="ghost" size="sm" onClick={() => workspace.patch({ context: suggestedContext })}>Use {contextLabel(suggestedContext).toLowerCase()} for the next turn</Button>}
+      {active.recoverable && <div role="status" className="px-3 py-2 text-xs space-y-2"><p>A previous message failed while you were writing this draft. Both are retained.</p><Button size="sm" variant="outline" onClick={() => workspace.recoverFailedTurn()}>Open failed message as a draft</Button><Button size="sm" variant="ghost" onClick={() => workspace.discardFailedTurn()}>Discard failed message</Button></div>}
+      {active.interrupted && <p role="status" className="px-3 py-2 text-xs text-muted-foreground">The previous response was interrupted. Review the saved conversation before retrying.</p>}
+      {active.missingFiles.map(file => <div key={file.id} className="flex items-center gap-2 px-3 py-1 text-xs"><span>{file.filename} · Needs reattachment</span><Button variant="ghost" size="sm" onClick={() => workspace.patch({ missingFiles: active.missingFiles.filter(f => f.id !== file.id) })}>Remove</Button></div>)}
+      </div>
+      <PromptInput className={open ? undefined : "[&>[data-slot=input-group]]:grid [&>[data-slot=input-group]]:grid-cols-[44px_minmax(0,1fr)_44px] [&>[data-slot=input-group]]:h-[54px] [&>[data-slot=input-group]]:border-0 [&>[data-slot=input-group]]:shadow-none [&>[data-slot=input-group]]:ring-0 [&>[data-slot=input-group]]:bg-transparent [&>[data-slot=input-group]]:px-1"} onSubmit={handleSubmit} clearOnSubmit={false} accept={ATTACHMENT_ACCEPT} multiple>
         <PromptInputBody>
-          <ComposerAttachments />
+          <ComposerAttachments hidden={!open} />
           {/* "Ask a follow-up" is a lie on an empty thread — there's nothing to
               follow up on, and it was the only prompt the empty state offered. */}
           <PromptInputTextarea
+            ref={textarea}
+            aria-label="Ask about your library"
+            className={open ? undefined : "col-start-2 row-start-1 h-[52px] min-h-[52px] max-h-[52px] min-w-0 overflow-hidden px-2 py-4 leading-5"}
+            rows={1}
+            wrap={open ? "soft" : "off"}
+            onFocus={() => { if (!open) { if (!active.text && !active.files.length && !messages.length && suggestedContext) workspace.patch({ context: suggestedContext }); onOpen(); } }}
             placeholder={
               messages.length === 0
-                ? "Ask anything about your bookmarks…"
+                ? "Ask about your library"
                 : "Ask a follow-up…"
             }
           />
         </PromptInputBody>
         {/* Its own row, not squeezed between the paperclip and Send — the
             rejection copy is a full sentence and needs the width. */}
-        {attachError && (
+        {open && attachError && (
           <p
             role="alert"
             className="flex items-start gap-1.5 px-3 pb-1.5 text-xs leading-snug text-destructive [overflow-wrap:anywhere]"
@@ -822,62 +674,25 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
             <span className="min-w-0">{attachError}</span>
           </p>
         )}
-        <PromptInputFooter>
-          <AttachButton />
-          <ComposerSubmit status={status} onStop={stop} className="ml-auto" />
+        <PromptInputFooter className={open ? undefined : "contents [&>button]:size-11 [&>button]:row-start-1 [&>button:first-child]:col-start-1 [&>button:last-child]:col-start-3"}>
+          <AttachButton onOpen={onOpen} onSelectBookmarks={() => { onOpen(); setContextPicker(true); }} />
+          <ComposerSubmit status={status} onStop={stop} blocked={active.missingFiles.length > 0} className="ml-auto" />
         </PromptInputFooter>
       </PromptInput>
     </div>
   );
 
-  // The drop zone wraps the WHOLE column: dragging a file anywhere over the chat
-  // raises the target, not just over the composer.
-  const chatColumn = (
-    <ChatDropZone className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card">
-      {header}
-      {thread}
-      {composer}
-    </ChatDropZone>
-  );
-
-  // Expanded: a floating near-fullscreen panel with a small margin. On ≥640px a
-  // persistent history rail sits to the left (the two-pane screenshot layout);
-  // below that it collapses to a single large column (history via the popover),
-  // so nothing overflows at 390px. useChat state lives in this component, so
-  // swapping the wrapper never drops the conversation. MUST portal to <body>:
-  // the docked shell lives inside the sidebar layout whose ancestors form
-  // stacking contexts, which would trap this `fixed` overlay underneath the
-  // sidebar and top bar.
-  const shell = expanded ? (
-    createPortal(
-      <div className="fixed inset-0 z-[60] flex" role="dialog" aria-modal="true">
-        <button
-          type="button"
-          aria-label="Collapse chat"
-          onClick={() => setExpanded(false)}
-          className="cursor-pointer absolute inset-0 bg-black/40 backdrop-blur-[1px]"
-        />
-        <div className="relative m-auto flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-hidden rounded-xl border bg-card shadow-2xl sm:h-[calc(100dvh-3rem)] sm:w-[calc(100vw-3rem)]">
-          <aside className="hidden w-64 shrink-0 flex-col border-r sm:flex">
-            {history("panel")}
-          </aside>
-          {chatColumn}
-        </div>
-      </div>,
-      document.body,
-    )
-  ) : (
-    // Docked: fills whatever shell ChatPanel provides (side / overlay / full).
-    chatColumn
-  );
-
-  // The attachments provider sits OUTSIDE the docked/expanded switch so a file
-  // pinned in the composer survives toggling the layout (context flows through
-  // the portal). Every incoming file — picker, drop, paste — runs through
-  // prepareAttachments: classify, size-check, downscale, re-encode (§4).
+  // Stable element identity from compact through wide/narrow/expanded. Neither
+  // focus nor an IME composition ever moves the textarea to a second tree.
   return (
-    <PromptInputProvider prepareFiles={prepareAttachments} onError={onAttachError}>
-      {shell}
+    <PromptInputProvider input={active.text} onInputChange={text => workspace.patch({ text }, active.key)} fileScopeKey={active.key} files={active.files} onFilesChange={files => workspace.attach(files, active.key)} prepareFiles={prepareAttachments} onError={onAttachError}>
+      <ChatDropZone className={expanded ? "fixed inset-2 z-[60] flex flex-col overflow-hidden rounded-xl border bg-card shadow-2xl sm:inset-6" : "flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[inherit] bg-card"}>
+        <div className={open ? "contents" : "hidden"}>{header}</div>
+        <div className={open ? "flex min-h-0 flex-1 flex-col" : "hidden"}>{thread}</div>
+        {!open && (status === "streaming" || status === "submitted") && <span role="status" className="sr-only">Response in progress · Open to view</span>}
+        {composer}
+      </ChatDropZone>
+      <ChatContextPicker open={contextPicker} onOpenChange={setContextPicker} onSelect={context => { workspace.patch({ context }); setContextPicker(false); }} />
       <SkillsDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
     </PromptInputProvider>
   );
@@ -891,10 +706,12 @@ export function AiChat({ onClose, onFilter }: AiChatProps) {
 function ComposerSubmit({
   status,
   onStop,
+  blocked,
   className,
 }: {
   status: ChatStatus;
   onStop: () => void;
+  blocked?: boolean;
   className?: string;
 }) {
   const { textInput, attachments } = usePromptInputController();
@@ -904,7 +721,7 @@ function ComposerSubmit({
     <PromptInputSubmit
       status={status}
       className={className}
-      disabled={!busy && empty}
+      disabled={!busy && (empty || blocked || attachments.preparing)}
       aria-label={busy ? "Stop generating" : "Send message"}
       title={busy ? "Stop" : "Send (Enter)"}
       onClick={(e) => {

@@ -1,3 +1,5 @@
+import { json } from "@bookmark-ai/db";
+import type { ResolvedChatContext } from "./composer-context";
 import { randomUUID } from "node:crypto";
 import {
   deleteConversation,
@@ -66,11 +68,12 @@ export function pruneEmptyAssistantMessages<T extends { role: string; parts?: un
  * regenerate re-sends the same user message, which was already persisted
  * before the failed turn), and empty assistant turns are dropped.
  */
-export function mergeConversationMessages<T extends { id?: string; role: string; parts?: unknown[] }>(
-  history: T[],
-  incoming: T[],
-): T[] {
-  const incomingIds = new Set(incoming.map((m) => m.id).filter((id): id is string => typeof id === "string" && id !== ""));
+export function mergeConversationMessages<
+  T extends { id?: string; role: string; parts?: unknown[] },
+>(history: T[], incoming: T[]): T[] {
+  const incomingIds = new Set(
+    incoming.map((m) => m.id).filter((id): id is string => typeof id === "string" && id !== ""),
+  );
   const kept = history.filter((m) => !(typeof m.id === "string" && incomingIds.has(m.id)));
   return pruneEmptyAssistantMessages([...kept, ...incoming]);
 }
@@ -79,7 +82,9 @@ export function mergeConversationMessages<T extends { id?: string; role: string;
 export function messageText(message: IncomingChatMessage | undefined): string {
   if (!message?.parts) return "";
   return message.parts
-    .map((p) => (p && typeof p === "object" && "text" in p ? String((p as { text: unknown }).text ?? "") : ""))
+    .map((p) =>
+      p && typeof p === "object" && "text" in p ? String((p as { text: unknown }).text ?? "") : "",
+    )
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
@@ -143,7 +148,10 @@ export async function listConversationRecords(db: Db): Promise<ChatConversation[
 
 /** Delete a conversation and its messages. Returns whether it existed. */
 export async function deleteConversationRecord(db: Db, id: string): Promise<boolean> {
-  return deleteConversation(db, id);
+  const deleted = await deleteConversation(db, id);
+  if (deleted)
+    await db.execute({ sql: "DELETE FROM chat_turn_contexts WHERE conversation_id=?", args: [id] });
+  return deleted;
 }
 
 /** Load a conversation with its full message history (oldest first). */
@@ -154,7 +162,33 @@ export async function loadConversationRecord(
   const conversation = await getConversation(db, id);
   if (!conversation) return null;
   const rows = await listMessages(db, id);
-  const messages: StoredChatMessage[] = rows.map((r) => ({ id: r.id, role: r.role, parts: r.parts }));
+  const contexts = new Map(
+    (
+      await db.execute({
+        sql: "SELECT message_id,context_json FROM chat_turn_contexts WHERE conversation_id=?",
+        args: [id],
+      })
+    ).rows.map((r) => [
+      String(r.message_id),
+      json<ResolvedChatContext | null>(r.context_json, null),
+    ]),
+  );
+  const messages: StoredChatMessage[] = rows.map((r) => {
+    const context = contexts.get(r.id);
+    return {
+      id: r.id,
+      role: r.role,
+      parts: r.parts,
+      ...(context
+        ? {
+            context: context.context,
+            contextBookmarkIds: context.bookmarkIds,
+            contextSources: context.sources,
+            unavailableContext: context.unavailable,
+          }
+        : {}),
+    };
+  });
   return { conversation, messages };
 }
 

@@ -12,15 +12,39 @@ struct BookmarkGridView: View {
     ]
 
     var body: some View {
+        GeometryReader { geometry in
+        ScrollViewReader { proxy in
         ScrollView {
             LazyVGrid(columns: Self.columns, spacing: 14) {
                 ForEach(appEnvironment.library.visibleBookmarks) { bookmark in
-                    BookmarkCard(bookmark: bookmark)
+                    BookmarkCard(bookmark: bookmark, onSelect: { appEnvironment.library.choose(bookmark.id, modifiers: NSEvent.modifierFlags) })
+                        .overlay(alignment: .topTrailing) {
+                            if appEnvironment.library.selectedIDs.contains(bookmark.id) { Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint).padding(6).accessibilityLabel("Selected") }
+                        }
+                        .onDrag { NSItemProvider(object: bookmark.id as NSString) }
                         .contextMenu { BookmarkContextMenu(bookmark: bookmark) }
+                        .id(bookmark.id)
+                        .accessibilityAddTraits(appEnvironment.library.selectedIDs.contains(bookmark.id) ? .isSelected : [])
                 }
             }
             .padding(ContentColumn.padding)
         }
+        .focusable().focusEffectDisabled()
+        .onKeyPress(.leftArrow) { move(by: -1, proxy: proxy); return .handled }
+        .onKeyPress(.rightArrow) { move(by: 1, proxy: proxy); return .handled }
+        .onKeyPress(.upArrow) { move(by: -max(1, Int((geometry.size.width - 32) / 264)), proxy: proxy); return .handled }
+        .onKeyPress(.downArrow) { move(by: max(1, Int((geometry.size.width - 32) / 264)), proxy: proxy); return .handled }
+        .onCommand(#selector(NSResponder.selectAll(_:))) { appEnvironment.library.selectedIDs = Set(appEnvironment.library.visibleBookmarks.map(\.id)) }
+        }
+        }
+    }
+    private func move(by offset: Int, proxy: ScrollViewProxy) {
+        let library = appEnvironment.library, rows = library.visibleBookmarks
+        guard !rows.isEmpty else { return }
+        let current = rows.firstIndex { $0.id == library.selectionAnchor }
+        let next = min(rows.count - 1, max(0, current.map { $0 + offset } ?? (offset > 0 ? 0 : rows.count - 1)))
+        library.choose(rows[next].id, modifiers: NSEvent.modifierFlags)
+        proxy.scrollTo(rows[next].id)
     }
 }
 
@@ -31,6 +55,7 @@ struct BookmarkCard: View {
     @Environment(\.openURL) private var openURL
 
     let bookmark: Bookmark
+    var onSelect: (() -> Void)?
 
     @State private var isHovering = false
 
@@ -66,7 +91,8 @@ struct BookmarkCard: View {
         .onHover { isHovering = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovering)
         .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .onTapGesture(perform: open)
+        .onTapGesture { if let onSelect { onSelect() } else { open() } }
+        .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
         .pointingHandCursor()
     }
 

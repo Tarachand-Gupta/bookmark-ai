@@ -32,41 +32,41 @@ export function ChatComposer({
   onSend,
   onStop,
   placeholder,
-  attachments,
+  attachments, draft, onDraftChange, onActivate, compact=false, available=true,
 }: {
   streaming: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
   placeholder: string;
   attachments: ChatAttachmentsState;
+  draft: string; onDraftChange:(value:string)=>void; onActivate:()=>void; compact?:boolean; available?:boolean;
 }) {
   const { colors, radius } = useAppTheme();
   // Tablet widths: the row sits in the transcript's centered column; the
   // hairline top rule still spans the full width (it's the wrapper's border).
-  const { inset } = useContentWidth();
-  const [draft, setDraft] = useState("");
+  const inset=0;
   const [height, setHeight] = useState(0);
   const menu = useAttachmentMenu({ onPhotos: attachments.pickPhotos, onFiles: attachments.pickFiles });
   const hasFiles = attachments.items.length > 0;
   // Same rule the send path applies, so the button can never be live for a turn
   // that would be dropped (or dead for one that would go).
-  const canSend = canSendTurn(draft, attachments.items.length);
-  const clipDisabled = streaming || attachments.busy;
+  const canSend = available && canSendTurn(draft, attachments.items.length);
+  const clipDisabled = !available || streaming || attachments.busy;
 
   const submit = () => {
     if (!canSend) return;
     void Haptics.selectionAsync();
     onSend(draft);
-    setDraft("");
+    onDraftChange("");
     setHeight(0);
   };
 
   return (
     <View
-      style={[styles.wrap, { borderTopColor: colors.border, paddingHorizontal: GUTTER + inset }]}
+      style={[styles.wrap, { borderTopWidth:compact?0:StyleSheet.hairlineWidth,borderTopColor: colors.border, paddingHorizontal: compact?6:GUTTER + inset }]}
     >
-      <ChatAttachmentPills items={attachments.items} onRemove={attachments.remove} disabled={streaming} />
-      {attachments.error !== null && (
+      {!compact&&<ChatAttachmentPills items={attachments.items} onRemove={attachments.remove} disabled={streaming} />}
+      {!compact&&attachments.error !== null && (
         <Pressable
           onPress={attachments.dismissError}
           accessibilityRole="alert"
@@ -79,7 +79,7 @@ export function ChatComposer({
       )}
       <View style={styles.row}>
         <Pressable
-          onPress={menu.open}
+          onPress={() => { onActivate(); menu.open(); }}
           disabled={clipDisabled}
           hitSlop={6}
           accessibilityRole="button"
@@ -96,14 +96,15 @@ export function ChatComposer({
             {attachments.busy ? (
               <ActivityIndicator size="small" color={colors.mutedForeground} />
             ) : (
-              <Symbol name="paperclip" size={18} color={colors.foreground} fallback="⊕" />
+              <Symbol name="plus" size={18} color={colors.foreground} fallback="⊕" />
             )}
           </View>
         </Pressable>
-        <View style={[styles.field, { backgroundColor: colors.muted, borderRadius: radius.xl }]}>
+        <View style={[styles.field, { backgroundColor: compact?"transparent":colors.muted, borderRadius: radius.xl }]}>
           <TextInput
             value={draft}
-            onChangeText={setDraft}
+            onChangeText={(value)=>{onActivate();onDraftChange(value);}}
+            onFocus={onActivate}
             placeholder={hasFiles ? "Ask about the attachment…" : placeholder}
             placeholderTextColor={colors.mutedForeground}
             multiline
@@ -119,7 +120,7 @@ export function ChatComposer({
               styles.input,
               {
                 color: colors.foreground,
-                height: Math.min(Math.max(height, LINE_HEIGHT), MAX_INPUT_HEIGHT),
+                height: compact ? LINE_HEIGHT : Math.min(Math.max(height, LINE_HEIGHT), MAX_INPUT_HEIGHT),
               },
             ]}
             accessibilityLabel="Message"

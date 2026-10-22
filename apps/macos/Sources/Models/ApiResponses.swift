@@ -65,6 +65,7 @@ struct HealthResponse: Codable, Sendable {
 /// `signedIn: true` with null name/email — there is no Clerk user to look up.
 struct AccountInfo: Codable, Sendable, Equatable {
     var signedIn: Bool
+    var accountId: String?
     var name: String?
     var email: String?
 

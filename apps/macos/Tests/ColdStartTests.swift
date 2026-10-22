@@ -55,7 +55,8 @@ final class ColdStartTests: XCTestCase {
                 categories: categories, browsers: [], devices: [], days: [], tags: tags,
                 total: bookmarks.count
             ),
-            sessions: sessions
+            sessions: sessions,
+            accountId: "cold-start-fixture", origin: ServerTarget.cloud.baseURL.absoluteString, savedAt: "2026-09-01T00:00:00Z"
         )
     }
 
@@ -194,6 +195,8 @@ final class ColdStartTests: XCTestCase {
         )
 
         XCTAssertTrue(env.isSyncing, "hydrated cache arms the pill from launch")
+        env.auth.mintOverride = { _ in .token("jwt-cold") }
+        env.auth.seed(status: .signedIn, account: AccountInfo(signedIn: true, accountId: "cold-start-fixture", name: nil, email: nil))
 
         await env.loadEverything()
 
@@ -225,7 +228,7 @@ final class ColdStartTests: XCTestCase {
         XCTAssertEqual(env.auth.status, .unknown, "the restore hasn't answered yet")
 
         XCTAssertEqual(env.gate, .ready, "cached content renders instead of the connecting spinner")
-        XCTAssertTrue(env.canUseData)
+        XCTAssertFalse(env.canUseData, "cached reader does not authorize server actions")
     }
 
     func testDefinitiveSignOutStillFlushesCachedContent() {
@@ -239,7 +242,9 @@ final class ColdStartTests: XCTestCase {
         )
         XCTAssertEqual(env.gate, .ready)
 
-        // Clerk answers "no session" — definitive, cache or no cache.
+        // Explicit logout clears private data before any auth callback.
+        env.clearPrivateData()
+        // A later no-session callback cannot revive the snapshot.
         env.auth.mintOverride = { _ in .noSession }
         let expectation = self.expectation(description: "restore")
         Task { @MainActor in
@@ -264,7 +269,7 @@ final class ColdStartTests: XCTestCase {
                 case "/api/bookmarks":
                     (200, Data(#"{"bookmarks":[\#(Self.fixtureJSON(id: "b1"))],"total":1}"#.utf8))
                 case "/api/me":
-                    (200, Data(#"{"signedIn":true,"name":"Tara","email":"t@x.io"}"#.utf8))
+                    (200, Data(#"{"signedIn":true,"accountId":"cold-start-fixture","name":"Tara","email":"t@x.io"}"#.utf8))
                 case "/api/app/releases":
                     (200, Data(#"{"releases":{}}"#.utf8))
                 default:
@@ -277,7 +282,7 @@ final class ColdStartTests: XCTestCase {
         // app's WKWebsiteDataStore, and a live mint would hit the cloud).
         env.auth.mintOverride = { _ in .token("jwt-cold") }
         env.sessions.seed(sessions: [makeSession(id: "s1")])
-        env.auth.seed(status: .signedIn, account: AccountInfo(signedIn: true, name: "Tara", email: "t@x.io"))
+        env.auth.seed(status: .signedIn, account: AccountInfo(signedIn: true, accountId: "cold-start-fixture", name: "Tara", email: "t@x.io"))
 
         await env.loadEverything()
 
@@ -339,6 +344,7 @@ final class ColdStartTests: XCTestCase {
         cache.write(env.library.cacheState(serverTarget: ServerTarget.cloud.rawValue, sessions: []))
         XCTAssertNotNil(cache.read())
 
+        env.clearPrivateData()
         env.handleSignedOut()
 
         XCTAssertNil(cache.read(), "the snapshot is account data — a sign-out wipes it")

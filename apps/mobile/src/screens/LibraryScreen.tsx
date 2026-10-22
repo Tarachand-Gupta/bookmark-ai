@@ -1,4 +1,11 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { CacheStatus } from "../components/CacheStatus";
+import { useOrganization } from "../context/OrganizationContext";
+import { useComposer } from "../context/ComposerContext";
+import { useBookmarkSelection } from "../hooks/useBookmarkSelection";
+import { FolderPicker } from "../components/organization/FolderPicker";
+import { Sheet, Action, Copy, styles as organizationStyles } from "../components/organization/OrganizationSheet";
+import { GettingStartedCard } from "../components/onboarding/GettingStartedCard";
 import { AddBookmarkSheet } from "../components/AddBookmarkSheet";
 import {
   ActivityIndicator,
@@ -41,7 +48,7 @@ export function LibraryScreen({
   requestedTag = null,
   onRequestedTagHandled,
   refreshSignal = 0,
-  onBookmarkAdded,
+  onBookmarkAdded, onImport, requestedReading, onReadingHandled,
 }: {
   /** Foreground-tab flag: gates useLibrary's stale-on-focus refetch. */
   active: boolean;
@@ -63,7 +70,7 @@ export function LibraryScreen({
    * this list is mounted behind the tab switcher, so it would otherwise sit on
    * stale data for the rest of its 60s staleness window. */
   refreshSignal?: number;
-  onBookmarkAdded?: () => void;
+  onBookmarkAdded?: () => void; onImport:()=>void; requestedReading?:string|null; onReadingHandled:()=>void;
 }) {
   const { colors } = useAppTheme();
   const { viewMode, setViewMode } = usePreferences();
@@ -71,6 +78,11 @@ export function LibraryScreen({
   const { inset, gridColumns } = useContentWidth();
   const onScroll = useTabBarScroll();
   const lib = useLibrary(active);
+  const org=useOrganization(),composer=useComposer();
+  const selection=useBookmarkSelection("library",active,{query:lib.filters});
+  const [folderBrowser,setFolderBrowser]=useState(false);
+  useEffect(()=>{composer.block("folder-browser",folderBrowser);return()=>composer.block("folder-browser",false)},[folderBrowser,composer.block]);
+  useEffect(()=>{if(requestedReading){lib.clearFilters();lib.setFilterExact("readingState",requestedReading);onReadingHandled()}},[requestedReading]);
   const sections = useMemo(() => groupByDay(lib.bookmarks), [lib.bookmarks]);
 
   useEffect(() => {
@@ -99,10 +111,11 @@ export function LibraryScreen({
           <Pressable
             onPress={() => {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onAddSheetChange(true);
+              if(!org.offline)onAddSheetChange(true);
             }}
             accessibilityRole="button"
-            accessibilityLabel="Add bookmark"
+            accessibilityLabel={org.offline?"Reconnect to add a bookmark":"Add bookmark"}
+            disabled={org.offline}
             hitSlop={6}
             style={({ pressed }) => [
               styles.addButton,
@@ -121,9 +134,11 @@ export function LibraryScreen({
           />
         </View>
       </View>
+      {selection.supported&&<><Action label={`Folder: ${org.data?.folders.find(f=>f.id===lib.filters.folderId)?.path??(lib.filters.folderId==='unsorted'?'Unsorted':'All bookmarks')}`} onPress={()=>setFolderBrowser(true)}/><View style={organizationStyles.row}><Action label="All bookmarks" primary={!lib.filters.readingState} onPress={()=>lib.setFilterExact('readingState',undefined)}/><Action label="Reading list" primary={!!lib.filters.readingState} onPress={()=>lib.setFilterExact('readingState','unread')}/></View>{!!lib.filters.readingState&&<View style={organizationStyles.row}>{[{value:'unread',label:'Unread'},{value:'read',label:'Read'},{value:'on_list',label:'All on list'}].map(state=><Action key={state.value} label={state.label} primary={lib.filters.readingState===state.value} onPress={()=>lib.setFilterExact('readingState',state.value)}/>)}</View>}</>}
+      <CacheStatus updatedAt={lib.updatedAt} refreshing={lib.refreshing} error={lib.error} readOnly={lib.readOnly} onRetry={lib.refresh}/>
       <QuickFilters lib={lib} onOpenSheet={() => onFilterSheetChange(true)} />
       <Text style={[styles.count, { color: colors.mutedForeground }]}>
-        {lib.total} bookmark{lib.total === 1 ? "" : "s"}
+        {lib.readOnly ? `${lib.bookmarks.length} saved on this device · ${lib.total} last known total` : `${lib.total} bookmark${lib.total === 1 ? "" : "s"}`}
         {lib.activeFilterCount > 0 ? " · filtered" : ""}
       </Text>
     </View>
@@ -131,14 +146,14 @@ export function LibraryScreen({
 
   const empty = lib.loading ? (
     <ActivityIndicator style={styles.empty} color={colors.mutedForeground} />
-  ) : (
+  ) : !lib.error && !lib.readOnly && lib.activeFilterCount===0 ? <View style={{padding:20}}><GettingStartedCard onSaveLink={()=>{if(!org.offline)onAddSheetChange(true)}} onImport={()=>{if(!org.offline)onImport()}}/></View> : (
     <View style={styles.empty}>
       <Symbol name="bookmark" size={28} color={colors.mutedForeground} fallback="◇" />
       <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
         {lib.error ? "Could not load" : "Nothing here"}
       </Text>
       <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>
-        {lib.error ?? "Adjust the filters, or save something from the browser extension."}
+        {lib.readOnly?"No on-device snapshot for this view yet. Reconnect to load these bookmarks.":lib.error ?? "Adjust the filters, or save a link."}
       </Text>
     </View>
   );
@@ -153,12 +168,13 @@ export function LibraryScreen({
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
+      {selection.controls}
       {viewMode === "list" ? (
         <SectionList
           sections={sections}
           keyExtractor={(b: Bookmark) => b.id}
           renderItem={({ item, index, section }) => (
-            <BookmarkRow bookmark={item} last={index === section.data.length - 1} />
+            <BookmarkRow bookmark={item} last={index === section.data.length - 1} selecting={selection.selecting} selected={selection.ids.includes(item.id)} onSelect={selection.toggle} />
           )}
           renderSectionHeader={({ section }) => (
             <Text style={[styles.sectionHeader, { color: colors.mutedForeground }]}>
@@ -182,7 +198,7 @@ export function LibraryScreen({
           key={`grid-${gridColumns}`}
           data={lib.bookmarks}
           keyExtractor={(b) => b.id}
-          renderItem={({ item }) => <BookmarkCard bookmark={item} />}
+          renderItem={({ item }) => <BookmarkCard bookmark={item} selecting={selection.selecting} selected={selection.ids.includes(item.id)} onSelect={selection.toggle} />}
           numColumns={gridColumns}
           columnWrapperStyle={styles.cardRow}
           ListHeaderComponent={header}
@@ -195,6 +211,7 @@ export function LibraryScreen({
           contentContainerStyle={{ paddingBottom: tabBarClearance }}
         />
       )}
+      {folderBrowser&&<Sheet visible title="Browse folders" onClose={()=>setFolderBrowser(false)}><Action label="All bookmarks" onPress={()=>{lib.setFilterExact("folderId",undefined);setFolderBrowser(false)}}/><FolderPicker value={lib.filters.folderId??null} label="Browse here" onCancel={()=>setFolderBrowser(false)} onChoose={id=>{lib.setFilterExact("folderId",id??"unsorted");setFolderBrowser(false)}}/>{lib.filters.folderId&&lib.filters.folderId!=="unsorted"&&<Action label="Ask AI about this folder" onPress={()=>{setFolderBrowser(false);composer.open({type:"folder",folderId:lib.filters.folderId!,includeSubfolders:true})}}/>}</Sheet>}
       <FilterSheet
         visible={filterSheetOpen}
         onClose={() => onFilterSheetChange(false)}

@@ -23,7 +23,7 @@ struct BookmarkAIApp: App {
                 // NSApp isn't up during App.init, so the persisted Light/Dark/
                 // System choice lands here, before first paint.
                 .onAppear { appEnvironment.preferences.applyAppearance() }
-                .task { await appEnvironment.start() }
+                .task { if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil { await appEnvironment.start() } }
                 .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
                 .onOpenURL { url in
                     AppDelegate.reopen(hasVisibleWindows: false, window: AppDelegate.mainWindow)
@@ -263,13 +263,35 @@ struct LibraryCommands: Commands {
     let appEnvironment: AppEnvironment
 
     private func goTo(_ item: SidebarItem) {
+        if item == .chat { appEnvironment.chat.show(); return }
         Task { await appEnvironment.library.select(item) }
     }
 
     var body: some Commands {
         let canUseData = appEnvironment.canUseData
 
+        CommandGroup(replacing: .undoRedo) {
+            Button(undoTitle) { undo() }.keyboardShortcut("z", modifiers: .command)
+            Button("Redo") {
+                if let text = NSApp.keyWindow?.firstResponder as? NSTextView { text.undoManager?.redo() }
+            }.keyboardShortcut("z", modifiers: [.command, .shift])
+        }
         CommandMenu("Library") {
+            Button("Save a link…") { appEnvironment.organization.showAdd = true }.keyboardShortcut("n", modifiers: .command).disabled(!canUseData)
+            Button("New folder…") { appEnvironment.organization.showManager = true }.keyboardShortcut("n", modifiers: [.command, .shift]).disabled(!appEnvironment.organization.available)
+            Button("Edit details…") {
+                appEnvironment.organization.editing = appEnvironment.library.visibleBookmarks.first { appEnvironment.library.selectedIDs.contains($0.id) }
+            }.keyboardShortcut("e", modifiers: .command).disabled(appEnvironment.library.selectedIDs.count != 1 || !appEnvironment.organization.available)
+            Button("Move / Edit selected organization…") {
+                Task {
+                    if await appEnvironment.organization.freeze(["bookmarkIds": .array(appEnvironment.library.selectedIDs.sorted().map(JSONValue.string))]) != nil { appEnvironment.organization.showBulk = true }
+                }
+            }.keyboardShortcut("m", modifiers: [.command, .shift]).disabled(appEnvironment.library.selectedIDs.isEmpty || !appEnvironment.organization.available)
+            Button("Manage organization…") { appEnvironment.organization.showManager = true }.disabled(!appEnvironment.organization.available)
+            Button("Recent changes…") { appEnvironment.organization.showHistory = true }.disabled(!appEnvironment.organization.available)
+            Button("Import existing links…") { appEnvironment.organization.showImport = true }.disabled(!canUseData)
+            Divider()
+
             Button("Refresh") {
                 Task { await appEnvironment.loadEverything() }
             }
@@ -316,4 +338,20 @@ struct LibraryCommands: Commands {
             .keyboardShortcut("o", modifiers: [.command, .shift])
         }
     }
+    private var undoTitle: String {
+        if NSApp.keyWindow?.firstResponder is NSTextView { return "Undo" }
+        guard libraryOwnsUndo, let operation = appEnvironment.organization.latestUndo else { return "Undo" }
+        return "Undo \(operation.description)"
+    }
+    private var libraryOwnsUndo: Bool {
+        let org = appEnvironment.organization
+        return appEnvironment.canUseData && appEnvironment.library.selection.isLibraryFilter && !appEnvironment.chat.isPresented && org.editing == nil && !org.showManager && !org.showBulk && !org.showAdd && !org.showImport && !org.showHistory
+    }
+    private func undo() {
+        // Even when text has no undo history, never fall through to a library mutation.
+        if let text = NSApp.keyWindow?.firstResponder as? NSTextView { text.undoManager?.undo(); return }
+        guard libraryOwnsUndo, let operation = appEnvironment.organization.latestUndo else { return }
+        Task { await appEnvironment.organization.undo(operation) }
+    }
+
 }

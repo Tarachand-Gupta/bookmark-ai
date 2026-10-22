@@ -85,6 +85,7 @@ function corsHeaders(origin: string | null): Record<string, string> {
 // account", which builds its URL from wherever you already are, and the
 // extension's gear (`/app?settings=devices`). Both now open the modal in place.
 const LEGACY_LIBRARY_PARAMS = [
+  "folderId", "includeSubfolders", "categoryId", "tagId", "readingState", "bookmark", "handoff", "import",
   "q",
   "category",
   "browser",

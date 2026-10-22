@@ -16,6 +16,9 @@ import { createSecureSessionStorage } from "./secure-session-storage";
 import { adoptHostedSession, createHostedCallbackFlight } from "./hosted-session";
 import { hostedCallback, hostedSignInURL, type HostedAttempt } from "./hosted-auth-policy";
 import { createMfaVerificationGuard, createSessionAssuranceGate } from "./session-assurance";
+import {mobileCache} from "./mobile-cache";
+import type {OfflineAccount} from "./snapshot-cache";
+import { createAdmissionMarker } from "./admission-marker";
 import { fetchWithTimeout } from "./request-timeout";
 
 if (!SUPABASE_URL || !SUPABASE_PUBLIC_KEY) throw new Error("Supabase mobile public configuration is required");
@@ -66,8 +69,11 @@ setAuthTokenProvider(getToken);
 
 export async function clearAccountCaches(userId?: string): Promise<void> {
   resetLiveBaseCache();
+  if(userId)await mobileCache.clear({namespace:AUTH_NAMESPACE,accountId:userId,origin:getApiUrl()});
   const prefix = `${AUTH_NAMESPACE}:account:${userId ? `${userId}:` : ""}`;
-  const keys = (await AsyncStorage.getAllKeys()).filter((key) => key.startsWith(prefix));
+  // Snapshot deletion is serialized by mobileCache; a second broad removal
+  // could otherwise erase data from a new admission after clear completed.
+  const keys = (await AsyncStorage.getAllKeys()).filter((key) => key.startsWith(prefix)&&!key.includes(':snapshot:'));
   if (keys.length) await AsyncStorage.multiRemove(keys);
 }
 
@@ -193,10 +199,19 @@ interface AuthState {
   error: string | null; retry(): void;
   signOut(scope?: "local" | "global" | "others"): Promise<void>;
   mfaStatus: ReturnType<typeof assuranceGate.getState>["status"];
+  cachedAccount: OfflineAccount|null; rememberWorkspace():Promise<void>;
   retryMFA(): void; verifyMFA(factorId: string, code: string): Promise<void>; cancelMFA(): Promise<void>;
 }
 const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const [cachedAccount,setCachedAccount]=useState<OfflineAccount|null>(null);
+  const cachedRef=useRef<OfflineAccount|null>(null),explicitLogout=useRef(false);
+  const offlineKey=`${AUTH_NAMESPACE}:offline-account:${getApiUrl()}`;
+  const markerStoreRef=useRef({key:offlineKey,store:createAdmissionMarker<OfflineAccount>(sessionStorage,offlineKey)});
+  if(markerStoreRef.current.key!==offlineKey)markerStoreRef.current={key:offlineKey,store:createAdmissionMarker<OfflineAccount>(sessionStorage,offlineKey)};
+  const markerStore=markerStoreRef.current.store;
+  const invalidateOffline=useCallback(()=>{const id=cachedRef.current?.id;cachedRef.current=null;setCachedAccount(null);void markerStore.clear().catch(()=>undefined);if(id)void clearAccountCaches(id);},[markerStore]);
+  useEffect(()=>{let alive=true;void markerStore.read().then(marker=>{if(alive&&marker&&marker.origin===getApiUrl()&&marker.id&&!explicitLogout.current&&(!observedSession.current||observedSession.current.user.id===marker.id)){cachedRef.current=marker;setCachedAccount(marker)}}).catch(()=>undefined);return()=>{alive=false};},[markerStore]);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoaded, setLoaded] = useState(false), [error, setError] = useState<string | null>(null);
   const [recovery, setRecovery] = useState(false), [attempt, setAttempt] = useState(0);
@@ -209,14 +224,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authEpoch = useRef(0);
   const verification = useRef(createMfaVerificationGuard());
   const signOut = useCallback(async (scope: "local" | "global" | "others" = "local") => {
-    if (scope !== "others") await cancelHostedSignIn();
-    await signOutAuthSessions(scope);
-    if (scope !== "others") {
-      const { error: failure } = await supabase.auth.signOut({ scope: "local" });
-      if (failure) throw new Error("Couldn't finish sign-out on this device. Please retry.");
-    }
-    if (scope !== "others") { await clearAccountCaches(); await sessionStorage.removeItem(pendingKey); setRecovery(false); }
-  }, []);
+    if(scope==='others'){await signOutAuthSessions(scope);return;}
+    // Explicit local logout invalidates the reader synchronously, even offline.
+    authEpoch.current++;verification.current.invalidate();explicitLogout.current=true;invalidated.current=true;protectedRequestsBlocked=true;setRevoked(true);invalidateOffline();resetAccountApiState();
+    const oldId=observedSession.current?.user.id;observedSession.current=null;assuranceGate.observe(null);setSession(null);setRecovery(false);
+    await cancelHostedSignIn().catch(()=>undefined);
+    await signOutAuthSessions(scope).catch(()=>undefined);
+    await supabase.auth.signOut({scope:'local'}).catch(()=>undefined);
+    await sessionStorage.removeItem(`${AUTH_NAMESPACE}:session`);
+    await sessionStorage.removeItem(pendingKey);
+    if(oldId)await clearAccountCaches(oldId);
+  }, [invalidateOffline]);
   useEffect(() => {
     let mounted = true;
     const initialize = async () => {
@@ -231,6 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: listener } = supabase.auth.onAuthStateChange((event, next) => {
       if (!mounted) return;
       authEpoch.current++;
+      if(explicitLogout.current&&next&&event!=="SIGNED_IN")return;
       if (!verification.current.observe(event, next?.user.id ?? null)) {
         // The SDK already persisted this late verify response. Never admit it;
         // remove that stale session asynchronously outside the SDK callback.
@@ -242,16 +261,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Keep callbacks synchronous; never reenter refresh from TOKEN_REFRESHED.
       if (previousUser.current !== (next?.user.id ?? null)) {
         resetAccountApiState();
-        if (previousUser.current) void clearAccountCaches(previousUser.current);
+        if (next && previousUser.current && previousUser.current!==next.user.id) { invalidateOffline(); void clearAccountCaches(previousUser.current); }
+        if(next&&cachedRef.current&&cachedRef.current.id!==next.user.id)invalidateOffline();
       }
       previousUser.current = next?.user.id ?? null;
       observedSession.current = next;
       assuranceGate.observe(next, event === "USER_UPDATED");
       setSession(next); setLoaded(true);
-      if (event === "SIGNED_IN" || event === "SIGNED_OUT") { invalidated.current = false; protectedRequestsBlocked = false; setRevoked(false); }
+      if (event === "SIGNED_IN") { explicitLogout.current=false; invalidated.current = false; protectedRequestsBlocked = false; setRevoked(false); }
       if (next) setError(null);
       if (event === "PASSWORD_RECOVERY") setRecovery(true);
-      if (event === "SIGNED_OUT") { setRecovery(false); void clearAccountCaches(); }
+      if (event === "SIGNED_OUT") { setRecovery(false); if(explicitLogout.current||invalidated.current)invalidateOffline(); }
     });
     const active = () => {
       if (AppState.currentState === "active") { supabase.auth.startAutoRefresh(); void initialize(); }
@@ -263,13 +283,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (invalidated.current) return;
       verification.current.invalidate();
       invalidated.current = true; protectedRequestsBlocked = true; resetAccountApiState(); setRevoked(true);
-      void clearAccountCaches();
+      invalidateOffline();
+      void clearAccountCaches(observedSession.current?.user.id);
       // A definitive protected-request401 hides private views immediately.
       // The SDK alone removes its session; a temporary sign-out failure keeps
       // encrypted credentials available for its eventual server retry.
       void supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
     });
     setMfaRequiredHandler(() => {
+      invalidateOffline();
       assuranceGate.observe(observedSession.current, true);
       resetAccountApiState();
       setAssuranceAttempt((value) => value + 1);
@@ -281,7 +303,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void Linking.getInitialURL().then(callback);
     const links = Linking.addEventListener("url", ({ url }) => callback(url));
     return () => { mounted = false; listener.subscription.unsubscribe(); state.remove(); links.remove(); supabase.auth.stopAutoRefresh(); setUnauthorizedHandler(null); setMfaRequiredHandler(null); };
-  }, [attempt, signOut]);
+  }, [attempt, signOut, invalidateOffline]);
   useEffect(() => assuranceGate.subscribe(setAssurance), []);
   useEffect(() => { if (session && !revoked) void assuranceGate.check(session); }, [session, revoked, assuranceAttempt]);
   const retryMFA = () => { assuranceGate.observe(session, true); setAssuranceAttempt((value) => value + 1); };
@@ -297,17 +319,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally { verification.current.finish(ticket); }
   };
   const cancelMFA = async () => {
+    invalidateOffline();
     const { error } = await supabase.auth.signOut({ scope: "local" });
     if (error) throw new Error("Reconnect to cancel this sign-in, then try again.");
-    await clearAccountCaches(); await sessionStorage.removeItem(pendingKey); setRecovery(false);
+    await clearAccountCaches(session?.user.id); await sessionStorage.removeItem(pendingKey); setRecovery(false);
   };
   const admitted = !!session && !revoked && assurance.token === session.access_token && assurance.userId === session.user.id && assurance.status === "ready";
+  useEffect(()=>{if(assurance.status==='required')invalidateOffline();},[assurance.status,invalidateOffline]);
+  const rememberWorkspace=async()=>{
+    if(!session||!admitted||protectedRequestsBlocked)return;
+    const epoch=markerStore.epoch(),user=session.user;
+    const marker:OfflineAccount={id:user.id,origin:getApiUrl(),verifiedAt:Date.now(),name:typeof user.user_metadata.full_name==='string'?user.user_metadata.full_name:'Saved library',email:user.email,avatarUrl:typeof user.user_metadata.avatar_url==='string'?user.user_metadata.avatar_url:undefined};
+    const current=()=>!protectedRequestsBlocked&&!explicitLogout.current&&observedSession.current?.user.id===user.id&&assuranceGate.allowed(observedSession.current)&&marker.origin===getApiUrl()&&markerStoreRef.current.store===markerStore;
+    if(await markerStore.write(marker,epoch,current)){cachedRef.current=marker;setCachedAccount(marker);}
+  };
   useEffect(() => {
     if (!session || !admitted) return;
     const label = displayLabel(Device.modelName ?? (Platform.OS === "ios" ? Platform.isPad ? "iPad" : "iPhone" : "Android"), "Mobile device");
     void registerAuthSession({ clientType: Platform.OS === "ios" ? "ios" : "android", deviceName: label, os: `${Platform.OS} ${Device.osVersion ?? Platform.Version}`, appVersion: Application.nativeApplicationVersion ?? undefined }).catch(() => undefined);
   }, [session?.access_token, admitted]);
-  return <AuthContext.Provider value={{ session: admitted ? session : null, isLoaded, isSignedIn: admitted, userId: admitted ? session.user.id : null, user: admitted ? session.user : null, getToken, recovery, finishRecovery: () => setRecovery(false), error, retry: () => setAttempt((value) => value + 1), signOut, mfaStatus: revoked ? "signed-out" : session && assurance.token !== session.access_token ? "checking" : assurance.status, retryMFA, verifyMFA, cancelMFA }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ cachedAccount, rememberWorkspace, session: admitted ? session : null, isLoaded, isSignedIn: admitted, userId: admitted ? session.user.id : null, user: admitted ? session.user : null, getToken, recovery, finishRecovery: () => setRecovery(false), error, retry: () => setAttempt((value) => value + 1), signOut, mfaStatus: revoked ? "signed-out" : session && assurance.token !== session.access_token ? "checking" : assurance.status, retryMFA, verifyMFA, cancelMFA }}>{children}</AuthContext.Provider>;
 }
 export function useAuth(): AuthState {
   const value = useContext(AuthContext);

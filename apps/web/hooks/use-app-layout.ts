@@ -9,6 +9,8 @@ import {
   withDockFraction,
   withDockOpen,
   withSidebarOpen,
+  withSidebarWidth,
+  clampSidebarWidth,
   withViewportWidth,
   type AppLayout,
   type AppLayoutState,
@@ -21,6 +23,7 @@ import {
 export const AI_PARAM = "ai";
 
 const FRACTION_KEY = "bookmark-ai:chat-fraction";
+const SIDEBAR_WIDTH_KEY = "bookmark-ai:sidebar-width";
 
 /**
  * ONE module-level store for the inputs of `resolveAppLayout` — the measured
@@ -57,10 +60,18 @@ function measure() {
 function bootstrap() {
   if (bootstrapped) return;
   bootstrapped = true;
-  const saved = Number(localStorage.getItem(FRACTION_KEY));
   let next = state;
-  if (saved >= DOCK_MIN_FRACTION && saved <= DOCK_MAX_FRACTION) {
-    next = { ...next, dockFraction: saved };
+  try {
+    const saved = Number(localStorage.getItem(FRACTION_KEY));
+    if (saved >= DOCK_MIN_FRACTION && saved <= DOCK_MAX_FRACTION) {
+      next = { ...next, dockFraction: saved };
+    }
+    const width = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    if (width !== null && Number.isFinite(Number(width))) {
+      next = { ...next, sidebarWidth: clampSidebarWidth(Number(width)) };
+    }
+  } catch {
+    // Storage may be blocked; the layout still works with its default widths.
   }
   state = withViewportWidth(next, window.innerWidth);
 }
@@ -111,7 +122,18 @@ export const appLayoutStore = {
   setSidebarOpen(open: boolean) {
     update(withSidebarOpen(state, open));
   },
+  setSidebarWidth(width: number) {
+    update(withSidebarWidth(state, width));
+  },
+  commitSidebarWidth() {
+    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(state.sidebarWidth)); } catch { /* Optional preference. */ }
+  },
 };
+
+/** Subscribe only the sidebar to its continuous width, rather than every page. */
+export function useSidebarWidth(): number {
+  return useSyncExternalStore(subscribe, () => state.sidebarWidth, () => INITIAL_APP_LAYOUT_STATE.sidebarWidth);
+}
 
 function sameLayout(a: AppLayout, b: AppLayout): boolean {
   return (

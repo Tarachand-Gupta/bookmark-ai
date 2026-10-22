@@ -3,20 +3,21 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "../lib/auth";
 import { AUTH_NAMESPACE } from "../lib/auth-config";
 import { accountProbeFailure, type AccountStatus } from "../lib/account-readiness";
-import { ForbiddenError, getMeta, ProvisioningError, SERVER_TARGET } from "../api";
+import { ForbiddenError, getMeta, getApiUrl, ProvisioningError, SERVER_TARGET } from "../api";
 import { usePreferences } from "../context/PreferencesContext";
+import { mobileCache } from "../lib/mobile-cache";
 
 export type { AccountStatus } from "../lib/account-readiness";
 const POLL_MS = 2_000;
 const POLL_MAX_MS = 60_000;
 const REQUEST_MAX_MS = 15_000;
-const readyKey = (userId: string) => `${AUTH_NAMESPACE}:account:${userId}:${SERVER_TARGET}:ready`;
+const readyKey = (userId: string) => `${AUTH_NAMESPACE}:account:${userId}:${getApiUrl()}:ready`;
 export interface AccountStatusState { status: AccountStatus; recheck: () => void }
 
 /** An unconfirmed account stays in setup until a successful protected meta read.
  * Returning accounts may paint their existing shell while checking the network. */
 export function useAccountStatus(): AccountStatusState {
-  const { isLoaded, userId } = useAuth();
+  const { isLoaded, userId, rememberWorkspace } = useAuth();
   const { serverTarget } = usePreferences();
   const [state, setState] = useState<{ userId: string | null; status: AccountStatus }>({ userId: null, status: "checking" });
   const [attempt, setAttempt] = useState(0);
@@ -35,6 +36,7 @@ export function useAccountStatus(): AccountStatusState {
     const settle = (status: AccountStatus) => { if (current()) setState({ userId, status }); };
     settle(!isLoaded ? "checking" : userId ? "provisioning" : "ok");
     if (!isLoaded || !userId) return () => { cancelled = true; };
+    const scope={namespace:AUTH_NAMESPACE,accountId:userId,origin:getApiUrl()},epoch=mobileCache.epoch(scope);
 
     const startDeadline = () => {
       if (deadlineTimer) clearTimeout(deadlineTimer);
@@ -52,7 +54,8 @@ export function useAccountStatus(): AccountStatusState {
         if (!current()) return;
         if (deadlineTimer) clearTimeout(deadlineTimer);
         settle("ok");
-        void AsyncStorage.setItem(readyKey(userId), "1").catch(() => {});
+        void rememberWorkspace().catch(()=>undefined);
+        void mobileCache.write(scope,'account-ready',true,epoch).catch(()=>undefined);
       } catch (error) {
         if (!current()) return;
         const kind = error instanceof ForbiddenError ? "forbidden" : error instanceof ProvisioningError ? "provisioning" : "unavailable";
@@ -67,9 +70,9 @@ export function useAccountStatus(): AccountStatusState {
         else if (deadlineTimer) clearTimeout(deadlineTimer);
       } finally { if (requestTimer) clearTimeout(requestTimer); }
     };
-    void AsyncStorage.getItem(readyKey(userId)).catch(() => null).then(seen => {
+    void mobileCache.read<boolean>(scope,'account-ready').catch(() => null).then(seen => {
       if (!current()) return;
-      previouslyReady = seen === "1";
+      previouslyReady = seen?.data === true;
       if (previouslyReady) settle("ok");
       else startDeadline();
       void probe();

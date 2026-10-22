@@ -154,3 +154,44 @@ describe("drainMirrorQueue", () => {
     expect(first.sent + second.sent).toBe(1); // delivered once, not twice
   });
 });
+
+describe("permission-paused queued additions", () => {
+  it("preserves bookmark retry counts while reading-list entries continue", async () => {
+    await enqueueMirrorAdd({ url: "https://paused.test", tries: 4 });
+    await enqueueMirrorAdd({ url: "https://reading.test", tags: ["reading", "article"] });
+    const before = (await queuedMirrorAdds())[0];
+    const sent: string[] = [];
+    const result = await drainMirrorQueue(
+      async (entry) => {
+        sent.push(entry.url);
+        return true;
+      },
+      () => true,
+      async (entry) => !!entry.tags?.length,
+    );
+    expect(result).toEqual({ sent: 1, kept: 1, dropped: 0 });
+    expect(sent).toEqual(["https://reading.test"]);
+    expect(await queuedMirrorAdds()).toEqual([before]);
+    await drainMirrorQueue(async (entry) => {
+      sent.push(entry.url);
+      return true;
+    });
+    expect(sent).toEqual(["https://reading.test", "https://paused.test"]);
+  });
+
+  it("does not send after an account switch during the permission check", async () => {
+    await enqueueMirrorAdd({ url: "https://old-account.test" });
+    let current = true;
+    const send = vi.fn(async () => true);
+    await drainMirrorQueue(
+      send,
+      () => current,
+      async () => {
+        current = false;
+        return true;
+      },
+    );
+    expect(send).not.toHaveBeenCalled();
+    expect(await queuedMirrorAdds()).toEqual([]);
+  });
+});

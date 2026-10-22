@@ -15,7 +15,6 @@ struct AccountSettingsTab: View {
 
         Form {
             connectionSection
-            planSection
 
             if target.requiresAuth {
                 Section {
@@ -33,8 +32,8 @@ struct AccountSettingsTab: View {
                         }
                     }
 
-                    if auth.status == .signedIn {
-                        identityRow(auth.account)
+                    if appEnvironment.displayAccount != nil {
+                        identityRow(appEnvironment.displayAccount)
                     }
 
                     if auth.status == .signedIn {
@@ -121,48 +120,6 @@ struct AccountSettingsTab: View {
         )
     }
 
-    /// The plan card — drawn only once `GET /api/account` has answered for
-    /// THIS session (nil after every sign-out).
-    @ViewBuilder
-    private var planSection: some View {
-        if let plan = appEnvironment.settings.plan {
-            Section {
-                HStack(alignment: .firstTextBaseline) {
-                    PlanBadge(title: plan.badgeTitle)
-                    Spacer()
-                    Text(plan.price == 0 ? "$0 / month" : "$\(plan.price) / month")
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                .padding(.vertical, 2)
-
-                ForEach(plan.features) { feature in
-                    Label {
-                        Text(feature.label)
-                    } icon: {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    }
-                }
-            } header: {
-                Text("Plan")
-            } footer: {
-                Text("Fair-use limits apply. Your data lives in your own database.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } else {
-            Section("Plan") {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Loading your plan…")
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 2)
-            }
-        }
-    }
-
     /// Who is signed in: initials avatar, name (or email), email. A session
     /// whose `/api/me` hasn't answered yet shows a quiet placeholder.
     @ViewBuilder
@@ -216,4 +173,59 @@ struct PlanBadge: View {
             .foregroundStyle(.tint)
             .accessibilityLabel("Plan: \(title)")
     }
+}
+
+struct PlanSettingsTab: View {
+    @Environment(AppEnvironment.self) private var appEnvironment
+    var body: some View {
+        Form {
+            planSection
+            if let usage = appEnvironment.settings.aiUsage { AiCreditsCard(usage: usage, dim: appEnvironment.settings.hasOwnKey) }
+            if let message = appEnvironment.settings.statusMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
+            Button("Refresh plan and usage") { Task { if appEnvironment.canUseData { await appEnvironment.settings.load(); appEnvironment.persistSnapshot() } } }.disabled(!appEnvironment.canUseData)
+        }.formStyle(.grouped).frame(minHeight: 420)
+    }
+    /// The plan card — drawn only once `GET /api/account` has answered for
+    /// THIS session (nil after every sign-out).
+    @ViewBuilder
+    var planSection: some View {
+        if let plan = appEnvironment.settings.plan {
+            Section {
+                HStack(alignment: .firstTextBaseline) {
+                    PlanBadge(title: plan.badgeTitle)
+                    Spacer()
+                    Text(plan.price == 0 ? "$0 / month" : "$\(plan.price) / month")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                .padding(.vertical, 2)
+
+                ForEach(plan.features) { feature in
+                    Label {
+                        Text(feature.label)
+                    } icon: {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                }
+            } header: {
+                Text("Plan")
+            } footer: {
+                Text("Fair-use limits apply. Your data lives in your own database.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Section("Plan") {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading your plan…")
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+
 }

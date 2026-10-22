@@ -1,3 +1,4 @@
+import { useWorkspace } from "../context/WorkspaceContext";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LiveDevice, LiveTab } from "@bookmark-ai/types";
 import { listLiveDevices } from "../api";
@@ -65,6 +66,7 @@ export function useLiveSearchMatches(query: string): LiveSearchMatches {
   // build-time constant re-exposed for formality — see PreferencesContext),
   // but every other search-ish effect lists it as a dependency, so this one
   // does too for consistency should that ever stop being true.
+  const { readOnly } = useWorkspace();
   const { serverTarget } = usePreferences();
   const [devices, setDevices] = useState<LiveDevice[]>([]);
   const runId = useRef(0);
@@ -77,7 +79,7 @@ export function useLiveSearchMatches(query: string): LiveSearchMatches {
     // clearing it — harmless, since `computeMatches` below yields `EMPTY` for
     // a blank query regardless of what's cached, and it saves a re-fetch the
     // instant the user resumes typing.
-    if (!q) return;
+    if (!q || readOnly) return;
     // ONE fetch per search, not one per query refinement: the mirror is a set of
     // open tabs, which barely changes while someone types a few more letters, and
     // the request leaves for a separate live service. Refining "rust" → "rust
@@ -102,9 +104,9 @@ export function useLiveSearchMatches(query: string): LiveSearchMatches {
         });
     }, 350);
     return () => clearTimeout(timer);
-  }, [query, serverTarget]);
+  }, [query, serverTarget, readOnly]);
 
-  return useMemo(() => computeMatches(devices, query), [devices, query]);
+  return useMemo(() => readOnly ? EMPTY : computeMatches(devices, query), [devices, query, readOnly]);
 }
 
 /** Tokenize on whitespace, lowercase, drop empties — a per-term AND match,

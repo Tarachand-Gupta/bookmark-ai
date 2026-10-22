@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createDb,
   createSession,
@@ -22,7 +25,7 @@ import type { Source } from "@bookmark-ai/types";
  * session matching, and how the two kinds of session hit are merged.
  *
  * Unlike search-paging.test.ts (which fakes the retrieval queries to isolate the
- * fusion), these run against a REAL in-memory libSQL database with the real
+ * fusion), these run against a REAL isolated local libSQL database with the real
  * schema — `@libsql/client`'s in-memory mode supports `vector32()`,
  * `vector_distance_cos()` and even `libsql_vector_idx()`, so the floor and the
  * LIKE clauses are exercised as the SQL the server actually ships, not as a
@@ -54,8 +57,19 @@ const source: Source = {
   savedAt: "2026-08-01T10:00:00.000Z",
 };
 
+const fixtures: { db: Db; dir: string }[] = [];
+afterEach(() => {
+  for (const { db, dir } of fixtures.splice(0)) {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 async function freshDb(): Promise<Db> {
-  const db = createDb(":memory:");
+  // libSQL interactive transactions detach their connection; a private :memory:
+  // client reconnects to an empty DB. A disposable file exercises real commits.
+  const dir = mkdtempSync(join(tmpdir(), "bmai-db-test-"));
+  const db = createDb(`file:${join(dir, "fixture.db")}`);
+  fixtures.push({ db, dir });
   await ensureSchema(db);
   return db;
 }
@@ -147,7 +161,11 @@ describe("searchVector — the similarity floor", () => {
   it("still returns keyword hits in hybrid mode when the vector side is all junk", async () => {
     const onlyJunk = await freshDb();
     await seedBookmark(onlyJunk, "junk-a", "Sourdough starter guide", 0.4);
-    const res = await performSearch(onlyJunk, gemini, { q: "sourdough", mode: "hybrid", limit: 20 });
+    const res = await performSearch(onlyJunk, gemini, {
+      q: "sourdough",
+      mode: "hybrid",
+      limit: 20,
+    });
     expect(res.results.map((r) => r.bookmark.id)).toEqual(["junk-a"]);
     expect(res.results[0].exact).toBe(true);
   });

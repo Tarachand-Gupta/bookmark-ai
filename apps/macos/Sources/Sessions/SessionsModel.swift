@@ -116,7 +116,11 @@ final class SessionsModel {
         return true
     }
 
+    var isReadOnly = false
+    var onLoaded: (() -> Void)?
+
     func load() async {
+        guard !isReadOnly else { return }
         loadTask?.cancel()
         let task = Task { @MainActor in
             let fromCache = self.isSyncingFromCache
@@ -132,6 +136,7 @@ final class SessionsModel {
                 guard !Task.isCancelled else { return }
                 self.reconcile(rows: response.sessions)
                 self.loaded = true
+                self.onLoaded?()
             } catch is CancellationError {
                 return
             } catch {
@@ -163,6 +168,7 @@ final class SessionsModel {
     }
 
     func delete(_ session: Session) async {
+        guard !isReadOnly else { return }
         do {
             try await api.deleteSession(id: session.id)
             sessions.removeAll { $0.id == session.id }
@@ -172,6 +178,7 @@ final class SessionsModel {
     }
 
     func rename(_ session: Session, to name: String) async {
+        guard !isReadOnly else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != session.name else { return }
         do {
@@ -187,6 +194,7 @@ final class SessionsModel {
     private(set) var summarizingId: String?
 
     func summarize(_ session: Session) async {
+        guard !isReadOnly else { return }
         summarizingId = session.id
         defer { summarizingId = nil }
         do {

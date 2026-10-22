@@ -13,6 +13,7 @@ struct SidebarView: View {
 
     @State private var showAllCategories = false
     @State private var showAllTags = false
+    @State private var dropTarget: String?
 
     var body: some View {
         let library = appEnvironment.library
@@ -24,13 +25,29 @@ struct SidebarView: View {
             List(selection: selectionBinding) {
                 Section {
                     row(for: .allBookmarks, count: library.meta.total)
+                    if appEnvironment.organization.data != nil { plainRow(for: .unsorted); plainRow(for: .readingList) }
                     plainRow(for: .liveTabs)
                     plainRow(for: .sessions)
                     plainRow(for: .chat)
                 }
 
+                if appEnvironment.organization.data != nil {
+                    Section {
+                        OutlineGroup(folderTree, children: \.children) { node in
+                            folderRow(node.folder)
+                        }
+                    } header: {
+                        HStack {
+                            Text("Folders")
+                            Spacer()
+                            Button { appEnvironment.organization.showManager = true } label: { Image(systemName: "plus") }
+                                .buttonStyle(.plain).help("New folder or manage folders").disabled(!appEnvironment.canUseData)
+                        }
+                    }
+                }
+
                 if !library.meta.categories.isEmpty {
-                    Section("Categories") {
+                    Section("Topics") {
                         ForEach(visibleFacets(library.meta.categories, showAll: showAllCategories)) { facet in
                             row(for: .category(facet.name), count: facet.count)
                         }
@@ -70,6 +87,43 @@ struct SidebarView: View {
         )) {
             TourSheet()
         }
+    }
+
+    private struct FolderNode: Identifiable {
+        let folder: OrganizationFolder
+        var children: [FolderNode]?
+        var id: String { folder.id }
+    }
+    private var folderTree: [FolderNode] {
+        let folders = appEnvironment.organization.data?.folders ?? []
+        func nodes(_ parent: String?, visited: Set<String>) -> [FolderNode] {
+            folders.filter { $0.parentId == parent && !visited.contains($0.id) }.map { folder in
+                let children = nodes(folder.id, visited: visited.union([folder.id]))
+                return FolderNode(folder: folder, children: children.isEmpty ? nil : children)
+            }
+        }
+        return nodes(nil, visited: [])
+    }
+    private func folderRow(_ folder: OrganizationFolder) -> some View {
+        row(for: .folder(folder.id, folder.path), count: folder.count)
+            .listRowBackground(dropTarget == folder.id ? Color.accentColor.opacity(0.18) : Color.clear)
+            .overlay(alignment: .trailing) {
+                if dropTarget == folder.id { Text("Move \(max(1, appEnvironment.library.selectedIDs.count)) here").font(.caption).padding(4).background(.regularMaterial, in: Capsule()) }
+            }
+            .contextMenu { Button("Manage folder…") { appEnvironment.organization.showManager = true } }
+            .dropDestination(for: String.self) { ids, _ in
+                guard appEnvironment.canUseData else { return false }
+                let selected = appEnvironment.library.selectedIDs
+                let actual = ids.contains(where: { selected.contains($0) }) ? selected.sorted() : ids
+                Task {
+                    if let frozen = await appEnvironment.organization.freeze(["bookmarkIds": .array(actual.map(JSONValue.string))]) {
+                        await appEnvironment.organization.apply(selection: frozen, changes: ["folderId": .string(folder.id)])
+                    }
+                }
+                return !actual.isEmpty
+            } isTargeted: { targeted in
+                dropTarget = targeted ? folder.id : (dropTarget == folder.id ? nil : dropTarget)
+            }
     }
 
     /// The product identity, above the source list — the app icon (the real
@@ -140,6 +194,7 @@ struct SidebarView: View {
             get: { appEnvironment.library.selection },
             set: { newValue in
                 guard let newValue else { return }
+                if newValue == .chat { if appEnvironment.canUseData { appEnvironment.chat.show() }; return }
                 Task { await appEnvironment.library.select(newValue) }
             }
         )

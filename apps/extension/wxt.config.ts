@@ -112,8 +112,8 @@ export default defineConfig({
     // bridge into app tabs that predate the current install — a manifest
     // content script only reaches tabs opened AFTER install, and Safari's
     // whole auth path dies with an orphaned bridge.
-    // `bookmarks` (Chrome/Firefox — Safari exposes no bookmarks API) mirrors
-    // native bookmark add/remove into the library (lib/native-sync.ts).
+    // `bookmarks` is optional: importing and future mirroring have separate consent.
+    // Safari exposes no bookmarks API and never declares it.
     // `readingList` (Chrome 120-only) mirrors Reading List additions.
     // `nativeMessaging` (Safari-only) lets the background tell the Mac companion
     // app who is signed in (lib/native-auth-report.ts →
@@ -126,7 +126,7 @@ export default defineConfig({
       "alarms",
       ...(!supabase ? ["cookies"] : []),
       ...(supabase && browser !== "safari" ? ["identity"] : []),
-      ...(browser === "chrome" ? ["bookmarks", "readingList", "tabGroups"] : []),
+      ...(browser === "chrome" ? ["readingList", "tabGroups"] : []),
       // `webRequest`/`webRequestBlocking` (Firefox-only, MV2): the ONE thing
       // they are used for is stripping the `Origin` header off the extension's
       // OWN requests to the Clerk frontend API — Firefox stamps
@@ -136,9 +136,10 @@ export default defineConfig({
       // listener is filtered to the Clerk FAPI host alone and reads nothing;
       // see lib/clerk-origin-strip.ts. Chrome's extension id IS allowlisted, so
       // neither permission is requested there.
-      ...(browser === "firefox" ? ["bookmarks", ...(!supabase ? ["webRequest", "webRequestBlocking"] : [])] : []),
+      ...(browser === "firefox" ? [...(!supabase ? ["webRequest", "webRequestBlocking"] : [])] : []),
       ...(browser === "safari" ? ["scripting", "nativeMessaging"] : []),
     ],
+    optional_permissions: browser === "safari" ? [] : ["bookmarks"],
     // MODE-AWARE (lib/app-origins.ts): a `production` build — every store zip —
     // lists ONLY the four prod origins (apex + www, prod Clerk FAPI, live);
     // `development`/`dev-remote` add localhost, the dev deployment and the dev

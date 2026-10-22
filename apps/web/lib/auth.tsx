@@ -2,7 +2,8 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useState } from "react";
-import { safeAuthDestination, profileName } from "./auth-policy";
+import { safeAuthDestination, profileName, profileImage } from "./auth-policy";
+import { announceExplicitSignOut } from "./account-private-state";
 import { webSessionMetadata } from "./web-session-metadata";
 let client: SupabaseClient | undefined;
 let refresh: Promise<string | null> | null = null;
@@ -88,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { error } = await getBrowserSupabase().auth.getUser(token);
         if (error && (error.status === 401 || error.status === 403)) {
           await getBrowserSupabase().auth.signOut({ scope: "local" });
-          if (window.location.pathname.startsWith("/app")) window.location.assign("/sign-in");
+          if (window.location.pathname.startsWith("/app")) window.location.assign("/sign-in?next=" + encodeURIComponent(safeAuthDestination(window.location.pathname + window.location.search, "/app")));
         }
       } catch {
         /* outage is not a sign-out */
@@ -136,11 +137,7 @@ export function useUser() {
   const state = useContext(Context);
   const raw: User | undefined = state.session?.user;
   const name = profileName(raw?.user_metadata);
-  const image =
-    typeof raw?.user_metadata?.avatar_url === "string" &&
-    /^https:\/\//.test(raw.user_metadata.avatar_url)
-      ? raw.user_metadata.avatar_url
-      : null;
+  const image = profileImage(raw?.user_metadata);
   const user = raw
     ? {
         id: raw.id,
@@ -159,6 +156,7 @@ export function useUser() {
 export async function signOut(
   options: { redirectUrl?: string; scope?: "local" | "others" | "global" } = {},
 ) {
+  const accountId = (await getBrowserSupabase().auth.getSession()).data.session?.user.id;
   const token = await getAccessToken();
   if (token) {
     const response = await fetch("/api/auth/sessions/sign-out", {
@@ -169,6 +167,7 @@ export async function signOut(
     if (!response.ok) throw new Error("Could not sign out. Try again.");
   }
   if (options.scope !== "others") {
+    if (accountId) announceExplicitSignOut(accountId);
     await getBrowserSupabase().auth.signOut({ scope: "local" });
     window.location.assign(safeAuthDestination(options.redirectUrl, "/sign-in"));
   }

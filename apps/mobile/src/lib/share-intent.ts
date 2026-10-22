@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as Haptics from "expo-haptics";
 import * as Crypto from "expo-crypto";
 import { useShareIntentContext, type ShareIntent } from "expo-share-intent";
+import type {Bookmark} from "@bookmark-ai/types";
 import { createBookmark, detectSource, getBookmarkByUrl } from "../api";
 import { sessionStorage } from "./auth";
 import { AUTH_NAMESPACE } from "./auth-config";
@@ -165,6 +166,8 @@ export interface ShareNotice {
   /** null until the POST returns; upgraded again when the scrape lands. */
   title: string | null;
   saving: boolean;
+  bookmark?:Bookmark;
+  existing?:boolean;
 }
 
 /** How long after the save to re-read the bookmark for its scraped title —
@@ -221,16 +224,17 @@ export function useSharedLinkSave({
 
     void (async () => {
       try {
-        const { bookmark } = await createBookmark({
+        const { bookmark, existing } = await createBookmark({
+          operationId: link.id,
           url: link.url,
           title: link.title,
           ...detectSource(),
-          savedAt: new Date().toISOString(),
+
         });
         if (!mounted.current) return;
         callbacks.current.onConsumed(link.id);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setNotice({ url: link.url, title: bookmark.title ?? null, saving: false });
+        setNotice({ url: link.url, title: bookmark.title ?? null, saving: false, bookmark, existing });
         callbacks.current.onSaved();
         // The scrape lands just after the save returns; pick the real title up
         // without making the user pull to refresh.
@@ -247,11 +251,7 @@ export function useSharedLinkSave({
               .catch(() => {
                 /* keep whatever title the banner already shows */
               });
-            timers.current.push(
-              setTimeout(() => {
-                if (mounted.current) setNotice((current) => (current?.url === link.url ? null : current));
-              }, DISMISS_AFTER_MS),
-            );
+
           }, ENRICH_DELAY_MS),
         );
       } catch {

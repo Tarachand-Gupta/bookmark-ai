@@ -1,9 +1,14 @@
 "use client";
+import type { OrganizationFolder, OrganizationResponse } from "@bookmark-ai/types";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { MetaResponse } from "@bookmark-ai/types";
 import {
   Bookmark,
+  BookOpen,
+  CircleDot,
+  Hash,
+  Inbox,
   CalendarDays,
   ChevronDown,
   Chrome,
@@ -31,8 +36,8 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuButton,
+  SidebarMenuBadge as BaseSidebarMenuBadge,
+  SidebarMenuButton as BaseSidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
   useSidebar,
@@ -40,7 +45,20 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { LibraryFilters } from "@/lib/api";
 import { FEATURE_ICONS } from "./feature-icons";
+import { Button } from "@/components/ui/button";
+import { folderTreeRows } from "@/lib/organization-ui";
+import { folderHref } from "@/lib/folder-browser";
+import { FolderOptions, type FolderAction } from "./organization/folder-browser";
+import { SidebarResizeHandle } from "./sidebar-resize-handle";
 import type { SectionId } from "./settings-dialog";
+
+function SidebarMenuButton({ className = "", ...props }: React.ComponentProps<typeof BaseSidebarMenuButton>) {
+  return <BaseSidebarMenuButton className={`min-h-11 md:min-h-8 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:group-data-[collapsible=icon]:min-w-11 [@media(pointer:coarse)]:group-data-[collapsible=icon]:-translate-x-1.5 [@media(pointer:coarse)]:group-data-[collapsible=icon]:px-3.5! group-data-[collapsible=icon]:[&>span:last-child]:sr-only ${className}`} {...props} />;
+}
+
+function SidebarMenuBadge(props: React.ComponentProps<typeof BaseSidebarMenuBadge>) {
+  return <BaseSidebarMenuBadge className="top-1/2! -translate-y-1/2" {...props} />;
+}
 
 /** Facet rows shown before a section needs its "View all" toggle. */
 const VISIBLE_CATEGORIES = 6;
@@ -71,6 +89,11 @@ export interface AppSidebarProps {
   onFilterChange: (filters: LibraryFilters) => void;
   /** Whether the Home dashboard (/app) is the current route, not the library. */
   homeActive?: boolean;
+  foldersActive?: boolean;
+  onBrowseFolder?: (id: string | null) => void;
+  onCreateFolder?: (parentId: string | null) => void;
+  onFolderAction?: (folder: OrganizationFolder, action: FolderAction) => void;
+  aiActive?: boolean;
   /** Navigate to the Home dashboard. Omitted ⇒ the Home row isn't rendered. */
   onShowHome?: () => void;
   /** Whether the Saved sessions view (not the library) is showing. */
@@ -88,6 +111,8 @@ export interface AppSidebarProps {
   onOpenSettings?: (section?: SectionId) => void;
   /** Reopens the first-run feature tour. */
   onOpenTour?: () => void;
+  organization?: OrganizationResponse | null;
+  onManageOrganization?: (intent?: "create-folder") => void;
 }
 
 /** "Docs & Reference · 8" — the rail tooltip carries the count the badge shows. */
@@ -113,6 +138,11 @@ export function AppSidebar({
   filters,
   onFilterChange,
   homeActive,
+  foldersActive,
+  onBrowseFolder,
+  onCreateFolder,
+  onFolderAction,
+  aiActive,
   onShowHome,
   sessionsActive,
   sessionCount,
@@ -123,16 +153,24 @@ export function AppSidebar({
   onAdd,
   onOpenSettings,
   onOpenTour,
+  organization,
+  onManageOrganization,
 }: AppSidebarProps) {
-  const { setOpenMobile } = useSidebar();
+  const { setOpenMobile, state, isMobile, setOpen } = useSidebar();
+  const rail = state === "collapsed" && !isMobile;
+  const manage = (intent?: "create-folder") => { setOpenMobile(false); onManageOrganization?.(intent); };
   const [allCategories, setAllCategories] = useState(false);
+  const [closedFolders, setClosedFolders] = useState<Set<string>>(new Set());
+  const folderRows = folderTreeRows(organization?.folders ?? []);
+  useEffect(() => { const active = folderRows.find(row => row.folder.id === filters.folderId); if (active) setClosedFolders(previous => new Set([...previous].filter(id => !active.ancestors.includes(id)))); }, [filters.folderId, organization?.folders]);
 
+  const browse = (id: string | null) => { onBrowseFolder?.(id); setOpenMobile(false); };
   const select = (next: LibraryFilters) => {
     onFilterChange(next);
     setOpenMobile(false);
   };
 
-  const noFilter = !filters.category && !filters.browser && !filters.device && !filters.day;
+  const noFilter = !filters.category && !filters.browser && !filters.device && !filters.day && !filters.folderId && !filters.readingState && !filters.categoryId && !filters.tagId;
   const categories = meta?.categories ?? [];
   const browsers = meta?.browsers ?? [];
   const devices = meta?.devices ?? [];
@@ -176,7 +214,7 @@ export function AppSidebar({
               onClick={onAdd}
               aria-label="Add bookmark"
               title="Add bookmark"
-              className="cursor-pointer flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background shadow-sm transition-colors hover:bg-muted"
+              className="cursor-pointer flex size-11 shrink-0 items-center justify-center rounded-lg border bg-background shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Plus className="size-4" aria-hidden />
             </button>
@@ -216,7 +254,7 @@ export function AppSidebar({
               )}
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  isActive={!homeActive && noFilter && !sessionsActive && !liveActive}
+                  isActive={!foldersActive && !homeActive && noFilter && !sessionsActive && !liveActive}
                   tooltip={withCount("All bookmarks", meta?.total)}
                   onClick={() => select({})}
                 >
@@ -225,6 +263,10 @@ export function AppSidebar({
                 </SidebarMenuButton>
                 <CountBadge value={meta?.total} loading={facetsLoading} />
               </SidebarMenuItem>
+              {organization && <>
+                <SidebarMenuItem><SidebarMenuButton isActive={!!filters.readingState && !homeActive && !sessionsActive && !liveActive} tooltip="Reading list" onClick={() => select({ readingState: "unread" })}><BookOpen aria-hidden /><span>Reading list</span></SidebarMenuButton></SidebarMenuItem>
+                <SidebarMenuItem><SidebarMenuButton isActive={filters.folderId === "unsorted" && !homeActive && !sessionsActive && !liveActive} tooltip="Unsorted" onClick={() => select({ folderId: "unsorted" })}><Inbox aria-hidden /><span>Unsorted</span></SidebarMenuButton></SidebarMenuItem>
+              </>}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={!!liveActive}
@@ -267,11 +309,44 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
+        <SidebarGroup>
+          <div className="flex min-h-11 items-center md:min-h-8 group-data-[collapsible=icon]:hidden">
+            <span className="mr-auto px-2 text-xs font-medium text-muted-foreground">Folders</span>
+            {onManageOrganization && <>
+              <Button type="button" variant="ghost" className="size-11 shrink-0 md:size-8 [@media(pointer:coarse)]:size-11" aria-label="Create folder" title="Create folder" onClick={() => { setOpenMobile(false); onCreateFolder ? onCreateFolder(null) : manage("create-folder"); }}><Plus aria-hidden /></Button>
+            </>}
+          </div>
+          <SidebarGroupContent><SidebarMenu>
+            {rail ? <>
+              <SidebarMenuItem><SidebarMenuButton tooltip="Show folders" aria-label="Show folders" isActive={foldersActive} onClick={() => setOpen(true)}><Folder aria-hidden /><span>Folders</span></SidebarMenuButton></SidebarMenuItem>
+            </> : <>
+              {folderRows.filter(row => !row.ancestors.some(id => closedFolders.has(id))).map(({ folder, depth, hasChildren }) => {
+                const expanded = !closedFolders.has(folder.id);
+                const active = filters.folderId === folder.id && !homeActive && !sessionsActive && !liveActive;
+                return <SidebarMenuItem key={folder.id} className="group/folder" style={{ marginLeft: Math.min(depth, 4) * 12 }}>
+                  <SidebarMenuButton asChild className="relative min-w-0 pl-11 pr-11 md:pl-8 md:pr-8 [@media(pointer:coarse)]:pl-11 [@media(pointer:coarse)]:pr-11" isActive={active} tooltip={folder.path}>
+                    <a href={folderHref(folder.id, aiActive)} aria-current={active ? "page" : undefined} onClick={event => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); browse(folder.id); }}>
+                      {!hasChildren && <span className="absolute inset-y-0 left-0 flex w-11 items-center justify-center md:w-8 [@media(pointer:coarse)]:w-11"><Folder className="size-4" aria-hidden /></span>}
+                      <span className="min-w-0 flex-1 truncate" title={folder.path}>{folder.name}</span>
+                    </a>
+                  </SidebarMenuButton>
+                  {hasChildren && <button type="button" className="absolute inset-y-0 left-0 flex size-11 items-center justify-center rounded-md md:size-8 [@media(pointer:coarse)]:size-11 text-sidebar-foreground hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring" aria-label={`${expanded ? "Collapse" : "Expand"} ${folder.path}`} aria-expanded={expanded} onClick={() => setClosedFolders(previous => { const next = new Set(previous); next.has(folder.id) ? next.delete(folder.id) : next.add(folder.id); return next; })}>
+                    <Folder aria-hidden className="size-4 transition-opacity group-hover/folder:opacity-0 group-focus-within/folder:opacity-0 max-md:opacity-0 [@media(hover:none)]:opacity-0" />
+                    <ChevronDown aria-hidden className={`absolute size-4 opacity-0 transition-opacity group-hover/folder:opacity-100 group-focus-within/folder:opacity-100 max-md:opacity-100 [@media(hover:none)]:opacity-100 ${expanded ? "" : "-rotate-90"}`} />
+                  </button>}
+                  <span aria-hidden className={`pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs tabular-nums text-muted-foreground ${onFolderAction ? "group-hover/folder:opacity-0 group-focus-within/folder:opacity-0 group-has-[[data-state=open]]/folder:opacity-0 max-md:hidden [@media(hover:none)]:hidden" : ""}`}>{folder.directCount || ""}</span>
+                  {onFolderAction && <FolderOptions folder={folder} onAction={(item, action) => { setOpenMobile(false); onFolderAction(item, action); }} onNew={onCreateFolder ? () => { setOpenMobile(false); onCreateFolder(folder.id); } : undefined} />}
+                </SidebarMenuItem>;
+              })}
+              {!folderRows.length && <li className="px-2 py-2 text-xs text-muted-foreground">Create a folder to give your links a home.</li>}
+            </>}
+          </SidebarMenu></SidebarGroupContent>
+        </SidebarGroup>
         <CollapsibleGroup
-          label="Categories"
+          label="Topics"
           loading={facetsLoading}
           count={categories.length}
-          railItem={{ Icon: Folder, active: !!filters.category }}
+          railItem={{ Icon: CircleDot, active: !!filters.category || !!filters.categoryId }}
         >
           <SidebarMenu>
             {visibleCategories.map((c) => (
@@ -281,7 +356,7 @@ export function AppSidebar({
                   tooltip={withCount(c.name, c.count)}
                   onClick={() => select(filters.category === c.name ? {} : { category: c.name })}
                 >
-                  <Folder aria-hidden />
+                  <CircleDot aria-hidden />
                   <span>{c.name}</span>
                 </SidebarMenuButton>
                 <SidebarMenuBadge>{c.count}</SidebarMenuBadge>
@@ -291,7 +366,7 @@ export function AppSidebar({
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={() => setAllCategories((v) => !v)}
-                  tooltip={allCategories ? "Show fewer categories" : `All ${categories.length} categories`}
+                  tooltip={allCategories ? "Show fewer topics" : `All ${categories.length} topics`}
                   className="text-muted-foreground"
                 >
                   <ChevronDown
@@ -305,6 +380,10 @@ export function AppSidebar({
               </SidebarMenuItem>
             )}
           </SidebarMenu>
+        </CollapsibleGroup>
+
+        <CollapsibleGroup label="Tags" loading={facetsLoading} count={organization?.tags.length ?? 0} railItem={{ Icon: Hash, active: !!filters.tagId }}>
+          <SidebarMenu>{organization?.tags.map(tag => <SidebarMenuItem key={tag.id}><SidebarMenuButton isActive={filters.tagId === tag.id} tooltip={withCount(tag.name, tag.count)} onClick={() => select(filters.tagId === tag.id ? {} : { tagId: tag.id })}><Hash aria-hidden /><span>{tag.name}</span></SidebarMenuButton><SidebarMenuBadge>{tag.count}</SidebarMenuBadge></SidebarMenuItem>)}</SidebarMenu>
         </CollapsibleGroup>
 
         <CollapsibleGroup
@@ -389,28 +468,12 @@ export function AppSidebar({
         <SidebarMenu>
           {onOpenTour && (
             <SidebarMenuItem>
-              <SidebarMenuButton tooltip="Tour" onClick={onOpenTour}>
+              <SidebarMenuButton tooltip="Getting started" onClick={() => { onOpenTour(); setOpenMobile(false); }}>
                 <Sparkles aria-hidden />
-                <span>Tour</span>
+                <span>Getting started</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           )}
-          {/* MCP sits next to Settings rather than in the facet nav: it isn't a
-              view of your library, it's a way to hand your library to an agent.
-              Opening straight into Settings → MCP keeps ONE implementation of
-              the setup UI (same panel the ?settings=mcp deep link lands on). */}
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="MCP"
-              onClick={() => {
-                onOpenSettings?.("mcp");
-                setOpenMobile(false);
-              }}
-            >
-              <Plug aria-hidden />
-              <span>MCP</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Settings"
@@ -425,6 +488,7 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+      <SidebarResizeHandle />
     </Sidebar>
   );
 }
@@ -509,13 +573,13 @@ function CollapsibleGroup({ label, loading, count, railItem, children }: Collaps
         {/* pointer-events-none on the rail: the folded-away label still sits,
             invisible, over the bottom of the previous group's last row and would
             otherwise steal that row's clicks to toggle this section. */}
-        <SidebarGroupLabel asChild className="group-data-[collapsible=icon]:pointer-events-none">
-          <CollapsibleTrigger>
-            <span>{label}</span>
+        <SidebarGroupLabel asChild className="min-h-11 md:min-h-8 [@media(pointer:coarse)]:min-h-11 group-data-[collapsible=icon]:min-h-8 group-data-[collapsible=icon]:pointer-events-none">
+          <CollapsibleTrigger className="group/section gap-2">
             <ChevronDown
               aria-hidden
-              className="ml-auto size-4 transition-transform group-data-[state=open]/collapsible:rotate-180"
+              className="size-3.5 -rotate-90 opacity-0 transition-[opacity,transform] group-hover/section:opacity-100 group-focus-visible/section:opacity-100 group-data-[state=open]/collapsible:rotate-0 max-md:opacity-100 [@media(hover:none)]:opacity-100"
             />
+            <span>{label}</span>
           </CollapsibleTrigger>
         </SidebarGroupLabel>
         <CollapsibleContent>

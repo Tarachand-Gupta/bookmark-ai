@@ -13,11 +13,15 @@ let composerLog = Logger(subsystem: "ai.bookmarkai", category: "composer")
 /// ⌘V pastes files and images as attachments, files can be dropped anywhere on
 /// the box. Pending attachments sit above the text as pills with a remove ×.
 struct ChatComposerBox: View {
+    var onActivate: (() -> Void)?
+    var autoFocus = true
     @Environment(AppEnvironment.self) private var appEnvironment
 
     @State private var isFocused = false
     @State private var isDropTargeted = false
     @State private var focusRequest = 0
+    @State private var showAddMenu = false
+    @State private var showBookmarkPicker = false
 
     var body: some View {
         @Bindable var model = appEnvironment.chat
@@ -37,15 +41,16 @@ struct ChatComposerBox: View {
 
                     ComposerTextView(
                         text: $model.draft,
+                        conversationKey: model.activeDraftId,
                         placeholder: chat.messages.isEmpty
-                            ? "Ask about your bookmarks, sessions, or live tabs…"
+                            ? "Ask about your library"
                             : "Ask a follow-up…",
-                        isEnabled: !chat.isStreaming,
+                        isEnabled: true,
                         focusRequest: focusRequest,
                         onSubmit: { chat.send() },
                         onPasteboard: { chat.acceptPasteboard($0) },
                         onDragTargeted: { isDropTargeted = $0 },
-                        onFocusChange: { isFocused = $0 }
+                        onFocusChange: { isFocused = $0; if $0 { onActivate?() } }
                     )
 
                     sendOrStop
@@ -107,7 +112,8 @@ struct ChatComposerBox: View {
                 .transition(.opacity)
             }
         }
-        .onAppear { focusRequest += 1 }
+        .onAppear { if autoFocus { focusRequest += 1 } }
+        .onChange(of: chat.activeDraftId) { _, _ in if autoFocus || chat.isPresented { focusRequest += 1 } }
         .animation(.easeOut(duration: 0.15), value: chat.attachments.count)
     }
 
@@ -121,14 +127,22 @@ struct ChatComposerBox: View {
         let chat = appEnvironment.chat
         let full = chat.attachments.count >= ChatAttachmentRules.maxFiles
         return Button {
-            presentOpenPanel()
+            onActivate?()
+            showAddMenu = true
         } label: {
-            Image(systemName: "paperclip")
+            Image(systemName: "plus")
                 .font(.system(size: 15, weight: .medium))
         }
+        .popover(isPresented: $showAddMenu) {
+            VStack(alignment: .leading, spacing: 12) {
+                Button("Upload file…") { showAddMenu = false; presentOpenPanel() }.disabled(full)
+                Button("Select saved bookmarks…") { showAddMenu = false; showBookmarkPicker = true }
+            }.buttonStyle(.plain).padding(16)
+        }
+        .sheet(isPresented: $showBookmarkPicker) { ChatBookmarkPicker() }
         .buttonStyle(.plain)
         .foregroundStyle(chat.isStreaming || full ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
-        .disabled(chat.isStreaming || full)
+        .disabled(chat.isStreaming)
         .pointingHandCursor()
         .help(full
             ? "Up to \(ChatAttachmentRules.maxFiles) files per message"
@@ -338,6 +352,7 @@ enum DropPayload {
 /// lines before scrolling.
 struct ComposerTextView: NSViewRepresentable {
     @Binding var text: String
+    var conversationKey = "default"
     var placeholder: String
     var isEnabled: Bool
     /// Bump to move keyboard focus into the field.
@@ -418,7 +433,12 @@ struct ComposerTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
         guard let textView = scrollView.documentView as? ComposerNSTextView else { return }
-        if textView.string != text {
+        if context.coordinator.lastConversationKey != conversationKey {
+            context.coordinator.lastConversationKey = conversationKey
+            textView.unmarkText()
+            textView.undoManager?.removeAllActions()
+        }
+        if textView.string != text && !textView.hasMarkedText() {
             textView.string = text
             textView.needsDisplay = true
         }
@@ -458,6 +478,7 @@ struct ComposerTextView: NSViewRepresentable {
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: ComposerTextView
+        var lastConversationKey = "default"
         var lastFocusRequest: Int
 
         /// Measurement-only TextKit stack (see `sizeThatFits`).
@@ -499,7 +520,7 @@ struct ComposerTextView: NSViewRepresentable {
         /// `insertNewlineIgnoringFieldEditor:` and falls through to the default,
         /// which also inserts one).
         func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-            guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
+            guard commandSelector == #selector(NSResponder.insertNewline(_:)), !textView.hasMarkedText() else { return false }
             if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
                 textView.insertNewlineIgnoringFieldEditor(nil)
                 return true

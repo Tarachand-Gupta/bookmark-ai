@@ -24,11 +24,30 @@ export function displayName(value: unknown): string {
     : "";
 }
 
-/** full_name is canonical across clients; display_name supports earlier QA metadata. */
+/** full_name is canonical; older clients and OAuth providers use the fallback fields. */
 export function profileName(metadata: Record<string, unknown> | undefined): string {
-  return displayName(metadata?.full_name) || displayName(metadata?.display_name);
+  return (
+    displayName(metadata?.full_name) ||
+    displayName(metadata?.display_name) ||
+    displayName(metadata?.name)
+  );
 }
 export function profileNameUpdate(value: unknown) {
   const name = displayName(value);
   return { full_name: name, display_name: name };
+}
+
+/** Display-only provider metadata, never an authorization signal. */
+export function profileImage(metadata: Record<string, unknown> | undefined): string | null {
+  for (const candidate of [metadata?.avatar_url, metadata?.picture]) {
+    if (typeof candidate !== "string" || /[\u0000-\u0020\u007f\\]/.test(candidate)) continue;
+    try {
+      const url = new URL(candidate);
+      if (url.protocol === "https:" && url.hostname && !url.username && !url.password)
+        return url.href;
+    } catch {
+      /* Try the provider fallback. */
+    }
+  }
+  return null;
 }

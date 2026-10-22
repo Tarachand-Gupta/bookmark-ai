@@ -34,6 +34,7 @@ export type RequestApiContext =
       /** Clerk session id from the gate's single `auth()` call; null for device
        * tokens and the open modes. */
       sessionId: string | null;
+      capability?: "human" | "extension";
       accessToken?: string;
       db: Db;
       gemini: GeminiClient | null;
@@ -69,7 +70,15 @@ export async function getRequestApiContext(): Promise<RequestApiContext> {
 
   try {
     const { db, ready } = await getTenantDb(gate.userId);
-    return { userId: gate.userId, sessionId: gate.sessionId, accessToken: gate.identity?.accessToken, db, gemini, ready };
+    return {
+      userId: gate.userId,
+      sessionId: gate.sessionId,
+      accessToken: gate.identity?.accessToken,
+      capability: gate.capability,
+      db,
+      gemini,
+      ready,
+    };
   } catch (err) {
     if (err instanceof TenantNotProvisionedError) {
       return { response: provisioningResponse() };
@@ -133,9 +142,15 @@ export async function enforceQuota(
   await master.ready;
 
   const day = new Date().toISOString().slice(0, 10);
-  let allowed:boolean;
-  try { ({allowed}=await bumpUsage(master.db, userId, day, field, quotaFor(field))); }
-  catch { return NextResponse.json({error:"Quota service temporarily unavailable",code:"quota-unavailable"},{status:503}); }
+  let allowed: boolean;
+  try {
+    ({ allowed } = await bumpUsage(master.db, userId, day, field, quotaFor(field)));
+  } catch {
+    return NextResponse.json(
+      { error: "Quota service temporarily unavailable", code: "quota-unavailable" },
+      { status: 503 },
+    );
+  }
   if (!allowed) {
     return NextResponse.json(
       { error: `Daily limit reached (${field}). Resets at midnight UTC.` },

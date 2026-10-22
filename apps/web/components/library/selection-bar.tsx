@@ -2,20 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Download, Loader2, Trash2, X } from "lucide-react";
+import { BookOpen, ChevronDown, CircleDot, Download, FolderInput, Loader2, MoreHorizontal, Sparkles, Tags, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useSidebarWidth } from "@/hooks/use-app-layout";
 import { useSidebar } from "@/components/ui/sidebar";
 
-/**
- * The sidebar's widths, mirroring SIDEBAR_WIDTH / SIDEBAR_WIDTH_ICON in
- * components/ui/sidebar.tsx. They can't be read as `var(--sidebar-width)` here:
- * that variable is declared on the SidebarProvider wrapper, and this bar is
- * portalled to <body>, outside its scope. The sidebar is `collapsible="icon"`
- * (see app-sidebar.tsx), so collapsed it is the 3rem rail; on mobile, where it's
- * an overlay sheet, it takes no width at all.
- */
-const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 
 export interface SelectionBarProps {
@@ -28,6 +20,8 @@ export interface SelectionBarProps {
   onClear: () => void;
   /** A bulk delete is running — the actions lock and show progress. */
   busy?: boolean;
+  onOrganize?: (action: "move" | "category" | "tags" | "reading") => void;
+  onAsk?: () => void;
 }
 
 /**
@@ -52,14 +46,17 @@ export function SelectionBar({
   onExport,
   onClear,
   busy,
+  onOrganize,
+  onAsk,
 }: SelectionBarProps) {
   // The sidebar's live width — expanded, collapsed off-canvas, or a mobile sheet.
   const { state, isMobile } = useSidebar();
+  const expandedWidth = useSidebarWidth();
   const sidebarWidth = isMobile
     ? "0px"
     : state === "collapsed"
       ? SIDEBAR_WIDTH_ICON
-      : SIDEBAR_WIDTH;
+      : `${expandedWidth}px`;
 
   // Portals need a DOM; render nothing on the server pass.
   const [mounted, setMounted] = useState(false);
@@ -69,51 +66,48 @@ export function SelectionBar({
   return createPortal(
     <div
       role="region"
+      data-composer-blocked="true"
       data-theme-picker-selection="active"
       aria-label={`${count} ${noun}${count === 1 ? "" : "s"} selected`}
       // The sidebar animates its width over 200ms/linear — match it so the bar
       // slides with the layout instead of snapping to the new centre.
-      className="pointer-events-none fixed bottom-0 left-0 right-0 z-50 flex justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))] transition-[padding] duration-200 ease-linear"
+      className="pointer-events-none fixed bottom-0 left-0 right-0 z-40 flex justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))] transition-[padding] duration-200 ease-linear"
       style={{
         paddingLeft: `calc(1rem + ${sidebarWidth})`,
         paddingRight: "calc(1rem + var(--chat-dock-w, 0px))",
       }}
     >
-      <div className="pointer-events-auto flex min-w-0 max-w-full items-center gap-1 rounded-full border bg-popover/95 p-1.5 pl-4 text-popover-foreground shadow-lg backdrop-blur duration-200 animate-in fade-in slide-in-from-bottom-4">
-        <span className="whitespace-nowrap text-sm font-medium tabular-nums">{count} selected</span>
-        <Separator orientation="vertical" className="mx-1 !h-5" />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onDelete}
-          disabled={busy}
-          className="rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
-        >
-          {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Trash2 aria-hidden />}
-          Delete
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onExport}
-          disabled={busy}
-          className="rounded-full"
-        >
-          <Download aria-hidden />
-          <span className="hidden sm:inline">Export CSV</span>
-          <span className="sm:hidden">CSV</span>
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onClear}
-          disabled={busy}
-          aria-label="Clear selection"
-          title="Clear selection (Esc)"
-          className="rounded-full"
-        >
-          <X aria-hidden />
-        </Button>
+      <div className="pointer-events-auto flex min-w-0 max-w-full items-center gap-0.5 rounded-2xl border bg-popover p-1.5 pl-3 text-popover-foreground shadow-lg">
+        <span className="min-w-0 truncate pr-2 text-xs font-medium tabular-nums sm:text-sm" aria-live="polite">{count} selected</span>
+        {busy && <Loader2 className="size-4 shrink-0 animate-spin" aria-label="Applying changes" />}
+        {onOrganize && <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="secondary" className="h-11 shrink-0 px-3" disabled={busy}>Organize<ChevronDown aria-hidden /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="center" sideOffset={12} collisionPadding={12} className="w-72 max-w-[calc(100vw-24px)]">
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Organize {count} {noun}{count === 1 ? "" : "s"}</DropdownMenuLabel>
+            {([
+              ["move", "Move to folder…", "Choose a home for these bookmarks", FolderInput],
+              ["category", "Set topic…", "Choose what these bookmarks are about", CircleDot],
+              ["tags", "Edit tags…", "Add or remove labels across this selection", Tags],
+              ["reading", "Change reading status…", "Read later, mark read, or remove from the list", BookOpen],
+            ] as const).map(([action, label, description, Icon]) => <DropdownMenuItem key={action} className="min-h-14 items-start gap-3 py-2.5" onSelect={() => onOrganize(action)}>
+              <Icon className="mt-0.5" aria-hidden /><span className="min-w-0"><span className="block">{label}</span><span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{description}</span></span>
+            </DropdownMenuItem>)}
+          </DropdownMenuContent>
+        </DropdownMenu>}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="size-11 shrink-0" disabled={busy} aria-label="More selection actions" title="More selection actions"><MoreHorizontal aria-hidden /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="end" sideOffset={12} collisionPadding={12} className="max-w-[calc(100vw-24px)]">
+            {onAsk && <DropdownMenuItem className="min-h-11" onSelect={onAsk}><Sparkles aria-hidden />Ask AI about selection</DropdownMenuItem>}
+            <DropdownMenuItem className="min-h-11" onSelect={onExport}><Download aria-hidden />Export selected as CSV</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" className="min-h-11" onSelect={onDelete}><Trash2 aria-hidden />Delete selected…</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button variant="ghost" className="size-11 shrink-0" onClick={onClear} disabled={busy} aria-label="Done selecting" title="Done selecting (Esc)"><X aria-hidden /></Button>
       </div>
     </div>,
     document.body,

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { LiveDevice, UserSettings } from "@bookmark-ai/types";
+import { useEffect, useRef, useState } from "react";
+import type { LiveDevice } from "@bookmark-ai/types";
 import { AlertTriangle, ChevronDown, Chrome, Compass, Flame, Globe, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,12 +11,11 @@ import {
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useSettingsResource } from "./account-details-provider";
 import { FEATURE_ICONS } from "./feature-icons";
 import {
   forgetAllLiveDevices,
   forgetLiveDevice,
-  getLive,
-  getSettings,
   resetLiveBaseCache,
   setLiveEnabled,
   updateLiveDeviceSettings,
@@ -45,10 +44,11 @@ const BROWSER_ICONS: Record<string, React.ElementType> = {
  * its own label on every check-in.
  */
 export function DevicesSection() {
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [enabled, setEnabled] = useState(false);
-  const [devices, setDevices] = useState<LiveDevice[]>([]);
+  const resource = useSettingsResource("devices");
+  const loading = resource.loading;
+  const loadError = resource.error;
+  const [enabled, setEnabled] = useState(resource.data?.enabled ?? false);
+  const [devices, setDevices] = useState<LiveDevice[]>(resource.data?.devices ?? []);
 
   const [toggling, setToggling] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -56,34 +56,15 @@ export function DevicesSection() {
   const [forgettingAll, setForgettingAll] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
-    getLive()
-      .then((res) => {
-        if (cancelled) return;
-        setEnabled(res.enabled);
-        setDevices(res.devices);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setLoadError((e as Error).message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!resource.data || toggling || busyId || forgettingAll) return;
+    setEnabled(resource.data.enabled);
+    setDevices(resource.data.devices);
+  }, [resource.data, toggling, busyId, forgettingAll]);
 
   const refresh = async () => {
-    try {
-      const res = await getLive();
-      setEnabled(res.enabled);
-      setDevices(res.devices);
-    } catch {
-      // A failed refresh leaves the last-known list; the next action retries.
-    }
+    if (!resource.isCurrent()) return;
+    const res = await resource.invalidate();
+    if (res && resource.isCurrent()) { setEnabled(res.enabled); setDevices(res.devices); }
   };
 
   const toggle = async (next: boolean) => {
@@ -94,6 +75,7 @@ export function DevicesSection() {
     if (!next) setDevices([]);
     try {
       await setLiveEnabled(next);
+      resource.update(previous => previous && ({ ...previous, enabled: next, devices: next ? previous.devices : [] }));
       await refresh();
     } catch (e) {
       setActionError((e as Error).message);
@@ -110,6 +92,8 @@ export function DevicesSection() {
     setDevices((prev) => prev.filter((d) => d.deviceId !== id));
     try {
       await forgetLiveDevice(id);
+      resource.update(previous => previous && ({ ...previous, devices: previous.devices.filter(d => d.deviceId !== id) }));
+      await refresh();
     } catch (e) {
       setActionError((e as Error).message);
       await refresh();
@@ -124,6 +108,8 @@ export function DevicesSection() {
     setDevices([]);
     try {
       await forgetAllLiveDevices();
+      resource.update(previous => previous && ({ ...previous, devices: [] }));
+      await refresh();
     } catch (e) {
       setActionError((e as Error).message);
       await refresh();
@@ -139,6 +125,8 @@ export function DevicesSection() {
     setDevices((ds) => ds.map((d) => (d.deviceId === id ? { ...d, newWindowsShared: shared } : d)));
     try {
       await updateLiveDeviceSettings(id, { newWindowsShared: shared });
+      resource.update(previous => previous && ({ ...previous, devices: previous.devices.map(d => d.deviceId === id ? { ...d, newWindowsShared: shared } : d) }));
+      await refresh();
     } catch (e) {
       setActionError((e as Error).message);
       setDevices((ds) =>
@@ -153,14 +141,13 @@ export function DevicesSection() {
       icon={LiveIcon}
       description="See the tabs your other devices have open in real time, and manage those devices."
     >
+      {loadError && <p role="alert" className="text-sm text-destructive">Couldn’t load devices: {loadError} <Button variant="ghost" size="sm" onClick={() => void resource.refresh()}>Retry</Button></p>}
       {loading ? (
         <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" aria-hidden />
           Loading…
         </div>
-      ) : loadError ? (
-        <p className="text-sm text-destructive">Couldn’t load devices: {loadError}</p>
-      ) : (
+      ) : !resource.data ? null : (
         <>
           <SettingsRow
             label="Show my open tabs"
@@ -220,9 +207,9 @@ export function DevicesSection() {
             </SettingsGroup>
           )}
 
-          <LiveServerUrlField />
         </>
       )}
+      <LiveServerUrlField />
     </SettingsSection>
   );
 }
@@ -236,13 +223,11 @@ export function DevicesSection() {
  * Saving resets lib/api's cached live base so the next live connect uses the new URL.
  */
 function LiveServerUrlField() {
+  const resource = useSettingsResource("settings");
+  const devicesResource = useSettingsResource("devices", false);
+  const dirty = useRef(false);
+  const initialized = useRef(false);
   const [value, setValue] = useState("");
-  // The PUT always overwrites provider/baseUrl/model from the body, so we round-
-  // trip the loaded AI config to avoid clobbering it when saving just the URL.
-  const [aiConfig, setAiConfig] = useState<Pick<
-    UserSettings,
-    "provider" | "baseUrl" | "model"
-  > | null>(null);
   // Disclosure + gate: both start open/checked when a custom URL already exists,
   // so the user can see and edit what they set instead of being locked out.
   const [open, setOpen] = useState(false);
@@ -252,28 +237,14 @@ function LiveServerUrlField() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    getSettings()
-      .then(({ settings }) => {
-        if (cancelled) return;
-        const hasCustom = settings.liveServerUrl != null;
-        setValue(settings.liveServerUrl ?? "");
-        setOpen(hasCustom);
-        setAcknowledged(hasCustom);
-        setAiConfig({
-          provider: settings.provider,
-          baseUrl: settings.baseUrl,
-          model: settings.model,
-        });
-      })
-      .catch(() => {
-        // A failed load leaves the field empty (the default) — the user can
-        // still expand, acknowledge, type, and save an override.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const settings = resource.data;
+    if (!settings || initialized.current || dirty.current) return;
+    initialized.current = true;
+    const hasCustom = settings.liveServerUrl != null;
+    setValue(settings.liveServerUrl ?? "");
+    setOpen(hasCustom);
+    setAcknowledged(hasCustom);
+  }, [resource.data]);
 
   const save = async () => {
     setSaving(true);
@@ -281,22 +252,15 @@ function LiveServerUrlField() {
     setError(null);
     try {
       const { settings } = await updateSettings({
-        // Re-send the current AI config so this save doesn't reset it (the route
-        // overwrites provider/baseUrl/model on every PUT).
-        provider: aiConfig?.provider ?? "google",
-        baseUrl: aiConfig?.baseUrl ?? undefined,
-        model: aiConfig?.model ?? undefined,
         liveServerUrl: value.trim() || null,
       });
+      if (!resource.isCurrent()) return;
+      resource.remember(settings);
       setValue(settings.liveServerUrl ?? "");
-      setAiConfig({
-        provider: settings.provider,
-        baseUrl: settings.baseUrl,
-        model: settings.model,
-      });
       // The live base is cached per page load in lib/api — drop it so the next
       // connect picks up this URL.
       resetLiveBaseCache();
+      void devicesResource.invalidate();
       setSavedMsg("Saved");
     } catch (e) {
       setError((e as Error).message);
@@ -312,6 +276,7 @@ function LiveServerUrlField() {
     // the part of the group title (same text-sm semibold-ish weight), so this
     // block lines up with "Devices" above it.
     <SettingsGroup divided>
+      {resource.error && <p role="alert" className="text-sm text-destructive">Couldn’t load live server settings: {resource.error} <Button variant="ghost" size="sm" onClick={() => void resource.refresh()}>Retry</Button></p>}
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 rounded-md text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
           Use my own live server
@@ -355,6 +320,7 @@ function LiveServerUrlField() {
                 value={value}
                 disabled={locked}
                 onChange={(e) => {
+                  dirty.current = true;
                   setValue(e.target.value);
                   setSavedMsg(null);
                 }}
@@ -365,7 +331,7 @@ function LiveServerUrlField() {
                 type="button"
                 size="sm"
                 onClick={save}
-                disabled={locked || saving || aiConfig === null}
+                disabled={locked || saving || !resource.data || !resource.active}
                 className="shrink-0"
               >
                 {saving ? (

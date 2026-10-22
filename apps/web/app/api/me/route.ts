@@ -20,23 +20,32 @@ async function GETHandler() {
 
   // Open modes (keyless self-host / dev bypass) have no Clerk user to look up.
   if (!gate.userId) {
-    return NextResponse.json({ signedIn: true, name: null, email: null });
+    return NextResponse.json({ signedIn: true, accountId: null, name: null, email: null });
   }
 
   if (gate.identity) {
-    const user=gate.identity.user;
-    const name=profileName(user.user_metadata) || null;
-    return NextResponse.json({signedIn:true,userId:gate.userId,providerUserId:user.id,name,email:user.email??null},{headers:{"cache-control":"no-store"}});
+    const user = gate.identity.user;
+    const name = profileName(user.user_metadata) || null;
+    return NextResponse.json(
+      {
+        signedIn: true,
+        accountId: gate.userId,
+        userId: gate.userId,
+        providerUserId: user.id,
+        name,
+        email: user.email ?? null,
+      },
+      { headers: { "cache-control": "no-store" } },
+    );
   }
   const client = await clerkClient();
   const user = await client.users.getUser(gate.userId);
-  const name =
-    [user.firstName, user.lastName].filter(Boolean).join(" ") || user.username || null;
+  const name = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.username || null;
   const email =
     user.emailAddresses.find((e) => e.id === user.primaryEmailAddressId)?.emailAddress ??
     user.emailAddresses[0]?.emailAddress ??
     null;
-  return NextResponse.json({ signedIn: true, name, email });
+  return NextResponse.json({ signedIn: true, accountId: gate.userId, name, email });
 }
 
 export const GET = withRequestLogging("/api/me", "GET", GETHandler);

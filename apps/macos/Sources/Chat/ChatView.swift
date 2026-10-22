@@ -6,12 +6,27 @@ import SwiftUI
 /// a conversation fills it with the transcript.
 struct ChatView: View {
     @Environment(AppEnvironment.self) private var appEnvironment
+    var includeComposer = true
     @State private var isPresentingHistory = false
 
     var body: some View {
         @Bindable var model = appEnvironment.chat
 
         VStack(spacing: 0) {
+            HStack {
+                Button { appEnvironment.chat.isPresented = false; NSApp.keyWindow?.makeFirstResponder(nil) } label: { Label("Back", systemImage: "chevron.left") }.help("Close conversation and return to your library; the reply keeps running")
+                Text("Ask AI").font(.headline)
+                Spacer()
+                historyButton
+                Menu {
+                    ForEach(model.localDrafts) { thread in
+                        Button(thread.draft.isEmpty ? (thread.isStreaming ? "Reply in progress" : "Draft with attachments") : String(thread.draft.prefix(45))) { model.selectDraft(thread) }
+                    }
+                } label: { Label("Drafts", systemImage: "doc.text") }.help("Switch drafts without stopping replies")
+                Button { model.newConversation() } label: { Label("New chat", systemImage: "square.and.pencil") }
+            }.padding(12)
+            Divider()
+
             if model.messages.isEmpty {
                 emptyState
             } else {
@@ -22,40 +37,28 @@ struct ChatView: View {
                 errorBar(message)
             }
 
-            ChatComposerBox()
+            if includeComposer { ChatComposerBox()
                 .frame(maxWidth: ContentColumn.maxWidth)
                 .padding(.horizontal, ContentColumn.padding)
-                .padding(.vertical, 12)
+                .padding(.vertical, 12) }
         }
         .frame(maxWidth: .infinity)
         .background(VisualEffectBackground().ignoresSafeArea())
-        .navigationTitle("Ask AI")
-        .navigationSubtitle("")
-        .toolbar {
-            // Order = left to right: ⋯ (the home for chat-wide items), History, New.
-            ToolbarItem(placement: .primaryAction) { moreMenu }
-            ToolbarItem(placement: .primaryAction) { historyButton }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    appEnvironment.chat.newConversation()
-                } label: {
-                    Label("New Chat", systemImage: "square.and.pencil")
-                }
-                .help("Start a new conversation")
-            }
-        }
+        .navigationTitle(appEnvironment.chat.isPresented ? "Ask AI" : appEnvironment.library.selection.title)
+        .navigationSubtitle(appEnvironment.chat.isPresented ? "" : appEnvironment.library.subtitle)
         .sheet(isPresented: $model.isPresentingSkills) {
             SkillsSheet()
                 .environment(appEnvironment)
         }
         .task {
+            guard appEnvironment.canUseData else { return }
             await appEnvironment.chat.refreshConversations()
             await appEnvironment.settings.load()
         }
         // Refresh the credits meter when a turn finishes — the server meters
         // usage in its onFinish, so the number is only fresh after streaming.
         .task(id: model.isStreaming) {
-            if !model.isStreaming {
+            if !model.isStreaming && appEnvironment.canUseData {
                 await appEnvironment.settings.load()
             }
         }
@@ -92,7 +95,7 @@ struct ChatView: View {
                     ForEach(Self.suggestions, id: \.self) { suggestion in
                         SuggestionPill(text: suggestion) {
                             appEnvironment.chat.draft = suggestion
-                            appEnvironment.chat.send()
+                            appEnvironment.chat.show()
                         }
                     }
                 }
@@ -125,6 +128,7 @@ struct ChatView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 ForEach(chat.messages) { message in
+                    if let context = message.context, message.role == "user" { Label(context.displayTitle, systemImage: "scope").font(.caption).foregroundStyle(.secondary) }
                     ChatMessageView(
                         message: message,
                         reasoningDurations: chat.reasoningDurations[message.id] ?? [:],

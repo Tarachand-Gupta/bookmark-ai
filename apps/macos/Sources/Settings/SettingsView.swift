@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 /// The tabs of the Settings window. Raw values keep them stable for deep links
 /// (the sidebar's MCP row opens straight into `.mcp`, like the web).
 enum SettingsTab: String, Hashable {
-    case general, ai, mcp, sync, live, data, account
+    case general, ai, mcp, sync, live, data, plan, account
 }
 
 /// The standard Settings scene (⌘,), mirroring the web app's settings dialog:
@@ -23,13 +23,13 @@ struct SettingsView: View {
 
     var body: some View {
         Group {
-            if appEnvironment.canUseData {
+            if appEnvironment.gate == .ready {
                 SettingsTabs(selection: $selection)
             } else {
                 SettingsGatePanel()
             }
         }
-        .frame(width: 500)
+        .frame(width: 620, height: 570)
     }
 }
 
@@ -40,35 +40,52 @@ private struct SettingsTabs: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            GeneralSettingsTab()
+            ScrollView { GeneralSettingsTab()
+                .frame(maxWidth: .infinity) }
                 .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
 
-            AiSettingsTab()
+            ScrollView { AiSettingsTab()
+                .frame(maxWidth: .infinity) }
+                .disabled(!appEnvironment.canUseData)
                 .tabItem { Label("AI", systemImage: "sparkles") }
                 .tag(SettingsTab.ai)
 
-            McpSettingsTab()
+            ScrollView { McpSettingsTab()
+                .frame(maxWidth: .infinity) }
+                .disabled(!appEnvironment.canUseData)
                 .tabItem { Label("MCP", systemImage: "powerplug") }
                 .tag(SettingsTab.mcp)
 
-            SyncSettingsTab()
+            ScrollView { SyncSettingsTab()
+                .frame(maxWidth: .infinity) }
+                .disabled(!appEnvironment.canUseData)
                 .tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
                 .tag(SettingsTab.sync)
 
-            LiveSettingsTab()
+            ScrollView { LiveSettingsTab()
+                .frame(maxWidth: .infinity) }
+                .disabled(!appEnvironment.canUseData)
                 .tabItem { Label("Live", systemImage: "dot.radiowaves.left.and.right") }
                 .tag(SettingsTab.live)
 
-            DataSettingsTab()
+            ScrollView { DataSettingsTab()
+                .frame(maxWidth: .infinity) }
+                .disabled(!appEnvironment.canUseData)
                 .tabItem { Label("Data", systemImage: "arrow.up.arrow.down.square") }
                 .tag(SettingsTab.data)
 
-            AccountSettingsTab()
+            ScrollView { PlanSettingsTab()
+                .frame(maxWidth: .infinity) }
+                .tabItem { Label("Plan & usage", systemImage: "chart.bar") }
+                .tag(SettingsTab.plan)
+
+            ScrollView { AccountSettingsTab()
+                .frame(maxWidth: .infinity) }
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
                 .tag(SettingsTab.account)
         }
-        .task { await appEnvironment.settings.load() }
+        .task { if appEnvironment.canUseData { await appEnvironment.settings.load(); appEnvironment.persistSnapshot() } }
         // The sidebar can ask for a specific tab before the window opens.
         .onChange(of: appEnvironment.requestedSettingsTab, initial: true) { _, requested in
             if let requested {
@@ -374,6 +391,7 @@ private struct LiveDeviceSettingsRow: View {
 /// Export/import of the full library — the same lossless bundle as the web's
 /// Settings ▸ Data. Files go through the user's own save/open panels.
 struct DataSettingsTab: View {
+    @State private var showLinkImport = false
     @Environment(AppEnvironment.self) private var appEnvironment
 
     @State private var isWorking = false
@@ -395,9 +413,13 @@ struct DataSettingsTab: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Import") {
+            Section("Import existing links") {
+                Button("Import browser bookmarks or links from notes…") { showLinkImport = true }
+                Text("Preview links and folders before saving.").font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Restore backup") {
                 LabeledContent("From a previous export") {
-                    Button("Import…") { importBundle() }
+                    Button("Restore backup…") { importBundle() }
                         .disabled(isWorking)
                 }
             }
@@ -411,8 +433,9 @@ struct DataSettingsTab: View {
                     .foregroundStyle(statusIsError ? .red : .secondary)
             }
         }
+        .sheet(isPresented: $showLinkImport, onDismiss: { Task { await appEnvironment.loadEverything() } }) { ImportBookmarksView() }
         .formStyle(.grouped)
-        .frame(height: 280)
+        .frame(minHeight: 360)
     }
 
     private func exportBundle() {

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -42,6 +43,40 @@ final class LibraryModel {
 
     // Selection
     var selection: SidebarItem = .allBookmarks
+    var selectedIDs: Set<String> = []
+    var selectionAnchor: String?
+    var includeSubfolders = true { didSet { if includeSubfolders != oldValue { Task { await refresh(); await search(searchText) } } } }
+    var readingFilter = "on_list" { didSet { if readingFilter != oldValue { Task { await refresh(); await search(searchText) } } } }
+    func choose(_ id: String, modifiers: NSEvent.ModifierFlags = []) {
+        let ids = visibleBookmarks.map(\.id)
+        if modifiers.contains(.shift), let anchor = selectionAnchor, let a = ids.firstIndex(of: anchor), let b = ids.firstIndex(of: id) {
+            selectedIDs.formUnion(ids[min(a,b)...max(a,b)])
+        } else if modifiers.contains(.command) {
+            if selectedIDs.contains(id) { selectedIDs.remove(id) } else { selectedIDs.insert(id) }
+            selectionAnchor = id
+        } else { selectedIDs = [id]; selectionAnchor = id }
+    }
+    var organizationFilters: [String: JSONValue] {
+        var result: [String: JSONValue] = [:]
+        if let value = selection.folderFilter { result["folderId"] = .string(value); result["includeSubfolders"] = .bool(includeSubfolders) }
+        if let value = selection.categoryFilter { result["category"] = .string(value) }
+        if let value = selection.tagFilter { result["tag"] = .string(value) }
+        if let browserFilter { result["browser"] = .string(browserFilter) }
+        if let deviceFilter { result["device"] = .string(deviceFilter) }
+        if selection == .readingList { result["readingState"] = .string(readingFilter) }
+        return result
+    }
+    var organizationQueryItems: [URLQueryItem] {
+        organizationFilters.map { key, value in
+            URLQueryItem(name: key, value: value.stringValue ?? (value == .bool(true) ? "true" : "false"))
+        }
+    }
+    var proposedChatContext: ChatContext {
+        if !selectedIDs.isEmpty { return .bookmarks(selectedIDs.sorted()) }
+        if case .folder(let id, let path) = selection { return ChatContext(type: "folder", folderId: id, includeSubfolders: includeSubfolders, title: path) }
+        return .library
+    }
+
 
     // Filters + sort. Browser/device are orthogonal to the sidebar selection
     // (same facets the web sidebar offers); setting either reloads.
@@ -79,6 +114,9 @@ final class LibraryModel {
     private var unfilteredBookmarks: [Bookmark]?
     private var unfilteredTotal: Int?
 
+    var cachedFolders: [OrganizationFolder] = []
+    var isReadOnly = false
+    var onLoaded: (() -> Void)?
     private let api: ApiClient
     private var loadTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
@@ -92,13 +130,32 @@ final class LibraryModel {
     /// the chosen sort order.
     var visibleBookmarks: [Bookmark] {
         if let searchResults { return searchResults.map(\.bookmark) }
+        let rows = isReadOnly ? bookmarks.filter { bookmark in
+            if selection == .unsorted && bookmark.folderId != nil { return false }
+            if case .folder(let id, _) = selection, bookmark.folderId != id {
+                guard includeSubfolders, let child = bookmark.folderId else { return false }
+                var parent = cachedFolders.first { $0.id == child }?.parentId
+                var seen = Set<String>()
+                while let candidate = parent, candidate != id, seen.insert(candidate).inserted { parent = cachedFolders.first { $0.id == candidate }?.parentId }
+                if parent != id { return false }
+            }
+            if selection == .readingList {
+                if readingFilter == "on_list" && bookmark.canonicalReadingState == .notOnList { return false }
+                if readingFilter != "on_list" && bookmark.canonicalReadingState.rawValue != readingFilter { return false }
+            }
+            if let category = selection.categoryFilter, bookmark.category != category { return false }
+            if let tag = selection.tagFilter, !bookmark.tags.contains(tag) { return false }
+            if let browserFilter, bookmark.source.browser != browserFilter { return false }
+            if let deviceFilter, bookmark.source.device != deviceFilter { return false }
+            return searchText.isEmpty || TermFilter.matches("\(bookmark.title) \(bookmark.url) \(bookmark.tags.joined(separator: " "))", query: searchText)
+        } : bookmarks
         switch sort {
         case .newestFirst:
-            return bookmarks // the API's own order
+            return rows // the API's own order
         case .oldestFirst:
-            return bookmarks.reversed()
+            return rows.reversed()
         case .titleAZ:
-            return bookmarks.sorted {
+            return rows.sorted {
                 $0.displayTitle.localizedCaseInsensitiveCompare($1.displayTitle) == .orderedAscending
             }
         }
@@ -121,6 +178,7 @@ final class LibraryModel {
     /// must not raise the full-window loading state — the pill is the loading UI
     /// for that path.
     func refresh() async {
+        guard !isReadOnly else { return }
         loadTask?.cancel()
         let task = Task { @MainActor in
             await self.performRefresh()
@@ -160,7 +218,8 @@ final class LibraryModel {
             tag: selection.tagFilter,
             browser: browserFilter,
             device: deviceFilter,
-            limit: 200
+            limit: 200,
+            organizationFilters: organizationQueryItems.filter { ["folderId", "includeSubfolders", "readingState"].contains($0.name) }
         )
 
         do {
@@ -177,6 +236,7 @@ final class LibraryModel {
             }
             reconcile(rows: fetchedList.bookmarks)
             total = fetchedList.total
+            onLoaded?()
         } catch is CancellationError {
             return
         } catch {
@@ -256,6 +316,7 @@ final class LibraryModel {
     func select(_ item: SidebarItem) async {
         guard item != selection else { return }
         selection = item
+        selectedIDs = []; selectionAnchor = nil
         guard item.isLibraryFilter else { return }
         searchText = ""
         searchResults = nil
@@ -267,6 +328,7 @@ final class LibraryModel {
     /// Run a hybrid search, or clear results when the query is empty.
     /// Callers debounce (the view uses `.task(id:)`); this only cancels overlap.
     func search(_ query: String) async {
+        guard !isReadOnly else { searchResults = nil; isSearching = false; return }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         searchTask?.cancel()
 
@@ -285,7 +347,7 @@ final class LibraryModel {
             do {
                 // hybrid = RRF blend of full-text and vector, same as the web grid
                 // and mobile. 40 is under the server's max of 50.
-                let response = try await self.api.search(query: trimmed, mode: .hybrid, limit: 40)
+                let response = try await self.api.search(query: trimmed, mode: .hybrid, limit: 40, filters: self.organizationQueryItems)
                 guard !Task.isCancelled else { return }
                 self.searchResults = response.results
                 self.searchFellBack = response.fallback ?? false
@@ -303,6 +365,7 @@ final class LibraryModel {
     // MARK: - Mutations
 
     func delete(_ bookmark: Bookmark) async {
+        guard !isReadOnly else { return }
         do {
             try await api.deleteBookmark(id: bookmark.id)
             bookmarks.removeAll { $0.id == bookmark.id }
@@ -325,6 +388,7 @@ final class LibraryModel {
     /// Drop everything and reload — used when the server target changes and on
     /// every sign-out, so no row from the old backend or account can survive.
     func reset() {
+        isReadOnly = false; cachedFolders = []
         loadTask?.cancel()
         searchTask?.cancel()
         bookmarks = []
@@ -333,6 +397,7 @@ final class LibraryModel {
         meta = .empty
         searchText = ""
         selection = .allBookmarks
+        selectedIDs = []; selectionAnchor = nil
         isSyncingFromCache = false
         unfilteredBookmarks = nil
         unfilteredTotal = nil

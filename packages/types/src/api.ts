@@ -1,8 +1,11 @@
 import { z } from "zod";
+import { organizationFiltersSchema, operationIdSchema, readingStateSchema } from "./organization";
 import { bookmarkSchema, browserSchema, deviceTypeSchema, httpUrlSchema } from "./bookmark";
 
 /** POST /api/bookmarks — save a URL. OG scraping + categorization happen server-side. */
 export const createBookmarkSchema = z.object({
+  operationId: operationIdSchema.optional(),
+  readingState: readingStateSchema.optional(),
   url: httpUrlSchema,
   /** Page title as seen by the client (fallback if OG scrape fails). */
   title: z.string().nullish(),
@@ -44,6 +47,7 @@ export const savedAtBoundSchema = z
 
 /** GET /api/bookmarks query params. */
 export const listBookmarksQuerySchema = z.object({
+  ...organizationFiltersSchema.shape,
   category: z.string().optional(),
   browser: browserSchema.optional(),
   device: deviceTypeSchema.optional(),
@@ -159,6 +163,7 @@ export const MAX_SEARCH_DEPTH = 200;
  * `offset`/`hasMore` paging fields. */
 export const searchQuerySchema = z
   .object({
+    ...organizationFiltersSchema.shape,
     q: z.string().min(1),
     mode: searchModeSchema.default("text"),
     limit: z.coerce.number().int().min(1).max(50).default(20),
@@ -237,4 +242,3 @@ export const metaResponseSchema = z.object({
   total: z.number(),
 });
 export type MetaResponse = z.infer<typeof metaResponseSchema>;
-

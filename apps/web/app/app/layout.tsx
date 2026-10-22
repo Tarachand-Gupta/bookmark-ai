@@ -1,3 +1,4 @@
+import { AccountDetailsProvider } from "@/components/library/account-details-provider";
 import { Suspense } from "react";
 import { AccountReadiness } from "@/components/library/account-readiness";
 import { AppChatDock } from "@/components/library/app-chat-dock";
@@ -12,12 +13,12 @@ import { AppChatDock } from "@/components/library/app-chat-dock";
  */
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <AccountReadiness>
+    <AccountDetailsProvider><AccountReadiness>
       {children}
       {/* useSearchParams (inside the dock) needs a Suspense boundary. */}
       <Suspense>
         <AppChatDock />
       </Suspense>
-    </AccountReadiness>
+    </AccountReadiness></AccountDetailsProvider>
   );
 }

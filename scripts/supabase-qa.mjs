@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync, lstatSync, readdirS
 import { resolve, join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { beginBuildRun, endBuildRun, automaticRetention } from './build-retention.mjs';
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const variant = 'supabase-qa';
@@ -311,6 +312,8 @@ export function stageSources(surface, env, options = {}) {
   const buildId = `${sha}-${Date.now()}-${surface}`;
   const runRoot = join(repoRoot, '.work/builds', buildVariant, buildId);
   const stagedRoot = join(runRoot, 'source');
+  beginBuildRun(repoRoot, runRoot);
+  try {
   mkdirSync(stagedRoot, { recursive: true });
   const selected = surface === 'check' ? Object.values(apps) : surface === 'web' ? [apps.web, apps.live] : [apps[surface]];
   const rootFiles = new Set(['.vercelignore', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'turbo.json', 'tsconfig.json', 'tsconfig.base.json']);
@@ -355,6 +358,7 @@ export function stageSources(surface, env, options = {}) {
     createdAt: new Date().toISOString(), status: 'prepared' };
   writeFileSync(join(runRoot, 'build-manifest.json'), JSON.stringify(manifest, null, 2));
   return { runRoot, stagedRoot, manifest };
+  } catch (error) { endBuildRun(runRoot); throw error; }
 }
 
 export function main(argv = process.argv.slice(2)) {
@@ -383,6 +387,7 @@ export function main(argv = process.argv.slice(2)) {
     if (existsSync(join(java21, 'bin/java'))) env.JAVA_HOME = java21;
   }
   const { runRoot, stagedRoot, manifest } = stageSources(surface, env);
+  manifest.action = action;
   const app = join(stagedRoot, 'apps', apps[surface] || 'mobile');
   env.PATH = `${join(app, 'node_modules/.bin')}:${env.PATH}`;
   console.log(`Supabase QA ${surface}: ${runRoot}`);
@@ -441,7 +446,9 @@ export function main(argv = process.argv.slice(2)) {
     manifest.status = 'failed';
     throw error;
   } finally {
-    writeFileSync(join(runRoot, 'build-manifest.json'), JSON.stringify(manifest, null, 2));
+    try { writeFileSync(join(runRoot, 'build-manifest.json'), JSON.stringify(manifest, null, 2)); }
+    finally { endBuildRun(runRoot); }
+    automaticRetention(repoRoot, variant, surface);
   }
 }
 

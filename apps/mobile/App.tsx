@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { BlurTargetView } from "expo-blur";
 import * as SplashScreen from "expo-splash-screen";
 import {
@@ -10,6 +10,14 @@ import {
 } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "./src/lib/auth";
 import { ShareIntentProvider } from "expo-share-intent";
+import { WorkspaceProvider, useWorkspace } from "./src/context/WorkspaceContext";
+import { offlineAccountAllowed } from "./src/lib/snapshot-cache";
+import { getApiUrl } from "./src/api";
+import { ContentWidthContext } from "./src/context/ContentWidthContext";
+import { OrganizationProvider, useOrganization } from "./src/context/OrganizationContext";
+import { ComposerProvider, useComposer } from "./src/context/ComposerContext";
+import { OrganizationUiProvider, useOrganizationUi } from "./src/context/OrganizationUiContext";
+import { ImportBookmarksSheet } from "./src/components/onboarding/ImportBookmarksSheet";
 import { setAuthTokenProvider } from "./src/api";
 import { LaunchScreen } from "./src/components/LaunchScreen";
 import { ShareSavedBanner } from "./src/components/ShareSavedBanner";
@@ -112,10 +120,10 @@ export default function App() {
 function Gate() {
   const { colors, dark } = useAppTheme();
   const { hydrated } = usePreferences();
-  const { isLoaded, isSignedIn, getToken, userId, recovery, error, retry, mfaStatus } = useAuth();
+  const { isLoaded, isSignedIn, getToken, userId, recovery, error, retry, mfaStatus, cachedAccount, signOut } = useAuth();
   // Captured HERE, above the sign-in/app branch: a share that arrives while
   // signed out is held in encrypted app-only storage through sign-in.
-  const share = usePendingSharedLink(userId, isLoaded);
+  const share = usePendingSharedLink(userId??cachedAccount?.id??null, isLoaded);
   const signedIn = isSignedIn;
   const authReady = isLoaded;
 
@@ -127,6 +135,10 @@ function Gate() {
   // allowed (see useAccountStatus).
   const account = useAccountStatus();
   const gated = signedIn;
+  const cachedAllowed=offlineAccountAllowed(cachedAccount,{origin:getApiUrl(),currentAccountId:userId,explicitlyInvalidated:account.status==='forbidden',knownMfaRequired:mfaStatus==='required'})&&!recovery;
+  const liveWorkspace=signedIn&&account.status==='ok'&&mfaStatus==='ready'&&!recovery;
+  const workspaceAccount=liveWorkspace?userId:cachedAllowed?cachedAccount!.id:null;
+  const readOnly=!liveWorkspace;
 
   // The native splash goes away on our first correctly-themed frame — which is
   // the LaunchScreen below, its pixel twin — never waiting on the network.
@@ -134,7 +146,14 @@ function Gate() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {!hydrated || !authReady ? (
+      {hydrated&&workspaceAccount ? (
+        <WorkspaceProvider accountId={workspaceAccount} readOnly={readOnly}>
+          <View style={styles.body}>
+            {readOnly&&<SafeAreaView edges={["top"]} style={{paddingHorizontal:16,paddingBottom:8,backgroundColor:colors.muted}}><Text style={{color:colors.foreground,fontSize:13}}>Saved on this device · read only</Text><Text style={{color:colors.mutedForeground,fontSize:12}}>Your library is available while sign-in and the connection recover.</Text><View style={{flexDirection:"row",gap:16}}><Pressable accessibilityRole="button" onPress={()=>{retry();account.recheck()}} style={{minHeight:44,justifyContent:"center"}}><Text style={{color:colors.foreground}}>Reconnect</Text></Pressable><Pressable accessibilityRole="button" onPress={()=>void signOut()} style={{minHeight:44,justifyContent:"center"}}><Text style={{color:colors.foreground}}>Sign out this device</Text></Pressable></View></SafeAreaView>}
+            <Shell key={workspaceAccount} pendingShare={readOnly?null:share.pending} onShareConsumed={share.clear}/>
+          </View>
+        </WorkspaceProvider>
+      ) : !hydrated || !authReady ? (
         // Still settling: the persisted theme/view read, the SDK restoring the
         // session, and (for an account we have no evidence about yet — a fresh
         // signup) the account probe. Renders the splash's own mark plus a
@@ -170,7 +189,7 @@ function Gate() {
           <NoAccessScreen onRecheck={account.recheck} />
         </SafeAreaView>
       ) : (
-        <Shell key={userId} pendingShare={share.pending} onShareConsumed={share.clear} />
+        <LaunchScreen />
       )}
       <StatusBar style={dark ? "light" : "dark"} />
     </View>
@@ -197,7 +216,11 @@ function initialTab(): TabKey {
   return INITIAL === "filters" ? "library" : "home";
 }
 
-function Shell({
+function Shell(props: {pendingShare:SharedLink|null;onShareConsumed:(expectedId?:string)=>void}) {
+ return <OrganizationProvider><ComposerProvider><OrganizationUiProvider><ShellContent {...props}/></OrganizationUiProvider></ComposerProvider></OrganizationProvider>;
+}
+
+function ShellContent({
   pendingShare,
   onShareConsumed,
 }: {
@@ -205,6 +228,10 @@ function Shell({
   pendingShare: SharedLink | null;
   onShareConsumed: (expectedId?: string) => void;
 }) {
+  const composer=useComposer(),org=useOrganization(),workspace=useWorkspace();
+  const {width}=useWindowDimensions();
+  const [importOpen,setImportOpen]=useState(false);
+  const [readingRequest,setReadingRequest]=useState<string|null>(null);
   const [tab, setTab] = useState<TabKey>(initialTab);
   const [filterSheetOpen, setFilterSheetOpen] = useState(INITIAL === "filters");
   // Settings is a presentation, not a tab: one shell-level flag, opened from
@@ -242,6 +269,7 @@ function Shell({
   const navigate = useCallback((target: NavTarget) => {
     setTab(target.tab);
     if (target.tab === "library") {
+      if (target.readingState !== undefined) setReadingRequest(target.readingState);
       if (target.tag !== undefined) setLibraryTag(target.tag);
       if (target.add === true) {
         setAddSheetUrl(null);
@@ -288,6 +316,8 @@ function Shell({
     return () => sub.remove();
   }, []);
 
+  useEffect(()=>{composer.block("shell-sheet",settingsOpen||filterSheetOpen||addSheetOpen||importOpen);return()=>composer.block("shell-sheet",false)},[settingsOpen,filterSheetOpen,addSheetOpen,importOpen,composer.block]);
+
   // Android's frosted tab bar samples this wrapper (expo-blur blurTarget);
   // it's a plain passthrough view on iOS.
   const blurTargetRef = useRef<View>(null);
@@ -295,19 +325,23 @@ function Shell({
   // Screens stay mounted so tab switches keep scroll position and state.
   return (
     <>
-      <BlurTargetView ref={blurTargetRef} style={styles.body}>
-        <SafeAreaView edges={["top", "left", "right"]} style={styles.body}>
+      <BlurTargetView ref={blurTargetRef} style={[styles.body,{marginRight:composer.paneWidth}]} pointerEvents={composer.expanded&&!composer.paneWidth?"none":"auto"} accessibilityElementsHidden={composer.expanded&&!composer.paneWidth} importantForAccessibility={composer.expanded&&!composer.paneWidth?"no-hide-descendants":"auto"}>
+        <ContentWidthContext.Provider value={width-composer.paneWidth}><SafeAreaView edges={["top", "left", "right"]} style={styles.body}>
           <View style={[styles.screen, tab !== "home" && styles.hidden]}>
             <HomeScreen
               active={tab === "home"}
               onNavigate={navigate}
               onOpenSettings={openSettings}
-              refreshSignal={savedSignal}
+              onImport={()=>setImportOpen(true)}
+              refreshSignal={savedSignal+org.revision}
             />
           </View>
           <View style={[styles.screen, tab !== "library" && styles.hidden]}>
             <LibraryScreen
               active={tab === "library"}
+              onImport={()=>setImportOpen(true)}
+              requestedReading={readingRequest}
+              onReadingHandled={()=>setReadingRequest(null)}
               filterSheetOpen={filterSheetOpen}
               onFilterSheetChange={setFilterSheetOpen}
               addSheetOpen={addSheetOpen}
@@ -315,7 +349,7 @@ function Shell({
               addSheetUrl={addSheetUrl}
               requestedTag={libraryTag}
               onRequestedTagHandled={clearLibraryTag}
-              refreshSignal={savedSignal}
+              refreshSignal={savedSignal+org.revision}
               onBookmarkAdded={() => { if (addSheetUrl && pendingShare?.url === addSheetUrl) onShareConsumed(pendingShare.id); }}
             />
           </View>
@@ -328,7 +362,7 @@ function Shell({
             />
           </View>
           <View style={[styles.screen, tab !== "search" && styles.hidden]}>
-            <SearchScreen focusRequest={searchFocus} />
+            <SearchScreen active={tab==="search"} focusRequest={searchFocus} />
           </View>
           <View style={[styles.screen, tab !== "chat" && styles.hidden]}>
             {/* `active` gates the history fetch: every screen is mounted from
@@ -336,11 +370,12 @@ function Shell({
                 tab is ever opened. */}
             <ChatScreen active={tab === "chat"} />
           </View>
-        </SafeAreaView>
+        </SafeAreaView></ContentWidthContext.Provider>
       </BlurTargetView>
-      <TabBar tab={tab} onChange={setTab} blurTarget={blurTargetRef} />
+      {!composer.expanded&&<TabBar tab={tab} onChange={setTab} blurTarget={blurTargetRef} />}
       {/* A native full-screen modal, so it covers the floating tab bar too. */}
       <SettingsPresentation visible={settingsOpen} onClose={closeSettings} />
+      <ImportBookmarksSheet visible={importOpen} onClose={()=>setImportOpen(false)} onImported={()=>{org.changed();setSavedSignal(n=>n+1)}}/>
       {share.notice !== null && (
         <ShareSavedBanner notice={share.notice} onDismiss={share.dismiss} />
       )}

@@ -76,6 +76,7 @@ import {
 
 export type AttachmentsContext = {
   files: (FileUIPart & { id: string })[];
+  preparing?: boolean;
   add: (files: File[] | FileList) => void;
   remove: (id: string) => void;
   clear: () => void;
@@ -161,6 +162,11 @@ const revokeIfBlob = (url: string | undefined) => {
 
 export type PromptInputProviderProps = PropsWithChildren<{
   initialInput?: string;
+  input?: string;
+  onInputChange?: (value: string) => void;
+  files?: (FileUIPart & { id: string })[];
+  fileScopeKey?: string;
+  onFilesChange?: (files: (FileUIPart & { id: string })[]) => void;
   prepareFiles?: PrepareFiles;
   onError?: (err: PromptInputError) => void;
 }>;
@@ -171,18 +177,42 @@ export type PromptInputProviderProps = PropsWithChildren<{
  */
 export function PromptInputProvider({
   initialInput: initialTextInput = "",
+  input,
+  onInputChange,
+  files: controlledFiles,
+  fileScopeKey = "default",
+  onFilesChange,
   prepareFiles,
   onError,
   children,
 }: PromptInputProviderProps) {
   // ----- textInput state
-  const [textInput, setTextInput] = useState(initialTextInput);
+  const [localTextInput, setLocalTextInput] = useState(initialTextInput);
+  const textInput = input ?? localTextInput;
+  const inputChangeRef = useRef(onInputChange);
+  inputChangeRef.current = onInputChange;
+  const setTextInput = useCallback((value: string) => {
+    if (inputChangeRef.current) inputChangeRef.current(value);
+    else setLocalTextInput(value);
+  }, []);
   const clearInput = useCallback(() => setTextInput(""), []);
 
   // ----- attachments state (global when wrapped)
-  const [attachmentFiles, setAttachmentFiles] = useState<
+  const [localAttachmentFiles, setLocalAttachmentFiles] = useState<
     (FileUIPart & { id: string })[]
   >([]);
+  const attachmentFiles = controlledFiles ?? localAttachmentFiles;
+  const filesChangeRef = useRef(onFilesChange);
+  filesChangeRef.current = onFilesChange;
+  const [preparing, setPreparing] = useState(false);
+  // A preparation belongs to the draft where it began, even if the visible
+  // conversation changes before decoding/validation completes.
+  const scopes = useRef(new Map<string, { files: (FileUIPart & { id: string })[]; commit?: typeof onFilesChange; queue: Promise<void>; pending: number }>());
+  let scope = scopes.current.get(fileScopeKey);
+  if (!scope) { scope = { files: attachmentFiles, commit: onFilesChange, queue: Promise.resolve(), pending: 0 }; scopes.current.set(fileScopeKey, scope); }
+  scope.files = attachmentFiles; scope.commit = onFilesChange;
+  const currentScope = useRef(scope); currentScope.current = scope;
+  const mounted = useRef(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openRef = useRef<() => void>(() => {});
 
@@ -191,6 +221,12 @@ export function PromptInputProvider({
   // itself on every change.
   const attachmentsRef = useRef(attachmentFiles);
   attachmentsRef.current = attachmentFiles;
+  const setAttachmentFiles = useCallback((update: (previous: (FileUIPart & { id: string })[]) => (FileUIPart & { id: string })[]) => {
+    const next = update(attachmentsRef.current);
+    attachmentsRef.current = next; currentScope.current.files = next;
+    if (filesChangeRef.current) filesChangeRef.current(next);
+    else setLocalAttachmentFiles(next);
+  }, []);
   const prepareRef = useRef(prepareFiles);
   prepareRef.current = prepareFiles;
   const onErrorRef = useRef(onError);
@@ -202,6 +238,9 @@ export function PromptInputProvider({
       return;
     }
 
+    const owner = currentScope.current;
+    const reportError = onErrorRef.current;
+    const commit = (next: (FileUIPart & { id: string })[]) => { owner.files = next; if (owner.commit) owner.commit(next); else if (mounted.current) setLocalAttachmentFiles(next); };
     const prepare = prepareRef.current;
     if (!prepare) {
       setAttachmentFiles((prev) =>
@@ -218,23 +257,26 @@ export function PromptInputProvider({
       return;
     }
 
-    prepare(incoming, attachmentsRef.current)
+    owner.pending++; setPreparing(true);
+    // Picker/drop/paste may arrive together; admission must see the previously
+    // accepted batch so concurrent preparation cannot bypass the shared cap.
+    const job = owner.queue.then(() => prepare(incoming, owner.files))
       .then(({ files: prepared, errors }) => {
         if (prepared.length > 0) {
-          setAttachmentFiles((prev) =>
-            prev.concat(prepared.map((part) => ({ ...part, id: nanoid() })))
-          );
+          commit(owner.files.concat(prepared.map((part) => ({ ...part, id: nanoid() }))));
         }
         for (const message of errors) {
-          onErrorRef.current?.({ code: "rejected", message });
+          reportError?.({ code: "rejected", message });
         }
       })
       .catch((err: unknown) => {
-        onErrorRef.current?.({
+        reportError?.({
           code: "prepare",
           message: err instanceof Error ? err.message : "Couldn't attach that file.",
         });
       });
+    owner.queue = job;
+    void job.finally(() => { owner.pending--; if (mounted.current) setPreparing(currentScope.current.pending > 0); });
   }, []);
 
   const remove = useCallback((id: string) => {
@@ -255,8 +297,11 @@ export function PromptInputProvider({
   }, []);
 
   // Cleanup blob URLs on unmount to prevent memory leaks
+  useEffect(() => { setPreparing(currentScope.current.pending > 0); }, [fileScopeKey]);
   useEffect(() => {
+    mounted.current = true;
     return () => {
+      mounted.current = false;
       for (const f of attachmentsRef.current) {
         revokeIfBlob(f.url);
       }
@@ -270,13 +315,14 @@ export function PromptInputProvider({
   const attachments = useMemo<AttachmentsContext>(
     () => ({
       files: attachmentFiles,
+      preparing,
       add,
       remove,
       clear,
       openFileDialog,
       fileInputRef,
     }),
-    [attachmentFiles, add, remove, clear, openFileDialog]
+    [attachmentFiles, preparing, add, remove, clear, openFileDialog]
   );
 
   const __registerFileInput = useCallback(
@@ -490,6 +536,7 @@ export type PromptInputProps = Omit<
 > & {
   accept?: string; // e.g., "image/*" or leave undefined for any
   multiple?: boolean;
+  clearOnSubmit?: boolean;
   // When true, accepts drops anywhere on document. Default false (opt-in).
   globalDrop?: boolean;
   // Render a hidden input with given name and keep it in sync for native form posts. Default false.
@@ -511,6 +558,7 @@ export const PromptInput = ({
   className,
   accept,
   multiple,
+  clearOnSubmit = true,
   globalDrop,
   syncHiddenInput,
   maxFiles,
@@ -818,6 +866,7 @@ export const PromptInput = ({
       .then((convertedFiles: FileUIPart[]) => {
         try {
           const result = onSubmit({ text, files: convertedFiles }, event);
+          if (!clearOnSubmit) return;
 
           // Handle both sync and async onSubmit
           if (result instanceof Promise) {

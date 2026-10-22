@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
+import { CacheStatus } from "../components/CacheStatus";
+import {useWorkspace} from "../context/WorkspaceContext";
+import { GettingStartedCard } from "../components/onboarding/GettingStartedCard";
 import { BookmarkRow } from "../components/BookmarkRow";
 import { HomeActivityRow } from "../components/HomeActivityRow";
 import { HomeContinueCard } from "../components/HomeContinueCard";
@@ -44,7 +47,7 @@ export function HomeScreen({
   active,
   onNavigate,
   onOpenSettings,
-  refreshSignal = 0,
+  refreshSignal = 0, onImport,
 }: {
   /** Home is the foreground tab — gates the live stream and the staleness refetch. */
   active: boolean;
@@ -54,9 +57,10 @@ export function HomeScreen({
   onOpenSettings: () => void;
   /** Counter bumped by the Shell after a save it owns (a share-sheet save), so
    * "Recently saved" picks it up without waiting out the staleness window. */
-  refreshSignal?: number;
+  refreshSignal?: number; onImport:()=>void;
 }) {
   const { colors, radius } = useAppTheme();
+  const workspace=useWorkspace();
   const tabBarClearance = useTabBarClearance();
   // Tablet widths: the whole column (header, search field, cards, rows) is
   // capped and centered by ONE inset on the scroll content; 0 on phones.
@@ -72,7 +76,7 @@ export function HomeScreen({
   // connection only while Home is the foreground tab and the app is active. Any
   // failure leaves `devices` empty and is NEVER surfaced here — the live card
   // and strip simply don't render (§4.2: no error states on the landing page).
-  const live = useLiveDevices({ active, segment: "ongoing", expanded: false });
+  const live = useLiveDevices({ active:active&&!workspace.readOnly, segment: "ongoing", expanded: false });
 
   useEffect(() => {
     if (refreshSignal === 0) return;
@@ -113,6 +117,7 @@ export function HomeScreen({
         />
       }
     >
+      <CacheStatus updatedAt={dash.updatedAt} refreshing={dash.refreshing} error={dash.error} readOnly={dash.readOnly} onRetry={dash.refresh}/>
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Text style={[styles.largeTitle, { color: colors.foreground }]}>Home</Text>
@@ -194,8 +199,8 @@ export function HomeScreen({
         ) : (
           <LoadFailed message={dash.error} />
         )
-      ) : freshAccount ? (
-        <FirstRun onAdd={() => onNavigate({ tab: "library", add: true })} />
+      ) : freshAccount&&!workspace.readOnly ? (
+        <View style={{padding:20}}><GettingStartedCard onSaveLink={() => onNavigate({ tab: "library", add: true })} onImport={onImport}/></View>
       ) : (
         <>
           {recents.length > 0 && (
@@ -218,7 +223,7 @@ export function HomeScreen({
             <HomeSection
               title={`Reading queue · ${readingTotal}`}
               actionLabel="See all"
-              onAction={() => onNavigate({ tab: "library", tag: READING_TAG })}
+              onAction={() => onNavigate({ tab: "library", readingState: "unread" })}
             >
               {reading.map((bookmark, i) => (
                 <BookmarkRow

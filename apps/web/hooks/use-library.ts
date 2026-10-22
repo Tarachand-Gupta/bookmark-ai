@@ -146,6 +146,7 @@ function useAsync<T>(
 export function useRefresh(): [number, () => void] {
   const [key, setKey] = useState(0);
   const refresh = useCallback(() => setKey((k) => k + 1), []);
+  useEffect(() => { window.addEventListener("bookmark-library-changed", refresh); return () => window.removeEventListener("bookmark-library-changed", refresh); }, [refresh]);
   return [key, refresh];
 }
 
@@ -317,6 +318,7 @@ export function useSearch(
   q: string,
   mode: SearchMode,
   refreshKey: number,
+  filters: LibraryFilters = {},
 ): AsyncState<SearchResponse> {
   const trimmed = q.trim();
   return useAsync(
@@ -326,8 +328,8 @@ export function useSearch(
       // spend a Gemini call on every keystroke.
       await new Promise((r) => setTimeout(r, 350));
       if (signal.aborted) throw new DOMException("aborted", "AbortError");
-      return searchBookmarks(trimmed, mode, signal);
+      return searchBookmarks(trimmed, mode, signal, filters);
     },
-    [trimmed, mode, refreshKey],
+    [trimmed, mode, refreshKey, filterKey(filters)],
   );
 }

@@ -4,6 +4,7 @@ import {
   displayName,
   safeAuthDestination,
   profileName,
+  profileImage,
   profileNameUpdate,
 } from "./auth-policy";
 describe("auth destination", () => {
@@ -54,5 +55,45 @@ describe("auth destination", () => {
       full_name: "New name",
       display_name: "New name",
     });
+  });
+});
+
+describe("provider profile metadata", () => {
+  it("accepts a sanitized provider name without overriding canonical fields", () => {
+    expect(profileName({ name: "  Provider\n Name  " })).toBe("Provider Name");
+    expect(profileName({ name: { unexpected: true } })).toBe("");
+    expect(profileName({ full_name: "Saved name", name: "Provider" })).toBe("Saved name");
+    expect(profileName({ display_name: "Saved legacy", name: "Provider" })).toBe("Saved legacy");
+  });
+  it("prefers a valid avatar URL and falls back to a validated provider picture", () => {
+    expect(
+      profileImage({
+        avatar_url: "https://images.example/avatar",
+        picture: "https://images.example/provider",
+      }),
+    ).toBe("https://images.example/avatar");
+    expect(
+      profileImage({ avatar_url: "invalid", picture: "https://images.example/provider" }),
+    ).toBe("https://images.example/provider");
+    expect(profileImage({ picture: "https://images.example/provider" })).toBe(
+      "https://images.example/provider",
+    );
+  });
+  it("rejects unsafe, malformed, credential-bearing and non-HTTPS image URLs", () => {
+    for (const picture of [
+      "http://images.example/x",
+      "javascript:alert(1)",
+      "data:image/svg+xml,x",
+      "//images.example/x",
+      "https://",
+      "https://user:pass@images.example/x",
+      "https://images.example/\npath",
+      "https://images.example/\\path",
+      {},
+      null,
+    ]) {
+      expect(profileImage({ picture })).toBeNull();
+    }
+    expect(profileImage(undefined)).toBeNull();
   });
 });

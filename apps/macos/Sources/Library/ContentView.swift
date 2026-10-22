@@ -26,7 +26,7 @@ struct ContentView: View {
                     SidebarView()
                         .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 340)
                 } detail: {
-                    featureView
+                    ReleaseWorkspaceView { featureView }
                 }
             case .connecting:
                 ConnectingView()
@@ -44,12 +44,12 @@ struct ContentView: View {
     private var featureView: some View {
         switch appEnvironment.library.selection {
         case .chat:
-            ChatView()
+            LibraryDetailView()
         case .sessions:
             SessionsView()
         case .liveTabs:
-            LiveTabsView()
-        case .allBookmarks, .category, .tag:
+            if appEnvironment.canUseData { LiveTabsView() } else { ContentUnavailableView("Live tabs need a connection", systemImage: "wifi.slash", description: Text("Your saved library and sessions remain available.")) }
+        case .allBookmarks, .unsorted, .readingList, .folder, .category, .tag:
             LibraryDetailView()
         }
     }

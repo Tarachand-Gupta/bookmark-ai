@@ -4,6 +4,7 @@ import * as React from "react";
 import type { Bookmark, Browser, DeviceType } from "@bookmark-ai/types";
 import {
   Chrome,
+  CircleDot,
   Compass,
   Flame,
   Folder,
@@ -59,6 +60,12 @@ export interface BookmarkCardProps {
   onDelete?: (id: string) => void;
   className?: string;
   selection?: BookmarkSelection;
+  /** Host-owned menu, rendered outside bookmark links. */
+  actions?: React.ReactNode;
+  /** Location is shown only when useful outside the currently open folder. */
+  folderLabel?: string;
+  /** The surrounding view already names this topic. */
+  hideCategory?: boolean;
 }
 
 /**
@@ -81,7 +88,7 @@ function distinctSiteName(b: Bookmark): string | null {
  * description, AI category + tags, and capture provenance (browser, device,
  * day). Pure presentational — works in Next.js, Vite, and the extension.
  */
-export function BookmarkCard({ bookmark: b, onDelete, className, selection }: BookmarkCardProps) {
+export function BookmarkCard({ bookmark: b, onDelete, className, selection, actions, folderLabel, hideCategory }: BookmarkCardProps) {
   const browser = BROWSER_META[b.source.browser] ?? BROWSER_META.other;
   const device = DEVICE_META[b.source.device] ?? DEVICE_META.other;
   const siteName = distinctSiteName(b);
@@ -106,7 +113,7 @@ export function BookmarkCard({ bookmark: b, onDelete, className, selection }: Bo
             "absolute left-2 top-2 z-10 flex items-center justify-center rounded-md border border-foreground/25 bg-background/90 p-1 shadow-md backdrop-blur-sm transition-opacity",
             selection.pinned
               ? "opacity-100"
-              : "opacity-0 focus-within:opacity-100 group-hover:opacity-100",
+              : "opacity-0 focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
           )}
         >
           {selection.control}
@@ -166,11 +173,13 @@ export function BookmarkCard({ bookmark: b, onDelete, className, selection }: Bo
         ) : null}
 
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-          <CategoryBadge category={b.category} />
+          {!hideCategory && <CategoryBadge category={b.category} />}
           {b.tags.slice(0, 3).map((tag) => (
             <TagBadge key={tag} tag={tag} />
           ))}
         </div>
+
+        {folderLabel && <FolderLocation label={folderLabel} />}
 
         {/* Provenance. The two labels ellipsize (never clip mid-glyph) and the
             date and delete button keep their width, so a narrow card reads
@@ -193,7 +202,7 @@ export function BookmarkCard({ bookmark: b, onDelete, className, selection }: Bo
           <time dateTime={b.source.savedAt} className="ml-auto shrink-0 whitespace-nowrap">
             {formatDay(b.source.savedAt)}
           </time>
-          {onDelete ? (
+          {actions ?? (onDelete ? (
             <button
               type="button"
               onClick={() => onDelete(b.id)}
@@ -202,7 +211,7 @@ export function BookmarkCard({ bookmark: b, onDelete, className, selection }: Bo
             >
               <Trash2 className="size-3.5" aria-hidden />
             </button>
-          ) : null}
+          ) : null)}
         </div>
       </div>
     </Card>
@@ -218,6 +227,9 @@ export function BookmarkListItem({
   onDelete,
   className,
   selection,
+  actions,
+  folderLabel,
+  hideCategory,
 }: BookmarkCardProps) {
   const browser = BROWSER_META[b.source.browser] ?? BROWSER_META.other;
   const device = DEVICE_META[b.source.device] ?? DEVICE_META.other;
@@ -226,7 +238,7 @@ export function BookmarkListItem({
   return (
     <Card
       className={cn(
-        "group flex flex-row items-stretch overflow-hidden transition-shadow hover:shadow-md",
+        "@container/bookmark group flex flex-row items-stretch overflow-hidden transition-shadow hover:shadow-md",
         // See BookmarkCard: brand tint + ring, so selected ≠ merely hovered.
         selection?.selected && "bg-primary/10 ring-2 ring-primary",
         className,
@@ -241,7 +253,7 @@ export function BookmarkListItem({
         rel="noreferrer noopener"
         aria-label={b.title}
         tabIndex={-1}
-        className="relative hidden w-44 shrink-0 self-stretch sm:block"
+        className="relative hidden w-24 shrink-0 self-stretch @min-[560px]/bookmark:block @min-[900px]/bookmark:w-32"
       >
         <CardImage
           bookmark={b}
@@ -260,7 +272,7 @@ export function BookmarkListItem({
             </>
           ) : null}
           <span className="line-clamp-1 min-w-0 [overflow-wrap:anywhere]">{b.domain}</span>
-          <time dateTime={b.source.savedAt} className="ml-auto shrink-0">
+          <time dateTime={b.source.savedAt} className="ml-auto hidden shrink-0 @min-[480px]/bookmark:block">
             {formatDay(b.source.savedAt)}
           </time>
         </div>
@@ -269,20 +281,22 @@ export function BookmarkListItem({
           href={b.url}
           target="_blank"
           rel="noreferrer noopener"
-          className="line-clamp-1 font-semibold leading-snug hover:underline"
+          className="min-h-11 content-center font-semibold leading-snug [overflow-wrap:anywhere] hover:underline"
         >
-          {b.title}
+          <span className="line-clamp-2">{b.title || b.domain}</span>
         </a>
 
         {b.description ? (
-          <p className="line-clamp-1 text-sm text-muted-foreground">{b.description}</p>
+          <p className="hidden text-sm text-muted-foreground @min-[480px]/bookmark:line-clamp-1">{b.description}</p>
         ) : null}
 
+        {folderLabel && <FolderLocation label={folderLabel} />}
+
         <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1.5">
-          <CategoryBadge category={b.category} />
-          {b.tags.slice(0, 4).map((tag) => (
-            <TagBadge key={tag} tag={tag} />
-          ))}
+          {!hideCategory && <CategoryBadge category={b.category} />}
+          <span className="hidden min-w-0 max-w-[40%] gap-1.5 overflow-hidden @min-[700px]/bookmark:flex">
+            {b.tags.slice(0, 2).map((tag) => <TagBadge key={tag} tag={tag} />)}
+          </span>
           <span
             className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground"
             title={`Saved from ${browser.label} · ${b.source.deviceName ?? device.label}`}
@@ -290,92 +304,42 @@ export function BookmarkListItem({
             <browser.Icon className="size-3.5" aria-hidden />
             <device.Icon className="size-3.5" aria-hidden />
           </span>
-          {onDelete ? (
+          {actions ?? (onDelete ? (
             <button
               type="button"
               onClick={() => onDelete(b.id)}
               aria-label={`Delete ${b.title}`}
-              className="rounded-md p-1 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+              className="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
             >
               <Trash2 className="size-3.5" aria-hidden />
             </button>
-          ) : null}
+          ) : null)}
         </div>
       </div>
     </Card>
   );
 }
 
-/**
- * Compact-view variant: one dense line — favicon, title, domain, category,
- * date. Meant to be stacked inside a bordered, divided container.
- */
-export function BookmarkCompactRow({
-  bookmark: b,
-  onDelete,
-  className,
-  selection,
-}: BookmarkCardProps) {
-  const browser = BROWSER_META[b.source.browser] ?? BROWSER_META.other;
+/** A single scan line: the title owns the space before optional metadata. */
+export function BookmarkCompactRow({ bookmark: b, onDelete, className, selection, actions, hideCategory }: BookmarkCardProps) {
+  return <div className={cn(
+    "@container/bookmark group flex min-w-0 items-center gap-3 px-3 py-1 transition-colors hover:bg-muted/50",
+    selection?.selected && "bg-primary/10 ring-1 ring-inset ring-primary/30 hover:bg-primary/15",
+    className,
+  )}>
+    <FaviconOrSelect bookmark={b} selection={selection} />
+    <a href={b.url} target="_blank" rel="noreferrer noopener" title={b.title || b.domain} className="flex min-h-11 min-w-0 flex-1 items-center text-sm font-medium hover:underline">
+      <span className="truncate">{b.title || b.domain}</span>
+    </a>
+    <span className="hidden max-w-[18%] truncate text-xs text-muted-foreground @min-[640px]/bookmark:block">{b.domain}</span>
+    {!hideCategory && <span className="hidden max-w-[16%] min-w-0 @min-[960px]/bookmark:block"><CategoryBadge category={b.category} variant="outline" /></span>}
+    <time dateTime={b.source.savedAt} className="hidden shrink-0 whitespace-nowrap text-xs text-muted-foreground @min-[800px]/bookmark:block">{formatDay(b.source.savedAt)}</time>
+    {actions ?? (onDelete && <button type="button" onClick={() => onDelete(b.id)} aria-label={`Delete ${b.title}`} className="flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" aria-hidden /></button>)}
+  </div>;
+}
 
-  return (
-    <div
-      className={cn(
-        "group flex items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/50",
-        // The tint carries most of the state here (an accent one was a near
-        // match for the neutral hover these rows sit next to), deepening on
-        // hover; the ring is INSET so it traces the row inside the container's
-        // dividers instead of overlapping the neighbouring rows.
-        selection?.selected &&
-          "bg-primary/10 ring-1 ring-inset ring-primary/30 hover:bg-primary/15",
-        className,
-      )}
-    >
-      <FaviconOrSelect bookmark={b} selection={selection} />
-      {/* line-clamp-1, not truncate: nowrap titles would push the row's
-          intrinsic min-content past the viewport and scroll the page. */}
-      <a
-        href={b.url}
-        target="_blank"
-        rel="noreferrer noopener"
-        className="line-clamp-1 min-w-0 flex-1 text-sm font-medium [overflow-wrap:anywhere] hover:underline"
-      >
-        {b.title}
-      </a>
-      <span className="hidden w-40 shrink-0 truncate text-xs text-muted-foreground md:inline">
-        {b.domain}
-      </span>
-      {/* Fixed-width SLOT so the domain column left of it lines up across rows
-          (variable chip widths were shifting it); inside it the chip hugs its
-          content, left-aligned. Outline = light look — the filled black chip
-          stays card/list-only. */}
-      <span className="hidden w-32 shrink-0 sm:block">
-        <CategoryBadge category={b.category} variant="outline" className="max-w-full" />
-      </span>
-      <span
-        className="hidden shrink-0 text-muted-foreground lg:inline-flex"
-        title={`Saved from ${browser.label}`}
-      >
-        <browser.Icon className="size-3.5" aria-hidden />
-      </span>
-      <time
-        dateTime={b.source.savedAt}
-        className="w-20 shrink-0 text-right text-xs text-muted-foreground"
-      >
-        {formatDay(b.source.savedAt)}
-      </time>
-      {onDelete ? (
-        <button
-          type="button"
-          onClick={() => onDelete(b.id)}
-          aria-label={`Delete ${b.title}`}
-          className="rounded-md p-1 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-        >
-          <Trash2 className="size-3.5" aria-hidden />
-        </button>
-      ) : null}
-    </div>
-  );
+function FolderLocation({ label }: { label: string }) {
+  return <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground" title={`Folder: ${label}`}><Folder className="size-3.5 shrink-0" aria-hidden /><span className="truncate">{label}</span></span>;
 }
 
 /** Category and tags share a chip look; the icon tells them apart at a glance. */
@@ -394,9 +358,9 @@ function CategoryBadge({
     <Badge
       variant={variant}
       className={cn("max-w-full", className)}
-      title={`Category: ${category}`}
+      title={`Topic: ${category}`}
     >
-      <Folder className="size-3 shrink-0" aria-hidden />
+      <CircleDot className="size-3 shrink-0" aria-hidden />
       <span className="truncate">{category}</span>
     </Badge>
   );
@@ -415,14 +379,17 @@ function CardImage({
   bookmark: b,
   className,
   initialClassName,
+  hideFallback,
 }: {
   bookmark: Bookmark;
   className?: string;
   initialClassName?: string;
+  hideFallback?: boolean;
 }) {
   const [failed, setFailed] = React.useState(false);
   const [faviconFailed, setFaviconFailed] = React.useState(false);
   if (!b.og.image || failed) {
+    if (hideFallback) return null;
     // Hero fallback 1: the favicon, blown up and heavily blurred as ambient
     // backdrop (the blur hides the upscaling), with a crisp copy centered.
     if (b.og.favicon && !faviconFailed) {
@@ -480,7 +447,7 @@ function CardImage({
 
 /**
  * The row's leading square: the favicon normally, the selection checkbox on
- * hover (or always, once `pinned`). Both occupy the SAME 1rem box and swap by
+ * hover (or always on touch / once `pinned`). Both occupy a 44px slot and swap by
  * opacity — a conditional render here shifted every column right of it by a
  * pixel or two the moment the pointer entered the row.
  *
@@ -495,11 +462,11 @@ function FaviconOrSelect({
 }) {
   if (!selection) return <Favicon bookmark={b} />;
   return (
-    <span className="relative flex size-4 shrink-0 items-center justify-center">
+    <span className="relative flex size-11 shrink-0 items-center justify-center">
       <span
         className={cn(
           "flex items-center justify-center transition-opacity",
-          selection.pinned ? "opacity-0" : "opacity-100 group-hover:opacity-0",
+          selection.pinned ? "opacity-0" : "opacity-100 group-hover:opacity-0 [@media(hover:none)]:opacity-0",
         )}
       >
         <Favicon bookmark={b} />
@@ -509,7 +476,7 @@ function FaviconOrSelect({
           "absolute inset-0 flex items-center justify-center transition-opacity",
           selection.pinned
             ? "opacity-100"
-            : "opacity-0 focus-within:opacity-100 group-hover:opacity-100",
+            : "opacity-0 focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
         )}
       >
         {selection.control}

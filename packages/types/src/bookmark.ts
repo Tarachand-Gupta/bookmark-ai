@@ -57,5 +57,10 @@ export const bookmarkSchema = z.object({
   createdAt: z.string(),
   /** True once an embedding vector has been stored for this bookmark. */
   embedded: z.boolean(),
+  folderId: z.string().nullable().optional(),
+  categoryId: z.string().nullable().optional(),
+  tagIds: z.array(z.string()).optional(),
+  readingState: z.enum(["not_on_list", "unread", "read"]).optional(),
+  fieldVersions: z.record(z.string()).optional(),
 });
 export type Bookmark = z.infer<typeof bookmarkSchema>;

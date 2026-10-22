@@ -284,6 +284,7 @@ private struct SessionCard: View {
     /// the two can never drift apart.
     @ViewBuilder
     private var actionEntries: some View {
+        Button("Ask about this session") { appEnvironment.chat.show(context: ChatContext(type: "session", title: session.name, sessionId: session.id)) }
         Button("Open All Tabs") { openAll() }
             .disabled(session.openableTabs.isEmpty)
         Button("Copy All Links") { copyAllLinks() }

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type ChatStatus, type FileUIPart, type UIMessage } from "ai";
 import {
@@ -8,6 +8,7 @@ import {
   ATTACHMENTS_TOO_LARGE_MESSAGE,
   ATTACHMENTS_TOO_MANY_MESSAGE,
   type ChatAiNote,
+  type ChatContext,
 } from "@bookmark-ai/types";
 // RN's own fetch cannot stream a response body (whatwg-fetch buffers into
 // `responseText`), so the transport MUST use expo/fetch — its FetchResponse
@@ -106,7 +107,7 @@ export interface AiChatState {
   aiNote: AiNote | null;
   /** The conversation this thread is bound to (server-minted on the first turn). */
   conversationId: string | null;
-  send: (text: string, files?: FileUIPart[]) => void;
+  send: (text: string, files?: FileUIPart[], context?: ChatContext) => void;
   stop: () => void;
   /** Clear the failure and re-run the last turn. */
   retry: () => void;
@@ -150,6 +151,7 @@ export function useAiChat({
 }: UseAiChatOptions): AiChatState {
   // A ref, so each request body reads the CURRENT id without rebuilding the
   // transport (which would drop the in-flight stream).
+  const contextRef = useRef<ChatContext>({type:"library"});
   const conversationIdRef = useRef<string | null>(conversationId);
   const [activeId, setActiveId] = useState<string | null>(conversationId);
   const [limit, setLimit] = useState<FreeLimitInfo | null>(null);
@@ -218,9 +220,9 @@ export function useAiChat({
           // server uses the array as-is): its last message is the user turn that
           // is ALREADY stored, and appending it again would duplicate it.
           if (cid && trigger === "submit-message") {
-            return { body: { message: messages[messages.length - 1], conversationId: cid, timezone } };
+            return { body: { message: messages[messages.length - 1], conversationId: cid, timezone, context: contextRef.current } };
           }
-          return { body: { messages, conversationId: cid, timezone } };
+          return { body: { messages, conversationId: cid, timezone, context: contextRef.current } };
         },
       }),
     [chatFetch],
@@ -232,6 +234,8 @@ export function useAiChat({
     onFinish: () => onFinish?.(),
   });
 
+  useEffect(() => () => { void chat.stop(); }, []);
+
   /** Clears any stale paywall/rejection card — a fresh 402/429/413 re-raises it. */
   const clearWalls = useCallback(() => {
     setLimit(null);
@@ -240,17 +244,18 @@ export function useAiChat({
   }, []);
 
   const send = useCallback(
-    (text: string, files?: FileUIPart[]) => {
+    (text: string, files?: FileUIPart[], context: ChatContext = {type:"library"}) => {
       // Files with no question go out as file parts only — no empty text part
       // (see sendPayload). Null means there was nothing to send.
       const payload = sendPayload(text, files);
       if (payload === null) return;
+      contextRef.current = structuredClone(context);
       clearWalls();
       chat.clearError();
       // The note under a reply describes THIS turn's source, not the last one's.
       setAiSource(null);
       setAiNote(null);
-      void chat.sendMessage(payload);
+      void chat.sendMessage({...payload,metadata:{context:structuredClone(contextRef.current)}});
     },
     [chat, clearWalls],
   );

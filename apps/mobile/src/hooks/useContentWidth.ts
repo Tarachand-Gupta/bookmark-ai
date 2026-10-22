@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useContext, useMemo } from "react";
 import { useWindowDimensions } from "react-native";
+import {ContentWidthContext} from "../context/ContentWidthContext";
 import { contentLayout, type ContentLayout } from "../lib/layout";
 
 /**
@@ -13,6 +14,8 @@ import { contentLayout, type ContentLayout } from "../lib/layout";
  * pane, which is what the phone-width fallback keys off (see ../lib/layout).
  */
 export function useContentWidth(): ContentLayout {
-  const { width } = useWindowDimensions();
+  const window = useWindowDimensions();
+  const available=useContext(ContentWidthContext);
+  const width=available??window.width;
   return useMemo(() => contentLayout(width), [width]);
 }

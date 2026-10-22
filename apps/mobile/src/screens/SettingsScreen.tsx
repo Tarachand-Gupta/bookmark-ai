@@ -1,5 +1,11 @@
 import { useState } from "react";
 import { Alert, Image, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ImportBookmarksSheet } from "../components/onboarding/ImportBookmarksSheet";
+import { ManageOrganization } from "../components/organization/ManageOrganization";
+import { RecentChanges } from "../components/organization/RecentChanges";
+import { CacheStatus } from "../components/CacheStatus";
+import { useWorkspace } from "../context/WorkspaceContext";
+import { useOrganization } from "../context/OrganizationContext";
 import { useAuth } from "../lib/auth";
 import { displayLabel, profileName } from "../lib/auth-policy";
 import { AuthAccountControls } from "../components/settings/AuthAccountControls";
@@ -8,7 +14,7 @@ import * as Clipboard from "expo-clipboard";
 import { getApiUrl, reportUnauthorized, SERVER_TARGET } from "../api";
 import { DeleteAccountSheet } from "../components/DeleteAccountSheet";
 import { hasAppleAccount } from "../lib/appleSignIn";
-import { AiSettingsGroup } from "../components/settings/AiSettingsGroup";
+import { AiSettingsGroup, CreditsRow } from "../components/settings/AiSettingsGroup";
 import { PlanBadge, PlanCard } from "../components/settings/PlanCard";
 import { Group, GroupFootnote, GroupLabel, GroupRow } from "../components/settings/SettingsGroup";
 import { Symbol } from "../components/Symbol";
@@ -60,20 +66,22 @@ const SERVER_HOST = getApiUrl().replace(/^https?:\/\//, "");
  * read-only info row rather than a toggle. No longer a tab and no longer its own
  * large title: SettingsPresentation (src/navigation) presents it full-screen
  * with a "Settings" header, so there's no tab bar to clear either. */
-export type SettingsPage = "root" | "account" | "devices" | "appearance" | "ai" | "help";
+export type SettingsPage = "root" | "account" | "devices" | "appearance" | "ai" | "plan" | "help";
 export const SETTINGS_TITLES: Record<SettingsPage, string> = {
   root: "Settings", account: "Account & Security", devices: "Devices",
-  appearance: "Appearance", ai: "AI & Plan", help: "Help & About",
+  appearance: "Appearance", ai: "Ask AI", plan: "Plan & usage", help: "Help & About",
 };
 
 // Hallmark · pre-emit critique: P4 H5 E4 S5 R5 V4 · existing native tokens;
 // short grouped menu → focused destinations, no decorative enrichment.
 export function SettingsScreen({ page, onNavigate }: { page: SettingsPage; onNavigate: (page: SettingsPage) => void }) {
   const { colors } = useAppTheme();
+  const org=useOrganization(),workspace=useWorkspace();
+  const [utility,setUtility]=useState<"import"|"manage"|"history"|null>(null);
   const { themePreference, setThemePreference } = usePreferences();
   // Tablet widths: the groups sit in the shared centered column (0 on phones).
   const { inset } = useContentWidth();
-  const { user, signOut } = useAuth();
+  const { user, signOut, cachedAccount } = useAuth();
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
   // Loads when the presentation opens (the Modal mounts this screen on show).
@@ -83,9 +91,9 @@ export function SettingsScreen({ page, onNavigate }: { page: SettingsPage; onNav
   const signedIn = user != null;
   const name = signedIn
     ? profileName(user.user_metadata) || displayLabel(user.email ?? "", "Signed in")
-    : "Not signed in";
-  const email = user?.email ?? "";
-  const imageUrl = typeof user?.user_metadata.avatar_url === "string" ? user.user_metadata.avatar_url : null;
+    : cachedAccount?.name??"Not signed in";
+  const email = user?.email ?? cachedAccount?.email ?? "";
+  const imageUrl = typeof user?.user_metadata.avatar_url === "string" ? user.user_metadata.avatar_url : cachedAccount?.avatarUrl??null;
   // The deletion sheet includes Apple's authorization-removal instructions.
   const signedInWithApple = hasAppleAccount(user?.identities ?? []);
 
@@ -121,6 +129,9 @@ export function SettingsScreen({ page, onNavigate }: { page: SettingsPage; onNav
 
   return (
     <>
+      <ImportBookmarksSheet visible={utility==="import"} onClose={()=>setUtility(null)} onImported={org.changed}/>
+      {utility==="manage"&&<ManageOrganization onClose={()=>setUtility(null)}/>}
+      {utility==="history"&&<RecentChanges onClose={()=>setUtility(null)}/>}
       <ScrollView
         style={{ backgroundColor: colors.background }}
         contentContainerStyle={[styles.content, { paddingHorizontal: CONTENT_GUTTER + inset }]}
@@ -161,7 +172,7 @@ export function SettingsScreen({ page, onNavigate }: { page: SettingsPage; onNav
           {email.length > 0 && (
             <Text style={[styles.profileMeta, { color: colors.mutedForeground }]}>{email}</Text>
           )}
-          <PlanBadge plan={ai.plan} />
+
         </View>}
 
         {page === "root" && <>
@@ -169,14 +180,19 @@ export function SettingsScreen({ page, onNavigate }: { page: SettingsPage; onNav
             <GroupRow first symbol="person.fill" label="Account & Security" chevron onPress={() => onNavigate("account")} />
             <GroupRow symbol="desktopcomputer" label="Devices" chevron onPress={() => onNavigate("devices")} />
             <GroupRow symbol="gearshape" label="Appearance" detail={THEME_OPTIONS.find(option => option.value === themePreference)?.label} chevron onPress={() => onNavigate("appearance")} />
-            <GroupRow symbol="sparkles" label="AI & Plan" chevron onPress={() => onNavigate("ai")} />
+            <GroupRow symbol="sparkles" label="Ask AI" chevron onPress={() => onNavigate("ai")} />
+            <GroupRow symbol="chart.bar" label="Plan & usage" chevron onPress={()=>onNavigate("plan")} />
+            <GroupRow symbol="square.and.arrow.down" label="Import existing links" chevron onPress={()=>{if(!workspace.readOnly&&!org.offline)setUtility("import")}} />
+            {!!org.data?.capabilities.organization&&<><GroupRow symbol="folder" label="Manage organization" chevron onPress={()=>{if(!workspace.readOnly&&!org.offline)setUtility("manage")}} /><GroupRow symbol="clock" label="Recent changes" chevron onPress={()=>setUtility("history")} /></>}
             <GroupRow symbol="questionmark.circle" label="Help & About" chevron onPress={() => onNavigate("help")} />
           </Group>
+          <GroupFootnote>Import bookmark links from HTML, Markdown or text. Restore a Bookmark AI JSON backup separately in web or Mac Data settings.</GroupFootnote>
           {APP_VERSION && <GroupFootnote>Bookmark AI {APP_VERSION}</GroupFootnote>}
         </>}
 
-        {page === "ai" && <><PlanCard plan={ai.plan} /><AiSettingsGroup state={ai} /></>}
-        {signedIn && (page === "account" || page === "devices") && <AuthAccountControls section={page} />}
+        {page === "ai" && <AiSettingsGroup state={ai} />}
+        {page==="plan"&&<><CacheStatus updatedAt={ai.updatedAt} refreshing={ai.refreshing} error={ai.error} readOnly={ai.readOnly} onRetry={ai.reload}/><PlanCard plan={ai.plan}/>{ai.settings&&<Group><CreditsRow settings={ai.settings}/></Group>}</>}
+        {signedIn&&!workspace.readOnly && (page === "account" || page === "devices") && <AuthAccountControls section={page} />}
 
         {page === "appearance" && <><GroupLabel>Appearance</GroupLabel>
         <Group>

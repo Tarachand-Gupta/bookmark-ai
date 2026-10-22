@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ExternalLink, Loader2, Pencil, Plus, Rocket, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { deleteAppRelease, getAppReleases, upsertAppRelease } from "@/lib/api";
+import { deleteAppRelease, upsertAppRelease } from "@/lib/api";
 import {
   APP_PLATFORMS,
   PLATFORM_LABELS,
@@ -21,6 +21,7 @@ import {
   validateReleaseDraft,
 } from "@/lib/releases";
 import { cn } from "@/lib/utils";
+import { useSettingsResource } from "./account-details-provider";
 import { SettingsSection } from "./settings-section";
 
 /** One line on what these records do — the section description. */
@@ -39,23 +40,11 @@ type ReleaseMap = Partial<Record<AppPlatform, AppRelease>>;
  * what the native apps read.
  */
 export function ReleasesSection() {
-  // undefined = loading
-  const [releases, setReleases] = useState<ReleaseMap | undefined>(undefined);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    getAppReleases(controller.signal)
-      .then((res) => setReleases(res.releases ?? {}))
-      .catch((e: unknown) => {
-        if ((e as Error).name !== "AbortError") setLoadError((e as Error).message);
-      });
-    return () => controller.abort();
-  }, []);
-
+  const resource = useSettingsResource("releases");
+  const releases = resource.data;
   const replace = (platform: AppPlatform, next: AppRelease | null) =>
-    setReleases((prev) => {
-      const copy: ReleaseMap = { ...(prev ?? {}) };
+    resource.update(previous => {
+      const copy: ReleaseMap = { ...(previous ?? {}) };
       if (next) copy[platform] = next;
       else delete copy[platform];
       return copy;
@@ -63,9 +52,8 @@ export function ReleasesSection() {
 
   return (
     <SettingsSection title="Releases" icon={ReleasesIcon} description={RELEASES_BLURB}>
-      {loadError ? (
-        <p className="text-sm text-destructive">Couldn’t load releases: {loadError}</p>
-      ) : (
+      {resource.error && <div role="status" className="mb-3 flex items-center gap-2 text-sm"><span className="text-destructive">Couldn’t refresh releases: {resource.error}</span><Button variant="outline" size="sm" disabled={resource.refreshing} onClick={() => void resource.refresh()}>Retry</Button></div>}
+      {(!resource.error || releases) && (
         <div className="space-y-3">
           {APP_PLATFORMS.map((platform) => (
             <ReleaseCard

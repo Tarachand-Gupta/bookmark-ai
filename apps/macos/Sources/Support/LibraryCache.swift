@@ -15,6 +15,14 @@ struct LibraryCacheState: Codable, Sendable {
     var total: Int
     var meta: MetaResponse
     var sessions: [Session]
+    /// Written only after a valid session and trusted /api/me identity agree.
+    var accountId: String?
+    var origin: String?
+    var savedAt: String?
+    var organization: OrganizationResponse?
+    var account: AccountInfo?
+    var planId: String?
+    var aiUsage: AiUsage?
 }
 
 /// Reads and writes the snapshot. The location follows the app's other

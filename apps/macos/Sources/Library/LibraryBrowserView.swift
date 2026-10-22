@@ -45,7 +45,7 @@ struct LibraryBrowserView: View {
     private var statusOverlay: some View {
         let library = appEnvironment.library
 
-        if let message = library.errorMessage {
+        if let message = library.errorMessage, library.visibleBookmarks.isEmpty {
             ContentUnavailableView {
                 Label("Couldn't Load Your Library", systemImage: "exclamationmark.triangle")
             } description: {
@@ -75,7 +75,7 @@ struct LibraryBrowserView: View {
                 ContentUnavailableView(
                     "No Bookmarks",
                     systemImage: "bookmark",
-                    description: Text("Save a page from the browser extension and it will show up here.")
+                    description: Text("Save a link or import your existing bookmarks to get started.")
                 )
             }
         }

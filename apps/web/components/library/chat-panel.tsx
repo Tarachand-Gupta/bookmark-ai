@@ -26,9 +26,27 @@ const DOCK_WIDTH_VAR = "--chat-dock-w";
  * the rail can't keep the pane does the dock float. Mobile (<640px) is always
  * the full-screen card (the chat's own Close dismisses it).
  */
-export function ChatPanel({ open, children }: { open: boolean; children: React.ReactNode }) {
-  const { dock, dockWidth } = useAppLayout(open);
+export function ChatPanel({ open, hidden, onClose, children }: { open: boolean; hidden?: boolean; onClose?: () => void; children: React.ReactNode }) {
+  const { dock, dockWidth, sidebar } = useAppLayout(open);
   const dragging = useRef(false);
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      if (panel.current && !panel.current.contains(document.activeElement) && !document.querySelector('[role="dialog"][data-state="open"]')) panel.current.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+  useEffect(() => {
+    if (!open || dock !== "full" || !panel.current) return;
+    const previous: [HTMLElement, boolean][] = [];
+    let current: HTMLElement | null = panel.current;
+    while (current?.parentElement && current.parentElement !== document.body) {
+      for (const sibling of current.parentElement.children) if (sibling !== current && sibling instanceof HTMLElement) { previous.push([sibling, sibling.inert]); sibling.inert = true; }
+      current = current.parentElement;
+    }
+    return () => { for (const [element, inert] of previous) element.inert = inert; };
+  }, [open, dock]);
 
   // Drag-resize of the docked column. Every move goes through the store so the
   // sidebar can collapse to the rail LIVE as the dock widens, and the fraction is
@@ -64,13 +82,16 @@ export function ChatPanel({ open, children }: { open: boolean; children: React.R
     return () => root.style.setProperty(DOCK_WIDTH_VAR, "0px");
   }, [reserved]);
 
-  if (!open || dock === "closed") return null;
+  // Closed means compact, never unmounted. The single composer and transport
+  // survive navigation, focus expansion and window-size changes.
 
   // ONE stable element tree across all three modes (classes/styles vary) —
   // separate JSX branches would remount `children` when a window resize
   // crosses a mode boundary and wipe the conversation mid-chat.
   const modeClass =
-    dock === "full"
+    !open
+      ? "fixed bottom-3 z-30 mx-auto overflow-hidden rounded-2xl border bg-card shadow-lg"
+      : dock === "full"
       ? "fixed inset-0 z-40 bg-card"
       : dock === "overlay"
         ? // Floating: full height, flush right, lifted off the page by its shadow
@@ -80,9 +101,25 @@ export function ChatPanel({ open, children }: { open: boolean; children: React.R
 
   return (
     <aside
+      ref={panel}
+      data-chat-panel
+      tabIndex={-1}
+      role={open && dock === "full" ? "dialog" : undefined}
+      aria-modal={open && dock === "full" ? true : undefined}
+      onKeyDown={event => {
+        if (!open || event.defaultPrevented || event.nativeEvent.isComposing || !panel.current?.contains(event.target as Node)) return;
+        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose?.(); }
+        if (event.key === "Tab" && dock === "full") {
+          const focusable = [...panel.current.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter(node => node.getClientRects().length > 0);
+          const first = focusable[0], last = focusable.at(-1);
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        }
+      }}
       data-theme-picker-chat={dock}
+      aria-label={open ? "Ask AI conversation" : "Ask about your library"}
       className={modeClass}
-      style={dock === "side" ? { width: dockWidth, top: HEADER_PX, bottom: 0 } : undefined}
+      style={{ ...(!open ? { bottom: "calc(12px + env(safe-area-inset-bottom, 0px))", left: sidebar === "mobile" ? 12 : sidebar === "icon" ? 60 : 268, right: 12, maxWidth: 720 } : dock === "side" ? { width: dockWidth, top: HEADER_PX, bottom: 0 } : {}), ...(!open && hidden ? { display: "none" } : {}) }}
     >
       {/* Drag handle on the panel's left edge — docked mode only. */}
       <div
@@ -91,7 +128,7 @@ export function ChatPanel({ open, children }: { open: boolean; children: React.R
         aria-label="Resize chat panel"
         onPointerDown={onPointerDown}
         className={
-          dock === "side"
+          open && dock === "side"
             ? "absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize transition-colors hover:bg-primary/20 active:bg-primary/30"
             : "hidden"
         }

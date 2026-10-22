@@ -1,13 +1,19 @@
 import { useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Bookmark } from "@bookmark-ai/types";
+import { useOrganization } from "../context/OrganizationContext";
+import { useOrganizationUi } from "../context/OrganizationUiContext";
+import { useComposer } from "../context/ComposerContext";
 import { useAppTheme } from "../context/PreferencesContext";
 import { openBookmark, showBookmarkActions } from "../lib/bookmarkActions";
 import { FaviconTile } from "./BookmarkRow";
 
 /** Card view: OG image (favicon-tile fallback), 15pt two-line title, domain
  * and category chip. Tap opens, long-press shows the action sheet. */
-export function BookmarkCard({ bookmark }: { bookmark: Bookmark }) {
+export function BookmarkCard({ bookmark, selecting=false, selected=false, onSelect }: { bookmark: Bookmark; selecting?:boolean; selected?:boolean; onSelect?:(bookmark:Bookmark)=>void }) {
+  const org=useOrganization(),ui=useOrganizationUi(),composer=useComposer();
+  const supported=!!org.data?.capabilities.organization&&!!org.accountId&&!org.offline;
+  const menu=()=>showBookmarkActions(bookmark,supported?{edit:()=>ui?.edit(bookmark),select:onSelect?()=>onSelect(bookmark):undefined,ask:()=>composer.open({type:'bookmarks',bookmarkIds:[bookmark.id]}),reading:()=>Alert.alert('Reading list',bookmark.title,[{text:'Mark unread',onPress:()=>ui?.reading(bookmark,'unread')},{text:'Mark read',onPress:()=>ui?.reading(bookmark,'read')},{text:'Remove from reading list',onPress:()=>ui?.reading(bookmark,'not_on_list')},{text:'Cancel',style:'cancel'}])}:{});
   const { colors, radius } = useAppTheme();
   // Keyed on the url that failed rather than a sticky flag, so the OG image the
   // server scrapes moments after a save isn't hidden behind a stale failure.
@@ -16,9 +22,10 @@ export function BookmarkCard({ bookmark }: { bookmark: Bookmark }) {
 
   return (
     <Pressable
-      onPress={() => openBookmark(bookmark)}
-      onLongPress={() => showBookmarkActions(bookmark)}
-      accessibilityRole="link"
+      onPress={() => selecting?onSelect?.(bookmark):openBookmark(bookmark)}
+      onLongPress={() => onSelect&&supported?onSelect(bookmark):menu()}
+      accessibilityRole={selecting?"checkbox":"link"}
+      accessibilityState={selecting?{checked:selected}:undefined}
       style={({ pressed }) => [
         styles.card,
         {
@@ -41,7 +48,7 @@ export function BookmarkCard({ bookmark }: { bookmark: Bookmark }) {
           <FaviconTile url={bookmark.og.favicon} size={44} />
         )}
       </View>
-      <View style={styles.body}>
+      <View style={styles.body}>{selecting&&<Text style={{color:colors.foreground,fontSize:20}}>{selected?"☑ Selected":"☐ Select"}</Text>}{!selecting&&supported&&<Pressable accessibilityRole="button" accessibilityLabel={`Actions for ${bookmark.title}`} onPress={menu} style={{minHeight:44,alignItems:"flex-end",justifyContent:"center"}}><Text style={{color:colors.foreground,fontSize:22}}>⋯</Text></Pressable>}
         <Text numberOfLines={2} style={[styles.title, { color: colors.cardForeground }]}>
           {bookmark.title}
         </Text>

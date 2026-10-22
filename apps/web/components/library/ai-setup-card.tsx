@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSettingsResource } from "./account-details-provider";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, ChevronDown, KeyRound, Loader2, Trash2, X, Zap } from "lucide-react";
 import type { AiModel, AiProvider, AiUsage, UserSettings } from "@bookmark-ai/types";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { fetchAiModels, getSettings, updateSettings } from "@/lib/api";
+import { fetchAiModels, updateSettings } from "@/lib/api";
 import {
   AI_MODE_COPY,
   type AiMode,
@@ -57,41 +58,50 @@ export interface AiSetupCardProps {
 
 /** Shared AI source settings for onboarding, Settings, and the chat limit wall.
  * The selected panel is a draft; only successful server responses change the active source. */
-export function AiSetupCard({
+export function AiSetupCard(props: AiSetupCardProps) {
+  const resource = useSettingsResource("settings");
+  return <AiSetupCardContent key={`${resource.accountId ?? "signed-out"}:${resource.active}`} {...props} />;
+}
+
+function AiSetupCardContent({
   onSaved,
   onDismiss,
   defaultProviderOpen,
   className,
 }: AiSetupCardProps) {
+  const resource = useSettingsResource("settings");
+  const cached = resource.data;
+  const initialized = useRef(!!cached);
+  const draftDirty = useRef(false);
   // ── Mode ──
-  const [aiMode, setAiMode] = useState<AiMode>("included");
+  const [aiMode, setAiMode] = useState<AiMode>(cached ? resolveAiMode(cached) : "included");
   const [modeSaving, setModeSaving] = useState(false);
   const [modeError, setModeError] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<AiMode>(
-    defaultProviderOpen ? "own" : "included",
+    defaultProviderOpen ? "own" : cached ? resolveAiMode(cached) : "included",
   );
 
   // ── Provider form ──
-  const [provider, setProvider] = useState<AiProvider>("google");
-  const [loadedProvider, setLoadedProvider] = useState<AiProvider>("google");
+  const [provider, setProvider] = useState<AiProvider>(cached?.provider ?? "google");
+  const [loadedProvider, setLoadedProvider] = useState<AiProvider>(cached?.provider ?? "google");
   const [apiKeyInput, setApiKeyInput] = useState("");
-  const [apiKeySet, setApiKeySet] = useState(false);
-  const [apiKeyLast4, setApiKeyLast4] = useState<string | null>(null);
+  const [apiKeySet, setApiKeySet] = useState(cached?.apiKeySet ?? false);
+  const [apiKeyLast4, setApiKeyLast4] = useState<string | null>(cached?.apiKeyLast4 ?? null);
   // BYOK completeness: a key for OpenAI/Anthropic/custom needs a chosen model
   // (only Google has a server default). Server `ownKeyReady`, derived locally
   // for older payloads.
-  const [ownKeyReady, setOwnKeyReady] = useState(true);
-  const [baseUrl, setBaseUrl] = useState("");
-  const [model, setModel] = useState("");
-  const [loadedModel, setLoadedModel] = useState("");
-  const [models, setModels] = useState<AiModel[]>([]);
-  const [aiUsage, setAiUsage] = useState<AiUsage | null>(null);
+  const [ownKeyReady, setOwnKeyReady] = useState(cached ? resolveOwnKeyReady(cached) : true);
+  const [baseUrl, setBaseUrl] = useState(cached?.baseUrl ?? "");
+  const [model, setModel] = useState(cached?.model ?? "");
+  const [loadedModel, setLoadedModel] = useState(cached?.model ?? "");
+  const [models, setModels] = useState<AiModel[]>(cached?.model ? [{ id: cached.model, label: cached.model }] : []);
+  const [aiUsage, setAiUsage] = useState<AiUsage | null>(cached?.aiUsage ?? null);
 
-  const [loading, setLoading] = useState(true);
+  const loading = resource.loading;
   // Non-fatal: the form still works (type a key, save) — but a settings GET that
   // 500s used to be swallowed entirely, so a user staring at defaults had no way
   // to know the pane wasn't showing their saved provider.
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadError = resource.error;
   const [testing, setTesting] = useState(false);
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
@@ -111,19 +121,20 @@ export function AiSetupCard({
   const [creditsOpen, setCreditsOpen] = useState(false);
 
   /** Everything the GET/PUT response carries — used on load and after Save. */
-  const applyAll = (settings: UserSettings) => {
+  const applyAll = (settings: UserSettings, remember = true) => {
     setProvider(settings.provider);
     setLoadedProvider(settings.provider);
     setBaseUrl(settings.baseUrl ?? "");
     setModel(settings.model ?? "");
     setLoadedModel(settings.model ?? "");
     setModels(settings.model ? [{ id: settings.model, label: settings.model }] : []);
-    applyStatus(settings);
+    applyStatus(settings, remember);
   };
 
   /** The key/mode/meter slice only — after a mode switch or key removal, so a
    * half-edited provider form isn't yanked back to the stored values. */
-  const applyStatus = (settings: UserSettings) => {
+  const applyStatus = (settings: UserSettings, remember = true) => {
+    if (remember) resource.remember(settings);
     setApiKeySet(settings.apiKeySet);
     setApiKeyLast4(settings.apiKeyLast4);
     setAiUsage(settings.aiUsage);
@@ -132,25 +143,20 @@ export function AiSetupCard({
   };
 
   useEffect(() => {
-    let cancelled = false;
-    getSettings()
-      .then(({ settings }) => {
-        if (!cancelled) {
-          applyAll(settings);
-          if (!defaultProviderOpen) setSelectedSource(resolveAiMode(settings));
-        }
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setLoadError((e as Error).message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only load
-  }, []);
+    if (!cached) return;
+    // Refresh status, but seed editable inputs only once and only before typing.
+    applyStatus(cached, false);
+    setLoadedProvider(cached.provider);
+    setLoadedModel(cached.model ?? "");
+    if (initialized.current || draftDirty.current) return;
+    initialized.current = true;
+    applyAll(cached, false);
+    if (!defaultProviderOpen) setSelectedSource(resolveAiMode(cached));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cached]);
+  useEffect(() => {
+    if (!resource.active) { setApiKeyInput(""); setApiKeyLast4(null); setApiKeySet(false); }
+  }, [resource.active]);
 
   // A stored key belongs to the saved provider; switching provider retires the hint.
   const showSavedHint = apiKeySet && provider === loadedProvider;
@@ -192,6 +198,7 @@ export function AiSetupCard({
     setModeSaving(true);
     try {
       const { settings } = await updateSettings({ aiMode: next });
+      if (!resource.isCurrent()) return;
       applyStatus(settings);
       onSaved?.();
     } catch (e: unknown) {
@@ -202,6 +209,7 @@ export function AiSetupCard({
   };
 
   const changeProvider = (value: string) => {
+    draftDirty.current = true;
     const next = value as AiProvider;
     setProvider(next);
     // Model ids are provider-specific, so a different provider starts the picker
@@ -220,6 +228,7 @@ export function AiSetupCard({
   };
 
   const useOpenRouter = () => {
+    draftDirty.current = true;
     changeProvider("custom");
     setBaseUrl(OPENROUTER_BASE_URL);
   };
@@ -235,6 +244,7 @@ export function AiSetupCard({
         apiKey: typed || undefined,
         baseUrl: provider === "custom" ? baseUrl.trim() : undefined,
       });
+      if (!resource.isCurrent()) return;
       const merged =
         model && !found.some((m) => m.id === model)
           ? [{ id: model, label: model }, ...found]
@@ -271,6 +281,7 @@ export function AiSetupCard({
       });
       if (!request) throw new Error("Add a key and complete the provider setup before using it.");
       const { settings } = await updateSettings(request);
+      if (!resource.isCurrent()) return;
       applyAll(settings);
       setApiKeyInput("");
       setSaved(true);
@@ -289,6 +300,7 @@ export function AiSetupCard({
     try {
       const last4 = apiKeyLast4;
       const { settings } = await updateSettings({ apiKey: "" });
+      if (!resource.isCurrent()) return;
       applyStatus(settings);
       setSelectedSource("included");
       setApiKeyInput("");
@@ -548,6 +560,7 @@ export function AiSetupCard({
         <Select
           value={model}
           onValueChange={(value) => {
+            draftDirty.current = true;
             setModel(value);
             setSaved(false);
           }}
@@ -638,7 +651,7 @@ export function AiSetupCard({
   );
 
   return (
-    <div className={cn("relative rounded-xl border bg-card p-4 text-card-foreground", className)}>
+    <div onChangeCapture={() => { draftDirty.current = true; }} className={cn("relative rounded-xl border bg-card p-4 text-card-foreground", className)}>
       {onDismiss && (
         <button
           type="button"
@@ -706,7 +719,7 @@ export function AiSetupCard({
       </p>
       {loadError && (
         <p role="alert" className="mt-3 text-xs text-destructive">
-          Couldn’t load settings: {loadError}. Reopen this panel to retry.
+          Couldn’t refresh settings: {loadError}. {cached ? "Your last loaded settings remain visible." : ""} <button type="button" className="underline" onClick={() => void resource.refresh()}>Try again</button>
         </p>
       )}
       {modeError && (

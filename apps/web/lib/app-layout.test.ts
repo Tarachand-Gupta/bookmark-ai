@@ -13,6 +13,7 @@ import {
   SIDEBAR_EXPANDED_PX,
   SIDEBAR_ICON_PX,
   clampDockFraction,
+  clampSidebarWidth,
   dockedWidth,
   layoutFromState,
   maxDockFraction,
@@ -21,6 +22,7 @@ import {
   withDockFraction,
   withDockOpen,
   withSidebarOpen,
+  withSidebarWidth,
   withViewportWidth,
   type AppLayoutInput,
   type AppLayoutState,
@@ -329,5 +331,39 @@ describe("store transitions", () => {
     expect(withDockOpen(state, true)).toBe(state);
     expect(withDockFraction(state, 0.3)).toBe(state);
     expect(withSidebarOpen(state, true)).toBe(state);
+  });
+});
+
+describe("resizable sidebar", () => {
+  it("bounds invalid, too narrow, and too wide preferences", () => {
+    expect(clampSidebarWidth(NaN)).toBe(256);
+    expect(clampSidebarWidth(80)).toBe(220);
+    expect(clampSidebarWidth(900)).toBe(360);
+    expect(clampSidebarWidth(300.4)).toBe(300);
+  });
+
+  it("accounts for the actual sidebar width in the content and chat layout", () => {
+    expect(at({ dockOpen: false, sidebarWidth: 360 }).contentWidth).toBe(1080);
+    expect(at({ viewportWidth: 1300, sidebarWidth: 360 })).toMatchObject({ sidebar: "icon", dock: "side", sidebarForced: true });
+    expect(at({ viewportWidth: 375, sidebarWidth: 360 })).toMatchObject({ sidebar: "mobile", contentWidth: 375 });
+  });
+
+  it("keeps the sidebar under the pointer when widening would force it closed", () => {
+    const before = { ...INITIAL_APP_LAYOUT_STATE, viewportWidth: 1300, dockOpen: true };
+    expect(layoutFromState(before).dock).toBe("side");
+    const wider = withSidebarWidth(before, 360);
+    expect(layoutFromState(wider)).toMatchObject({ sidebar: "expanded", dock: "overlay", contentWidth: 940 });
+    const narrower = withSidebarWidth(wider, 220);
+    expect(layoutFromState(narrower)).toMatchObject({ sidebar: "expanded", dock: "side", sidebarForced: false });
+  });
+
+  it("preserves the preference across collapse and mobile viewport changes", () => {
+    const resized = withSidebarWidth(INITIAL_APP_LAYOUT_STATE, 320);
+    const collapsed = withSidebarOpen(resized, false);
+    expect(layoutFromState(collapsed).contentWidth).toBe(DEFAULT_VIEWPORT_PX - SIDEBAR_ICON_PX);
+    const mobile = withViewportWidth(collapsed, 375);
+    const expanded = withSidebarOpen(withViewportWidth(mobile, 1440), true);
+    expect(expanded.sidebarWidth).toBe(320);
+    expect(layoutFromState(expanded).contentWidth).toBe(1120);
   });
 });

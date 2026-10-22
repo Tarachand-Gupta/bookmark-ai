@@ -9,7 +9,7 @@ enum AccessGate: Equatable {
     case ready
     /// Cloud, session neither confirmed nor denied yet: spinner, no data.
     case connecting
-    /// Cloud, Clerk says no session: the sign-in screen and nothing else.
+    /// Cloud without an admitted cache or session: sign-in is required.
     case signedOut
 }
 
@@ -24,6 +24,7 @@ final class AppEnvironment {
     let api: ApiClient
     let auth: AuthController
     let library: LibraryModel
+    let organization: OrganizationModel
     let chat: ChatModel
     let sessions: SessionsModel
     let live: LiveModel
@@ -44,6 +45,22 @@ final class AppEnvironment {
     /// by later refreshes — the models' own `isSyncingFromCache` flags carry the
     /// "the rendered rows are still cache" half of the condition.
     private var launchSyncPending = false
+    private var cachedState: LibraryCacheState?
+    private var dataGeneration = UUID()
+    var lastUpdated: Date? { cachedState?.savedAt.flatMap(ISO8601.date) }
+    var displayAccount: AccountInfo? { auth.account ?? cachedState?.account }
+    var isCachedReader: Bool {
+        guard let state = cachedState, state.accountId != nil, state.origin == api.target.baseURL.absoluteString else { return false }
+        if let current = auth.confirmedAccountIdentifier { return current == state.accountId }
+        return true
+    }
+    var isReadOnly: Bool { preferences.serverTarget.requiresAuth && auth.status != .signedIn }
+    var cacheStatus: String? {
+        guard isCachedReader else { return nil }
+        if isReadOnly { return auth.status == .signedOut ? "Cached library · sign in to sync" : "Offline library · reconnecting quietly" }
+        if library.errorMessage != nil { return "Offline · showing saved library" }
+        return nil
+    }
 
     /// The syncing pill's condition: the launch refresh is in flight AND at
     /// least one hydrated model still shows cache-derived rows. Derived, so the
@@ -85,12 +102,19 @@ final class AppEnvironment {
         self.cache = cache
         self.library = LibraryModel(api: api)
         self.chat = ChatModel(api: api)
+        self.organization = OrganizationModel(api: api)
         self.sessions = SessionsModel(api: api)
         self.live = LiveModel(api: api)
         self.settings = SettingsModel(api: api)
         self.skills = SkillsModel(api: api)
         self.mcpTokens = McpTokensModel(api: api)
         self.updates = AppUpdateModel(api: api, defaults: preferences.defaults)
+
+        self.organization.onChange = { [weak self] in
+            guard let self else { return }
+            await self.library.refresh()
+            if !self.library.searchText.isEmpty { await self.library.search(self.library.searchText) }
+        }
 
         // ApiClient asks AuthController for a bearer token on every cloud request.
         api.tokenProvider = { [weak auth] forceRefresh in
@@ -101,10 +125,9 @@ final class AppEnvironment {
             Task { @MainActor in auth?.handleUnauthorized() }
         }
 
-        // Every definitive sign-out — Clerk saying "no session", the account
-        // menu, a rejected fresh token — flushes the models in ONE place; every
-        // confirmed session — launch restore, backoff retry, Retry, the sign-in
-        // sheet, an on-demand mint — loads them in ONE place.
+        // Revocation clears private state. Missing/expired sessions retain only
+        // the previously authorized read-only snapshot; confirmed sessions refresh.
+        auth.onAccessRevoked = { [weak self] in self?.clearPrivateData() }
         auth.onSignedOut = { [weak self] in self?.handleSignedOut() }
         auth.onSessionConfirmed = { [weak self] in self?.gateOpened() }
 
@@ -115,8 +138,9 @@ final class AppEnvironment {
         // Show LAST SESSION'S data before any network work: hydrate the models
         // the main window renders at rest. A snapshot from another target is
         // dropped; the pill only arms if something actually hydrated.
-        if SupabaseConfiguration.isSupabase { cache.delete() }
-        else { hydrateFromCache(cache.read()) }
+        hydrateFromCache(cache.read())
+        library.onLoaded = { [weak self] in self?.persistSnapshot() }
+        sessions.onLoaded = { [weak self] in self?.persistSnapshot() }
     }
 
     /// Render LAST SESSION'S data before any network work: hydrate the models
@@ -128,6 +152,16 @@ final class AppEnvironment {
     @discardableResult
     func hydrateFromCache(_ state: LibraryCacheState?) -> Bool {
         let target = preferences.serverTarget.rawValue
+        guard let state, state.serverTarget == target else { return false }
+        if SupabaseConfiguration.isSupabase || state.accountId != nil {
+            guard state.accountId != nil, state.origin == api.target.baseURL.absoluteString else { return false }
+            if let current = auth.confirmedAccountIdentifier, current != state.accountId { return false }
+            cachedState = state
+            organization.restoreMetadata(state.organization)
+            settings.restoreSnapshot(planId: state.planId, usage: state.aiUsage)
+            library.isReadOnly = isReadOnly; sessions.isReadOnly = isReadOnly
+            library.cachedFolders = state.organization?.folders ?? []
+        }
         let libraryApplied = library.hydrateFromCache(state, serverTarget: target)
         let sessionsApplied = sessions.hydrateFromCache(state, serverTarget: target)
         launchSyncPending = libraryApplied || sessionsApplied
@@ -140,23 +174,24 @@ final class AppEnvironment {
     /// EXCEPT when the window is already showing last session's data from the
     /// disk cache: then the connecting stretch does NOT blank the window with
     /// the spinner (Tara's cold-start spec). The cached library renders, the
-    /// restore keeps retrying underneath, and a definitive "no session" still
-    /// flushes everything to the sign-in screen through `onSignedOut`. If
-    /// Clerk can't be reached, the cached rows simply stay.
+    /// restore retries underneath. Missing/expired authentication leaves a
+    /// read-only reader; rejected credentials, MFA, logout and deletion purge it.
     var gate: AccessGate {
         guard preferences.serverTarget.requiresAuth else { return .ready }
         switch auth.status {
-        case .signedIn: return .ready
-        case .signedOut: return .signedOut
+        case .signedIn:
+            if let owner = cachedState?.accountId, let current = auth.confirmedAccountIdentifier, owner != current { return .connecting }
+            return .ready
+        case .signedOut: return isCachedReader ? .ready : .signedOut
         case .unknown, .unreachable:
-            return isSyncing ? .ready : .connecting
+            return isCachedReader || isSyncing ? .ready : .connecting
         }
     }
 
     /// Data is fetched (and data-bearing UI shown) ONLY behind an open gate.
     /// Signed out: the sign-in screen. Connecting: the spinner. Nothing is
     /// requested without a session, so a Clerk blip never yields 401 banners.
-    var canUseData: Bool { gate == .ready }
+    var canUseData: Bool { gate == .ready && (!preferences.serverTarget.requiresAuth || auth.status == .signedIn) }
 
     // MARK: - Lifecycle
 
@@ -192,6 +227,10 @@ final class AppEnvironment {
     /// opened the gate; dismissing or canceling its source UI cannot cancel the
     /// account load after the session has been adopted.
     private func gateOpened() {
+        if let owner = cachedState?.accountId, let current = auth.confirmedAccountIdentifier, owner != current {
+            clearPrivateData()
+        }
+        library.isReadOnly = false; sessions.isReadOnly = false
         sessionLoad = Task { @MainActor [weak self] in await self?.loadEverything() }
     }
 
@@ -202,17 +241,38 @@ final class AppEnvironment {
     /// written through to the disk cache, so the NEXT launch can render this
     /// state immediately.
     func loadEverything() async {
-        guard canUseData else { return }
-        // The launch refresh has settled (answered or not): the pill goes away
-        // whatever happened — cached rows stay either way. `defer`, so even an
-        // early return through `guard` can't leave the pill latched.
-        defer { launchSyncPending = false }
+        guard canUseData else {
+            launchSyncPending = false
+            library.isReadOnly = true; sessions.isReadOnly = true
+            return
+        }
+        let ticket = dataGeneration
+        defer { if ticket == dataGeneration { launchSyncPending = false } }
         updates.start()
-        async let identity: Void = auth.loadAccount(using: api)
+        // Identity precedes private loads, so a new account cannot receive an old snapshot.
+        await auth.loadAccount(using: api)
+        guard ticket == dataGeneration, !Task.isCancelled else { return }
+        let accountId = auth.account?.accountId ?? (!api.target.requiresAuth ? "local" : nil)
+        if let old = cachedState?.accountId, let accountId, old != accountId {
+            library.reset(); sessions.reset(); settings.reset(); chat.reset(); organization.reset()
+            cache.delete(); cachedState = nil
+        }
+        organization.bind(accountId: accountId)
+        if organization.data == nil { organization.restoreMetadata(cachedState?.organization) }
+        chat.bind(scope: accountId.map { OrganizationScope(origin: api.target.baseURL.absoluteString, accountId: $0) })
+        library.isReadOnly = false; sessions.isReadOnly = false
         async let rows: Void = library.refresh()
-        _ = await (identity, rows)
+        async let metadata: Void = organization.refresh()
+        async let profile: Void = settings.load()
+        _ = await (rows, metadata, profile)
+        guard ticket == dataGeneration, !Task.isCancelled else { return }
         health = try? await api.health()
+        guard ticket == dataGeneration else { return }
         persistSnapshot()
+    }
+    func retryConnection() async {
+        if auth.status == .signedIn || !api.target.requiresAuth { await loadEverything() }
+        else { await auth.restore(requiresAuth: api.target.requiresAuth) }
     }
 
     /// The snapshot to write through: the All-Bookmarks state (what the app
@@ -220,35 +280,58 @@ final class AppEnvironment {
     /// list. Written after every successful refresh, so the NEXT launch
     /// renders this exact state instantly.
     func persistSnapshot() {
-        cache.write(library.cacheState(
-            serverTarget: preferences.serverTarget.rawValue,
-            sessions: sessions.sessions
-        ))
+        guard canUseData, library.errorMessage == nil else { return }
+        var state = library.cacheState(serverTarget: preferences.serverTarget.rawValue, sessions: sessions.sessions)
+        let accountId = auth.account?.accountId ?? (!api.target.requiresAuth ? "local" : nil)
+        if SupabaseConfiguration.isSupabase && accountId == nil { return }
+        if let confirmed = auth.confirmedAccountIdentifier, let accountId, confirmed != accountId { return }
+        state.accountId = accountId; state.origin = api.target.baseURL.absoluteString
+        state.savedAt = ISO8601DateFormatter().string(from: Date())
+        state.organization = organization.data ?? cachedState?.organization
+        state.account = auth.account ?? cachedState?.account
+        state.planId = settings.plan?.id; state.aiUsage = settings.aiUsage
+        cachedState = state
+        cache.write(state)
+    }
+    /// Explicit logout/deletion is different from expired/offline authentication.
+    /// Clear before suspension so late callbacks cannot revive private content.
+    func clearPrivateData() {
+        let scope = cachedState?.accountId.map { OrganizationScope(origin: cachedState?.origin ?? api.target.baseURL.absoluteString, accountId: $0) }
+        chat.clearPrivateDrafts(scope: scope); organization.clearPrivateRecovery(scope: scope)
+        resetModels()
     }
 
     /// Account menu / Settings ▸ Sign Out. The flush happens through `auth.onSignedOut`.
     func signOut() async {
+        clearPrivateData()
         await auth.signOut()
     }
 
-    /// THE flush: every model empties on any transition to signed-out, so
-    /// nothing from the previous account can remain anywhere — library, chat,
-    /// sessions, live, settings + plan, skills, MCP tokens, health, and the
-    /// window state that pointed into them. Idempotent — `AuthController`
-    /// calls it through `onSignedOut`.
+    /// Keep only an admitted account snapshot through an absent session. Server
+    /// mutations, chat and live data remain unavailable until authentication returns.
     func handleSignedOut() {
-        resetModels()
+        if isCachedReader {
+            dataGeneration = UUID(); sessionLoad?.cancel(); sessionLoad = nil
+            chat.reset(); organization.reset(); live.reset(); skills.reset(); mcpTokens.reset()
+            organization.restoreMetadata(cachedState?.organization)
+            library.isReadOnly = true; sessions.isReadOnly = true
+            library.searchText = ""
+            library.cachedFolders = cachedState?.organization?.folders ?? []
+            launchSyncPending = false; updates.stop()
+        } else { resetModels() }
         requestedSettingsTab = nil
         isPresentingTour = false
     }
 
     private func resetModels() {
+        dataGeneration = UUID(); cachedState = nil
         // A load still in flight for the closing gate must not land in the
         // emptied models (or in the next account's).
         sessionLoad?.cancel()
         sessionLoad = nil
         library.reset()
         chat.reset()
+        organization.reset()
         sessions.reset()
         live.reset()
         settings.reset()

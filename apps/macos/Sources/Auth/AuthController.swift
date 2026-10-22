@@ -73,6 +73,8 @@ final class AuthController {
     /// so the app loads that account's data in one place. Never fires while
     /// already signed in (the 45 s tick changes nothing).
     var onSessionConfirmed: (() -> Void)?
+    /// A rejected credential or required stronger verification closes cached admission.
+    var onAccessRevoked: (() -> Void)?
 
     /// Re-mint this long after the last mint. Comfortably inside Clerk's ~60s TTL.
     private static let tokenMaxAge: TimeInterval = 40
@@ -132,6 +134,11 @@ final class AuthController {
     #endif
 
     init(origin: URL, nativeMode: Bool = SupabaseConfiguration.isSupabase) {
+        #if DEBUG
+        // XCTest must never instantiate an SDK backed by the owner's Keychain.
+        // Provider tests construct SupabaseNativeAuth with an injected memory store.
+        let nativeMode = nativeMode && ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+        #endif
         self.nativeMode = nativeMode
         self.web = nativeMode ? nil : ClerkWebAuth(origin: origin)
         self.native = nativeMode ? SupabaseConfiguration.current.map { SupabaseNativeAuth(configuration: $0) } : nil
@@ -158,11 +165,16 @@ final class AuthController {
     }
 
     var isSignedIn: Bool { status == .signedIn }
+    /// The identity of the already validated token, never a claim of fresh auth.
+    var confirmedAccountIdentifier: String? {
+        guard status == .signedIn else { return nil }
+        return cachedToken.flatMap(ApiClient.importSubject) ?? account?.accountId
+    }
 
     private func confirmNative() async throws {
         guard let native else { throw NativeAuthError.unavailable }
         let assurance = try await native.client.mfa.getAuthenticatorAssuranceLevel()
-        if assurance.nextLevel == "aal2", assurance.currentLevel != "aal2" { needsMFA = true; beginSignIn(); return }
+        if assurance.nextLevel == "aal2", assurance.currentLevel != "aal2" { requireNativeVerification(); return }
         let nextUser = native.client.currentUser?.id
         if let previous = nativeUserId, previous != nextUser { setSignedOut(force: true) }
         nativeUserId = nextUser
@@ -240,9 +252,7 @@ final class AuthController {
         let outcome = await performMint(forceRefresh: forceRefresh)
         guard browserAttemptID == nil, authOperationGeneration == generation else { return .unavailable }
         if nativeMode, native?.needsBrowserVerification == true {
-            needsMFA = true
-            setSignedOut()
-            beginSignIn()
+            requireNativeVerification()
             return .unavailable
         }
         applyMintOutcome(outcome)
@@ -282,6 +292,7 @@ final class AuthController {
     }
 
     private func applyMintOutcome(_ outcome: MintOutcome) {
+        if nativeMode, native?.rejectedPersistedSession == true { onAccessRevoked?() }
         switch outcome {
         case .token(let token):
             if nativeMode, let next = native?.client.currentUser?.id {
@@ -722,25 +733,40 @@ final class AuthController {
     }
 
     func signOut() async {
-        if nativeMode {
-            do { try await nativeSessionScope("local") } catch { lastError = error.localizedDescription }
-            return
-        }
-        Self.log.notice("explicit sign-out")
-        await invalidateBrowserAttemptAndWait(dismissSheet: true)
-        cancelRestoreRetry()
-        refreshLoop?.cancel()
-        refreshLoop = nil
+        // Local admission closes before any server or provider suspension.
+        let credential = cachedToken ?? native?.client.currentSession?.accessToken
+        let revokeAPI = nativeMode ? nativeAPI() : nil
+        revokeAPI?.tokenProvider = { _ in credential }
+        authOperationGeneration &+= 1
+        cancelSignIn()
         invalidateToken()
-        await signOutWebSession()
+        onAccessRevoked?()
         setSignedOut(force: true)
+        if nativeMode {
+            await native?.clearLocalSession()
+            nativeUserId = nil; needsMFA = false; needsPasswordUpdate = false
+            if credential != nil {
+                do { try await revokeAPI?.signOutSessions(scope: "local") }
+                catch { lastError = "Signed out on this Mac. The server could not be reached." }
+            }
+        } else { await signOutWebSession() }
+    }
+
+    func requireNativeVerification() {
+        needsMFA = true
+        onAccessRevoked?()
+        setSignedOut(force: true)
+        beginSignIn()
     }
 
     /// The server rejected a FRESHLY minted token (401 after the one retry):
-    /// whatever Clerk thinks, this account can't use the API — signed out.
+    /// this account can no longer use the API or its cached reader.
     func handleUnauthorized() {
         guard status == .signedIn || status == .unreachable else { return }
         cancelSignIn()
+        authOperationGeneration &+= 1
+        invalidateToken()
+        onAccessRevoked?()
         Self.log.error("401 after a forced re-mint — treating as signed out")
         lastError = "The server rejected the session. Sign in again."
         if nativeMode {
@@ -766,8 +792,8 @@ final class AuthController {
         onSessionConfirmed?()
     }
 
-    /// The single definitive path to signed-out: drops the token and identity,
-    /// stops the refresh loop, and tells the app to flush every model.
+    /// Drop authenticated state. The app may retain an admitted read-only cache
+    /// for absent sessions; explicit revocation clears it before this callback.
     private func setSignedOut(force: Bool = false) {
         guard force || status != .signedOut else { return }
         cancelRestoreRetry()
@@ -787,7 +813,8 @@ final class AuthController {
     /// A transient failure keeps the last known identity — it belongs to the
     /// same session; only a sign-out clears it.
     func loadAccount(using api: ApiClient) async {
-        guard let info = try? await api.me() else { return }
+        let generation = authOperationGeneration
+        guard let info = try? await api.me(), generation == authOperationGeneration, !Task.isCancelled else { return }
         account = info
     }
 

@@ -1,3 +1,5 @@
+import { organizationFilterSql } from "./organization";
+import type { OrganizationFilters } from "@bookmark-ai/types";
 import type { Bookmark } from "@bookmark-ai/types";
 import type { Db } from "../client";
 import { BOOKMARK_COLUMNS, rowToBookmark } from "../rows";
@@ -13,7 +15,14 @@ export interface Scored {
  * Full-text search over title/description/url/category/tags via FTS5.
  * bm25() returns lower-is-better, so it is negated into a higher-is-better score.
  */
-export async function searchFullText(db: Db, query: string, limit: number): Promise<Scored[]> {
+export async function searchFullText(
+  db: Db,
+  query: string,
+  limit: number,
+  filters: OrganizationFilters = {},
+  bookmarkIds?: string[],
+): Promise<Scored[]> {
+  const scope = organizationFilterSql(filters, bookmarkIds);
   const match = toFtsQuery(query);
   if (!match) return [];
   const rs = await db.execute({
@@ -21,11 +30,11 @@ export async function searchFullText(db: Db, query: string, limit: number): Prom
       SELECT ${BOOKMARK_COLUMNS}, bm25(bookmarks_fts) AS rank
       FROM bookmarks_fts
       JOIN bookmarks ON bookmarks.id = bookmarks_fts.id
-      WHERE bookmarks_fts MATCH ?
+      WHERE bookmarks_fts MATCH ? ${scope.clauses.length ? "AND " + scope.clauses.join(" AND ") : ""}
       ORDER BY rank
       LIMIT ?
     `,
-    args: [match, limit],
+    args: [match, ...scope.args, limit],
   });
   return rs.rows.map((row) => ({ bookmark: rowToBookmark(row), score: -Number(row.rank) }));
 }
@@ -77,7 +86,14 @@ const MAX_VECTOR_DISTANCE = 1 - MIN_VECTOR_SIMILARITY;
  * materializing and shipping rows the caller would immediately discard — and the
  * guarantee lives next to the scoring it constrains instead of in every caller.
  */
-export async function searchVector(db: Db, embedding: number[], limit: number): Promise<Scored[]> {
+export async function searchVector(
+  db: Db,
+  embedding: number[],
+  limit: number,
+  filters: OrganizationFilters = {},
+  bookmarkIds?: string[],
+): Promise<Scored[]> {
+  const scope = organizationFilterSql(filters, bookmarkIds);
   const vector = JSON.stringify(embedding);
   const rs = await db.execute({
     sql: `
@@ -86,10 +102,11 @@ export async function searchVector(db: Db, embedding: number[], limit: number): 
       FROM bookmarks
       WHERE embedding IS NOT NULL
         AND vector_distance_cos(embedding, vector32(?)) <= ?
+        ${scope.clauses.length ? "AND " + scope.clauses.join(" AND ") : ""}
       ORDER BY distance ASC
       LIMIT ?
     `,
-    args: [vector, vector, MAX_VECTOR_DISTANCE, limit],
+    args: [vector, vector, MAX_VECTOR_DISTANCE, ...scope.args, limit],
   });
   return rs.rows.map((row) => ({
     bookmark: rowToBookmark(row),

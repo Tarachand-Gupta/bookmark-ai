@@ -13,6 +13,7 @@ export type NavTarget =
       tab: "library";
       /** Apply this tag as the Library's filter on arrival. */
       tag?: string;
+      readingState?: string;
       /** Open the add-bookmark sheet on arrival (first-run "save your first"). */
       add?: boolean;
     }

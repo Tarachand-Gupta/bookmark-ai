@@ -32,6 +32,9 @@ export {
 export { LocalFilePlatform } from "./local-platform";
 export {
   insertBookmark,
+  insertBookmarkStatement,
+  insertBookmarkInTransaction,
+  insertBookmarkIfAbsentInTransaction,
   updateBookmarkContent,
   getBookmark,
   getBookmarkByUrl,
@@ -150,4 +153,8 @@ export { reserveAnalyticsBudget } from "./analytics-budget";
 export * from "./master-repository";
 export * from "./postgres-master";
 export * from "./credential-cipher";
-export { bindTenantSettingsOwner, tenantSettingsOwner } from './tenant-settings-owner';
+export { bindTenantSettingsOwner, tenantSettingsOwner } from "./tenant-settings-owner";
+
+export * from "./queries/organization";
+
+export { BOOKMARK_COLUMNS, rowToBookmark } from "./rows";

@@ -3,6 +3,8 @@ import type { Bookmark, CreateBookmarkInput } from "@bookmark-ai/types";
 import {
   getBookmarkByUrl,
   insertBookmark,
+  insertBookmarkInTransaction,
+  type SqlExecutor,
   listTagCounts,
   updateBookmarkContent,
   type Db,
@@ -19,12 +21,31 @@ import { pickBookmarkTitle } from "./title";
  * enriched content rather than degrading it until enrichment lands again.
  */
 export async function saveBookmarkFast(db: Db, input: CreateBookmarkInput): Promise<Bookmark> {
+  const tx = await db.transaction("write");
+  try {
+    const b = await saveBookmarkFastInTransaction(tx, input);
+    await tx.commit();
+    return b;
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  } finally {
+    tx.close();
+  }
+}
+export async function saveBookmarkFastInTransaction(
+  db: SqlExecutor,
+  input: CreateBookmarkInput,
+): Promise<Bookmark> {
   const url = new URL(input.url);
   const domain = url.hostname.replace(/^www\./, "");
   const existing = await getBookmarkByUrl(db, input.url);
   // An enriched row keeps its title on re-save — unless that title is a scrape
   // artefact ("- YouTube") and the client now offers a real one.
-  const title = pickBookmarkTitle(existing?.title, input.title, { domain, siteName: existing?.og?.siteName });
+  const title = pickBookmarkTitle(existing?.title, input.title, {
+    domain,
+    siteName: existing?.og?.siteName,
+  });
   const heuristic = heuristicCategorize({
     url: input.url,
     domain,
@@ -34,7 +55,7 @@ export async function saveBookmarkFast(db: Db, input: CreateBookmarkInput): Prom
   });
 
   const now = new Date().toISOString();
-  return insertBookmark(db, {
+  return insertBookmarkInTransaction(db, {
     id: existing?.id ?? randomUUID(),
     url: input.url,
     domain,
@@ -77,7 +98,10 @@ export async function enrichBookmark(
 
   // Consent walls / bot checks hand the datacenter scraper "- YouTube" or
   // "Just a moment..." — the client's tab title beats those (see ./title).
-  const title = pickBookmarkTitle(scraped.title, input.title, { domain, siteName: scraped.og.siteName });
+  const title = pickBookmarkTitle(scraped.title, input.title, {
+    domain,
+    siteName: scraped.og.siteName,
+  });
   const description = scraped.description;
 
   // Share the established vocabulary so the AI reuses tags before inventing.

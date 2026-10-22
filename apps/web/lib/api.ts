@@ -27,6 +27,8 @@ import type {
   UpdateUserSettingsInput,
   UserSettingsResponse,
   ToolPageMeta,
+  OrganizationResponse, OrganizationOperationInput, OrganizationOperation, OrganizationSelection,
+  BookmarkChanges, BulkBookmarkChanges, ChatContext,
 } from "@bookmark-ai/types";
 import { DEFAULT_PLAN, toPlanId } from "@/lib/plan";
 
@@ -50,6 +52,11 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 export const LIVE_API_URL = process.env.NEXT_PUBLIC_LIVE_API_URL ?? "";
 
 export interface LibraryFilters {
+  folderId?: string;
+  includeSubfolders?: string;
+  categoryId?: string;
+  tagId?: string;
+  readingState?: string;
   category?: string;
   browser?: string;
   device?: string;
@@ -63,7 +70,18 @@ export interface LibraryFilters {
   to?: string;
 }
 
-import { getAccessToken } from "@/lib/auth";
+export const resolveComposerContext = (context: ChatContext, accountId: string, signal?: AbortSignal) => request<{ resolved: { sources: { id: string; title: string; url: string }[]; unavailable: { id: string; reason: string }[] } }>("/api/composer/context", { method: "POST", body: JSON.stringify({ context }), signal }, accountId);
+export const getOrganization = (signal?: AbortSignal) => request<OrganizationResponse>("/api/organization", { signal });
+export const listOrganizationOperations = () => request<{ operations: OrganizationOperation[] }>("/api/organization/operations?limit=100");
+export const getOrganizationOperation = (id: string, accountId?: string) => request<{ operation: OrganizationOperation }>(`/api/organization/operations/${encodeURIComponent(id)}`, undefined, accountId);
+export const applyOrganizationOperation = (input: OrganizationOperationInput, accountId?: string) => request<{ operation: OrganizationOperation }>("/api/organization/operations", { method: "POST", body: JSON.stringify(input) }, accountId);
+export const updateBookmark = (id: string, input: { operationId: string; changes: BookmarkChanges; expected?: Record<string, string> }, accountId?: string) => request<{ operation: OrganizationOperation; bookmark?: Bookmark }>(`/api/bookmarks/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) }, accountId);
+export const undoOrganizationOperation = (id: string, operationId: string, accountId?: string) => request<{ operation: OrganizationOperation }>(`/api/organization/operations/${encodeURIComponent(id)}/undo`, { method: "POST", body: JSON.stringify({ operationId }) }, accountId);
+export const retryOrganizationOperation = (id: string, operationId: string, accountId?: string) => request<{ operation: OrganizationOperation }>(`/api/organization/operations/${encodeURIComponent(id)}/retry`, { method: "POST", body: JSON.stringify({ operationId }) }, accountId);
+export const freezeOrganizationSelection = (input: { query?: LibraryFilters; search?: LibraryFilters & { q: string; mode: SearchMode }; bookmarkIds?: string[] }) => request<{ selection: OrganizationSelection }>("/api/organization/selections", { method: "POST", body: JSON.stringify(input) });
+export type { OrganizationResponse, OrganizationOperation, OrganizationOperationInput, OrganizationSelection, BookmarkChanges, BulkBookmarkChanges };
+
+import { getAccessToken, getBrowserSupabase } from "@/lib/auth";
 const getAuthToken = getAccessToken;
 
 /** Exported so the SSE hook (use-live.ts) can attach the same bearer token
@@ -81,6 +99,12 @@ export async function apiHeaders(): Promise<Record<string, string>> {
     (typeof navigator !== "undefined" && (navigator as Navigator & { standalone?: boolean }).standalone === true)
   );
   return { ...(await authHeaders()), "X-Bookmark-Client": standalone ? "pwa" : "web" };
+}
+export async function apiHeadersForAccount(accountId: string): Promise<Record<string, string>> {
+  const headers = await apiHeaders();
+  const { data } = await getBrowserSupabase().auth.getSession();
+  if (data.session?.user.id !== accountId || headers.authorization !== `Bearer ${data.session.access_token}`) throw new Error("The account changed. Reopen this request under its original account.");
+  return headers;
 }
 
 /**
@@ -133,13 +157,13 @@ function errorFromBody(
   if (status === 403 && (body?.code === "forbidden" || body?.error === FORBIDDEN_MESSAGE)) {
     return new ForbiddenError(message);
   }
-  return new Error(message);
+  return Object.assign(new Error(message), { status, code: body?.code });
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, accountId?: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: { "content-type": "application/json", ...(await apiHeaders()), ...init?.headers },
+    headers: { "content-type": "application/json", ...(await (accountId ? apiHeadersForAccount(accountId) : apiHeaders())), ...init?.headers },
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -155,12 +179,13 @@ import type { AppPlatform, AppRelease, AppReleasesResponse, UpsertAppReleaseInpu
  * (surfaced by `request` as an error). */
 export interface MeResponse {
   signedIn: boolean;
+  accountId?: string;
   name: string | null;
   email: string | null;
 }
 
-export function getMe(signal?: AbortSignal): Promise<MeResponse> {
-  return request<MeResponse>("/api/me", { signal });
+export function getMe(signal?: AbortSignal, accountId?: string): Promise<MeResponse> {
+  return request<MeResponse>("/api/me", { signal }, accountId);
 }
 
 export function getMeta(signal?: AbortSignal): Promise<MetaResponse> {
@@ -203,12 +228,15 @@ export function searchBookmarks(
   q: string,
   mode: SearchMode,
   signal?: AbortSignal,
+  filters: LibraryFilters = {},
 ): Promise<SearchResponse> {
   // 40 (schema max 50): hybrid unions two retrieval pipelines, so give the
   // blend room — relevance decays down the list, which is fine.
   const params = new URLSearchParams({ q, mode, limit: "40" });
+  for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
   return request<SearchResponse>(`/api/search?${params}`, { signal });
 }
+export const getBookmark = (id: string) => request<{ bookmark: Bookmark }>(`/api/bookmarks/${encodeURIComponent(id)}`);
 
 /**
  * One PAGE of search results — the chat's bookmark card "Load more". Same route
@@ -243,11 +271,11 @@ export function runChatQueryPage(
   });
 }
 
-export function createBookmark(input: CreateBookmarkInput): Promise<{ bookmark: Bookmark }> {
-  return request<{ bookmark: Bookmark }>("/api/bookmarks", {
+export function createBookmark(input: CreateBookmarkInput, accountId?: string): Promise<{ bookmark: Bookmark; existing?: boolean }> {
+  return request<{ bookmark: Bookmark; existing?: boolean }>("/api/bookmarks", {
     method: "POST",
     body: JSON.stringify(input),
-  });
+  }, accountId);
 }
 
 export async function deleteBookmark(id: string): Promise<void> {
@@ -350,9 +378,14 @@ async function requireLiveUrl(): Promise<string> {
  * account opt-in flag and TTL. `enabled: false` tells "off" apart from "no
  * devices". Freshness is the server's `lastSeenAgeSeconds` — never subtracted
  * from a client clock. */
-export async function getLive(signal?: AbortSignal): Promise<ListLiveResponse> {
-  const res = await fetch(`${await requireLiveUrl()}/live`, {
-    headers: await authHeaders(),
+export async function getLive(signal?: AbortSignal, accountId?: string, settingsRead?: Promise<UserSettingsResponse>): Promise<ListLiveResponse> {
+  // Settings prefetch supplies the shared account-bound read; other consumers
+  // retain the existing live-base behavior.
+  const base = settingsRead ? (await settingsRead).settings.liveServerUrl || LIVE_API_URL : await requireLiveUrl();
+  if (!base) throw new Error(LIVE_NOT_CONFIGURED);
+  signal?.throwIfAborted();
+  const res = await fetch(`${base}/live`, {
+    headers: accountId ? await apiHeadersForAccount(accountId) : await authHeaders(),
     signal,
   });
   if (!res.ok) {
@@ -438,8 +471,8 @@ export async function updateLiveDeviceSettings(
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
-export function getSettings(signal?: AbortSignal): Promise<UserSettingsResponse> {
-  return request<UserSettingsResponse>("/api/settings", { signal });
+export function getSettings(signal?: AbortSignal, accountId?: string): Promise<UserSettingsResponse> {
+  return request<UserSettingsResponse>("/api/settings", { signal }, accountId);
 }
 
 /** Persist settings. Include `apiKey` only when the user typed a new one
@@ -459,8 +492,8 @@ export function updateSettings(input: UpdateUserSettingsInput): Promise<UserSett
 // ── App releases (CONTRACT §12) ───────────────────────────────────────────────
 
 /** PUBLIC: latest release per platform (empty object without a master DB). */
-export function getAppReleases(signal?: AbortSignal): Promise<AppReleasesResponse> {
-  return request<AppReleasesResponse>("/api/app/releases", { signal });
+export function getAppReleases(signal?: AbortSignal, accountId?: string): Promise<AppReleasesResponse> {
+  return request<AppReleasesResponse>("/api/app/releases", { signal }, accountId);
 }
 
 /** Admin-only. Creates or replaces the platform's record. */
@@ -488,8 +521,8 @@ export async function deleteAppRelease(platform: AppPlatform): Promise<void> {
 
 /** Admin-only. Throws ForbiddenError for non-admin accounts (the Settings
  * dialog uses that to hide the Observability section entirely). */
-export function getObservability(signal?: AbortSignal): Promise<ObservabilityResponse> {
-  return request<ObservabilityResponse>("/api/admin/observability", { signal });
+export function getObservability(signal?: AbortSignal, accountId?: string): Promise<ObservabilityResponse> {
+  return request<ObservabilityResponse>("/api/admin/observability", { signal }, accountId);
 }
 
 /** Persist a subset of the per-surface tracing flags. Admin-only. */
@@ -504,8 +537,8 @@ export function updateObservability(
 
 // ── MCP tokens ──────────────────────────────────────────────────────────────
 
-export function listMcpTokens(signal?: AbortSignal): Promise<ListMcpTokensResponse> {
-  return request<ListMcpTokensResponse>("/api/mcp/tokens", { signal });
+export function listMcpTokens(signal?: AbortSignal, accountId?: string): Promise<ListMcpTokensResponse> {
+  return request<ListMcpTokensResponse>("/api/mcp/tokens", { signal }, accountId);
 }
 
 /** Mint a token. The returned `token` value is shown to the user ONCE and is not
@@ -568,12 +601,12 @@ export function importData(
  * Free rather than nothing: the badge is a statement of what the account has,
  * and Free is always true. Aborts still propagate.
  */
-export async function getAccount(signal?: AbortSignal): Promise<AccountResponse> {
+export async function getAccount(signal?: AbortSignal, accountId?: string, strict = false): Promise<AccountResponse> {
   try {
-    const body = await request<Partial<AccountResponse>>("/api/account", { signal });
+    const body = await request<Partial<AccountResponse>>("/api/account", { signal }, accountId);
     return { plan: toPlanId(body?.plan) };
   } catch (e) {
-    if ((e as Error).name === "AbortError") throw e;
+    if (strict || (e as Error).name === "AbortError") throw e;
     return { plan: DEFAULT_PLAN };
   }
 }
@@ -635,8 +668,8 @@ export async function deleteChatConversation(id: string): Promise<void> {
 // The contract is the Zod schema in @bookmark-ai/types (packages/types/src/skills.ts).
 
 /** Every skill, newest-updated first. */
-export function listSkills(signal?: AbortSignal): Promise<ListSkillsResponse> {
-  return request<ListSkillsResponse>("/api/skills", { signal });
+export function listSkills(signal?: AbortSignal, accountId?: string): Promise<ListSkillsResponse> {
+  return request<ListSkillsResponse>("/api/skills", { signal }, accountId);
 }
 
 /** Create a skill → 201 `{skill}`. A 409 ("A skill with this name already

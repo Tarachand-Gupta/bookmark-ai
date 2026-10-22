@@ -49,7 +49,8 @@ final class ApiClient {
         browser: String? = nil,
         device: String? = nil,
         limit: Int = 100,
-        offset: Int = 0
+        offset: Int = 0,
+        organizationFilters: [URLQueryItem] = []
     ) async throws -> ListBookmarksResponse {
         var items = [
             URLQueryItem(name: "limit", value: String(min(max(limit, 1), Self.maxBookmarksLimit))),
@@ -60,7 +61,7 @@ final class ApiClient {
         if let day, !day.isEmpty { items.append(URLQueryItem(name: "day", value: day)) }
         if let browser, !browser.isEmpty { items.append(URLQueryItem(name: "browser", value: browser)) }
         if let device, !device.isEmpty { items.append(URLQueryItem(name: "device", value: device)) }
-        return try await get("/api/bookmarks", query: items)
+        return try await get("/api/bookmarks", query: items + organizationFilters)
     }
 
     /// `GET /api/meta` — the sidebar's facets and counts.
@@ -74,7 +75,8 @@ final class ApiClient {
         query: String,
         mode: SearchMode = .hybrid,
         limit: Int = 40,
-        offset: Int? = nil
+        offset: Int? = nil,
+        filters: [URLQueryItem] = []
     ) async throws -> SearchResponse {
         var items = [
             URLQueryItem(name: "q", value: query),
@@ -84,7 +86,7 @@ final class ApiClient {
         // `offset` OPTS INTO paging: the response then carries `{offset, hasMore}`
         // (the chat bookmarks card's "Load more"); omitting it is the classic shape.
         if let offset { items.append(URLQueryItem(name: "offset", value: String(max(offset, 0)))) }
-        return try await get("/api/search", query: items)
+        return try await get("/api/search", query: items + filters)
     }
 
     /// `POST /api/query` — one PAGE of a read-only SELECT, for the chat SQL
@@ -349,14 +351,14 @@ final class ApiClient {
 
     // MARK: - Request plumbing
 
-    private func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
+    func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
         let data = try await send(path: path, method: "GET", query: query, allowRetry: true)
         return try decode(T.self, from: data)
     }
 
     /// Decode a response body, mapping failures onto `.decoding` so the UI shows
     /// one consistent message instead of a raw `DecodingError`.
-    private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+    func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         do {
             return try Self.decoder.decode(T.self, from: data)
         } catch {
@@ -372,7 +374,7 @@ final class ApiClient {
     /// Performs the request, injecting auth for cloud. On a 401 it force-refreshes
     /// the token and replays the request EXACTLY once — a Clerk session JWT has a
     /// ~60s TTL, so a token can legitimately expire between mint and arrival.
-    private func send(
+    func send(
         path: String,
         method: String,
         query: [URLQueryItem],

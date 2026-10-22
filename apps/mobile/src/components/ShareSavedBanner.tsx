@@ -2,6 +2,9 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppTheme } from "../context/PreferencesContext";
 import type { ShareNotice } from "../lib/share-intent";
+import {openBookmark} from "../lib/bookmarkActions";
+import {useOrganizationUi} from "../context/OrganizationUiContext";
+import {useOrganization} from "../context/OrganizationContext";
 import { Symbol } from "./Symbol";
 
 /**
@@ -17,6 +20,7 @@ export function ShareSavedBanner({
   notice: ShareNotice;
   onDismiss: () => void;
 }) {
+  const ui=useOrganizationUi(),org=useOrganization();
   const { colors, radius } = useAppTheme();
   const insets = useSafeAreaInsets();
   // The raw link is the only honest subtitle before the title lands.
@@ -47,11 +51,12 @@ export function ShareSavedBanner({
         )}
         <View style={styles.text}>
           <Text style={[styles.title, { color: colors.foreground }]}>
-            {notice.saving ? "Saving to Bookmark AI…" : "Saved to Bookmark AI ✓"}
+            {notice.saving ? "Saving to Bookmark AI…" : notice.existing?"Already saved":"Saved to Bookmark AI ✓"}
           </Text>
           <Text numberOfLines={1} style={[styles.subtitle, { color: colors.mutedForeground }]}>
             {subtitle}
           </Text>
+          {!notice.saving&&<View style={{flexDirection:"row",gap:16,flexWrap:"wrap"}}>{notice.bookmark&&!!org.data?.capabilities.organization&&<Pressable onPress={()=>{ui?.edit(notice.bookmark!);onDismiss()}} accessibilityRole="button" style={{minHeight:44,justifyContent:"center"}}><Text style={{color:colors.foreground}}>Edit details</Text></Pressable>}{notice.bookmark&&<Pressable onPress={()=>openBookmark(notice.bookmark!)} accessibilityRole="button" style={{minHeight:44,justifyContent:"center"}}><Text style={{color:colors.foreground}}>View</Text></Pressable>}<Pressable onPress={onDismiss} accessibilityRole="button" style={{minHeight:44,justifyContent:"center"}}><Text style={{color:colors.foreground}}>Done</Text></Pressable></View>}
         </View>
       </View>
     </Pressable>

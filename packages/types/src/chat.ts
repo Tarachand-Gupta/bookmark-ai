@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { chatContextSchema } from "./organization";
 
 /**
  * Chat persistence + free-tier metering API contract.
@@ -22,6 +23,12 @@ export const storedChatMessageSchema = z.object({
   id: z.string(),
   role: z.string(),
   parts: z.array(z.unknown()),
+  context: chatContextSchema.optional(),
+  contextBookmarkIds: z.array(z.string()).nullable().optional(),
+  contextSources: z
+    .array(z.object({ id: z.string(), title: z.string(), url: z.string() }))
+    .optional(),
+  unavailableContext: z.array(z.object({ id: z.string(), reason: z.string() })).optional(),
 });
 export type StoredChatMessage = z.infer<typeof storedChatMessageSchema>;
 
@@ -130,13 +137,13 @@ export type ChatAttachmentKind = "image" | "document" | "pdf";
 /** Rejection copy shared by every client and the server. */
 export const ATTACHMENT_REJECTED_MESSAGE =
   "Only images, PDFs and text documents (.md, .txt, .csv, .json, .html) can be attached. Code and media files aren't allowed — paste the text instead.";
-export const ATTACHMENT_IMAGE_TOO_LARGE_MESSAGE = "Image is too large after compression (max 2 MB).";
+export const ATTACHMENT_IMAGE_TOO_LARGE_MESSAGE =
+  "Image is too large after compression (max 2 MB).";
 export const ATTACHMENTS_TOO_LARGE_MESSAGE = "Attachments exceed 4 MB per message.";
 export const ATTACHMENTS_TOO_MANY_MESSAGE = `Up to ${CHAT_ATTACHMENT_RULES.maxFiles} files per message.`;
 
 export type ClassifiedAttachment =
-  | { kind: ChatAttachmentKind; mediaType: string }
-  | { kind: "rejected"; reason: string };
+  { kind: ChatAttachmentKind; mediaType: string } | { kind: "rejected"; reason: string };
 
 /** Lowercase `type/subtype` with any `;charset=…` parameters stripped, or null. */
 function normalizeMediaType(raw: string | null | undefined): string | null {
@@ -180,8 +187,7 @@ export function classifyAttachment(
   const ext = extensionOf(filename ?? "");
   let mediaType: string | null;
   if (ext) {
-    mediaType =
-      (CHAT_ATTACHMENT_RULES.extensionToMediaType as Record<string, string>)[ext] ?? null;
+    mediaType = (CHAT_ATTACHMENT_RULES.extensionToMediaType as Record<string, string>)[ext] ?? null;
     if (!mediaType) return rejected;
   } else {
     mediaType = normalizeMediaType(reportedMediaType);

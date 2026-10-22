@@ -4,6 +4,8 @@ import { nativeEndpoint } from "./lib/native-endpoints";
 import { parseReleasesResponse, type AppReleasesResponse } from "./lib/appUpdate";
 import type {
   AccountResponse,
+  OrganizationResponse, OrganizationOperation, OrganizationOperationInput, OrganizationSelection,
+  BookmarkChanges, BulkBookmarkChanges, ChatContext,
   Bookmark,
   ChatConversationDetailResponse,
   ChatConversationsResponse,
@@ -219,10 +221,14 @@ function errorFromBody(status: number, body: { error?: string; code?: string } |
   if (status === 403 && (body?.code === "forbidden" || body?.error === FORBIDDEN_MESSAGE)) {
     return new ForbiddenError(message);
   }
-  return new Error(message);
+  return new ApiRequestError(message, status);
 }
 
-async function request<T>(
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly status: number) { super(message); this.name = "ApiRequestError"; }
+}
+
+export async function request<T>(
   path: string,
   { method = "GET", body, signal }: RequestOptions = {},
 ): Promise<T> {
@@ -294,6 +300,11 @@ export interface LibraryFilters {
   category?: string;
   tag?: string;
   day?: string;
+  folderId?: string;
+  categoryId?: string;
+  tagId?: string;
+  readingState?: string;
+  includeSubfolders?: string;
 }
 
 export function listBookmarks(
@@ -402,8 +413,8 @@ export function getBookmarkByUrl(
 }
 
 /** Save a URL — the server scrapes OG data, categorizes, and embeds it. */
-export function createBookmark(input: CreateBookmarkInput): Promise<{ bookmark: Bookmark }> {
-  return request<{ bookmark: Bookmark }>("/api/bookmarks", { method: "POST", body: input });
+export function createBookmark(input: CreateBookmarkInput): Promise<{ bookmark: Bookmark; existing?: boolean; operation?: OrganizationOperation }> {
+  return request<{ bookmark: Bookmark; existing?: boolean; operation?: OrganizationOperation }>("/api/bookmarks", { method: "POST", body: input });
 }
 
 /**
@@ -509,3 +520,12 @@ export async function listLiveDevices(signal?: AbortSignal): Promise<ListLiveRes
   if (generation !== accountGeneration) throw new Error("The account changed; please retry this action");
   return result;
 }
+
+/** Additive Release 1 endpoints. No controls are enabled until capabilities load. */
+export function getOrganization(): Promise<OrganizationResponse> { return request("/api/organization"); }
+export function getAccountIdentity(): Promise<{ accountId: string | null }> { return request("/api/me"); }
+export function getOrganizationHistory(): Promise<{ operations: OrganizationOperation[] }> { return request("/api/organization/operations?limit=50"); }
+export function getOrganizationOperation(id: string): Promise<{ operation: OrganizationOperation }> { return request(`/api/organization/operations/${encodeURIComponent(id)}`); }
+export type SelectionInput = {bookmarkIds: string[]} | {query: LibraryFilters} | {search: {q: string; mode: "keyword" | "semantic" | "hybrid"} & LibraryFilters};
+export function freezeOrganizationSelection(input: SelectionInput): Promise<{selection: OrganizationSelection}> { return request("/api/organization/selections", {method:"POST",body:input}); }
+export function resolveComposerContext(context: ChatContext): Promise<{resolved:{context:ChatContext;bookmarkIds:string[];sources:unknown[];unavailable:string[]}}> { return request("/api/composer/context", {method:"POST",body:{context}}); }

@@ -24,6 +24,11 @@ export function rowToBookmark(row: Row): Bookmark {
     createdAt: String(row.created_at),
     // Selected as `(embedding IS NOT NULL) AS embedding` — an integer 0/1.
     embedded: Boolean(Number(row.embedding)),
+    folderId: row.folder_id == null ? null : String(row.folder_id),
+    categoryId: row.category_id == null ? null : String(row.category_id),
+    tagIds: safeJson(row.tag_ids as string) ?? [],
+    readingState: (row.reading_state as Bookmark["readingState"]) ?? "not_on_list",
+    fieldVersions: safeJson(row.field_versions as string) ?? {},
   };
 }
 
@@ -96,5 +101,10 @@ export const BOOKMARK_COLUMNS = `
   bookmarks.browser, bookmarks.device, bookmarks.device_name, bookmarks.os,
   bookmarks.saved_at, bookmarks.saved_day,
   bookmarks.category, bookmarks.tags_json, bookmarks.created_at,
-  (bookmarks.embedding IS NOT NULL) AS embedding
+  (bookmarks.embedding IS NOT NULL) AS embedding,
+  (SELECT folder_id FROM bookmark_organization WHERE bookmark_id=bookmarks.id) AS folder_id,
+  (SELECT reading_state FROM bookmark_organization WHERE bookmark_id=bookmarks.id) AS reading_state,
+  (SELECT versions_json FROM bookmark_organization WHERE bookmark_id=bookmarks.id) AS field_versions,
+  (SELECT id FROM organization_labels WHERE kind='category' AND deleted=0 AND lower(trim(name))=lower(trim(bookmarks.category)) LIMIT 1) AS category_id,
+  (SELECT json_group_array(id) FROM organization_labels WHERE kind='tag' AND deleted=0 AND EXISTS(SELECT 1 FROM json_each(bookmarks.tags_json) t WHERE lower(trim(t.value))=lower(trim(name)))) AS tag_ids
 `;

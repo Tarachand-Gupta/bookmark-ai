@@ -1,4 +1,9 @@
-import { MAX_SEARCH_DEPTH, type SearchMode, type SearchResponse } from "@bookmark-ai/types";
+import {
+  MAX_SEARCH_DEPTH,
+  type SearchMode,
+  type SearchResponse,
+  type OrganizationFilters,
+} from "@bookmark-ai/types";
 import {
   mergeHybrid,
   searchFullText,
@@ -13,7 +18,8 @@ import { embedQuery } from "./embeddings";
 import type { GeminiClient } from "./gemini";
 import { traced } from "./tracing";
 
-export interface SearchParams {
+export interface SearchParams extends OrganizationFilters {
+  bookmarkIds?: string[];
   q: string;
   mode: SearchMode;
   limit: number;
@@ -112,7 +118,7 @@ export async function performSearch(
 async function performSearchInner(
   db: Db,
   gemini: GeminiClient | null,
-  { q, mode, limit, offset }: SearchParams,
+  { q, mode, limit, offset, bookmarkIds, ...filters }: SearchParams,
 ): Promise<SearchResponse> {
   const paging = offset !== undefined;
   const from = offset ?? 0;
@@ -124,7 +130,10 @@ async function performSearchInner(
   // Sessions match by plain text in EVERY mode; results ride alongside so
   // clients can present the two kinds distinctly. They are NOT paged — the same
   // handful accompanies every page.
-  const textSessionsPromise = searchSessions(db, q, SESSION_RESULT_LIMIT).catch((err: Error) => {
+  const scoped = bookmarkIds !== undefined || Object.values(filters).some((v) => v !== undefined);
+  const textSessionsPromise = (
+    scoped ? Promise.resolve([] as ScoredSession[]) : searchSessions(db, q, SESSION_RESULT_LIMIT)
+  ).catch((err: Error) => {
     console.warn(`[search] session search failed: ${err.message}`);
     return [] as ScoredSession[];
   });
@@ -137,7 +146,7 @@ async function performSearchInner(
    */
   const sessionResultsFor = async (vector: number[] | null): Promise<ScoredSession[]> => {
     const text = await textSessionsPromise;
-    if (!vector) return text;
+    if (!vector || scoped) return text;
     const semantic = await searchSessionsVector(db, vector, SESSION_RESULT_LIMIT).catch(
       (err: Error) => {
         console.warn(`[search] session vector search failed: ${err.message}`);
@@ -148,14 +157,14 @@ async function performSearchInner(
   };
 
   if (mode === "hybrid") {
-    const textPromise = searchFullText(db, q, candidates);
+    const textPromise = searchFullText(db, q, candidates, filters, bookmarkIds);
     let vectorResults: Scored[] = [];
     let queryVector: number[] | null = null;
     let degraded = true;
     if (gemini) {
       try {
         queryVector = await embedQuery(gemini, q);
-        vectorResults = await searchVector(db, queryVector, candidates);
+        vectorResults = await searchVector(db, queryVector, candidates, filters, bookmarkIds);
         degraded = false;
       } catch (err) {
         console.warn(`[search] hybrid embed failed, text only: ${(err as Error).message}`);
@@ -174,7 +183,7 @@ async function performSearchInner(
   if (mode === "ai" && gemini) {
     try {
       const vector = await embedQuery(gemini, q);
-      const ranked = await searchVector(db, vector, candidates);
+      const ranked = await searchVector(db, vector, candidates, filters, bookmarkIds);
       return {
         mode: "ai",
         ...pageOf(ranked, from, limit, paging),
@@ -185,7 +194,7 @@ async function performSearchInner(
     }
   }
 
-  const ranked = await searchFullText(db, q, candidates);
+  const ranked = await searchFullText(db, q, candidates, filters, bookmarkIds);
   return {
     mode: "text",
     ...pageOf(ranked, from, limit, paging),

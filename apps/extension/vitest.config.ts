@@ -14,7 +14,7 @@ export default defineConfig({
   // against the Vite copy WXT depends on, while Vitest brings its own newer one,
   // so two structurally identical `PluginOption` types refuse to unify. Runtime
   // is unaffected.
-  plugins: [WxtVitest() as unknown as never],
+  plugins: [WxtVitest({ dev: { server: { port: 3099, strictPort: true } } }) as unknown as never],
   test: {
     // The device-token / auth-retry tests mock global fetch; restore it (and every
     // spy) between cases so no test inherits another's stubbed network.

@@ -42,6 +42,13 @@ struct Bookmark: Codable, Hashable, Sendable, Identifiable {
     var createdAt: String
     /// True once an embedding vector has been stored for this bookmark.
     var embedded: Bool
+    var folderId: String?
+    var categoryId: String?
+    var tagIds: [String]?
+    var readingState: ReadingState?
+    var fieldVersions: [String: String]?
+
+    var canonicalReadingState: ReadingState { readingState ?? (tags.contains("reading") || tags.contains("article") ? .unread : .notOnList) }
 }
 
 extension Bookmark {

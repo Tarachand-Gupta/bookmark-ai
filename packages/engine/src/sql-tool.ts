@@ -104,6 +104,11 @@ const BLOCKED_KEYWORDS = [
  * false-rejects and is intentionally not over-engineered.
  */
 const BLOCKED_IDENTIFIERS = [
+  "composer_handoffs", // private unsent drafts never become implicit agent context
+  "chat_turn_contexts",
+  "organization_operations",
+  "organization_selections",
+  "bookmark_import_batches",
   "user_settings", // holds the (encrypted-at-rest) ai_api_key secret + provider config
   "live_devices", // per-device open-tab checkpoints — sensitive, never agent-readable (§5.5)
   "live_settings", // the live-sessions opt-in flag
@@ -217,10 +222,7 @@ function assertReadOnly(query: string): void {
 }
 
 /** Normalize one cell for the model: blobs → "<blob>", clip long strings, JSON-safe bigints. */
-function normalizeCell(
-  value: unknown,
-  maxChars: number,
-): { value: unknown; truncated: boolean } {
+function normalizeCell(value: unknown, maxChars: number): { value: unknown; truncated: boolean } {
   if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
     return { value: "<blob>", truncated: false };
   }
@@ -317,7 +319,10 @@ export async function countReadOnlySql(
   const wrapped = `SELECT COUNT(*) AS n FROM (\n${inner}\n)`;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`Query exceeded the ${timeoutMs}ms time limit`)), timeoutMs);
+    timer = setTimeout(
+      () => reject(new Error(`Query exceeded the ${timeoutMs}ms time limit`)),
+      timeoutMs,
+    );
   });
   try {
     const rs = await Promise.race([db.execute(wrapped), timeout]);

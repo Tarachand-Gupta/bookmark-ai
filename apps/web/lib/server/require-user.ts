@@ -90,6 +90,7 @@ export type Gate =
   | { ok: false; response: NextResponse }
   | {
       ok: true;
+      capability?: "human" | "extension";
       userId: string | null;
       via?: "clerk" | "device" | "supabase";
       sessionId: string | null;
@@ -192,6 +193,7 @@ export async function requireUser(): Promise<Gate> {
         userId: identity.userId,
         sessionId: identity.sessionId,
         via: "supabase",
+        capability,
         identity,
       };
     } catch (error) {

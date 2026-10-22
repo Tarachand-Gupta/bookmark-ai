@@ -35,6 +35,14 @@ export const MOBILE_BREAKPOINT_PX = 768;
 export const FULL_DOCK_BREAKPOINT_PX = 640;
 /** 16rem — SIDEBAR_WIDTH in components/ui/sidebar.tsx. */
 export const SIDEBAR_EXPANDED_PX = 256;
+export const SIDEBAR_MIN_PX = 220;
+export const SIDEBAR_MAX_PX = 360;
+
+export function clampSidebarWidth(width: number): number {
+  return Number.isFinite(width)
+    ? Math.round(Math.min(SIDEBAR_MAX_PX, Math.max(SIDEBAR_MIN_PX, width)))
+    : SIDEBAR_EXPANDED_PX;
+}
 /** 3rem — SIDEBAR_WIDTH_ICON in components/ui/sidebar.tsx. */
 export const SIDEBAR_ICON_PX = 48;
 
@@ -96,6 +104,7 @@ export interface AppLayoutInput {
   sidebarUserOpen: boolean;
   /** The user re-expanded the sidebar while it was forced to the rail (rule 4). */
   sidebarOverride: boolean;
+  sidebarWidth?: number;
 }
 
 export interface AppLayout {
@@ -118,12 +127,13 @@ export function overlayWidth(viewportWidth: number): number {
   return Math.min(DOCK_OVERLAY_MAX_PX, Math.round(viewportWidth * DOCK_OVERLAY_FRACTION));
 }
 
-function sidebarWidth(sidebar: SidebarLayout): number {
-  return sidebar === "expanded" ? SIDEBAR_EXPANDED_PX : sidebar === "icon" ? SIDEBAR_ICON_PX : 0;
+function sidebarWidth(sidebar: SidebarLayout, expandedWidth: number): number {
+  return sidebar === "expanded" ? expandedWidth : sidebar === "icon" ? SIDEBAR_ICON_PX : 0;
 }
 
 export function resolveAppLayout(input: AppLayoutInput): AppLayout {
   const { viewportWidth, dockOpen, dockFraction, sidebarUserOpen, sidebarOverride } = input;
+  const expandedWidth = clampSidebarWidth(input.sidebarWidth ?? SIDEBAR_EXPANDED_PX);
 
   // Rule 1 — mobile: the sidebar is a sheet, the dock floats or fills.
   if (viewportWidth < MOBILE_BREAKPOINT_PX) {
@@ -149,14 +159,14 @@ export function resolveAppLayout(input: AppLayoutInput): AppLayout {
       sidebar: userSidebar,
       dock: "closed",
       dockWidth: 0,
-      contentWidth: viewportWidth - sidebarWidth(userSidebar),
+      contentWidth: viewportWidth - sidebarWidth(userSidebar, expandedWidth),
       sidebarForced: false,
     };
   }
 
   const dockWidth = dockedWidth(viewportWidth, dockFraction);
   const contentBeside = (sidebar: SidebarLayout) =>
-    viewportWidth - sidebarWidth(sidebar) - dockWidth;
+    viewportWidth - sidebarWidth(sidebar, expandedWidth) - dockWidth;
   const docked = (sidebar: SidebarLayout, forced: boolean): AppLayout => ({
     sidebar,
     dock: "side",
@@ -179,7 +189,7 @@ export function resolveAppLayout(input: AppLayoutInput): AppLayout {
     sidebar: userSidebar,
     dock: "overlay",
     dockWidth: overlayWidth(viewportWidth),
-    contentWidth: viewportWidth - sidebarWidth(userSidebar),
+    contentWidth: viewportWidth - sidebarWidth(userSidebar, expandedWidth),
     sidebarForced: false,
   };
 }
@@ -210,6 +220,7 @@ export interface AppLayoutState {
   dockFraction: number;
   sidebarUserOpen: boolean;
   sidebarOverride: boolean;
+  sidebarWidth: number;
 }
 
 export const INITIAL_APP_LAYOUT_STATE: AppLayoutState = {
@@ -218,6 +229,7 @@ export const INITIAL_APP_LAYOUT_STATE: AppLayoutState = {
   dockFraction: DOCK_DEFAULT_FRACTION,
   sidebarUserOpen: true,
   sidebarOverride: false,
+  sidebarWidth: SIDEBAR_EXPANDED_PX,
 };
 
 /** Resolve a store state, optionally with a fresher `dockOpen` than the mirror. */
@@ -228,6 +240,7 @@ export function layoutFromState(state: AppLayoutState, dockOpen = state.dockOpen
     dockFraction: state.dockFraction,
     sidebarUserOpen: state.sidebarUserOpen,
     sidebarOverride: state.sidebarOverride,
+    sidebarWidth: state.sidebarWidth,
   });
 }
 
@@ -258,6 +271,17 @@ export function withDockFraction(state: AppLayoutState, fraction: number): AppLa
   const next = clampDockFraction(fraction, state.viewportWidth ?? DEFAULT_VIEWPORT_PX);
   if (state.dockFraction === next) return state;
   return settleOverride({ ...state, dockFraction: next });
+}
+
+/** A deliberate sidebar resize keeps it open; chat floats if there isn't room. */
+export function withSidebarWidth(state: AppLayoutState, width: number): AppLayoutState {
+  const nextWidth = clampSidebarWidth(width);
+  if (state.sidebarWidth === nextWidth) return state;
+  const next = { ...state, sidebarWidth: nextWidth };
+  if (next.sidebarUserOpen && layoutFromState(next).sidebarForced) {
+    next.sidebarOverride = true;
+  }
+  return settleOverride(next);
 }
 
 /**

@@ -110,7 +110,7 @@ function bottomOffset(): number {
 /** Bottom padding screens need so scrollable content clears the floating bar
  * (content deliberately scrolls UNDER the glass). */
 export function useTabBarClearance(): number {
-  return bottomOffset() + BAR_HEIGHT + CONTENT_GAP;
+  return bottomOffset() + BAR_HEIGHT + CONTENT_GAP + 78;
 }
 
 // Instagram-style shrink: one shared animated scale for the single tab bar.
