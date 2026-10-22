@@ -50,11 +50,20 @@ operations belong in the reduced release.
 ## UX acceptance notes
 
 - The collapsed desktop composer is approximately half its previous width
-  (360px maximum), with a light 30%-opaque background tint, the header's gentler
-  8px backdrop blur, and the theme's card corner radius. Text and controls stay
-  fully opaque. This supersedes the initial 70% tint/24px blur, which looked solid.
-  Mobile uses the available
-  width with narrow edge gutters. Opening it still uses the existing AI panel.
+  (360px maximum), using exactly the header's background tint (80% with backdrop
+  support, 95% fallback), 8px blur and fine 1px theme border. The card corner
+  radius follows the theme; text and controls remain opaque. This supersedes
+  the 30% tint, which the owner found too translucent.
+- Appearance includes separate floating AI bar switches for desktop (default on)
+  and mobile (default off), saved in this browser. When enabled on mobile it uses
+  narrow edge gutters. Hiding the shortcut removes its reserved space without
+  unmounting the chat or losing a draft. The navbar always opens the AI panel.
+- Mobile web Settings uses a grouped menu, section details, Back and Done, with
+  every desktop web section available under the same existing permission gates.
+  Direct section links still open the requested pane; generic Settings opens the
+  menu. Desktop keeps the sidebar and content pane. Long sections scroll inside
+  the dialog. Below 640px the navbar AI button is a non-shrinking 44px square,
+  matching the search field's height.
 - At the sidebar's minimum expanded width, the full **Bookmark AI** brand must
   stay on one line. Its composer offset follows the actual sidebar width.
 - Closed desktop facet headings have compact 40px spacing. The icon rail has one

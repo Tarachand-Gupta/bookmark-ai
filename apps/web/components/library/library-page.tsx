@@ -160,11 +160,11 @@ export function LibraryPage() {
   const [addOpen, setAddOpen] = useState(false);
   // Settings modal is owned here (not in the sidebar) so the Ongoing empty state
   // can deep-link into Settings → Devices.
-  const [settings, setSettings] = useState<{ open: boolean; section: SectionId }>({
+  const [settings, setSettings] = useState<{ open: boolean; section?: SectionId }>({
     open: false,
-    section: "ai",
+    section: undefined,
   });
-  const openSettings = useCallback((section: SectionId = "ai") => {
+  const openSettings = useCallback((section?: SectionId) => {
     setSettings({ open: true, section });
   }, []);
 

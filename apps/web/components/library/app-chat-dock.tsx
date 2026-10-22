@@ -8,6 +8,8 @@ import { AiChat } from "./ai-chat";
 import { ChatPanel } from "./chat-panel";
 import { useAuth } from "@/lib/auth";
 import type { ChatContext } from "@bookmark-ai/types";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useFloatingAi } from "@/hooks/use-floating-ai";
 
 /** Facet keys that live in the URL — must match library-page's FILTER_KEYS so a
  * chat-applied facet reads back identically on the page. */
@@ -29,6 +31,9 @@ export function AppChatDock() {
   const { userId } = useAuth();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { preferences } = useFloatingAi();
+  const isMobile = useIsMobile();
+  const compactEnabled = isMobile ? preferences.mobile : preferences.desktop;
 
   const open = searchParams.get(AI_PARAM) === "1";
   const [blocked, setBlocked] = useState(false);
@@ -52,9 +57,9 @@ export function AppChatDock() {
     return () => window.removeEventListener("bookmark-chat-context", receive);
   }, []);
   useEffect(() => {
-    document.documentElement.style.setProperty("--floating-composer-h", !open && !blocked ? "calc(80px + env(safe-area-inset-bottom, 0px))" : "0px");
+    document.documentElement.style.setProperty("--floating-composer-h", !open && !blocked && userId && compactEnabled ? "calc(80px + env(safe-area-inset-bottom, 0px))" : "0px");
     return () => document.documentElement.style.setProperty("--floating-composer-h", "0px");
-  }, [open, blocked]);
+  }, [open, blocked, userId, compactEnabled]);
   const suggestedContext = selectionContext;
 
   // Shallow History API push: updates the URL (and Next's useSearchParams
@@ -70,7 +75,7 @@ export function AppChatDock() {
     // The compact composer can itself open the conversation. Returning focus
     // to its textarea would immediately run focus-to-open again (and keep the
     // mobile keyboard up), so return to the compact shell in that case.
-    const focusTarget = trigger?.isConnected && !panel?.contains(trigger) ? trigger : panel;
+    const focusTarget = trigger?.isConnected && !panel?.contains(trigger) ? trigger : compactEnabled ? panel : document.querySelector<HTMLElement>('button[aria-label="Ask AI"]');
     if (document.activeElement instanceof HTMLElement && panel?.contains(document.activeElement)) {
       document.activeElement.blur();
     }
@@ -84,7 +89,7 @@ export function AppChatDock() {
         focusTarget?.focus({ preventScroll: true });
       }
     });
-  }, [shallowPush]);
+  }, [shallowPush, compactEnabled]);
   const show = useCallback(() => {
     if (open) return;
     invoking.current = document.activeElement as HTMLElement | null;
@@ -107,7 +112,7 @@ export function AppChatDock() {
   );
 
   return (
-    <ChatPanel open={open} hidden={blocked || !userId} onClose={close}>
+    <ChatPanel open={open} hidden={blocked || !userId} compactVisibility={preferences} onClose={close}>
       {userId && <AiChat key={userId} accountId={userId} open={open} onOpen={show} onClose={close} onFilter={applyFilter} suggestedContext={suggestedContext} requestedContext={requestedContext} />}
     </ChatPanel>
   );

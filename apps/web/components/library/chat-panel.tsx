@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { appLayoutStore, useAppLayout, useSidebarWidth } from "@/hooks/use-app-layout";
+import { DEFAULT_FLOATING_AI, type FloatingAiPreferences } from "@/lib/floating-ai-preferences";
+import { cn } from "@/lib/utils";
 
 /** Header height (px) the docked panel sits under — keep in sync with LibraryHeader. */
 const HEADER_PX = 57;
@@ -26,7 +28,7 @@ const DOCK_WIDTH_VAR = "--chat-dock-w";
  * the rail can't keep the pane does the dock float. Mobile (<640px) is always
  * the full-screen card (the chat's own Close dismisses it).
  */
-export function ChatPanel({ open, hidden, onClose, children }: { open: boolean; hidden?: boolean; onClose?: () => void; children: React.ReactNode }) {
+export function ChatPanel({ open, hidden, compactVisibility = DEFAULT_FLOATING_AI, onClose, children }: { open: boolean; hidden?: boolean; compactVisibility?: FloatingAiPreferences; onClose?: () => void; children: React.ReactNode }) {
   const { dock, dockWidth, sidebar } = useAppLayout(open);
   const sidebarWidth = useSidebarWidth();
   const dragging = useRef(false);
@@ -91,7 +93,7 @@ export function ChatPanel({ open, hidden, onClose, children }: { open: boolean; 
   // crosses a mode boundary and wipe the conversation mid-chat.
   const modeClass =
     !open
-      ? "fixed bottom-3 z-30 mx-auto overflow-hidden rounded-xl border border-border/60 bg-background/30 shadow-lg backdrop-blur"
+      ? "fixed bottom-3 z-30 mx-auto overflow-hidden rounded-xl border bg-background/95 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80"
       : dock === "full"
       ? "fixed inset-0 z-40 bg-card"
       : dock === "overlay"
@@ -119,7 +121,7 @@ export function ChatPanel({ open, hidden, onClose, children }: { open: boolean; 
       }}
       data-theme-picker-chat={dock}
       aria-label={open ? "Ask AI conversation" : "Ask about your library"}
-      className={modeClass}
+      className={cn(modeClass, !open && [compactVisibility.mobile ? "block" : "hidden", compactVisibility.desktop ? "md:block" : "md:hidden"])}
       style={{ ...(!open ? { bottom: "calc(12px + env(safe-area-inset-bottom, 0px))", left: sidebar === "mobile" ? 12 : sidebar === "icon" ? 60 : sidebarWidth + 12, right: 12, maxWidth: sidebar === "mobile" ? undefined : 360 } : dock === "side" ? { width: dockWidth, top: HEADER_PX, bottom: 0 } : {}), ...(!open && hidden ? { display: "none" } : {}) }}
     >
       {/* Drag handle on the panel's left edge — docked mode only. */}

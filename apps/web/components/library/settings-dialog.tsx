@@ -10,6 +10,9 @@ import {
   Activity,
   AlertTriangle,
   Check,
+  ChevronLeft,
+  ChevronRight,
+  X,
   Database,
   Download,
   Loader2,
@@ -44,20 +47,21 @@ import { DEFAULT_PLAN, PLAN_FEATURES, type PlanId } from "@/lib/plan";
 import { cn } from "@/lib/utils";
 import { AiCreditsMeter } from "./ai-credits-meter";
 import { AiSetupCard } from "./ai-setup-card";
-import { DevicesSection } from "./devices-settings";
+import { DevicesSection, Switch } from "./devices-settings";
 import { FEATURE_ICONS } from "./feature-icons";
 import { McpSection } from "./mcp-settings";
 import { ObservabilitySection } from "./observability-settings";
 import { ReleasesIcon, ReleasesSection } from "./releases-settings";
-import { SettingsGroup, SettingsSection } from "./settings-section";
+import { SettingsGroup, SettingsRow, SettingsSection } from "./settings-section";
 import { SkillsIcon, SkillsSection } from "./skills-settings";
 import { SyncSection } from "./sync-settings";
 import { ThemeChoices } from "@/components/theme-picker";
+import { useFloatingAi } from "@/hooks/use-floating-ai";
 
 export interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Section to open on. Defaults to "ai"; the Ongoing empty state opens "devices". */
+  /** Explicit links open a detail pane. Otherwise mobile starts at the menu, desktop at AI. */
   initialSection?: SectionId;
 }
 
@@ -80,6 +84,13 @@ const SECTIONS = [
 ] as const;
 export type SectionId = (typeof SECTIONS)[number]["id"];
 
+const MOBILE_GROUPS: { label: string; sections: SectionId[] }[] = [
+  { label: "Preferences & account", sections: ["account", "appearance", "plan"] },
+  { label: "AI & library", sections: ["ai", "skills", "data", "sync", "devices"] },
+  { label: "Connections", sections: ["mcp"] },
+  { label: "Administration", sections: ["observability", "releases"] },
+];
+
 /** All valid section ids — used to validate the `?settings=<id>` deep link. */
 export const SECTION_IDS = SECTIONS.map((s) => s.id) as SectionId[];
 
@@ -98,7 +109,16 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
   // user off the section they navigated to.
   const initialSectionRef = useRef(initialSection);
   initialSectionRef.current = initialSection;
-  const railRef = useRef<HTMLUListElement>(null);
+  const [mobileDetail, setMobileDetail] = useState(!!initialSection);
+  const menuRef = useRef<HTMLElement>(null);
+  const backRef = useRef<HTMLButtonElement>(null);
+  const { preferences, setPreference } = useFloatingAi();
+  useEffect(() => {
+    if (open) {
+      setSection(initialSectionRef.current ?? "ai");
+      setMobileDetail(!!initialSectionRef.current);
+    }
+  }, [open, accountId]);
   const paneRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (paneRef.current) paneRef.current.scrollTop = 0; }, [section]);
 
@@ -109,7 +129,6 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
   useEffect(() => {
     setAdminGrant(null);
     if (!open || !accountId || !admin.active) return;
-    setSection(initialSectionRef.current ?? "ai");
     void preloadSettingsResources(accountId);
     void preloadAccountSecurity(accountId);
     let cancelled = false;
@@ -123,104 +142,81 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
     return () => { cancelled = true; };
   }, [open, accountId, admin.active, admin.refresh]);
 
-  // MOBILE: keep the ACTIVE section chip on screen. The rail is one horizontally
-  // scrollable strip on narrow screens, and every deep link that opens the dialog
-  // straight onto a later section (?settings=mcp, the sidebar's MCP row, the MCP
-  // promo CTA) left the strip parked at scrollLeft 0 — so the selected chip sat
-  // off-screen to the right and the visible chips all looked unselected, reading
-  // as "nothing is selected" on top of a section the user didn't ask for.
-  // Runs on open AND on every section change (including clicks, which is how a
-  // chip half-off the right edge finishes scrolling itself into view).
-  // `block: "nearest"` keeps this from scrolling the dialog vertically; the strip
-  // is the only scrollable ancestor on the inline axis, so nothing else moves.
-  useEffect(() => {
-    if (!open) return;
-    railRef.current
-      ?.querySelector<HTMLElement>('[aria-current="page"]')
-      ?.scrollIntoView({ block: "nearest", inline: "center" });
-  }, [open, section]);
+  const visibleSections = SECTIONS.filter(
+    s => (s.id !== "observability" && s.id !== "releases") || observability !== null,
+  );
+  const selectSection = (id: SectionId) => {
+    setSection(id);
+    setMobileDetail(true);
+    requestAnimationFrame(() => {
+      if (backRef.current?.getClientRects().length) backRef.current.focus();
+    });
+  };
+  const backToMenu = () => {
+    setMobileDetail(false);
+    requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>(`[data-settings-section="${section}"]`)?.focus());
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* max-h + a scrollable pane (below) instead of a taller-than-viewport
-          dialog: at 390px the MCP and Live-sessions sections are far longer than
-          the screen.
-          `flex flex-col` is load-bearing and overrides DialogContent's own
-          `grid`: a grid container's auto row is sized from its item's
-          min-content HEIGHT and never shrinks to a max-height, so the row grew
-          to the full ~900px of the MCP section, `overflow-hidden` clipped it,
-          and the pane below never had a reason to scroll — the Tokens and
-          Client-setup blocks were simply unreachable. As a flex column the
-          single row IS the constrained box (`flex-1 min-h-0`), so the pane's
-          own overflow-y takes over. */}
-      {/* sm:max-w-3xl (was 2xl): 672px minus the 12rem rail and the pane padding
-          left only ~430px of content, which is where the AI card's rows, the MCP
-          setup commands and the device list were all wrapping. 768px gives the
-          pane ~574px — measured — and stays well inside a 1024px laptop. */}
-      <DialogContent className="flex h-[calc(100dvh-32px)] max-h-[calc(100dvh-32px)] flex-col gap-0 overflow-hidden p-0 sm:h-[min(720px,calc(100dvh-64px))] sm:max-w-3xl">
+      <DialogContent showCloseButton={false} className="flex h-dvh max-h-dvh max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:max-w-none md:h-[min(720px,calc(100dvh-64px))] md:max-h-[calc(100dvh-64px)] md:max-w-3xl md:rounded-lg md:border">
+        <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
-          Configure Bookmark AI, including the AI provider and default model.
+          Configure Bookmark AI, including appearance, your account and the AI provider.
         </DialogDescription>
-        {/* min-w-0 is load-bearing: DialogContent is a GRID container, and a grid
-            item's automatic minimum size is its min-content width — so without
-            it the widest thing in any section (a 259-char token, a
-            claude-mcp-add command) sets the dialog's width and pushes its own
-            buttons outside the clipped 672px box. Every child of this row needs
-            the same reset, or the min-content width just propagates one level
-            down. */}
-        {/* flex-1 + min-h-0: this row is the dialog's only flex child, so it
-            takes the clamped height and lets its scroll pane (not the page)
-            absorb a long section. The 27rem floor — which keeps the desktop
-            dialog from resizing every time you switch sections — is gated on
-            the viewport being TALL enough to spare it, because a min-height
-            beats a max-height in CSS and would re-break scrolling on a short
-            landscape window. */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col sm:flex-row">
-          <nav
-            aria-label="Settings sections"
-            className="flex min-h-0 shrink-0 flex-col border-b bg-muted/30 p-3 sm:w-48 sm:border-r sm:border-b-0"
-          >
-            <DialogHeader className="shrink-0 px-2 pb-3 text-left">
-              <DialogTitle className="text-base">Settings</DialogTitle>
-            </DialogHeader>
-            {/* Mobile: one scrollable strip of section chips (six full-width
-                buttons stacked would eat the whole screen, and letting them
-                shrink truncated every label). contain:inline-size keeps the
-                strip's summed width from becoming the dialog's min-content
-                width — see the min-w-0 note above. */}
-            <ul
-              ref={railRef}
-              className="-mb-2 flex min-h-0 scroll-smooth gap-1 overflow-x-auto pb-2 [contain:inline-size] sm:mb-0 sm:flex-1 sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto sm:pb-0 sm:[contain:none]"
-            >
-              {SECTIONS.filter(
-                (s) => (s.id !== "observability" && s.id !== "releases") || observability !== null,
-              ).map((s) => {
+        <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b px-2 pt-[env(safe-area-inset-top)] md:hidden">
+          <div>
+            {mobileDetail && (
+              <Button ref={backRef} variant="ghost" className="h-12 gap-1 px-2" onClick={backToMenu}>
+                <ChevronLeft aria-hidden className="size-4" />Back
+              </Button>
+            )}
+          </div>
+          <h2 className="py-4 text-base font-semibold">{mobileDetail ? SECTIONS.find(s => s.id === section)?.label : "Settings"}</h2>
+          <Button variant="ghost" className="h-12 justify-self-end px-3" onClick={() => onOpenChange(false)}>Done</Button>
+        </div>
+        <Button variant="ghost" size="icon" aria-label="Close settings" className="absolute right-3 top-3 z-10 hidden size-8 md:flex" onClick={() => onOpenChange(false)}>
+          <X aria-hidden className="size-4" />
+        </Button>
+        {/* Constrained flex children keep long panes scrollable at every width. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
+          <nav ref={menuRef} aria-label="Settings sections" className={cn("min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain bg-muted/30 p-4 pb-[max(16px,env(safe-area-inset-bottom))] md:flex md:w-48 md:flex-none md:flex-col md:overflow-hidden md:border-r md:p-3", mobileDetail && "hidden")}>
+            <h2 className="hidden shrink-0 px-2 pb-3 text-base font-semibold md:block">Settings</h2>
+            <div className="space-y-6 md:hidden">
+              {MOBILE_GROUPS.map(group => {
+                const sections = group.sections.flatMap(id => visibleSections.filter(s => s.id === id));
+                if (!sections.length) return null;
+                return (
+                  <section key={group.label} aria-label={group.label} className="space-y-2">
+                    <h3 className="px-3 text-xs font-medium text-muted-foreground">{group.label}</h3>
+                    <ul className="divide-y overflow-hidden rounded-xl border bg-background">
+                      {sections.map(s => {
+                        const Icon = s.icon;
+                        return (
+                          <li key={s.id}>
+                            <button type="button" data-settings-section={s.id} onClick={() => selectSection(s.id)} className="flex min-h-12 w-full cursor-pointer items-center gap-3 px-3 py-3 text-left text-sm hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring">
+                              <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                              <span className="flex-1">{s.label}</span>
+                              <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
+            <ul className="hidden min-h-0 flex-1 flex-col gap-1 overflow-y-auto md:flex">
+              {visibleSections.map(s => {
                 const Icon = s.icon;
                 return (
                   <li key={s.id} className="shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setSection(s.id)}
-                      aria-current={section === s.id ? "page" : undefined}
-                      className={cn(
-                        "cursor-pointer flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-1.5 text-sm transition-colors",
-                        // ACTIVE = the app's standard selected-chip treatment
-                        // (`bg-primary`/`text-primary-foreground`, same as the tag
-                        // rail, the mobile filter chips and the date-range presets).
-                        // It was `bg-accent`, which in dark mode is
-                        // oklch(0.269 0 0) — a ~2% lift off the dialog's own
-                        // surface, so on a phone the selected chip was
-                        // indistinguishable from the unselected ones. `primary`
-                        // flips per theme (near-white on dark, near-black on
-                        // light), so this reads as the white accent in dark mode
-                        // without hardcoding a color.
-                        section === s.id
-                          ? "bg-primary font-medium text-primary-foreground"
-                          : "text-muted-foreground hover:bg-accent/50",
-                      )}
-                    >
-                      <Icon className="size-4" aria-hidden />
-                      {s.label}
+                    <button type="button" onClick={() => selectSection(s.id)} aria-current={section === s.id ? "page" : undefined} className={cn(
+                      "flex w-full cursor-pointer items-center gap-2 whitespace-nowrap rounded-md px-2 py-1.5 text-sm transition-colors",
+                      section === s.id ? "bg-primary font-medium text-primary-foreground" : "text-muted-foreground hover:bg-accent/50",
+                    )}>
+                      <Icon className="size-4" aria-hidden />{s.label}
                     </button>
                   </li>
                 );
@@ -228,8 +224,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             </ul>
             <SettingsSignOut />
           </nav>
-
-          <div key={`${accountId ?? "signed-out"}:${admin.active}`} ref={paneRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
+          <div key={`${accountId ?? "signed-out"}:${admin.active}`} ref={paneRef} className={cn("min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-[max(16px,env(safe-area-inset-bottom))] md:block md:p-6", !mobileDetail && "hidden")}>
             {/* The AI pane IS the shared card (free-credits callout, optional
                 bring-your-own-provider form, test-&-list-models) — this pane used
                 to duplicate the whole form inline, so a fix in one place silently
@@ -249,6 +244,10 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             {section === "appearance" && (
               <SettingsSection title="Appearance" icon={Palette} description="Choose a theme and light, dark, or system appearance. Saved in this browser.">
                 <ThemeChoices />
+                <SettingsGroup divided title="Floating AI bar" description="Keep a shortcut to Ask AI at the bottom of your library. Saved in this browser.">
+                  <SettingsRow label="Show on desktop" htmlFor="floating-ai-desktop" control={<Switch id="floating-ai-desktop" checked={preferences.desktop} onChange={value => setPreference("desktop", value)} />} />
+                  <SettingsRow label="Show on mobile" htmlFor="floating-ai-mobile" control={<Switch id="floating-ai-mobile" checked={preferences.mobile} onChange={value => setPreference("mobile", value)} />} />
+                </SettingsGroup>
               </SettingsSection>
             )}
 

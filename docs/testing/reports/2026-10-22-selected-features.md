@@ -147,6 +147,48 @@ The optional Pi bridge worker timed out with unknown outcome; workspace
 inspection showed no worker code changes. The parent completed and verified
 the change without retrying the failed delegation.
 
+## Follow-up: mobile settings and floating AI preference
+
+Implemented on `codex/mobile-settings-composer`. This supersedes the prior
+30%-opaque composer tint: the compact bar now uses the same 80% background,
+8px blur and fine theme border as the header (95% background without backdrop
+support). Appearance has independent desktop/mobile visibility preferences,
+defaulting to on/off. The navbar icon-only AI button is a fixed 44px square.
+Mobile web Settings uses a grouped menu and detail panes with Back/Done;
+desktop retains its rail, and both render the same existing section components.
+
+Fresh local evidence:
+
+- 44 focused checks pass: 8 preference parsing/default checks and 36 existing
+  layout checks. Web typecheck and `git diff --check` pass.
+- At 375px, AI and search both measured 44px high; AI measured 44px wide.
+  The compact bar was initially `display:none` with zero reserved bottom space.
+- Mobile opt-in displays the bar and survives reload. Desktop can independently
+  be disabled. Restored defaults are desktop on/mobile off. No chat remount is
+  required: an unsent draft survived close/reopen while the bar was hidden;
+  close returned focus to the navbar and did not reopen the conversation.
+- Light and dark computed header/bar styles matched exactly: theme background
+  alpha 0.8, blur 8px, identical border color and nominal 1px width (0.909091 CSS
+  pixels under the test browser's existing 110% zoom).
+- All nine non-admin web sections were opened through the mobile menu and
+  returned via Back: Account, Appearance, Plan & usage, AI, Skills, Data, Sync,
+  Live sessions and Connections. Avatar Account deep-link opens its detail pane
+  directly; closing and generic Settings reopening returns to the menu.
+- Checked 320/375/414-ish mobile widths, 768px breakpoint and 1309px desktop.
+  No horizontal dialog overflow was observed. Connections at 320px reached its
+  Tokens controls by scrolling to 531px (the pane's full scroll range). Desktop
+  retains the rail and bottom Sign out, including at the 768px breakpoint.
+  Admin-only panes retain the existing server permission gate; this fixture is
+  non-admin, so privileged content was not exercised.
+- Screenshots 44–48 in `.work/reduction-oct22/visual-qa/` cover mobile menu,
+  Appearance preferences, long-pane scrolling and desktop Appearance. The
+  owner's in-app preview was refreshed and left on the dark mobile settings menu.
+  Temporary Chrome viewport was reset and the agent's QA tab closed.
+
+This was local responsive-browser QA, not a physical iOS/Android test or real
+provider-auth test. No bookmark records were changed, no settings sign-out was
+performed, and production was not deployed.
+
 ## Reproduce and extend
 
 1. Start with the isolated preview and verify `/api/me` reports fixture B or C

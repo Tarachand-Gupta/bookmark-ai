@@ -117,7 +117,7 @@ export function LibraryHeader({
           <Button
             size="sm"
             variant={aiActive ? "default" : "outline"}
-            className="h-11 md:h-9 [@media(pointer:coarse)]:h-11"
+            className="h-11 w-11 shrink-0 px-0 sm:w-auto sm:px-3 md:h-9 [@media(pointer:coarse)]:h-11"
             aria-label="Ask AI"
             onClick={onAskAi}
             aria-pressed={aiActive}

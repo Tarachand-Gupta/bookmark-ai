@@ -102,11 +102,11 @@ export function DashboardPage() {
   useEffect(() => { const changed = () => dashboard.refresh(); window.addEventListener("bookmark-library-changed", changed); return () => window.removeEventListener("bookmark-library-changed", changed); }, [dashboard.refresh]);
 
   const [addOpen, setAddOpen] = useState(false);
-  const [settings, setSettings] = useState<{ open: boolean; section: SectionId }>({
+  const [settings, setSettings] = useState<{ open: boolean; section?: SectionId }>({
     open: false,
-    section: "ai",
+    section: undefined,
   });
-  const openSettings = useCallback((section: SectionId = "ai") => {
+  const openSettings = useCallback((section?: SectionId) => {
     setSettings({ open: true, section });
   }, []);
 
