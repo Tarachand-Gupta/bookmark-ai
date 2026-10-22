@@ -15,6 +15,30 @@ function deferred<T>() {
 afterEach(() => { settingsResourceCache.setAccount(null); vi.useRealTimers(); vi.clearAllMocks(); });
 
 describe("account-scoped settings resources", () => {
+  it("accepts a migrated account whose canonical ID differs from its Supabase session", async () => {
+    const me = { signedIn: true, accountId: "retained-account", providerUserId: "provider-a", name: "Reader", email: null };
+    vi.mocked(api.getMe).mockResolvedValueOnce(me);
+    settingsResourceCache.setAccount("provider-a");
+    await expect(settingsResourceCache.read("provider-a", "me")).resolves.toEqual(me);
+    expect(settingsResourceCache.snapshot("provider-a", "me").error).toBeNull();
+  });
+
+  it("rejects a different provider even if its canonical account ID matches the requested scope", async () => {
+    vi.mocked(api.getMe).mockResolvedValueOnce({ signedIn: true, accountId: "provider-a", providerUserId: "provider-b", name: "Other", email: null });
+    settingsResourceCache.setAccount("provider-a");
+    await expect(settingsResourceCache.read("provider-a", "me")).resolves.toBeUndefined();
+    expect(settingsResourceCache.snapshot("provider-a", "me")).toMatchObject({ data: undefined, error: expect.stringContaining("account changed") });
+  });
+
+  it.each([true, false])("checks legacy response identity without a provider ID (matching: %s)", async (matches) => {
+    const me = { signedIn: true, accountId: matches ? "provider-a" : "provider-b", name: "Reader", email: null };
+    vi.mocked(api.getMe).mockResolvedValueOnce(me);
+    settingsResourceCache.setAccount("provider-a");
+    const result = await settingsResourceCache.read("provider-a", "me");
+    expect(result).toEqual(matches ? me : undefined);
+    expect(settingsResourceCache.snapshot("provider-a", "me").error).toEqual(matches ? null : expect.stringContaining("account changed"));
+  });
+
   it("starts independent reads together and deduplicates pending/fresh reads, including force", async () => {
     const a = deferred<string>(); const b = deferred<number>();
     const first = vi.fn(() => a.promise); const second = vi.fn(() => b.promise);

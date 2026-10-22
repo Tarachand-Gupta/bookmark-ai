@@ -176,7 +176,10 @@ import type { AppPlatform, AppRelease, AppReleasesResponse, UpsertAppReleaseInpu
  * (surfaced by `request` as an error). */
 export interface MeResponse {
   signedIn: boolean;
-  accountId?: string;
+  /** Canonical Bookmark AI identity; migrated accounts may have a different provider ID. */
+  accountId?: string | null;
+  /** Supabase identity used by the browser session and client-side cache scope. */
+  providerUserId?: string;
   name: string | null;
   email: string | null;
 }

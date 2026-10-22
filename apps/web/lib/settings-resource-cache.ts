@@ -146,7 +146,10 @@ export type SettingsResources = {
 export const settingsResourceCache: SettingsResourceCache<SettingsResources> = new SettingsResourceCache<SettingsResources>({
   me: async (id, signal) => {
     const me = await getMe(signal, id);
-    if (me.accountId && me.accountId !== id) throw Error("The account changed. Please try again.");
+    // Browser caches are scoped to the provider session, not the canonical
+    // Bookmark AI account retained during the Clerk-to-Supabase migration.
+    const sessionUserId = me.providerUserId ?? me.accountId;
+    if (sessionUserId && sessionUserId !== id) throw Error("The account changed. Please try again.");
     return me;
   },
   account: (id, signal) => getAccount(signal, id, true),
