@@ -70,7 +70,7 @@ export function CardToolbar({
           placeholder={placeholder}
           aria-label={placeholder}
           spellCheck={false}
-          className="h-7 w-full rounded-md border bg-background pl-7 pr-7 text-xs shadow-xs outline-none transition-colors placeholder:text-muted-foreground hover:border-ring/60 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="h-7 w-full rounded-md border bg-background pl-7 pr-7 text-xs shadow-xs outline-none transition-colors placeholder:text-muted-foreground hover:border-ring/60 focus-visible:border-ring focus-visible:ring-0 focus-visible:ring-ring/40"
         />
         {query && (
           <button
@@ -114,7 +114,7 @@ export function ShowMoreRow({
       onClick={onToggle}
       aria-expanded={expanded}
       className={cn(
-        "cursor-pointer inline-flex items-center gap-1 rounded-md border border-transparent px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "cursor-pointer inline-flex items-center gap-1 rounded-md border border-transparent px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         className,
       )}
     >
@@ -214,7 +214,7 @@ export function PageFooter({
           type="button"
           onClick={onLoadMore}
           disabled={loading}
-          className="cursor-pointer inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-muted disabled:cursor-progress disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="cursor-pointer inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-muted disabled:cursor-progress disabled:opacity-60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {loading && <Loader2 className="size-3 animate-spin" aria-hidden />}
           {loading ? "Loading…" : `Load next ${page.limit}`}

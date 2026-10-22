@@ -23,11 +23,10 @@ export interface AddBookmarkDialogProps {
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
   onEdit?: (bookmark: Bookmark) => void;
-  folderNames?: Record<string, string>;
 }
 
 /** Paste-a-URL save flow for the web app (extension covers in-browser saves). */
-export function AddBookmarkDialog({ open, onOpenChange, onSaved, onEdit, folderNames }: AddBookmarkDialogProps) {
+export function AddBookmarkDialog({ open, onOpenChange, onSaved, onEdit }: AddBookmarkDialogProps) {
   const { userId } = useAuth();
   const running = useRef(false);
   const storageKey = `bmai:save-request:v1:${userId}`;
@@ -82,10 +81,10 @@ export function AddBookmarkDialog({ open, onOpenChange, onSaved, onEdit, folderN
         <DialogHeader>
           <DialogTitle>{saved ? existing ? "Already saved" : "Bookmark saved" : "Add a bookmark"}</DialogTitle>
           <DialogDescription>
-            {saved ? "Your link is saved. Organizing it is optional." : "Save a URL now. Choose a folder, labels or reading state afterward."}
+            {saved ? "Your link is saved. Organizing it is optional." : "Paste a URL — Bookmark AI fetches its preview and categorizes it automatically."}
           </DialogDescription>
         </DialogHeader>
-        {saved ? <div className="space-y-4"><div><p className="font-medium break-words">{saved.title}</p><p className="text-sm text-muted-foreground break-all">{saved.domain}</p></div><p className="text-sm">Saved to {saved.folderId ? folderNames?.[saved.folderId] ?? "your assigned folder" : "Unsorted"}</p><div className="flex flex-wrap gap-2">{onEdit && <Button onClick={() => { const bookmark = saved; close(false); onEdit(bookmark); }}>Edit details / Change folder</Button>}<Button variant="outline" asChild><a href={saved.url} target="_blank" rel="noopener noreferrer">Open</a></Button><Button variant="ghost" onClick={() => close(false)}>Done</Button></div></div> : <form
+        {saved ? <div className="space-y-4"><div><p className="font-medium break-words">{saved.title}</p><p className="text-sm text-muted-foreground break-all">{saved.domain}</p></div><div className="flex flex-wrap gap-2">{onEdit && <Button onClick={() => { const bookmark = saved; close(false); onEdit(bookmark); }}>Edit details</Button>}<Button variant="outline" asChild><a href={saved.url} target="_blank" rel="noopener noreferrer">Open</a></Button><Button variant="ghost" onClick={() => close(false)}>Done</Button></div></div> : <form
           onSubmit={(e) => {
             e.preventDefault();
             void save();

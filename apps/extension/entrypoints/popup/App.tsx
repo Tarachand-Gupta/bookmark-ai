@@ -1,11 +1,10 @@
-import { CapturePanel } from "./components/CapturePanel";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { browser } from "wxt/browser";
-import type { Session } from "@bookmark-ai/types";
+import type { Bookmark, Session } from "@bookmark-ai/types";
 import { DEFAULT_WEB_URL, getWebBaseUrl } from "@/lib/api";
 import { PerfTrace } from "@/lib/perf";
-import { requestUser, requestSaveSession } from "@/lib/messages";
-import { openApp, openDeviceSettings, openBookmarkImport } from "./nav";
+import { requestSaveBookmark, requestSaveSession, requestUser } from "@/lib/messages";
+import { openApp, openDeviceSettings } from "./nav";
 import { useAuth, degradedAuthNote } from "./use-auth";
 import { useLive } from "./use-live";
 import { BentoGrid } from "./components/BentoGrid";
@@ -14,7 +13,7 @@ import { ConfirmationCard } from "./components/ConfirmationCard";
 import { DeviceFooter } from "./components/DeviceFooter";
 import { ErrorNote } from "./components/ErrorNote";
 import { Header } from "./components/Header";
-import { type TabInfo } from "./components/HeroSaveCard";
+import { HeroSaveCard, type TabInfo } from "./components/HeroSaveCard";
 import { LivePanel } from "./components/LivePanel";
 import { PopupShell } from "./components/PopupShell";
 import { SignInGate } from "./components/SignInGate";
@@ -32,7 +31,14 @@ const SLOW_SAVE_MS = 1500;
 
 const DEGRADED_NOTE = degradedAuthNote(import.meta.env.MODE === "supabase-qa");
 
-type Status = "idle" | "savingSession" | "savingSessionKeepOpen" | "sessionSaved" | "error";
+type Status =
+  | "idle"
+  | "saving"
+  | "saved"
+  | "savingSession"
+  | "savingSessionKeepOpen"
+  | "sessionSaved"
+  | "error";
 
 /**
  * The popup, in three screens: the default save surface, the live panel expanded
@@ -46,9 +52,6 @@ type Status = "idle" | "savingSession" | "savingSessionKeepOpen" | "sessionSaved
 export default function App() {
   const { auth, degraded, setAuth } = useAuth();
   const live = useLive();
-  const [captureRequest, setCaptureRequest] = useState(0);
-  const [captureBusy, setCaptureBusy] = useState(false);
-  const onCaptureBusy = useCallback((busy: boolean) => setCaptureBusy(busy), []);
 
   const [tab, setTab] = useState<TabInfo | null>(null);
   const [tabCount, setTabCount] = useState<number | null>(null);
@@ -56,6 +59,8 @@ export default function App() {
   // round trip before it can even send the message.
   const [windowId, setWindowId] = useState<number | null>(null);
   const [status, setStatus] = useState<Status>("idle");
+  const [bookmark, setBookmark] = useState<Bookmark | null>(null);
+  const [existing, setExisting] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [webUrl, setWebUrl] = useState<string>(DEFAULT_WEB_URL);
@@ -85,15 +90,30 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (status !== "sessionSaved") return;
+    if (status !== "saved" && status !== "sessionSaved") return;
     if (holdOpen) return;
     const timer = setTimeout(() => window.close(), AUTO_CLOSE_MS);
     return () => clearTimeout(timer);
   }, [status, holdOpen]);
 
   async function handleSaveBookmark() {
-    live.setExpanded(false);
-    setCaptureRequest((value) => value + 1);
+    if (!tab || status === "saving") return;
+    setStatus("saving");
+    setError(null);
+    // Same escalation as a session save: past SLOW_SAVE_MS the hero's "Saving…"
+    // gets a status line, so a slow scrape/AI pass never looks like a dead click.
+    const slowTimer = window.setTimeout(() => setSlowSave(true), SLOW_SAVE_MS);
+    const result = await requestSaveBookmark(tab.url, tab.title);
+    window.clearTimeout(slowTimer);
+    setSlowSave(false);
+    if (result.ok) {
+      setBookmark(result.bookmark);
+      setExisting(result.existing === true);
+      setStatus("saved");
+    } else {
+      setError(result.error);
+      setStatus("error");
+    }
   }
 
   async function handleSaveSession(keepOpen: boolean) {
@@ -137,6 +157,7 @@ export default function App() {
   /** "Done": back to the default screen rather than closing, so a save the user
    * engaged with is never a dead end. */
   function dismissConfirmation() {
+    setBookmark(null);
     setSession(null);
     setHoldOpen(false);
     setStatus("idle");
@@ -168,25 +189,23 @@ export default function App() {
   }
 
   const savable = tab !== null && /^https?:/i.test(tab.url);
-  const busy = captureBusy || status === "savingSession" || status === "savingSessionKeepOpen";
+  const busy =
+    status === "saving" || status === "savingSession" || status === "savingSessionKeepOpen";
   const tabLabel = `${tabCount ?? 0} tab${tabCount === 1 ? "" : "s"}`;
-  const confirming = status === "sessionSaved" && session !== null;
+  const confirming =
+    (status === "saved" && bookmark !== null) || (status === "sessionSaved" && session !== null);
 
   return (
     <PopupShell>
-      <Header
-        user={auth}
-        webUrl={webUrl}
-        onSignedOut={() => {
-          void requestUser().then((info) => {
-            setAuth(info);
-            if (info.signedIn) {
-              setStatus("error");
-              setError("Sign-out was not completed. Try again when connected.");
-            }
-          });
-        }}
-      />
+      <Header user={auth} webUrl={webUrl} onSignedOut={() => {
+        void requestUser().then((info) => {
+          setAuth(info);
+          if (info.signedIn) {
+            setStatus("error");
+            setError("Sign-out was not completed. Try again when connected.");
+          }
+        });
+      }} />
 
       {confirming ? (
         // Reaching for either follow-up cancels the auto-close.
@@ -195,7 +214,11 @@ export default function App() {
           onMouseEnter={() => setHoldOpen(true)}
           onFocusCapture={() => setHoldOpen(true)}
         >
-          <ConfirmationCard variant="session" session={session!} />
+          {status === "saved" && bookmark ? (
+            <ConfirmationCard variant="bookmark" bookmark={bookmark} existing={existing} />
+          ) : (
+            <ConfirmationCard variant="session" session={session!} />
+          )}
           <div className="grid grid-cols-2 gap-2">
             <Button variant="outline" onClick={() => openApp(webUrl)}>
               <ExternalLinkIcon className="size-3.5" strokeWidth={1.8} />
@@ -210,7 +233,7 @@ export default function App() {
         <>
           <LivePanel live={live} webUrl={webUrl} />
           <CompactStrip
-            saving={captureBusy}
+            saving={status === "saving"}
             savingSession={status === "savingSessionKeepOpen"}
             savable={savable}
             busy={busy}
@@ -223,13 +246,12 @@ export default function App() {
         </>
       ) : (
         <>
-          <CapturePanel
-            key={`${auth.email ?? "account"}:${webUrl}:${tab?.url ?? ""}`}
+          <HeroSaveCard
             tab={tab}
-            webUrl={webUrl}
-            saveRequest={captureRequest}
-            sessionBusy={status === "savingSession" || status === "savingSessionKeepOpen"}
-            onBusy={onCaptureBusy}
+            saving={status === "saving"}
+            savable={savable}
+            busy={busy}
+            onSave={() => void handleSaveBookmark()}
           />
 
           <BentoGrid
@@ -244,14 +266,7 @@ export default function App() {
             onOpenApp={() => openApp(webUrl)}
           />
 
-          <Button variant="outline" disabled={busy} onClick={openBookmarkImport}>
-            Import existing links
-          </Button>
-
-          <DeviceFooter
-            deviceLabel={live.label}
-            onOpenSettings={() => openDeviceSettings(webUrl)}
-          />
+          <DeviceFooter deviceLabel={live.label} onOpenSettings={() => openDeviceSettings(webUrl)} />
         </>
       )}
 
@@ -260,9 +275,11 @@ export default function App() {
           save, never before. */}
       {slowSave && (
         <p className="text-[11px] leading-snug text-muted-foreground" role="status">
-          {status === "savingSession"
-            ? `Saving ${tabLabel}… your tabs stay open until the save is confirmed.`
-            : `Saving ${tabLabel}… hang on.`}
+          {status === "saving"
+            ? "Still saving… hang on."
+            : status === "savingSession"
+              ? `Saving ${tabLabel}… your tabs stay open until the save is confirmed.`
+              : `Saving ${tabLabel}… hang on.`}
         </p>
       )}
 

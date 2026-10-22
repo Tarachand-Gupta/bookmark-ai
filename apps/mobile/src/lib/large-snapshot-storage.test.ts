@@ -11,7 +11,7 @@ test("large durable selections survive a cold read and failed replacement; logou
     multiRemove: async keys => { keys.forEach(key => disk.delete(key)); },
   }, { read: async name => files.get(name)!, write: async (name, value) => { files.set(name,value); }, remove: async name => { files.delete(name); } }, () => String(++id));
   const scope = { namespace: "qa", accountId: "a", origin: "local" }, cache = createSnapshotCache(storage);
-  const snapshot = Array.from({ length: 10000 }, (_, n) => ({ id: String(n), fieldVersions: { title: n, folderId: n, tags: n }, title: "saved title ".repeat(20) }));
+  const snapshot = Array.from({ length: 10000 }, (_, n) => ({ id: String(n), fieldVersions: { title: n, categoryId: n, tags: n }, title: "saved title ".repeat(20) }));
   await cache.write(scope, "jobs", snapshot);
   assert.equal(files.size, 1);
   assert.deepEqual((await createSnapshotCache(storage).read(scope, "jobs"))?.data, snapshot);

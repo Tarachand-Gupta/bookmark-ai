@@ -40,21 +40,21 @@ export function AuthShell({
           {!signingIn && <FieldDescription className="flex flex-wrap items-center justify-center gap-x-2 text-center text-xs leading-relaxed text-muted-foreground">
             <Link
               href="/terms"
-              className="inline-flex min-h-11 items-center whitespace-nowrap rounded-sm underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex min-h-11 items-center whitespace-nowrap rounded-sm underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               Terms of service
             </Link>
             <span aria-hidden>·</span>
             <Link
               href="/privacy"
-              className="inline-flex min-h-11 items-center whitespace-nowrap rounded-sm underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex min-h-11 items-center whitespace-nowrap rounded-sm underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               Privacy policy
             </Link>
             <span aria-hidden>·</span>
             <Link
               href="/support"
-              className="inline-flex min-h-11 items-center whitespace-nowrap rounded-sm underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex min-h-11 items-center whitespace-nowrap rounded-sm underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               Help
             </Link>

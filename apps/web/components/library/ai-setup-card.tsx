@@ -361,7 +361,7 @@ function AiSetupCardContent({
               setRemoveError(null);
               setConfirmRemove(true);
             }}
-            className="cursor-pointer inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="cursor-pointer inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <Trash2 className="size-3.5" aria-hidden />
             Remove key…
@@ -691,7 +691,7 @@ function AiSetupCardContent({
                 setSaveError(null);
               }}
               className={cn(
-                "min-h-16 rounded-lg border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                "min-h-16 rounded-lg border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50",
                 selectedSource === value ? "border-primary bg-primary/5" : "hover:bg-muted/50",
               )}
             >

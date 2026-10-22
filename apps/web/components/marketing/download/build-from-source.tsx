@@ -59,7 +59,7 @@ export function BuildFromSource() {
               rel="noreferrer noopener"
               className={cn(
                 mono,
-                "group mt-auto inline-flex w-fit items-center gap-1.5 rounded-sm pt-1 text-xs font-medium text-foreground transition-colors hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                "group mt-auto inline-flex w-fit items-center gap-1.5 rounded-sm pt-1 text-xs font-medium text-foreground transition-colors hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus-visible:ring-offset-background",
               )}
             >
               Full walkthrough in the repo

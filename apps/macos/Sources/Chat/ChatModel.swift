@@ -166,7 +166,7 @@ final class ChatModel {
 
     var canSend: Bool {
         let hasText = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return (hasText || !attachments.isEmpty) && !isStreaming && active.missingAttachments.isEmpty && (context.bookmarkIds?.count ?? 0) <= 1000
+        return (hasText || !attachments.isEmpty) && !isStreaming && active.missingAttachments.isEmpty && context.isSupported && (context.bookmarkIds?.count ?? 0) <= 1000
     }
 
     /// Sum of the base64 payload the pending files would add to the message.
@@ -236,6 +236,9 @@ final class ChatModel {
         var notes: [ChatReplyNote] = []
 
         do {
+            if let context = userMessage.context, !context.isSupported {
+                throw ApiError.network("Choose Whole library or select bookmarks before sending. Your draft was kept.")
+            }
             if let scope, let context = userMessage.context, context.type != "library" {
                 let encoded = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(context))
                 let resolved: ContextEnvelope = try await api.organizationRequest("/api/composer/context", method: "POST", body: ["context": encoded], scope: scope)

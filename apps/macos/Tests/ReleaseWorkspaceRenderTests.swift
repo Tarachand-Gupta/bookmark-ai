@@ -20,8 +20,8 @@ final class ReleaseWorkspaceRenderTests: XCTestCase {
         app.auth.seed(status: .signedIn, account: AccountInfo(signedIn: true, accountId: "render-fixture", name: "Fixture account", email: "reader@fixture.test"))
         app.auth.mintOverride = { _ in .token("header.\(Data(#"{"sub":"render-fixture"}"#.utf8).base64EncodedString()).signature") }
         app.organization.bind(accountId: "render-fixture")
-        app.organization.restoreMetadata(OrganizationResponse(capabilities: OrganizationCapabilities(organization: 1, undoDays: 7, context: 1, handoff: 1, maxOperationItems: 500, maxSelectionItems: 10000), folders: [OrganizationFolder(id: "research", name: "Research", parentId: nil, path: "Research", count: 3, directCount: 3, fieldVersions: [:])], categories: [OrganizationLabel(id: "design", name: "Design", count: 3)], tags: [OrganizationLabel(id: "swift", name: "swift", count: 2)]))
-        let rows = (0..<9).map { index in Bookmark(id: "fixture-\(index)", url: "https://fixture.test/\(index)", domain: "fixture.test", title: ["Designing useful library workflows", "A guide to native Mac interaction", "Research notes for the week"][index % 3], description: "A saved reference with a clear purpose and useful context.", og: OpenGraph(), source: BookmarkSource(browser: "safari", device: "desktop", savedAt: "2026-10-16T00:00:00Z"), category: "Design", tags: ["swift"], createdAt: "2026-10-16T00:00:00Z", embedded: false, folderId: "research", categoryId: "design", readingState: .unread, fieldVersions: [:]) }
+        app.organization.restoreMetadata(OrganizationResponse(capabilities: OrganizationCapabilities(organization: 1, undoDays: 7, context: 1, maxOperationItems: 500, maxSelectionItems: 10000), categories: [OrganizationLabel(id: "design", name: "Design", count: 3)], tags: [OrganizationLabel(id: "swift", name: "swift", count: 2)]))
+        let rows = (0..<9).map { index in Bookmark(id: "fixture-\(index)", url: "https://fixture.test/\(index)", domain: "fixture.test", title: ["Designing useful library workflows", "A guide to native Mac interaction", "Research notes for the week"][index % 3], description: "A saved reference with a clear purpose and useful context.", og: OpenGraph(), source: BookmarkSource(browser: "safari", device: "desktop", savedAt: "2026-10-16T00:00:00Z"), category: "Design", tags: ["swift"], createdAt: "2026-10-16T00:00:00Z", embedded: false, categoryId: "design", fieldVersions: [:]) }
         app.library.seed(meta: MetaResponse(categories: [Facet(name: "Design", count: 9)], browsers: [], devices: [], days: [], tags: [Facet(name: "swift", count: 9)], total: 9), bookmarks: rows)
         return app
     }
@@ -71,7 +71,7 @@ final class ReleaseWorkspaceRenderTests: XCTestCase {
         let editor = NSHostingView(rootView: BookmarkEditorView(bookmark: bookmark).environment(app))
         editor.frame = NSRect(x: 0, y: 0, width: 460, height: 700)
         try await settle(editor); try capture(editor, name: "bookmark-editor")
-        let settings = NSHostingView(rootView: PlanSettingsTab().environment(app))
+        let settings = NSHostingView(rootView: AccountSettingsTab().environment(app))
         settings.frame = NSRect(x: 0, y: 0, width: 620, height: 480)
         try await settle(settings); try capture(settings, name: "plan-usage")
     }

@@ -75,7 +75,7 @@ struct LibraryBrowserView: View {
                 ContentUnavailableView(
                     "No Bookmarks",
                     systemImage: "bookmark",
-                    description: Text("Save a link or import your existing bookmarks to get started.")
+                    description: Text("Save a page from the browser extension and it will show up here.")
                 )
             }
         }

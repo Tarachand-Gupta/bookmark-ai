@@ -274,7 +274,7 @@ export function SessionCard({
               }}
               onBlur={cancelEdit}
               aria-label={`Rename ${name}`}
-              className="w-full rounded-md border bg-background px-2 py-0.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-full rounded-md border bg-background px-2 py-0.5 text-sm font-medium outline-none focus-visible:border-ring focus-visible:ring-0 focus-visible:ring-ring"
             />
           ) : (
             <div className="flex items-center gap-1">

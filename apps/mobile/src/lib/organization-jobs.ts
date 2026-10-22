@@ -4,6 +4,17 @@ export interface OrganizationRequest { path: string; method: 'POST'|'PATCH'; bod
 export interface OrganizationJob { id: string; label: string; requests: OrganizationRequest[]; next: number; receipts: OrganizationOperation[]; status: 'paused'|'running'|'uncertain'|'completed'|'failed'; error?: string; createdAt: string; }
 export interface JobAdapter { save(job: OrganizationJob): Promise<void>; send(request: OrganizationRequest): Promise<OrganizationOperation>; reconcile(id: string): Promise<OrganizationOperation|null>; }
 
+/** Keep old recovery data, but never replay a feature removed from this client. */
+export function supportedOrganizationRequest(request:OrganizationRequest):boolean {
+  const changes=request.body.changes;
+  const fields=['title','category','categoryId','tags','tagIds','addTags','removeTags','addTagIds','removeTagIds'];
+  if(changes && (typeof changes!=='object'||Object.keys(changes).some(key=>!fields.includes(key))))return false;
+  if(request.path==='/api/organization/operations') {
+    return ['bookmarks.update','bookmarks.delete','category.create','category.rename','category.remove','tag.create','tag.rename','tag.remove','tag.merge'].includes(String(request.body.action));
+  }
+  return request.path==='/api/bookmarks'||/^\/api\/bookmarks\/[^/]+$/.test(request.path)||/^\/api\/organization\/operations\/[^/]+\/(undo|retry)$/.test(request.path);
+}
+
 /** Immutable batches, including the original field versions for unloaded rows. */
 export function bulkRequests(selection: OrganizationSelection, changes: BulkBookmarkChanges, uuid: () => string, max=500): OrganizationRequest[] {
   if (!selection.count || selection.count !== selection.bookmarkIds.length) throw new Error('Select bookmarks first.');
@@ -22,6 +33,11 @@ export function newOrganizationJob(label:string, requests:OrganizationRequest[],
 export async function runOrganizationJob(initial:OrganizationJob, adapter:JobAdapter, pause:()=>boolean=()=>false):Promise<OrganizationJob> {
   let job=structuredClone(initial);
   if(job.status==='completed') return job;
+  if(job.requests.slice(job.next).some(request=>!supportedOrganizationRequest(request))) {
+    job={...job,status:'failed',error:'This saved change is no longer supported. Its recovery record was kept; no changes were sent.'};
+    await adapter.save(job);
+    return job;
+  }
   const uncertain=job.status==='uncertain'||job.status==='running';
   job={...job,status:'running',error:undefined};
   await adapter.save(job);
@@ -48,8 +64,8 @@ export async function runOrganizationJob(initial:OrganizationJob, adapter:JobAda
 export function jobProgress(job:OrganizationJob):{accepted:number;total:number;succeeded:number;failed:number} {
   return {accepted:job.next,total:job.requests.length,succeeded:job.receipts.reduce((n,r)=>n+r.succeededCount,0),failed:job.receipts.reduce((n,r)=>n+r.failedCount,0)};
 }
-export function fieldLabel(field:string):string { return ({folderId:'Folder',categoryId:'Category',tags:'Tags',title:'Title',readingState:'Reading list',parentId:'Parent folder',name:'Name'} as Record<string,string>)[field]??'Details'; }
+export function fieldLabel(field:string):string { return ({categoryId:'Category',tags:'Tags',title:'Title',name:'Name'} as Record<string,string>)[field]??'Details'; }
 export function selectionContext(ids:string[]):{type:'bookmarks';bookmarkIds:string[]} {
-  if(ids.length>1000) throw new Error('Ask AI can use up to 1,000 selected bookmarks. Narrow the selection, choose a folder, or start a whole-library chat.');
+  if(ids.length>1000) throw new Error('Ask AI can use up to 1,000 selected bookmarks. Narrow the selection or start a whole-library chat.');
   return {type:'bookmarks',bookmarkIds:[...ids]};
 }

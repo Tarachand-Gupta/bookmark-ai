@@ -49,7 +49,7 @@ export function CategoryChip({
       title={`Show everything in ${category}`}
       className={cn(
         base,
-        "transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         className,
       )}
     >

@@ -47,7 +47,7 @@ export function ReasoningPart({ part, live }: { part: ReasoningUIPart; live: boo
     <Collapsible open={open} onOpenChange={setUserOpen} className="not-prose mb-1 w-full">
       <CollapsibleTrigger
         className={cn(
-          "group -ml-1 flex max-w-full items-center gap-1.5 rounded-md py-1 pl-1 pr-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "group -ml-1 flex max-w-full items-center gap-1.5 rounded-md py-1 pl-1 pr-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         )}
         aria-label={streaming ? "Thinking — show the model's reasoning" : `${label} — toggle the model's reasoning`}
       >

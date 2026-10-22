@@ -2,20 +2,19 @@
 
 import { useId, useRef, useState } from "react";
 import { Check, ChevronsUpDown, Plus, X } from "lucide-react";
-import type { OrganizationResponse, ReadingState } from "@bookmark-ai/types";
+import type { OrganizationResponse } from "@bookmark-ai/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const popoverClass = "w-[var(--radix-popover-trigger-width)] min-w-0 max-w-[calc(100vw-32px)] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-0";
 
 /** Editor-only picker: creation is a separate form, never a button inside an option. */
 export function EditorOrganizationField({ label, value, options, emptyLabel, selectedLabel, onChange, onCreate, disabled }: {
-  label: "Folder" | "Topic";
+  label: "Category";
   value: string | null;
   options: { id: string; name: string }[];
   emptyLabel: string;
@@ -47,12 +46,11 @@ export function EditorOrganizationField({ label, value, options, emptyLabel, sel
       <PopoverContent className={popoverClass} collisionPadding={16} onEscapeKeyDown={event => { if (saving) event.preventDefault(); }} onInteractOutside={event => { if (saving) event.preventDefault(); }}>
         {creating ? <div className="space-y-3 p-3">
           <Label htmlFor={`${id}-new`}>New {label.toLowerCase()}</Label>
-          {label === "Folder" && value && <p className="break-words text-xs text-muted-foreground">In {selected}</p>}
           <Input id={`${id}-new`} aria-invalid={!!error} aria-describedby={error ? `${id}-error` : undefined} autoFocus value={name} disabled={disabled} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void create(); } }} placeholder={`${label} name`} className="h-11" />
           {error && <p id={`${id}-error`} role="alert" className="break-words text-xs text-destructive">{error}</p>}
           <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="ghost" className="h-11 px-3" disabled={saving} onClick={() => { setCreating(false); setError(null); }}>Back</Button><Button type="button" className="h-11 px-3" disabled={disabled || !name.trim()} onClick={() => void create()}>{saving ? "Creating…" : "Create"}</Button></div>
         </div> : <Command>
-          <CommandInput aria-label={`Search ${label.toLowerCase()}s`} placeholder={`Find a ${label.toLowerCase()}…`} value={query} onValueChange={setQuery} disabled={disabled} />
+          <CommandInput aria-label={`Search categories`} placeholder={`Find a ${label.toLowerCase()}…`} value={query} onValueChange={setQuery} disabled={disabled} />
           <CommandList className="max-h-[min(240px,40dvh)]">
             <CommandEmpty>No matches.</CommandEmpty>
             <CommandGroup>
@@ -111,12 +109,3 @@ export function EditorTagsField({ tags, onChange, data, onCreate, disabled }: {
 }
 
 /** Membership changes are explicit; toggling off/on retains the draft's read status. */
-export function EditorReadingField({ value, onChange, disabled }: { value: ReadingState; onChange: (value: ReadingState) => void; disabled: boolean }) {
-  const id = useId();
-  const lastOnList = useRef<"read" | "unread">(value === "read" ? "read" : "unread");
-  if (value !== "not_on_list") lastOnList.current = value;
-  return <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3">
-    <Label htmlFor={id} className="min-h-11 cursor-pointer gap-2.5"><Checkbox id={id} disabled={disabled} checked={value !== "not_on_list"} onCheckedChange={checked => onChange(checked === true ? lastOnList.current : "not_on_list")} />Save for later</Label>
-    {value !== "not_on_list" && <Select value={value} disabled={disabled} onValueChange={next => onChange(next as "read" | "unread")}><SelectTrigger aria-label="Reading status" className="h-11 w-28"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="unread" className="min-h-11">Unread</SelectItem><SelectItem value="read" className="min-h-11">Read</SelectItem></SelectContent></Select>}
-  </div>;
-}

@@ -97,7 +97,7 @@ function ComposerPill({ file, onRemove }: { file: FileUIPart; onRemove: () => vo
         onClick={onRemove}
         aria-label={`Remove ${label}`}
         title="Remove"
-        className="cursor-pointer ml-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="cursor-pointer ml-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <X className="size-3" aria-hidden />
       </button>
@@ -213,7 +213,7 @@ export function MessageFiles({ files, className }: { files: FileUIPart[]; classN
                 onClick={() => setLightbox(file)}
                 aria-label={`Open ${label}`}
                 title={label}
-                className="cursor-pointer group relative size-24 cursor-zoom-in overflow-hidden rounded-lg border bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="cursor-pointer group relative size-24 cursor-zoom-in overflow-hidden rounded-lg border bg-background/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- data URL */}
                 <img

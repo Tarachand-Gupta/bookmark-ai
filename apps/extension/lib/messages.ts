@@ -71,7 +71,7 @@ export interface SaveSessionMessage {
   keepOpen?: boolean;
 }
 
-export type SaveBookmarkResult = { ok: true; bookmark: Bookmark } | { ok: false; error: string };
+export type SaveBookmarkResult = { ok: true; bookmark: Bookmark; existing?: boolean } | { ok: false; error: string };
 
 export type SaveSessionResult = { ok: true; session: Session } | { ok: false; error: string };
 

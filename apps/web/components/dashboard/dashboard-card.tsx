@@ -63,7 +63,7 @@ export function DashboardCard({
         {viewAllHref && (
           <Link
             href={viewAllHref}
-            className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             {viewAllLabel}
             <ArrowRight className="size-3.5" aria-hidden />

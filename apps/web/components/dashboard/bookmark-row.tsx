@@ -71,7 +71,7 @@ export function DashboardBookmarkRow({
   );
 
   const shell =
-    "@container flex min-w-0 items-center gap-2.5 px-4 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+    "@container flex min-w-0 items-center gap-2.5 px-4 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
 
   // A non-http(s) URL is never rendered as a link (see safeHref) — the row stays
   // readable, it just isn't clickable.

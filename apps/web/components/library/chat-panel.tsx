@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { appLayoutStore, useAppLayout } from "@/hooks/use-app-layout";
+import { appLayoutStore, useAppLayout, useSidebarWidth } from "@/hooks/use-app-layout";
 
 /** Header height (px) the docked panel sits under — keep in sync with LibraryHeader. */
 const HEADER_PX = 57;
@@ -28,6 +28,7 @@ const DOCK_WIDTH_VAR = "--chat-dock-w";
  */
 export function ChatPanel({ open, hidden, onClose, children }: { open: boolean; hidden?: boolean; onClose?: () => void; children: React.ReactNode }) {
   const { dock, dockWidth, sidebar } = useAppLayout(open);
+  const sidebarWidth = useSidebarWidth();
   const dragging = useRef(false);
   const panel = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -90,7 +91,7 @@ export function ChatPanel({ open, hidden, onClose, children }: { open: boolean; 
   // crosses a mode boundary and wipe the conversation mid-chat.
   const modeClass =
     !open
-      ? "fixed bottom-3 z-30 mx-auto overflow-hidden rounded-2xl border bg-card shadow-lg"
+      ? "fixed bottom-3 z-30 mx-auto overflow-hidden rounded-2xl border border-border/60 bg-card/85 shadow-lg backdrop-blur-xl"
       : dock === "full"
       ? "fixed inset-0 z-40 bg-card"
       : dock === "overlay"
@@ -119,7 +120,7 @@ export function ChatPanel({ open, hidden, onClose, children }: { open: boolean; 
       data-theme-picker-chat={dock}
       aria-label={open ? "Ask AI conversation" : "Ask about your library"}
       className={modeClass}
-      style={{ ...(!open ? { bottom: "calc(12px + env(safe-area-inset-bottom, 0px))", left: sidebar === "mobile" ? 12 : sidebar === "icon" ? 60 : 268, right: 12, maxWidth: 720 } : dock === "side" ? { width: dockWidth, top: HEADER_PX, bottom: 0 } : {}), ...(!open && hidden ? { display: "none" } : {}) }}
+      style={{ ...(!open ? { bottom: "calc(12px + env(safe-area-inset-bottom, 0px))", left: sidebar === "mobile" ? 12 : sidebar === "icon" ? 60 : sidebarWidth + 12, right: 12, maxWidth: sidebar === "mobile" ? undefined : 360 } : dock === "side" ? { width: dockWidth, top: HEADER_PX, bottom: 0 } : {}), ...(!open && hidden ? { display: "none" } : {}) }}
     >
       {/* Drag handle on the panel's left edge — docked mode only. */}
       <div

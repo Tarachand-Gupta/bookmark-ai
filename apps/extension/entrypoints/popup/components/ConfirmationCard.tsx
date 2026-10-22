@@ -13,7 +13,7 @@ import { CheckIcon, ImageIcon, LayersIcon } from "./ui/icons";
  * the web app opening IS the feedback, and this popup dies with its window.
  */
 export type ConfirmationProps =
-  | { variant: "bookmark"; bookmark: Bookmark }
+  | { variant: "bookmark"; bookmark: Bookmark; existing?: boolean }
   | { variant: "session"; session: Session };
 
 export function ConfirmationCard(props: ConfirmationProps) {
@@ -24,7 +24,7 @@ export function ConfirmationCard(props: ConfirmationProps) {
           <CheckIcon className="size-[11px] text-white" strokeWidth={3} />
         </span>
         <p className="text-[13px] font-semibold">
-          {props.variant === "bookmark" ? "Saved to your library" : "Session saved"}
+          {props.variant === "bookmark" ? (props.existing ? "Already saved" : "Saved") : "Session saved"}
         </p>
       </div>
 

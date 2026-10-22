@@ -12,6 +12,7 @@ export interface ChatDraft {
   files: DraftFile[];
   missingFiles: MissingDraftFile[];
   context: ChatContext;
+  contextNeedsReview?: boolean;
   updatedAt: string;
   interrupted: boolean;
 }
@@ -24,11 +25,11 @@ export interface WorkspaceThread extends ChatDraft {
   sourceByMessage: Map<string, string>;
   noteByMessage: Map<string, string>;
   pending: { text: string; files: DraftFile[]; context: ChatContext } | null;
-  recoverable: { text: string; files: DraftFile[]; context: ChatContext } | null;
+  recoverable: { text: string; files: DraftFile[]; context: ChatContext; contextNeedsReview?: boolean } | null;
   lastSubmittedContext: ChatContext | null;
   recoverableMissingFiles?: MissingDraftFile[];
 }
-type StoredDraft = ChatDraft & { recoverable?: { text: string; context: ChatContext; missingFiles: MissingDraftFile[] } };
+type StoredDraft = ChatDraft & { recoverable?: { text: string; context: ChatContext; contextNeedsReview?: boolean; missingFiles: MissingDraftFile[] } };
 type StoredWorkspace = { version: 1; accountId: string; activeKey: string; drafts: StoredDraft[] };
 export const workspaceStorageKey = (accountId: string) => `bmai:composer:v1:${accountId}`;
 const id = () => globalThis.crypto.randomUUID();
@@ -37,7 +38,8 @@ const id = () => globalThis.crypto.randomUUID();
 export function serializeDrafts(accountId: string, activeKey: string, drafts: StoredDraft[]): string {
   return JSON.stringify({ version: 1, accountId, activeKey, drafts: drafts.map(draft => ({
     key: draft.key, conversationId: draft.conversationId, title: draft.title, text: draft.text, context: draft.context, updatedAt: draft.updatedAt, interrupted: draft.interrupted,
-    ...(draft.recoverable ? { recoverable: { text: draft.recoverable.text, context: draft.recoverable.context, missingFiles: draft.recoverable.missingFiles } } : {}),
+    contextNeedsReview: draft.contextNeedsReview,
+    ...(draft.recoverable ? { recoverable: { text: draft.recoverable.text, context: draft.recoverable.context, contextNeedsReview: draft.recoverable.contextNeedsReview, missingFiles: draft.recoverable.missingFiles } } : {}),
     files: [],
     missingFiles: [...draft.missingFiles, ...draft.files.map(file => ({ id: file.id, filename: file.filename ?? "Attachment", mediaType: file.mediaType }))],
   })) } satisfies StoredWorkspace);
@@ -47,8 +49,17 @@ export function restoreDrafts(raw: string | null, accountId: string): StoredWork
   try {
     const stored = JSON.parse(raw ?? "null") as StoredWorkspace | null;
     if (!stored || stored.version !== 1 || stored.accountId !== accountId || !Array.isArray(stored.drafts)) return null;
-    const drafts = stored.drafts.filter(d => typeof d.key === "string" && typeof d.text === "string" && d.text.length <= 32000 && (d.conversationId === null || typeof d.conversationId === "string") && chatContextSchema.safeParse(d.context).success).map(d => ({
-      ...d, files: [], missingFiles: Array.isArray(d.missingFiles) ? d.missingFiles.filter(f => typeof f.id === "string" && typeof f.filename === "string" && typeof f.mediaType === "string") : [],
+    // Preserve old scoped drafts without silently broadening them to the library.
+    const restoreContext = (context: unknown, needsReview: unknown) => {
+      const parsed = chatContextSchema.safeParse(context);
+      return { context: parsed.success ? parsed.data : { type: "library" } as ChatContext, contextNeedsReview: needsReview === true || !parsed.success };
+    };
+    const descriptors = (files: unknown): MissingDraftFile[] => Array.isArray(files) ? files.filter(f => f && typeof f.id === "string" && typeof f.filename === "string" && typeof f.mediaType === "string").map(f => ({ id: f.id, filename: f.filename, mediaType: f.mediaType })) : [];
+    const drafts = stored.drafts.filter(d => d && typeof d.key === "string" && typeof d.text === "string" && d.text.length <= 32000 && (d.conversationId === null || typeof d.conversationId === "string")).map(d => ({
+      ...d, ...restoreContext(d.context, d.contextNeedsReview), files: [], missingFiles: descriptors(d.missingFiles),
+      recoverable: d.recoverable && typeof d.recoverable.text === "string" && d.recoverable.text.length <= 32000 ? {
+        text: d.recoverable.text, ...restoreContext(d.recoverable.context, d.recoverable.contextNeedsReview), missingFiles: descriptors(d.recoverable.missingFiles),
+      } : undefined,
     }));
     return { ...stored, drafts, activeKey: drafts.some(d => d.key === stored.activeKey) ? stored.activeKey : drafts[0]?.key ?? "" };
   } catch { return null; }
@@ -58,10 +69,6 @@ export function contextLabel(context: ChatContext): string {
   switch (context.type) {
     case "library": return "Your library";
     case "bookmarks": return `${context.bookmarkIds.length} selected bookmark${context.bookmarkIds.length === 1 ? "" : "s"}`;
-    case "folder": return "Folder context";
-    case "page": return context.title || new URL(context.url).hostname;
-    case "session": return "Saved session";
-    case "live_window": return "Shared window";
   }
 }
 
@@ -96,7 +103,8 @@ export class ChatWorkspace {
     if (!this.storage) return;
     try { this.storage.setItem(workspaceStorageKey(this.accountId), serializeDrafts(this.accountId, this.activeKey, [...this.threads.values()].map(t => ({
       key: t.key, conversationId: t.conversationId, title: t.title, text: t.text || t.pending?.text || "", files: t.files.length ? t.files : t.pending?.files ?? [], missingFiles: t.missingFiles,
-      recoverable: t.recoverable ? { text: t.recoverable.text, context: t.recoverable.context, missingFiles: [...(t.recoverableMissingFiles ?? []), ...t.recoverable.files.map(f => ({ id: f.id, filename: f.filename ?? "Attachment", mediaType: f.mediaType }))] } : undefined,
+      contextNeedsReview: t.contextNeedsReview,
+      recoverable: t.recoverable ? { text: t.recoverable.text, context: t.recoverable.context, contextNeedsReview: t.recoverable.contextNeedsReview, missingFiles: [...(t.recoverableMissingFiles ?? []), ...t.recoverable.files.map(f => ({ id: f.id, filename: f.filename ?? "Attachment", mediaType: f.mediaType }))] } : undefined,
       context: t.context, updatedAt: t.updatedAt, interrupted: t.interrupted || t.chat.status === "streaming" || t.chat.status === "submitted",
     })))); } catch { /* Storage full/disabled: the active-session draft remains. */ }
   }
@@ -105,6 +113,7 @@ export class ChatWorkspace {
     const thread = {
       key: draft?.key ?? `draft:${id()}`, conversationId: draft?.conversationId ?? null, title: draft?.title ?? "New conversation",
       text: draft?.text ?? "", files: draft?.files ?? [], missingFiles: draft?.missingFiles ?? [], context: draft?.context ?? { type: "library" }, updatedAt: draft?.updatedAt ?? new Date().toISOString(), interrupted: draft?.interrupted ?? false,
+      contextNeedsReview: draft?.contextNeedsReview ?? false,
       source: null, note: null, limit: null, rejection: null, sourceByMessage: new Map(), noteByMessage: new Map(), pending: null, recoverable: null, lastSubmittedContext: null,
     } as WorkspaceThread;
     const transport = new DefaultChatTransport<UIMessage>({
@@ -127,6 +136,7 @@ export class ChatWorkspace {
         return response;
       },
       prepareSendMessagesRequest: ({ messages, trigger }) => {
+        if (thread.contextNeedsReview) throw new Error("Choose a context before sending this saved draft.");
         let timezone: string | undefined;
         try { timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* optional */ }
         const common = { conversationId: thread.conversationId ?? undefined, timezone, context: thread.pending?.context ?? (trigger === "regenerate-message" ? thread.lastSubmittedContext : null) ?? thread.context };
@@ -149,7 +159,7 @@ export class ChatWorkspace {
     thread.chat["~registerStatusCallback"](() => this.notify());
     if (draft?.recoverable && typeof draft.recoverable.text === "string" && chatContextSchema.safeParse(draft.recoverable.context).success) {
       // Keep a recovered failed turn as its own draft; it must not replace newer text.
-      thread.recoverable = { text: draft.recoverable.text, context: draft.recoverable.context, files: [] };
+      thread.recoverable = { text: draft.recoverable.text, context: draft.recoverable.context, contextNeedsReview: draft.recoverable.contextNeedsReview, files: [] };
       thread.recoverableMissingFiles = draft.recoverable.missingFiles ?? [];
     }
     this.threads.set(thread.key, thread);
@@ -160,13 +170,14 @@ export class ChatWorkspace {
   patch(patch: Partial<Pick<ChatDraft, "text" | "files" | "missingFiles" | "context" | "title" | "interrupted">>, key = this.activeKey) {
     const thread = this.threads.get(key); if (!thread || this.disposed) return;
     if (patch.text !== undefined && !thread.conversationId && !thread.chat.messages.length) thread.title = patch.text.trim().slice(0, 80) || "New conversation";
+    if (patch.context) thread.contextNeedsReview = false;
     Object.assign(thread, patch, { updatedAt: new Date().toISOString() }); this.notify();
   }
   select(key: string) { if (this.threads.has(key)) { this.activeKey = key; this.notify(); } }
   findConversation(conversationId: string) { return [...this.threads.values()].find(t => t.conversationId === conversationId); }
   send(text = this.active.text, files: FileUIPart[] = this.active.files) {
     const thread = this.active;
-    if (this.disposed || thread.chat.status === "streaming" || thread.chat.status === "submitted" || thread.pending || thread.missingFiles.length || (!text.trim() && !files.length)) return;
+    if (this.disposed || thread.contextNeedsReview || thread.chat.status === "streaming" || thread.chat.status === "submitted" || thread.pending || thread.missingFiles.length || (!text.trim() && !files.length)) return;
     thread.pending = { text, files: files.map((f, index) => ({ ...f, id: thread.files[index]?.id ?? id() })), context: structuredClone(thread.context) };
     thread.lastSubmittedContext = thread.pending.context;
     thread.text = ""; thread.files = []; thread.limit = null; thread.rejection = null; thread.interrupted = false;
@@ -188,7 +199,7 @@ export class ChatWorkspace {
     const recovered = thread.recoverable;
     const missingFiles = thread.recoverableMissingFiles ?? [];
     thread.recoverable = null; thread.recoverableMissingFiles = [];
-    this.create({ text: recovered.text, files: recovered.files, context: recovered.context, missingFiles, title: "Recovered draft" });
+    this.create({ text: recovered.text, files: recovered.files, context: recovered.context, contextNeedsReview: recovered.contextNeedsReview, missingFiles, title: "Recovered draft" });
   }
   discardFailedTurn(key = this.activeKey) {
     const thread = this.threads.get(key); if (!thread) return;

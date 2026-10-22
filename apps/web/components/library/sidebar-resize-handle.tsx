@@ -32,7 +32,7 @@ export function SidebarResizeHandle() {
       aria-valuetext={`${width} pixels`}
       tabIndex={0}
       title="Drag to resize. Arrow keys adjust width; double-click to reset."
-      className="absolute inset-y-0 -right-1.5 z-30 w-3 touch-none cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent hover:after:bg-primary/40 focus-visible:after:bg-ring"
+      className="absolute inset-y-0 -right-1.5 z-30 w-3 touch-none cursor-col-resize outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent hover:after:bg-primary/40 focus-visible:after:bg-ring focus-visible:after:w-px"
       onPointerDown={event => {
         if (event.button !== 0) return;
         event.preventDefault();

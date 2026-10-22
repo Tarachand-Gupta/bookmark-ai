@@ -175,7 +175,7 @@ function PromptGrid({
             onClick={() => onPick(prompt.text)}
             className={cn(
               "cursor-pointer group flex items-center gap-2 rounded-lg border bg-background px-2.5 py-2 text-left text-xs leading-snug transition-colors",
-              "hover:border-primary/40 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "hover:border-primary/40 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
               // Wide: a tile with the icon and question grouped together (a
               // justify-between here left a void in the card's middle — owner
               // feedback), min-height only for row alignment.

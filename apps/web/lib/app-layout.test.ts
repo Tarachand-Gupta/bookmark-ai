@@ -337,7 +337,7 @@ describe("store transitions", () => {
 describe("resizable sidebar", () => {
   it("bounds invalid, too narrow, and too wide preferences", () => {
     expect(clampSidebarWidth(NaN)).toBe(256);
-    expect(clampSidebarWidth(80)).toBe(220);
+    expect(clampSidebarWidth(80)).toBe(256);
     expect(clampSidebarWidth(900)).toBe(360);
     expect(clampSidebarWidth(300.4)).toBe(300);
   });

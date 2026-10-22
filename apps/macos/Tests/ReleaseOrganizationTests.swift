@@ -5,11 +5,11 @@ import XCTest
 final class ReleaseOrganizationTests: XCTestCase {
     private func snapshot(_ count: Int) -> OrganizationSelection {
         let ids = (0..<count).map { "bookmark-\($0)" }
-        return OrganizationSelection(id: "frozen", bookmarkIds: ids, fieldVersions: Dictionary(uniqueKeysWithValues: ids.map { ($0, ["title": "v-\($0)", "folderId": "0"]) }), count: count, createdAt: "2026-10-16T00:00:00Z", expiresAt: "2026-10-17T00:00:00Z", scope: "query", limited: false)
+        return OrganizationSelection(id: "frozen", bookmarkIds: ids, fieldVersions: Dictionary(uniqueKeysWithValues: ids.map { ($0, ["title": "v-\($0)", "categoryId": "0"]) }), count: count, createdAt: "2026-10-16T00:00:00Z", expiresAt: "2026-10-17T00:00:00Z", scope: "query", limited: false)
     }
     func testFrozenSelectionBatchesNeverTruncateAndKeepEveryVersion() throws {
         let snapshot = snapshot(1201)
-        let batches = OrganizationModel.batches(selection: snapshot, changes: ["readingState": .string("read")], size: 900)
+        let batches = OrganizationModel.batches(selection: snapshot, changes: ["categoryId": .string("research")], size: 900)
         XCTAssertEqual(batches.map { $0.body["bookmarkIds"]?.arrayValue?.count }, [500, 500, 201])
         let all = batches.flatMap { $0.body["bookmarkIds"]?.arrayValue?.compactMap(\.stringValue) ?? [] }
         XCTAssertEqual(all, snapshot.bookmarkIds)
@@ -21,25 +21,17 @@ final class ReleaseOrganizationTests: XCTestCase {
             }
         }
     }
-    func testCanonicalReadingDoesNotTreatExplicitRemovalAsLegacyMembership() throws {
-        let data = Data(#"{"id":"b","url":"https://fixture.test","domain":"fixture.test","title":"Fixture","og":{},"source":{"browser":"other","device":"desktop","savedAt":"2026-10-16T00:00:00Z"},"category":"Research","tags":["reading"],"createdAt":"2026-10-16T00:00:00Z","embedded":false}"#.utf8)
-        var bookmark = try JSONDecoder().decode(Bookmark.self, from: data)
-        XCTAssertEqual(bookmark.canonicalReadingState, .unread)
-        bookmark.readingState = .notOnList
-        XCTAssertEqual(bookmark.canonicalReadingState, .notOnList)
-        XCTAssertEqual(try JSONDecoder().decode(Bookmark.self, from: JSONEncoder().encode(bookmark)).readingState, .notOnList)
-    }
     func testPartialUndoNamesRestoredFieldsAndDoesNotExposeIdentity() {
-        let item = OrganizationItemResult(id: "opaque-private-id", status: "conflict", changedFields: ["folderId"], error: OrganizationItemError(code: "conflict", message: "The title was edited later.", fields: ["title"]), entityType: "bookmark", label: "A useful link")
+        let item = OrganizationItemResult(id: "opaque-private-id", status: "conflict", changedFields: ["categoryId"], error: OrganizationItemError(code: "conflict", message: "The title was edited later.", fields: ["title"]), entityType: "bookmark", label: "A useful link")
         XCTAssertEqual(item.displayLabel, "A useful link")
-        XCTAssertEqual(item.detail, "Updated folder. The title was edited later.")
+        XCTAssertEqual(item.detail, "Updated category. The title was edited later.")
         XCTAssertFalse(item.detail.contains(item.id))
     }
     func testNewContextWireHasOnlySupportedFields() throws {
-        let context = ChatContext(type: "folder", folderId: "folder", includeSubfolders: true, title: "Research / Native")
+        let context = ChatContext.bookmarks(["b1", "b2"])
         let body = try JSONSerialization.jsonObject(with: JSONEncoder().encode(context)) as! [String: Any]
         XCTAssertNil(body["title"])
-        XCTAssertEqual(body["folderId"] as? String, "folder")
+        XCTAssertEqual(body["bookmarkIds"] as? [String], ["b1", "b2"])
         let turn = ChatTurnBody.make(message: .user(text: "Compare"), conversationId: nil, timezone: "UTC", context: .bookmarks(["b1", "b2"]))
         XCTAssertEqual(turn.context?.bookmarkIds, ["b1", "b2"])
     }
@@ -78,7 +70,7 @@ final class ReleaseOrganizationTests: XCTestCase {
         catch { XCTAssertEqual(error as? ApiError, .noToken) }
         XCTAssertTrue(Stub.requests.isEmpty)
     }
-    private static let capabilities = Data(#"{"capabilities":{"organization":1,"undoDays":7,"context":1,"handoff":1,"maxOperationItems":500,"maxSelectionItems":10000},"folders":[],"categories":[],"tags":[]}"#.utf8)
+    private static let capabilities = Data(#"{"capabilities":{"organization":1,"undoDays":7,"context":1,"maxOperationItems":500,"maxSelectionItems":10000},"categories":[],"tags":[]}"#.utf8)
     private func client() -> ApiClient {
         Stub.requests = []; Stub.handler = nil
         let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [Stub.self]

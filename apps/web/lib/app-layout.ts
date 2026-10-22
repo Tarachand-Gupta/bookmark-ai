@@ -35,7 +35,7 @@ export const MOBILE_BREAKPOINT_PX = 768;
 export const FULL_DOCK_BREAKPOINT_PX = 640;
 /** 16rem — SIDEBAR_WIDTH in components/ui/sidebar.tsx. */
 export const SIDEBAR_EXPANDED_PX = 256;
-export const SIDEBAR_MIN_PX = 220;
+export const SIDEBAR_MIN_PX = 256;
 export const SIDEBAR_MAX_PX = 360;
 
 export function clampSidebarWidth(width: number): number {

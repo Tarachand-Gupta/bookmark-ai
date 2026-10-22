@@ -1,17 +1,15 @@
 /** A device preference only: never include account IDs or bookmark metadata. */
-export type BookmarkView = "grid" | "table";
+export type BookmarkView = "grid" | "list" | "compact";
 export const BOOKMARK_VIEW_KEY = "bookmark-ai:view";
 export const BOOKMARK_VIEW_BREAKPOINT = 768;
 export const SMALL_BOOKMARK_GRID_COLUMNS = "grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))]";
 
 export function parseBookmarkView(value: unknown): BookmarkView | null {
-  if (value === "list" || value === "compact") return "table";
-  return value === "grid" || value === "table" ? value : null;
+  return value === "grid" || value === "list" || value === "compact" ? value : null;
 }
 
 export function resolveBookmarkView(choice: BookmarkView | null, width: number): BookmarkView {
-  // Phones retain the original image-led cards regardless of the desktop choice.
-  return width < BOOKMARK_VIEW_BREAKPOINT ? "grid" : choice ?? "grid";
+  return choice ?? "grid";
 }
 
 type StorageAccess = () => Pick<Storage, "getItem" | "setItem" | "removeItem">;

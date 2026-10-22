@@ -36,7 +36,6 @@ export interface LibraryHeaderProps {
   onQueryChange?: (q: string) => void;
   onAskAi?: () => void;
   onOpenAccount?: () => void;
-  searchPlaceholder?: string;
 }
 
 /**
@@ -55,7 +54,6 @@ export function LibraryHeader({
   onQueryChange,
   onAskAi,
   onOpenAccount,
-  searchPlaceholder = "Search bookmarks & sessions…",
 }: LibraryHeaderProps) {
   return (
     // px-3 at mobile widths: the search row wraps onto its own line there, and
@@ -70,7 +68,7 @@ export function LibraryHeader({
           <button
             type="button"
             onClick={onRootClick}
-            className="cursor-pointer min-h-11 shrink-0 truncate rounded-sm text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-8 [@media(pointer:coarse)]:min-h-11 text-muted-foreground transition-colors hover:text-foreground sm:text-base"
+            className="cursor-pointer min-h-11 shrink-0 truncate rounded-sm text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring md:min-h-8 [@media(pointer:coarse)]:min-h-11 text-muted-foreground transition-colors hover:text-foreground sm:text-base"
           >
             {title}
           </button>
@@ -100,9 +98,9 @@ export function LibraryHeader({
             <Input
               value={query ?? ""}
               onChange={(e) => onQueryChange(e.target.value)}
-              placeholder={searchPlaceholder}
+              placeholder="Search bookmarks & sessions…"
               className={cn("h-11 pl-8 md:h-9 [@media(pointer:coarse)]:h-11", query ? "pr-12 md:pr-10 [@media(pointer:coarse)]:pr-12" : "pr-3")}
-              aria-label={searchPlaceholder === "Search this folder…" ? "Search this folder" : "Search bookmarks and sessions"}
+              aria-label="Search bookmarks and sessions"
             />
             {query && (
               <button
@@ -158,7 +156,7 @@ function AuthControls({onOpenAccount}: {onOpenAccount?: () => void}) {
       {!isLoaded ? (
         <div className="size-8 animate-pulse rounded-full bg-muted" aria-hidden />
       ) : isSignedIn ? (
-        <a href={userProfileUrl} onClick={event => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onOpenAccount?.(); window.history.pushState(null, "", userProfileUrl); }} className="flex size-11 items-center justify-center rounded-full border bg-muted text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring md:size-9 [@media(pointer:coarse)]:size-11" aria-label="Manage account"><Avatar className="size-9"><AvatarImage src={user?.imageUrl || undefined} alt="" /><AvatarFallback>{user?.firstName?.slice(0, 1) || details?.me?.name?.slice(0, 1) || "A"}</AvatarFallback></Avatar></a>
+        <a href={userProfileUrl} onClick={event => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onOpenAccount?.(); window.history.pushState(null, "", userProfileUrl); }} className="flex size-11 items-center justify-center rounded-full border bg-muted text-sm font-medium outline-none focus-visible:ring-1 focus-visible:ring-ring md:size-9 [@media(pointer:coarse)]:size-11" aria-label="Manage account"><Avatar className="size-9"><AvatarImage src={user?.imageUrl || undefined} alt="" /><AvatarFallback>{user?.firstName?.slice(0, 1) || details?.me?.name?.slice(0, 1) || "A"}</AvatarFallback></Avatar></a>
       ) : (
         <div className="flex items-center gap-1.5"><a href="/sign-in" className="text-sm">Sign in</a><a href="/sign-up" className="text-sm">Sign up</a></div>
       )}

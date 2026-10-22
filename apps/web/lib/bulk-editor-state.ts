@@ -20,16 +20,14 @@ export function clearCompletedBulkJob(storage: BatchStorage, job: OrganizationBa
   if (job.state !== "complete" || job.batches.some(batch => !batch.receipt)) return;
   if (readPendingBulkJob(storage, job.accountId)?.id === job.id) storage.removeItem(batchStorageKey(job.accountId));
 }
-export function bulkDestination(action: "move" | "category", destination: string | null | undefined, data: Pick<OrganizationResponse, "folders" | "categories">) {
-  if (destination === undefined) return { valid: false, label: action === "move" ? "Choose a folder" : "Choose a topic" };
-  if (destination === null) return { valid: true, label: action === "move" ? "Unsorted" : "No topic" };
-  const label = action === "move" ? data.folders.find(folder => folder.id === destination)?.path : data.categories.find(category => category.id === destination)?.name;
-  return { valid: !!label, label: label ?? (action === "move" ? "Folder no longer available" : "Topic no longer available") };
+export function bulkDestination(action: "category", destination: string | null | undefined, data: Pick<OrganizationResponse, "categories">) {
+  if (destination === undefined) return { valid: false, label: "Choose a category" };
+  if (destination === null) return { valid: true, label: "No category" };
+  const label = data.categories.find(category => category.id === destination)?.name;
+  return { valid: !!label, label: label ?? "Category no longer available" };
 }
-export function bulkChangeDescription(changes: BulkBookmarkChanges, data: Pick<OrganizationResponse, "folders" | "categories">) {
-  if ("folderId" in changes) return `Move to ${bulkDestination("move", changes.folderId, data).label}`;
-  if ("categoryId" in changes) return `Set topic to ${bulkDestination("category", changes.categoryId, data).label}`;
-  if (changes.readingState) return `Reading status: ${{ unread: "Unread", read: "Read", not_on_list: "Not on reading list" }[changes.readingState]}`;
+export function bulkChangeDescription(changes: BulkBookmarkChanges, data: Pick<OrganizationResponse, "categories">) {
+  if ("categoryId" in changes) return `Set category to ${bulkDestination("category", changes.categoryId, data).label}`;
   return changes.addTags ? `Add tags: ${changes.addTags.join(", ")}` : `Remove tags: ${changes.removeTags?.join(", ")}`;
 }
 

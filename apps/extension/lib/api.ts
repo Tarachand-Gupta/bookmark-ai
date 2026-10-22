@@ -393,8 +393,15 @@ export async function createBookmark(
   input: CreateBookmarkInput,
   options: { analytics?: boolean } = {},
 ): Promise<Bookmark> {
-  const data = await postJson<{ bookmark: Bookmark }>("/api/bookmarks", input, options.analytics);
-  return data.bookmark;
+  return (await createBookmarkResult(input, options)).bookmark;
+}
+
+/** Preserve the server duplicate verdict and existing title for popup feedback. */
+export function createBookmarkResult(
+  input: CreateBookmarkInput,
+  options: { analytics?: boolean } = {},
+): Promise<{ bookmark: Bookmark; existing?: boolean }> {
+  return postJson("/api/bookmarks", input, options.analytics);
 }
 
 /** POST /api/sessions — save a snapshot of the open tabs. */

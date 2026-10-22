@@ -88,7 +88,7 @@ export function ToolCallCard({
         aria-expanded={open}
         title={open ? "Hide details" : "Show what was sent and received"}
         className={cn(
-          "cursor-pointer flex w-full items-center gap-2 bg-muted/40 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          "cursor-pointer flex w-full items-center gap-2 bg-muted/40 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
           (body || open || (view.phase === "error" && view.errorText)) && "border-b",
         )}
       >

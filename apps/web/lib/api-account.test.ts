@@ -6,7 +6,7 @@ afterEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks();});
 describe("account-bound async API headers",()=>{
   it("does not send an old account's mutation with credentials resolved after an account switch",async()=>{
     let release!: (token:string)=>void;auth.getAccessToken.mockImplementation(()=>new Promise(r=>{release=r;}));auth.getSession.mockResolvedValue({data:{session:{user:{id:"new-account"}}}});const fetch=vi.fn();vi.stubGlobal("fetch",fetch);
-    const request=applyOrganizationOperation({operationId:"operation-id",action:"bookmarks.update",bookmarkIds:["private-id"],changes:{folderId:null}},"original-account");release("new-account-test-token");await expect(request).rejects.toThrow("account changed");expect(fetch).not.toHaveBeenCalled();
+    const request=applyOrganizationOperation({operationId:"operation-id",action:"bookmarks.update",bookmarkIds:["private-id"],changes:{categoryId:null}},"original-account");release("new-account-test-token");await expect(request).rejects.toThrow("account changed");expect(fetch).not.toHaveBeenCalled();
   });
   it("rejects a mismatched token even when the later session belongs to the requested account",async()=>{
     auth.getAccessToken.mockResolvedValue("account-a-token");auth.getSession.mockResolvedValue({data:{session:{user:{id:"account-b"},access_token:"account-b-token"}}});await expect(apiHeadersForAccount("account-b")).rejects.toThrow("account changed");

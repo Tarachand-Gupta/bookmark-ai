@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Bookmark } from "@bookmark-ai/types";
 import { useOrganization } from "../context/OrganizationContext";
 import { useOrganizationUi } from "../context/OrganizationUiContext";
@@ -12,7 +12,7 @@ import { openBookmark, showBookmarkActions } from "../lib/bookmarkActions";
 export function BookmarkRow({ bookmark, last, selecting=false, selected=false, onSelect }: { bookmark: Bookmark; last?: boolean; selecting?:boolean; selected?:boolean; onSelect?:(bookmark:Bookmark)=>void }) {
   const org=useOrganization(),ui=useOrganizationUi(),composer=useComposer();
   const supported=!!org.data?.capabilities.organization&&!!org.accountId&&!org.offline;
-  const menu=()=>showBookmarkActions(bookmark,supported?{edit:()=>ui?.edit(bookmark),select:onSelect?()=>onSelect(bookmark):undefined,ask:()=>composer.open({type:'bookmarks',bookmarkIds:[bookmark.id]}),reading:()=>Alert.alert('Reading list',bookmark.title,[{text:'Mark unread',onPress:()=>ui?.reading(bookmark,'unread')},{text:'Mark read',onPress:()=>ui?.reading(bookmark,'read')},{text:'Remove from reading list',onPress:()=>ui?.reading(bookmark,'not_on_list')},{text:'Cancel',style:'cancel'}])}:{});
+  const menu=()=>showBookmarkActions(bookmark,supported?{edit:()=>ui?.edit(bookmark),select:onSelect?()=>onSelect(bookmark):undefined,ask:()=>composer.open({type:'bookmarks',bookmarkIds:[bookmark.id]})}:{});
   const { colors } = useAppTheme();
   return (
     <Pressable

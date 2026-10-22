@@ -17,7 +17,6 @@ import { ContentWidthContext } from "./src/context/ContentWidthContext";
 import { OrganizationProvider, useOrganization } from "./src/context/OrganizationContext";
 import { ComposerProvider, useComposer } from "./src/context/ComposerContext";
 import { OrganizationUiProvider, useOrganizationUi } from "./src/context/OrganizationUiContext";
-import { ImportBookmarksSheet } from "./src/components/onboarding/ImportBookmarksSheet";
 import { setAuthTokenProvider } from "./src/api";
 import { LaunchScreen } from "./src/components/LaunchScreen";
 import { ShareSavedBanner } from "./src/components/ShareSavedBanner";
@@ -230,8 +229,6 @@ function ShellContent({
 }) {
   const composer=useComposer(),org=useOrganization(),workspace=useWorkspace();
   const {width}=useWindowDimensions();
-  const [importOpen,setImportOpen]=useState(false);
-  const [readingRequest,setReadingRequest]=useState<string|null>(null);
   const [tab, setTab] = useState<TabKey>(initialTab);
   const [filterSheetOpen, setFilterSheetOpen] = useState(INITIAL === "filters");
   // Settings is a presentation, not a tab: one shell-level flag, opened from
@@ -269,7 +266,6 @@ function ShellContent({
   const navigate = useCallback((target: NavTarget) => {
     setTab(target.tab);
     if (target.tab === "library") {
-      if (target.readingState !== undefined) setReadingRequest(target.readingState);
       if (target.tag !== undefined) setLibraryTag(target.tag);
       if (target.add === true) {
         setAddSheetUrl(null);
@@ -316,7 +312,7 @@ function ShellContent({
     return () => sub.remove();
   }, []);
 
-  useEffect(()=>{composer.block("shell-sheet",settingsOpen||filterSheetOpen||addSheetOpen||importOpen);return()=>composer.block("shell-sheet",false)},[settingsOpen,filterSheetOpen,addSheetOpen,importOpen,composer.block]);
+  useEffect(()=>{composer.block("shell-sheet",settingsOpen||filterSheetOpen||addSheetOpen);return()=>composer.block("shell-sheet",false)},[settingsOpen,filterSheetOpen,addSheetOpen,composer.block]);
 
   // Android's frosted tab bar samples this wrapper (expo-blur blurTarget);
   // it's a plain passthrough view on iOS.
@@ -332,16 +328,12 @@ function ShellContent({
               active={tab === "home"}
               onNavigate={navigate}
               onOpenSettings={openSettings}
-              onImport={()=>setImportOpen(true)}
               refreshSignal={savedSignal+org.revision}
             />
           </View>
           <View style={[styles.screen, tab !== "library" && styles.hidden]}>
             <LibraryScreen
               active={tab === "library"}
-              onImport={()=>setImportOpen(true)}
-              requestedReading={readingRequest}
-              onReadingHandled={()=>setReadingRequest(null)}
               filterSheetOpen={filterSheetOpen}
               onFilterSheetChange={setFilterSheetOpen}
               addSheetOpen={addSheetOpen}
@@ -375,7 +367,6 @@ function ShellContent({
       {!composer.expanded&&<TabBar tab={tab} onChange={setTab} blurTarget={blurTargetRef} />}
       {/* A native full-screen modal, so it covers the floating tab bar too. */}
       <SettingsPresentation visible={settingsOpen} onClose={closeSettings} />
-      <ImportBookmarksSheet visible={importOpen} onClose={()=>setImportOpen(false)} onImported={()=>{org.changed();setSavedSignal(n=>n+1)}}/>
       {share.notice !== null && (
         <ShareSavedBanner notice={share.notice} onDismiss={share.dismiss} />
       )}

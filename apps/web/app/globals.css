@@ -22,6 +22,11 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Keep native keyboard outlines as thin as the component focus rings. */
+  :focus-visible {
+    outline-width: 1px;
+    outline-offset: 0;
+  }
 }
 
 /* -------------------------------------------------------------------------

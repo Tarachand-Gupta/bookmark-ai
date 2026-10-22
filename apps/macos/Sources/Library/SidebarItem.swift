@@ -4,9 +4,6 @@ import Foundation
 /// selection value and can later be persisted with `@SceneStorage`.
 enum SidebarItem: Hashable, Codable, Identifiable, Sendable {
     case allBookmarks
-    case unsorted
-    case readingList
-    case folder(String, String)
     case chat
     case sessions
     case liveTabs
@@ -16,9 +13,6 @@ enum SidebarItem: Hashable, Codable, Identifiable, Sendable {
     var id: String {
         switch self {
         case .allBookmarks: "all"
-        case .unsorted: "unsorted"
-        case .readingList: "reading"
-        case .folder(let id, _): "folder:\(id)"
         case .chat: "chat"
         case .sessions: "sessions"
         case .liveTabs: "live"
@@ -31,9 +25,6 @@ enum SidebarItem: Hashable, Codable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .allBookmarks: "All Bookmarks"
-        case .unsorted: "Unsorted"
-        case .readingList: "Reading list"
-        case .folder(_, let path): path
         case .chat: "Ask AI"
         case .sessions: "Sessions"
         case .liveTabs: "Live Tabs"
@@ -48,14 +39,11 @@ enum SidebarItem: Hashable, Codable, Identifiable, Sendable {
     var symbolName: String {
         switch self {
         case .allBookmarks: "bookmark"
-        case .unsorted: "tray"
-        case .readingList: "book"
-        case .folder: "folder"
         case .chat: "sparkles"
         case .sessions: "rectangle.stack"
         case .liveTabs: "dot.radiowaves.left.and.right"
-        case .category: "square.grid.2x2"
-        case .tag: "tag"
+        case .category: "folder"
+        case .tag: "number"
         }
     }
 
@@ -63,17 +51,12 @@ enum SidebarItem: Hashable, Codable, Identifiable, Sendable {
     /// change should reload it). The feature views manage their own data.
     var isLibraryFilter: Bool {
         switch self {
-        case .allBookmarks, .unsorted, .readingList, .folder, .category, .tag: true
+        case .allBookmarks, .category, .tag: true
         case .chat, .sessions, .liveTabs: false
         }
     }
 
     /// Query parameters this selection maps to on `GET /api/bookmarks`.
-    var folderFilter: String? {
-        if case .folder(let id, _) = self { return id }
-        return self == .unsorted ? "unsorted" : nil
-    }
-
     var categoryFilter: String? {
         if case .category(let name) = self { return name }
         return nil

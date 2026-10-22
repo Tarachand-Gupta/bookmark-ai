@@ -45,8 +45,6 @@ final class LibraryModel {
     var selection: SidebarItem = .allBookmarks
     var selectedIDs: Set<String> = []
     var selectionAnchor: String?
-    var includeSubfolders = true { didSet { if includeSubfolders != oldValue { Task { await refresh(); await search(searchText) } } } }
-    var readingFilter = "on_list" { didSet { if readingFilter != oldValue { Task { await refresh(); await search(searchText) } } } }
     func choose(_ id: String, modifiers: NSEvent.ModifierFlags = []) {
         let ids = visibleBookmarks.map(\.id)
         if modifiers.contains(.shift), let anchor = selectionAnchor, let a = ids.firstIndex(of: anchor), let b = ids.firstIndex(of: id) {
@@ -58,12 +56,10 @@ final class LibraryModel {
     }
     var organizationFilters: [String: JSONValue] {
         var result: [String: JSONValue] = [:]
-        if let value = selection.folderFilter { result["folderId"] = .string(value); result["includeSubfolders"] = .bool(includeSubfolders) }
         if let value = selection.categoryFilter { result["category"] = .string(value) }
         if let value = selection.tagFilter { result["tag"] = .string(value) }
         if let browserFilter { result["browser"] = .string(browserFilter) }
         if let deviceFilter { result["device"] = .string(deviceFilter) }
-        if selection == .readingList { result["readingState"] = .string(readingFilter) }
         return result
     }
     var organizationQueryItems: [URLQueryItem] {
@@ -73,7 +69,6 @@ final class LibraryModel {
     }
     var proposedChatContext: ChatContext {
         if !selectedIDs.isEmpty { return .bookmarks(selectedIDs.sorted()) }
-        if case .folder(let id, let path) = selection { return ChatContext(type: "folder", folderId: id, includeSubfolders: includeSubfolders, title: path) }
         return .library
     }
 
@@ -114,7 +109,6 @@ final class LibraryModel {
     private var unfilteredBookmarks: [Bookmark]?
     private var unfilteredTotal: Int?
 
-    var cachedFolders: [OrganizationFolder] = []
     var isReadOnly = false
     var onLoaded: (() -> Void)?
     private let api: ApiClient
@@ -131,18 +125,6 @@ final class LibraryModel {
     var visibleBookmarks: [Bookmark] {
         if let searchResults { return searchResults.map(\.bookmark) }
         let rows = isReadOnly ? bookmarks.filter { bookmark in
-            if selection == .unsorted && bookmark.folderId != nil { return false }
-            if case .folder(let id, _) = selection, bookmark.folderId != id {
-                guard includeSubfolders, let child = bookmark.folderId else { return false }
-                var parent = cachedFolders.first { $0.id == child }?.parentId
-                var seen = Set<String>()
-                while let candidate = parent, candidate != id, seen.insert(candidate).inserted { parent = cachedFolders.first { $0.id == candidate }?.parentId }
-                if parent != id { return false }
-            }
-            if selection == .readingList {
-                if readingFilter == "on_list" && bookmark.canonicalReadingState == .notOnList { return false }
-                if readingFilter != "on_list" && bookmark.canonicalReadingState.rawValue != readingFilter { return false }
-            }
             if let category = selection.categoryFilter, bookmark.category != category { return false }
             if let tag = selection.tagFilter, !bookmark.tags.contains(tag) { return false }
             if let browserFilter, bookmark.source.browser != browserFilter { return false }
@@ -218,8 +200,7 @@ final class LibraryModel {
             tag: selection.tagFilter,
             browser: browserFilter,
             device: deviceFilter,
-            limit: 200,
-            organizationFilters: organizationQueryItems.filter { ["folderId", "includeSubfolders", "readingState"].contains($0.name) }
+            limit: 200
         )
 
         do {
@@ -388,7 +369,7 @@ final class LibraryModel {
     /// Drop everything and reload — used when the server target changes and on
     /// every sign-out, so no row from the old backend or account can survive.
     func reset() {
-        isReadOnly = false; cachedFolders = []
+        isReadOnly = false
         loadTask?.cancel()
         searchTask?.cancel()
         bookmarks = []

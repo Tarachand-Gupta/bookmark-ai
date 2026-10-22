@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { httpUrlSchema } from "./bookmark";
 
 export const ORGANIZATION_CAPABILITIES = {
   organization: 1,
@@ -10,8 +9,6 @@ export const ORGANIZATION_CAPABILITIES = {
   maxSelectionItems: 10000,
 } as const;
 export const MAX_ORGANIZATION_SELECTION = 10_000;
-export const readingStateSchema = z.enum(["not_on_list", "unread", "read"]);
-export type ReadingState = z.infer<typeof readingStateSchema>;
 export const organizationNameSchema = z.string().trim().min(1, "Name is required").max(80);
 export const tagNameSchema = z.string().trim().min(1, "Tag is required").max(40);
 export const operationIdSchema = z.string().min(8).max(128);
@@ -19,10 +16,8 @@ const id = z.string().min(1).max(200);
 export const fieldVersionsSchema = z.record(z.string());
 const changesShape = {
   title: z.string().trim().min(1).max(2_000).optional(),
-  folderId: id.nullable().optional(),
   categoryId: id.nullable().optional(),
   tags: z.array(tagNameSchema).max(1000).optional(),
-  readingState: readingStateSchema.optional(),
 };
 export const bookmarkChangesSchema = z
   .object(changesShape)
@@ -39,9 +34,7 @@ export const updateBookmarkSchema = z
 export type UpdateBookmarkInput = z.infer<typeof updateBookmarkSchema>;
 export const bulkBookmarkChangesSchema = z
   .object({
-    folderId: changesShape.folderId,
     categoryId: changesShape.categoryId,
-    readingState: changesShape.readingState,
     addTags: z.array(tagNameSchema).max(10).optional(),
     removeTags: z.array(tagNameSchema).max(1000).optional(),
   })
@@ -58,33 +51,6 @@ export const organizationOperationSchema = z.discriminatedUnion("action", [
       selectionId: id.optional(),
       changes: bulkBookmarkChangesSchema,
       expected: z.record(fieldVersionsSchema).optional(),
-    })
-    .strict(),
-  z
-    .object({
-      ...op,
-      action: z.literal("folder.create"),
-      name: organizationNameSchema,
-      parentId: id.nullable().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      ...op,
-      action: z.literal("folder.update"),
-      id,
-      name: organizationNameSchema.optional(),
-      parentId: id.nullable().optional(),
-      expected: fieldVersionsSchema.optional(),
-    })
-    .strict(),
-  z
-    .object({
-      ...op,
-      action: z.literal("folder.remove"),
-      id,
-      destinationId: id.nullable(),
-      children: z.enum(["destination", "parent"]),
     })
     .strict(),
   z.object({ ...op, action: z.literal("category.create"), name: organizationNameSchema }).strict(),
@@ -108,7 +74,7 @@ export interface OrganizationItemError {
 }
 export interface OrganizationItemResult {
   id: string;
-  entityType?: "bookmark" | "folder" | "category" | "tag";
+  entityType?: "bookmark" | "category" | "tag";
   label?: string;
   status: "succeeded" | "failed" | "unchanged" | "conflict";
   changedFields?: string[];
@@ -132,15 +98,6 @@ export interface OrganizationOperation {
   succeededFieldCount?: number;
   failedFieldCount?: number;
 }
-export interface OrganizationFolder {
-  id: string;
-  name: string;
-  parentId: string | null;
-  path: string;
-  count: number;
-  directCount: number;
-  fieldVersions: Record<string, string>;
-}
 export interface OrganizationLabel {
   id: string;
   name: string;
@@ -148,7 +105,6 @@ export interface OrganizationLabel {
 }
 export interface OrganizationResponse {
   capabilities: typeof ORGANIZATION_CAPABILITIES;
-  folders: OrganizationFolder[];
   categories: OrganizationLabel[];
   tags: OrganizationLabel[];
 }
@@ -164,28 +120,13 @@ export interface OrganizationSelection {
   limit?: number;
 }
 export const organizationFiltersSchema = z.object({
-  folderId: id.optional(),
-  includeSubfolders: z
-    .union([z.boolean(), z.enum(["true", "false"]).transform((v) => v === "true")])
-    .optional(),
   categoryId: id.optional(),
   tagId: id.optional(),
-  readingState: z.enum(["not_on_list", "unread", "read", "on_list"]).optional(),
 });
 export type OrganizationFilters = z.infer<typeof organizationFiltersSchema>;
 export const chatContextSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("library") }).strict(),
   z.object({ type: z.literal("bookmarks"), bookmarkIds: z.array(id).min(1).max(1000) }).strict(),
-  z
-    .object({
-      type: z.literal("folder"),
-      folderId: id,
-      includeSubfolders: z.boolean().default(true),
-    })
-    .strict(),
-  z.object({ type: z.literal("page"), url: httpUrlSchema, title: z.string().max(2000) }).strict(),
-  z.object({ type: z.literal("session"), sessionId: id }).strict(),
-  z.object({ type: z.literal("live_window"), deviceId: id, windowId: z.number().int() }).strict(),
 ]);
 export type ChatContext = z.infer<typeof chatContextSchema>;
 export const composerHandoffSchema = z

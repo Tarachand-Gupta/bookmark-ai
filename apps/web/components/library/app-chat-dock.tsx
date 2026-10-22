@@ -11,7 +11,7 @@ import type { ChatContext } from "@bookmark-ai/types";
 
 /** Facet keys that live in the URL — must match library-page's FILTER_KEYS so a
  * chat-applied facet reads back identically on the page. */
-const FILTER_KEYS = ["category", "browser", "device", "day", "tag", "from", "to", "folderId", "includeSubfolders", "categoryId", "tagId", "readingState"] as const;
+const FILTER_KEYS = ["category", "browser", "device", "day", "tag", "from", "to", "categoryId", "tagId"] as const;
 
 // The `?ai=1` flag (AI_PARAM) is kept as its own param (not the search `mode`)
 // so the layout-level dock, the page's Ask AI button and the layout store share
@@ -55,8 +55,7 @@ export function AppChatDock() {
     document.documentElement.style.setProperty("--floating-composer-h", !open && !blocked ? "calc(80px + env(safe-area-inset-bottom, 0px))" : "0px");
     return () => document.documentElement.style.setProperty("--floating-composer-h", "0px");
   }, [open, blocked]);
-  const folderId = searchParams.get("folderId");
-  const suggestedContext: ChatContext | undefined = selectionContext ?? (folderId && folderId !== "unsorted" ? { type: "folder", folderId, includeSubfolders: searchParams.get("includeSubfolders") !== "false" } : undefined);
+  const suggestedContext = selectionContext;
 
   // Shallow History API push: updates the URL (and Next's useSearchParams
   // everywhere, including the still-mounted library page) WITHOUT an RSC

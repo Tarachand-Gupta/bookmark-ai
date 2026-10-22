@@ -2,3 +2,11 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {freshDraft,recoverDrafts,serializeDrafts,hasDraft} from './composer-state';
 test('conversation drafts freeze context independently and restore text without pretending files survived',()=>{const context={type:'bookmarks' as const,bookmarkIds:['saved-one']};const first=freshDraft('first',context);first.text='First key 日本語\nsecond line';first.attachmentCount=2;context.bookmarkIds.push('late');const second=freshDraft('second');second.text='Other chat';const restored=recoverDrafts(serializeDrafts([first,second]));assert.equal(restored[0].text,first.text);assert.deepEqual(restored[0].context,{type:'bookmarks',bookmarkIds:['saved-one']});assert.equal(restored[0].attachmentCount,0);assert.equal(restored[0].lostAttachments,true);assert.equal(restored[1].text,'Other chat');assert.equal(restored[1].lostAttachments,false);assert.equal(hasDraft(first),true);assert.equal(hasDraft(freshDraft('empty')),false);});
+
+test('removed context keeps the draft text and requires explicit context selection',()=>{
+  const restored=recoverDrafts(JSON.stringify([{...freshDraft('kept'),text:'Unsent notes',context:{type:'folder',folderId:'old'}}]));
+  assert.equal(restored[0].text,'Unsent notes');
+  assert.equal(restored[0].contextUnavailable,true);
+  assert.deepEqual(restored[0].context,{type:'library'});
+  assert.equal(recoverDrafts(serializeDrafts(restored))[0].contextUnavailable,true);
+});

@@ -160,7 +160,6 @@ final class AppEnvironment {
             organization.restoreMetadata(state.organization)
             settings.restoreSnapshot(planId: state.planId, usage: state.aiUsage)
             library.isReadOnly = isReadOnly; sessions.isReadOnly = isReadOnly
-            library.cachedFolders = state.organization?.folders ?? []
         }
         let libraryApplied = library.hydrateFromCache(state, serverTarget: target)
         let sessionsApplied = sessions.hydrateFromCache(state, serverTarget: target)
@@ -316,7 +315,6 @@ final class AppEnvironment {
             organization.restoreMetadata(cachedState?.organization)
             library.isReadOnly = true; sessions.isReadOnly = true
             library.searchText = ""
-            library.cachedFolders = cachedState?.organization?.folders ?? []
             launchSyncPending = false; updates.stop()
         } else { resetModels() }
         requestedSettingsTab = nil

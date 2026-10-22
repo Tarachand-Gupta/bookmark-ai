@@ -1,18 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { getBookmark, json, type Db, type SqlExecutor } from "@bookmark-ai/db";
 import {
-  getBookmark,
-  getSession,
-  listBookmarks,
-  listDevices,
-  json,
-  type Db,
-  type SqlExecutor,
-} from "@bookmark-ai/db";
-import type {
-  ChatContext,
-  ComposerHandoffInput,
-  ComposerHandoff,
-  Bookmark,
+  chatContextSchema,
+  composerHandoffSchema,
+  type ChatContext,
+  type ComposerHandoffInput,
+  type ComposerHandoff,
 } from "@bookmark-ai/types";
 import { OrganizationError, requestHash } from "./organization";
 export interface ResolvedChatContext {
@@ -25,6 +18,7 @@ export async function resolveChatContext(
   db: Db,
   context: ChatContext,
 ): Promise<ResolvedChatContext> {
+  context = chatContextSchema.parse(context);
   const resolved: ResolvedChatContext = {
     context,
     bookmarkIds: context.type === "library" ? null : [],
@@ -39,65 +33,6 @@ export async function resolveChatContext(
         resolved.sources.push({ id, title: b.title, url: b.url });
       } else resolved.unavailable.push({ id, reason: "Bookmark is no longer available" });
     }
-  if (context.type === "folder") {
-    const exists = await db.execute({
-      sql: "SELECT id FROM organization_folders WHERE id=? AND deleted=0",
-      args: [context.folderId],
-    });
-    if (!exists.rows.length)
-      resolved.unavailable.push({ id: context.folderId, reason: "Folder is no longer available" });
-    else {
-      const data = await listBookmarks(db, {
-        folderId: context.folderId,
-        includeSubfolders: context.includeSubfolders,
-        limit: 10001,
-        offset: 0,
-      });
-      if (data.total > 10000)
-        throw new OrganizationError(
-          "context-too-large",
-          "Select a smaller folder or explicit bookmarks.",
-          422,
-        );
-      for (const b of data.bookmarks) {
-        resolved.bookmarkIds!.push(b.id);
-        resolved.sources.push({ id: b.id, title: b.title, url: b.url });
-      }
-    }
-  }
-  if (context.type === "page")
-    resolved.sources.push({ id: "page", title: context.title, url: context.url });
-  if (context.type === "session") {
-    const s = await getSession(db, context.sessionId);
-    if (!s)
-      resolved.unavailable.push({
-        id: context.sessionId,
-        reason: "Session is no longer available",
-      });
-    else
-      for (const [i, t] of s.tabs.entries())
-        if (/^https?:\/\//i.test(t.url))
-          resolved.sources.push({ id: `${s.id}:${i}`, title: t.title, url: t.url });
-  }
-  if (context.type === "live_window") {
-    const device = (await listDevices(db, new Date(Date.now() - 7 * 86400000).toISOString())).find(
-      (d) => d.deviceId === context.deviceId,
-    );
-    const window = device?.windows.find((w) => w.windowId === context.windowId);
-    if (!window)
-      resolved.unavailable.push({
-        id: `${context.deviceId}:${context.windowId}`,
-        reason: "Shared window is no longer available",
-      });
-    else
-      for (const [i, t] of window.tabs.entries())
-        if (/^https?:\/\//i.test(t.url))
-          resolved.sources.push({
-            id: `${context.deviceId}:${context.windowId}:${i}`,
-            title: t.title,
-            url: t.url,
-          });
-  }
   return resolved;
 }
 export async function createComposerHandoff(
@@ -174,6 +109,13 @@ export async function claimComposerHandoff(
         "This handoff expired. Recreate it from the extension draft.",
         410,
       );
+    const draft = composerHandoffSchema.shape.draft.safeParse(json(r.draft_json, null));
+    if (!draft.success)
+      throw new OrganizationError(
+        "handoff-unavailable",
+        "This saved context is no longer supported. Recreate the handoff.",
+        410,
+      );
     const claimedAt = r.claimed_at ? String(r.claimed_at) : now.toISOString();
     await tx.execute({
       sql: "UPDATE composer_handoffs SET claimed_at=COALESCE(claimed_at,?) WHERE id=? AND account_id=?",
@@ -184,7 +126,7 @@ export async function claimComposerHandoff(
       id,
       expiresAt: String(r.expires_at),
       claimedAt,
-      draft: json(r.draft_json, {} as ComposerHandoffInput["draft"]),
+      draft: draft.data,
     };
   } catch (error) {
     await tx.rollback();

@@ -1,25 +1,15 @@
 import Foundation
 
-enum ReadingState: String, Codable, CaseIterable, Identifiable, Sendable {
-    case notOnList = "not_on_list", unread, read
-    var id: String { rawValue }
-    var title: String { switch self { case .notOnList: "Not on list"; case .unread: "Unread"; case .read: "Read" } }
-}
-
-struct OrganizationFolder: Codable, Identifiable, Hashable, Sendable {
-    var id: String; var name: String; var parentId: String?; var path: String
-    var count: Int; var directCount: Int; var fieldVersions: [String: String]
-}
 struct OrganizationLabel: Codable, Identifiable, Hashable, Sendable {
     var id: String; var name: String; var count: Int
 }
 struct OrganizationCapabilities: Codable, Sendable {
-    var organization: Int; var undoDays: Int; var context: Int; var handoff: Int
+    var organization: Int; var undoDays: Int; var context: Int
     var maxOperationItems: Int; var maxSelectionItems: Int
 }
 struct OrganizationResponse: Codable, Sendable {
     var capabilities: OrganizationCapabilities
-    var folders: [OrganizationFolder]; var categories: [OrganizationLabel]; var tags: [OrganizationLabel]
+    var categories: [OrganizationLabel]; var tags: [OrganizationLabel]
 }
 struct OrganizationItemError: Codable, Sendable {
     var code: String; var message: String; var fields: [String]?
@@ -46,7 +36,7 @@ struct OrganizationOperation: Codable, Identifiable, Sendable {
         return "\(succeededCount) completed · \(failedCount) need review"
     }
     static func fieldTitle(_ value: String) -> String {
-        switch value { case "folderId": "folder"; case "categoryId": "category"; case "readingState": "reading state"; case "parentId": "parent folder"; default: value }
+        switch value { case "categoryId": "category"; default: value }
     }
 }
 struct OrganizationSelection: Codable, Sendable {
@@ -59,38 +49,25 @@ struct OrganizationSelection: Codable, Sendable {
 struct ChatContext: Codable, Hashable, Sendable {
     var type: String
     var bookmarkIds: [String]?
-    var folderId: String?
-    var includeSubfolders: Bool?
-    var url: String?
-    var title: String?
-    var sessionId: String?
-    var deviceId: String?
-    var windowId: Int?
+    var selectionId: String?
     static let library = ChatContext(type: "library")
     static func bookmarks(_ ids: [String]) -> ChatContext { ChatContext(type: "bookmarks", bookmarkIds: ids) }
     var displayTitle: String {
         switch type {
         case "bookmarks": "\(bookmarkIds?.count ?? 0) selected bookmarks"
-        case "folder": title ?? "Selected folder"
-        case "page": title ?? "Selected page"
-        case "session": title ?? "Selected session"
-        case "live_window": title ?? "Selected live window"
-        default: "Your library"
+        case "selection": "Selected bookmarks"
+        case "library": "Your library"
+        default: "Choose bookmark context"
         }
     }
-    // Display-only names are intentionally not sent for folder/session scopes.
+    var isSupported: Bool { ["library", "bookmarks", "selection"].contains(type) }
     func encode(to encoder: Encoder) throws {
         var box = encoder.container(keyedBy: CodingKeys.self)
         try box.encode(type, forKey: .type)
         try box.encodeIfPresent(bookmarkIds, forKey: .bookmarkIds)
-        try box.encodeIfPresent(folderId, forKey: .folderId)
-        try box.encodeIfPresent(includeSubfolders, forKey: .includeSubfolders)
-        try box.encodeIfPresent(url, forKey: .url)
-        if type == "page" { try box.encodeIfPresent(title, forKey: .title) }
-        try box.encodeIfPresent(sessionId, forKey: .sessionId)
-        try box.encodeIfPresent(deviceId, forKey: .deviceId)
-        try box.encodeIfPresent(windowId, forKey: .windowId)
+        try box.encodeIfPresent(selectionId, forKey: .selectionId)
     }
+
 }
 
 struct OrganizationScope: Codable, Equatable, Sendable {
@@ -100,6 +77,16 @@ struct OrganizationScope: Codable, Equatable, Sendable {
 struct OrganizationRequest: Codable, Identifiable, Sendable {
     var id: String; var path: String; var method: String; var body: [String: JSONValue]
     var title: String
+    var isSupported: Bool {
+        if let raw = body["changes"], case .object(let changes) = raw {
+            let fields: Set<String> = ["title", "category", "categoryId", "tags", "tagIds", "addTags", "removeTags", "addTagIds", "removeTagIds"]
+            guard Set(changes.keys).isSubset(of: fields) else { return false }
+        }
+        if path == "/api/organization/operations" {
+            return ["bookmarks.update", "bookmarks.delete", "category.create", "category.rename", "category.remove", "tag.create", "tag.rename", "tag.remove", "tag.merge"].contains(body["action"]?.stringValue ?? "")
+        }
+        return path == "/api/bookmarks" || path.hasPrefix("/api/bookmarks/") || (path.hasPrefix("/api/organization/operations/") && (path.hasSuffix("/undo") || path.hasSuffix("/retry")))
+    }
 }
 struct OrganizationEnvelope: Decodable { var operation: OrganizationOperation; var bookmark: Bookmark? }
 struct SavedBookmarkEnvelope: Decodable { var bookmark: Bookmark; var existing: Bool?; var operation: OrganizationOperation? }

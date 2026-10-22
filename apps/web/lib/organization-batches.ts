@@ -1,3 +1,4 @@
+import { bulkBookmarkChangesSchema } from "@bookmark-ai/types";
 import type { BulkBookmarkChanges, OrganizationOperation, OrganizationOperationInput } from "@bookmark-ai/types";
 export interface OrganizationBatchJob {
   version: 1; accountId: string; id: string; bookmarkIds: string[]; changes: BulkBookmarkChanges;
@@ -15,7 +16,7 @@ export function createBatchJob(accountId: string, bookmarkIds: string[], changes
   return { version: 1, accountId, id: crypto.randomUUID(), bookmarkIds: ids, changes: structuredClone(changes), expected: expected ? structuredClone(expected) : undefined, batches, state: "ready" };
 }
 export function readBatchJob(storage: Pick<Storage, "getItem">, accountId: string): OrganizationBatchJob | null {
-  try { const job = JSON.parse(storage.getItem(batchStorageKey(accountId)) ?? "null") as OrganizationBatchJob | null; return job?.version === 1 && job.accountId === accountId && Array.isArray(job.bookmarkIds) && job.bookmarkIds.length > 0 && job.bookmarkIds.length <= 10000 && job.bookmarkIds.every(id => typeof id === "string") && job.changes && typeof job.changes === "object" && Array.isArray(job.batches) && job.batches.length > 0 && job.batches.every(batch => typeof batch.operationId === "string" && Array.isArray(batch.bookmarkIds) && batch.bookmarkIds.length <= 500) ? { ...job, state: job.state === "running" ? "paused" : job.state } : null; } catch { return null; }
+  try { const job = JSON.parse(storage.getItem(batchStorageKey(accountId)) ?? "null") as OrganizationBatchJob | null; return job?.version === 1 && job.accountId === accountId && Array.isArray(job.bookmarkIds) && job.bookmarkIds.length > 0 && job.bookmarkIds.length <= 10000 && job.bookmarkIds.every(id => typeof id === "string") && bulkBookmarkChangesSchema.safeParse(job.changes).success && Array.isArray(job.batches) && job.batches.length > 0 && job.batches.every(batch => typeof batch.operationId === "string" && Array.isArray(batch.bookmarkIds) && batch.bookmarkIds.length <= 500) ? { ...job, state: job.state === "running" ? "paused" : job.state } : null; } catch { return null; }
 }
 export function writeBatchJob(storage: Pick<Storage, "setItem">, job: OrganizationBatchJob) {
   // Deliberately fail before the first request if recovery cannot be persisted.

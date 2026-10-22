@@ -90,7 +90,7 @@ export function SavedSessionsCard({
                 <li key={session.id} className="flex min-w-0 items-center">
                   <Link
                     href={sessionsHref()}
-                    className="group flex min-w-0 flex-1 items-center gap-2.5 py-2.5 pl-4 pr-2 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    className="group flex min-w-0 flex-1 items-center gap-2.5 py-2.5 pl-4 pr-2 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
                   >
                     <span className="min-w-0 flex-1">
                       <span className="line-clamp-1 text-sm font-medium">{session.name}</span>

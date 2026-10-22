@@ -278,7 +278,7 @@ function LiveServerUrlField() {
     <SettingsGroup divided>
       {resource.error && <p role="alert" className="text-sm text-destructive">Couldn’t load live server settings: {resource.error} <Button variant="ghost" size="sm" onClick={() => void resource.refresh()}>Retry</Button></p>}
       <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 rounded-md text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+        <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 rounded-md text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0">
           Use my own live server
           <ChevronDown
             className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
@@ -445,7 +445,7 @@ export function Switch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50",
         checked ? "bg-primary" : "bg-input",
       )}
     >

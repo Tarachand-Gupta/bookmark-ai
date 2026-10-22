@@ -80,7 +80,7 @@ function LiveDeviceRow({ device }: { device: LiveDevice }) {
   return (
     <Link
       href={liveHref()}
-      className="group flex min-w-0 items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      className="group flex min-w-0 items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
     >
       <span
         aria-hidden

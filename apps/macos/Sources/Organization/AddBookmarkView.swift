@@ -17,7 +17,7 @@ struct AddBookmarkView: View {
                 Text(saved.bookmark.url).foregroundStyle(.secondary).textSelection(.enabled)
                 Text("Your link is saved. Organizing it is optional.")
                 HStack {
-                    Button("Edit details or choose a folder…") { app.organization.editing = saved.bookmark; dismiss() }.disabled(!app.organization.available)
+                    Button("Edit details…") { app.organization.editing = saved.bookmark; dismiss() }.disabled(!app.organization.available)
                     Spacer()
                     Button("Save another") { self.saved = nil; url = ""; requestId = UUID().uuidString; requestStarted = false }
                 }

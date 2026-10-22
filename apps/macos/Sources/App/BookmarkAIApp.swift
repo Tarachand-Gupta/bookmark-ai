@@ -278,18 +278,16 @@ struct LibraryCommands: Commands {
         }
         CommandMenu("Library") {
             Button("Save a link…") { appEnvironment.organization.showAdd = true }.keyboardShortcut("n", modifiers: .command).disabled(!canUseData)
-            Button("New folder…") { appEnvironment.organization.showManager = true }.keyboardShortcut("n", modifiers: [.command, .shift]).disabled(!appEnvironment.organization.available)
             Button("Edit details…") {
                 appEnvironment.organization.editing = appEnvironment.library.visibleBookmarks.first { appEnvironment.library.selectedIDs.contains($0.id) }
             }.keyboardShortcut("e", modifiers: .command).disabled(appEnvironment.library.selectedIDs.count != 1 || !appEnvironment.organization.available)
-            Button("Move / Edit selected organization…") {
+            Button("Edit selected bookmarks…") {
                 Task {
                     if await appEnvironment.organization.freeze(["bookmarkIds": .array(appEnvironment.library.selectedIDs.sorted().map(JSONValue.string))]) != nil { appEnvironment.organization.showBulk = true }
                 }
             }.keyboardShortcut("m", modifiers: [.command, .shift]).disabled(appEnvironment.library.selectedIDs.isEmpty || !appEnvironment.organization.available)
-            Button("Manage organization…") { appEnvironment.organization.showManager = true }.disabled(!appEnvironment.organization.available)
+            Button("Categories & tags…") { appEnvironment.organization.showManager = true }.disabled(!appEnvironment.organization.available)
             Button("Recent changes…") { appEnvironment.organization.showHistory = true }.disabled(!appEnvironment.organization.available)
-            Button("Import existing links…") { appEnvironment.organization.showImport = true }.disabled(!canUseData)
             Divider()
 
             Button("Refresh") {
@@ -345,7 +343,7 @@ struct LibraryCommands: Commands {
     }
     private var libraryOwnsUndo: Bool {
         let org = appEnvironment.organization
-        return appEnvironment.canUseData && appEnvironment.library.selection.isLibraryFilter && !appEnvironment.chat.isPresented && org.editing == nil && !org.showManager && !org.showBulk && !org.showAdd && !org.showImport && !org.showHistory
+        return appEnvironment.canUseData && appEnvironment.library.selection.isLibraryFilter && !appEnvironment.chat.isPresented && org.editing == nil && !org.showManager && !org.showBulk && !org.showAdd && !org.showHistory
     }
     private func undo() {
         // Even when text has no undo history, never fall through to a library mutation.

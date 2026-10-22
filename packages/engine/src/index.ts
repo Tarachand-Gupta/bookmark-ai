@@ -153,6 +153,5 @@ export * from "./qa-tenants";
 export * from "./extension-capabilities";
 
 export * from "./organization";
-export * from "./bookmark-import";
 
 export * from "./composer-context";

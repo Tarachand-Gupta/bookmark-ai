@@ -34,7 +34,6 @@ export {
   insertBookmark,
   insertBookmarkStatement,
   insertBookmarkInTransaction,
-  insertBookmarkIfAbsentInTransaction,
   updateBookmarkContent,
   getBookmark,
   getBookmarkByUrl,

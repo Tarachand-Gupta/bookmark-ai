@@ -12,7 +12,7 @@ import { AuthShell } from "./auth-shell";
 import { AppleIcon, GoogleIcon } from "./provider-icons";
 
 const authLink =
-  "rounded-sm font-medium text-foreground underline underline-offset-4 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "rounded-sm font-medium text-foreground underline underline-offset-4 hover:no-underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 export function AuthForm({
   mode,
 }: {

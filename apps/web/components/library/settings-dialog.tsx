@@ -2,10 +2,9 @@
 import { useAccountDetails, useSettingsResource } from "./account-details-provider";
 import { preloadAccountSecurity } from "@/lib/account-security-cache";
 import { preloadSettingsResources, settingsResourceCache } from "@/lib/settings-resource-cache";
-import { ImportBookmarksDialog } from "./import-bookmarks-dialog";
 
 import { useEffect, useRef, useState } from "react";
-import { useUser, getBrowserSupabase } from "@/lib/auth";
+import { useUser, getBrowserSupabase, signOut } from "@/lib/auth";
 import { AccountSecurity } from "@/components/auth/account-security";
 import {
   Activity,
@@ -14,6 +13,7 @@ import {
   Database,
   Download,
   Loader2,
+  LogOut,
   Plug,
   Palette,
   Sparkles,
@@ -190,7 +190,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
                 width — see the min-w-0 note above. */}
             <ul
               ref={railRef}
-              className="-mb-2 flex min-h-0 scroll-smooth gap-1 overflow-x-auto pb-2 [contain:inline-size] sm:mb-0 sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto sm:pb-0 sm:[contain:none]"
+              className="-mb-2 flex min-h-0 scroll-smooth gap-1 overflow-x-auto pb-2 [contain:inline-size] sm:mb-0 sm:flex-1 sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto sm:pb-0 sm:[contain:none]"
             >
               {SECTIONS.filter(
                 (s) => (s.id !== "observability" && s.id !== "releases") || observability !== null,
@@ -226,6 +226,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
                 );
               })}
             </ul>
+            <SettingsSignOut />
           </nav>
 
           <div key={`${accountId ?? "signed-out"}:${admin.active}`} ref={paneRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
@@ -278,6 +279,31 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
   );
 }
 
+/** One local-session exit, anchored outside the scrolling settings sections. */
+function SettingsSignOut() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await signOut();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not sign out. Try again.");
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mt-2 shrink-0 border-t pt-2 sm:mt-3 sm:pt-3">
+      <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void run()} className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive">
+        {busy ? <Loader2 aria-hidden className="size-4 animate-spin" /> : <LogOut aria-hidden className="size-4" />}
+        {busy ? "Signing out…" : "Sign out"}
+      </Button>
+      {error && <p role="alert" className="px-2 pt-1 text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 /**
  * Data section: export the whole library to a JSON file, or import a previously
  * exported bundle back. Import merges by URL and preserves timestamps, so
@@ -290,7 +316,6 @@ function DataSection() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
-  const [linksImportOpen, setLinksImportOpen] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -378,14 +403,6 @@ function DataSection() {
         {exportError && <p className="text-sm text-destructive">{exportError}</p>}
       </SettingsGroup>
 
-      <SettingsGroup
-        divided
-        title="Import existing links"
-        description="Preview links from browser exports, reading lists or notes files before importing."
-      >
-        <Button variant="outline" size="sm" onClick={() => setLinksImportOpen(true)}>Import existing links</Button>
-        <ImportBookmarksDialog open={linksImportOpen} onOpenChange={setLinksImportOpen} onImported={() => window.dispatchEvent(new Event("bookmark-library-changed"))} />
-      </SettingsGroup>
       <SettingsGroup
         divided
         title="Restore backup"

@@ -300,11 +300,8 @@ export interface LibraryFilters {
   category?: string;
   tag?: string;
   day?: string;
-  folderId?: string;
   categoryId?: string;
   tagId?: string;
-  readingState?: string;
-  includeSubfolders?: string;
 }
 
 export function listBookmarks(

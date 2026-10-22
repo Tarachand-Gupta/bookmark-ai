@@ -381,14 +381,6 @@ function AccountSecurityContent() {
           >
             <LogOut aria-hidden className="size-4" /> Sign out all devices
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy}
-            onClick={() => void run(() => signOut())}
-          >
-            <LogOut aria-hidden className="size-4" /> Sign out this device
-          </Button>
         </div>
       </section>
       {error && (

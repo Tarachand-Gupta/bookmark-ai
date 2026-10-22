@@ -14,7 +14,6 @@ final class OrganizationModel {
     var showHistory = false
     var showManager = false
     var showAdd = false
-    var showImport = false
     var showBulk = false
     private var editorBookmark: Bookmark?
     var editorDirty = false
@@ -132,6 +131,10 @@ final class OrganizationModel {
     }
     private func transmit(_ request: OrganizationRequest) async -> OrganizationOperation? {
         guard let scope else { return nil }
+        guard request.isSupported else {
+            error = "This saved change is no longer supported. Its recovery record was kept; no changes were sent."
+            return nil
+        }
         let ticket = generation
         do {
             let result: OrganizationEnvelope = try await api.organizationRequest(request.path, method: request.method, body: request.body, scope: scope)
@@ -224,6 +227,6 @@ final class OrganizationModel {
     func reset() {
         generation = UUID(); scope = nil; data = nil; history = []; pending = []; isBusy = false
         error = nil; notice = nil; frozenSelection = nil; closeEditor()
-        showHistory = false; showManager = false; showAdd = false; showImport = false; showBulk = false
+        showHistory = false; showManager = false; showAdd = false; showBulk = false
     }
 }

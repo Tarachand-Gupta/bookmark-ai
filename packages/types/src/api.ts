@@ -1,11 +1,10 @@
 import { z } from "zod";
-import { organizationFiltersSchema, operationIdSchema, readingStateSchema } from "./organization";
+import { organizationFiltersSchema, operationIdSchema } from "./organization";
 import { bookmarkSchema, browserSchema, deviceTypeSchema, httpUrlSchema } from "./bookmark";
 
 /** POST /api/bookmarks — save a URL. OG scraping + categorization happen server-side. */
 export const createBookmarkSchema = z.object({
   operationId: operationIdSchema.optional(),
-  readingState: readingStateSchema.optional(),
   url: httpUrlSchema,
   /** Page title as seen by the client (fallback if OG scrape fails). */
   title: z.string().nullish(),

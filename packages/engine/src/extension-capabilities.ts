@@ -12,8 +12,6 @@ const routes = new Set([
   "GET /api/organization",
   "POST /api/organization/operations",
   "POST /api/composer/handoffs",
-  "POST /api/import/bookmarks",
-  "GET /api/import/bookmarks",
   "POST /api/sessions",
   "GET /api/me",
   "GET /api/settings",

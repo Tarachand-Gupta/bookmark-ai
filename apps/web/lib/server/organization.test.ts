@@ -19,6 +19,7 @@ import {
   undoOrganizationOperation,
   retryOrganizationOperation,
   getOrganizationOperation,
+  listOrganizationOperations,
   getOrganization,
   createOrganizationSelection,
   saveBookmarkWithOperation,
@@ -34,6 +35,12 @@ import {
   deleteConversationRecord,
   runReadOnlySql,
 } from "@bookmark-ai/engine";
+import {
+  bookmarkChangesSchema,
+  organizationOperationSchema,
+  chatContextSchema,
+  listBookmarksQuerySchema,
+} from "@bookmark-ai/types";
 let db: Db, dir: string;
 let seq = 0;
 const op = () => `test-operation-${++seq}`;
@@ -50,17 +57,6 @@ async function seed(id: string, tags: string[] = []) {
     tags,
     createdAt: "2026-10-01T00:00:00.000Z",
   });
-}
-async function folder(name: string, parentId: string | null = null) {
-  const r = await executeOrganizationOperation(db, {
-    operationId: op(),
-    action: "folder.create",
-    name,
-    parentId,
-  });
-  expect(r.status).toBe("completed");
-  expect(r.results[0]).toMatchObject({ entityType: "folder", label: name });
-  return r.entityId!;
 }
 async function label(name: string, kind: "tag" | "category" = "tag") {
   const r = await executeOrganizationOperation(db, {
@@ -82,7 +78,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 describe("organization persistence and conflicts", () => {
-  it("seeds legacy reading state once and replays migrations safely", async () => {
+  it("upgrades legacy bookmarks without inferring reading state and replays migrations safely", async () => {
     const legacy = createClient({ url: `file:${join(dir, "legacy.db")}` });
     try {
       await runMigrations(
@@ -93,18 +89,25 @@ describe("organization persistence and conflicts", () => {
         "INSERT INTO bookmarks(id,url,domain,title,saved_at,saved_day,created_at,tags_json) VALUES('old','https://old.invalid','old.invalid','old','2026-10-01','2026-10-01','2026-10-01','[\"reading\",\"keep\"]')",
       );
       await ensureSchema(legacy);
-      expect((await getBookmark(legacy, "old"))?.readingState).toBe("unread");
-      await editBookmark(legacy, "old", {
-        operationId: op(),
-        changes: { readingState: "not_on_list" },
-      });
+      await editBookmark(legacy, "old", { operationId: op(), changes: { title: "Manual" } });
       await ensureSchema(legacy);
-      expect((await getBookmark(legacy, "old"))?.readingState).toBe("not_on_list");
-      expect((await getBookmark(legacy, "old"))?.tags).toEqual(["reading", "keep"]);
+      expect(await getBookmark(legacy, "old")).toMatchObject({
+        title: "Manual",
+        tags: ["reading", "keep"],
+      });
+      expect(await getBookmark(legacy, "old")).not.toHaveProperty("readingState");
+      expect(
+        (
+          await legacy.execute(
+            "SELECT reading_state FROM bookmark_organization WHERE bookmark_id='old'",
+          )
+        ).rows[0]?.reading_state,
+      ).toBe("not_on_list");
     } finally {
       legacy.close();
     }
   });
+
   it("preserves manual title/category and removed generated tags through enrichment and resave", async () => {
     await seed("a", ["generated", "keep"]);
     const cat = await label("My category", "category");
@@ -135,7 +138,7 @@ describe("organization persistence and conflicts", () => {
   it("single edit validation is atomic; expected fields reject stale edits only", async () => {
     await seed("a");
     const original = (await getBookmark(db, "a"))!;
-    await editBookmark(db, "a", { operationId: op(), changes: { readingState: "read" } });
+    await editBookmark(db, "a", { operationId: op(), changes: { categoryId: null } });
     const good = await editBookmark(db, "a", {
       operationId: op(),
       expected: original.fieldVersions,
@@ -150,7 +153,7 @@ describe("organization persistence and conflicts", () => {
     expect(stale.results[0]?.status).toBe("conflict");
     const failed = await editBookmark(db, "a", {
       operationId: op(),
-      changes: { title: "should not write", folderId: "missing" },
+      changes: { title: "should not write", categoryId: "missing" },
     });
     expect(failed.status).toBe("failed");
     expect((await getBookmark(db, "a"))?.title).toBe("changed");
@@ -181,51 +184,121 @@ describe("organization persistence and conflicts", () => {
     });
     expect((await listBookmarks(db, { limit: 100, offset: 0 })).total).toBe(1);
   });
-  it("validates folder cycles/siblings, removes only folder membership, and undoes", async () => {
-    const p = await folder("Parent"),
-      c = await folder("Child", p),
-      dest = await folder("Destination");
+  it("rejects removed folder/reading operations and folder chat contexts", () => {
+    for (const changes of [
+      { folderId: "old" },
+      { readingState: "read" },
+      { title: "New", folderId: "old" },
+    ])
+      expect(bookmarkChangesSchema.safeParse(changes).success).toBe(false);
+    for (const action of ["folder.create", "folder.update", "folder.remove"])
+      expect(
+        organizationOperationSchema.safeParse({ operationId: op(), action, name: "Old", id: "old" })
+          .success,
+      ).toBe(false);
+    expect(
+      organizationOperationSchema.safeParse({
+        operationId: op(),
+        action: "bookmarks.update",
+        bookmarkIds: ["a"],
+        changes: { readingState: "read" },
+      }).success,
+    ).toBe(false);
+    for (const context of [
+      { type: "folder", folderId: "old", includeSubfolders: true },
+      { type: "page", url: "https://page.invalid", title: "Page" },
+      { type: "session", sessionId: "old" },
+      { type: "live_window", deviceId: "old", windowId: 1 },
+    ])
+      expect(chatContextSchema.safeParse(context).success).toBe(false);
+    expect(listBookmarksQuerySchema.parse({ folderId: "old", readingState: "read" })).toEqual({
+      limit: 100,
+      offset: 0,
+    });
+  });
+
+  it("cannot read, retry or undo removed v15 operation receipts", async () => {
     await seed("a");
-    await editBookmark(db, "a", { operationId: op(), changes: { folderId: p } });
+    const operationId = op();
+    const legacyReceipt = {
+      id: operationId,
+      action: "bookmarks.update",
+      results: [{ id: "a", status: "failed", entityType: "bookmark" }],
+      undoExpiresAt: new Date(Date.now() + 86400000).toISOString(),
+    };
+    await db.execute({
+      sql: "INSERT INTO organization_operations(id,request_hash,request_json,receipt_json,deltas_json,created_at,expires_at) VALUES(?,?,?,?,?,?,?)",
+      args: [
+        operationId,
+        "legacy",
+        JSON.stringify({
+          kind: "organization",
+          input: {
+            operationId,
+            action: "bookmarks.update",
+            bookmarkIds: ["a"],
+            changes: { readingState: "read" },
+          },
+        }),
+        JSON.stringify(legacyReceipt),
+        "[]",
+        new Date().toISOString(),
+        legacyReceipt.undoExpiresAt,
+      ],
+    });
+    await expect(getOrganizationOperation(db, operationId)).rejects.toMatchObject({
+      code: "operation-unavailable",
+    });
+    await expect(retryOrganizationOperation(db, operationId, op())).rejects.toMatchObject({
+      code: "operation-unavailable",
+    });
+    await expect(undoOrganizationOperation(db, operationId, op())).rejects.toMatchObject({
+      code: "operation-unavailable",
+    });
+    expect(await listOrganizationOperations(db)).toEqual([]);
+    expect((await db.execute("SELECT COUNT(*) n FROM organization_operations")).rows[0]?.n).toBe(1);
+    expect((await getBookmark(db, "a"))?.title).toBe("a");
+    const retained = await editBookmark(db, "a", {
+      operationId: op(),
+      changes: { title: "Retained" },
+    });
+    await db.execute({
+      sql: "UPDATE organization_operations SET created_at=? WHERE id=?",
+      args: ["2999-01-01", operationId],
+    });
+    expect((await listOrganizationOperations(db, 1)).map((r) => r.id)).toEqual([retained.id]);
+    expect(await listOrganizationOperations(db, 1, 1)).toEqual([]);
+  });
+  it("preserves inert v15 folder/read data through edits without exposing it", async () => {
+    await seed("a");
+    await db.execute(
+      "INSERT INTO organization_folders(id,name,normalized_name) VALUES('old-folder','Old','old')",
+    );
+    await db.execute(
+      "INSERT INTO bookmark_organization(bookmark_id,folder_id,reading_state,versions_json) VALUES('a','old-folder','read','{\"folderId\":\"old-version\",\"readingState\":\"old-version\"}') ON CONFLICT(bookmark_id) DO UPDATE SET folder_id='old-folder',reading_state='read',versions_json=excluded.versions_json",
+    );
+    await ensureSchema(db);
+    await editBookmark(db, "a", { operationId: op(), changes: { title: "Kept" } });
     expect(
       (
-        await executeOrganizationOperation(db, {
-          operationId: op(),
-          action: "folder.update",
-          id: p,
-          parentId: c,
-        })
-      ).status,
-    ).toBe("failed");
-    const remove = await executeOrganizationOperation(db, {
-      operationId: op(),
-      action: "folder.remove",
-      id: p,
-      destinationId: dest,
-      children: "destination",
-    });
-    expect(remove.status).toBe("completed");
-    expect((await getBookmark(db, "a"))?.folderId).toBe(dest);
-    expect((await getOrganization(db)).folders.find((f) => f.id === c)?.parentId).toBe(dest);
-    expect((await undoOrganizationOperation(db, remove.id, op())).status).toBe("completed");
-    expect((await getBookmark(db, "a"))?.folderId).toBe(p);
-    expect((await getOrganization(db)).folders.find((f) => f.id === c)?.parentId).toBe(p);
+        await db.execute(
+          "SELECT folder_id,reading_state FROM bookmark_organization WHERE bookmark_id='a'",
+        )
+      ).rows[0],
+    ).toMatchObject({ folder_id: "old-folder", reading_state: "read" });
+    const bookmark = (await getBookmark(db, "a"))!;
+    expect(bookmark).not.toHaveProperty("folderId");
+    expect(bookmark).not.toHaveProperty("readingState");
+    expect(bookmark.fieldVersions).not.toHaveProperty("folderId");
+    expect(bookmark.fieldVersions).not.toHaveProperty("readingState");
+    expect(await getOrganization(db)).not.toHaveProperty("folders");
+    const selection = await createOrganizationSelection(db, { bookmarkIds: ["a"] });
+    expect(selection.fieldVersions.a).not.toHaveProperty("folderId");
+    expect((await exportUserData(db, new Date().toISOString())).bookmarks[0]).not.toHaveProperty(
+      "folderId",
+    );
   });
-  it("folder removal collision leaves all content intact", async () => {
-    const p = await folder("P"),
-      d = await folder("D");
-    await folder("Same", p);
-    await folder("same", d);
-    const r = await executeOrganizationOperation(db, {
-      operationId: op(),
-      action: "folder.remove",
-      id: p,
-      destinationId: d,
-      children: "destination",
-    });
-    expect(r.status).toBe("failed");
-    expect((await getOrganization(db)).folders.some((f) => f.id === p)).toBe(true);
-  });
+
   it("renames and merges tags globally with reversible deduplication", async () => {
     await seed("a", ["left", "right"]);
     await seed("b", ["left"]);
@@ -297,28 +370,33 @@ describe("organization persistence and conflicts", () => {
       operationId: op(),
       action: "bookmarks.update",
       bookmarkIds: ["a", "b"],
-      changes: { readingState: "read" },
+      changes: { categoryId: null },
     });
     await editBookmark(db, "a", { operationId: op(), changes: { title: "Later title" } });
-    await editBookmark(db, "b", { operationId: op(), changes: { readingState: "unread" } });
-    await editBookmark(db, "b", { operationId: op(), changes: { readingState: "read" } });
+    await editBookmark(db, "b", {
+      operationId: op(),
+      changes: {
+        categoryId: (await getOrganization(db)).categories.find((c) => c.name === "Research")!.id,
+      },
+    });
+    await editBookmark(db, "b", { operationId: op(), changes: { categoryId: null } });
     const undo = await undoOrganizationOperation(db, change.id, op());
     expect(undo.status).toBe("partial");
     expect(await getBookmark(db, "a")).toMatchObject({
       title: "Later title",
-      readingState: "not_on_list",
+      category: "Research",
     });
-    expect((await getBookmark(db, "b"))?.readingState).toBe("read");
+    expect((await getBookmark(db, "b"))?.category).toBe("Uncategorized");
     expect((await getOrganizationOperation(db, change.id))?.undoStatus).toBe("partial");
   });
-  it("rejects expired Undo and preserves newly assigned folder on creation Undo", async () => {
+  it("rejects expired Undo and preserves newly assigned category on creation Undo", async () => {
     const created = await executeOrganizationOperation(db, {
       operationId: op(),
-      action: "folder.create",
+      action: "category.create",
       name: "New",
     });
     await seed("a");
-    await editBookmark(db, "a", { operationId: op(), changes: { folderId: created.entityId! } });
+    await editBookmark(db, "a", { operationId: op(), changes: { categoryId: created.entityId! } });
     expect((await undoOrganizationOperation(db, created.id, op())).status).toBe("failed");
     await expect(
       undoOrganizationOperation(db, created.id, op(), new Date(Date.now() + 8 * 86400000)),
@@ -329,7 +407,7 @@ describe("organization persistence and conflicts", () => {
       operationId: op(),
       draft: {
         text: "question",
-        context: { type: "page" as const, url: "https://page.invalid", title: "Frozen" },
+        context: { type: "bookmarks" as const, bookmarkIds: ["a"] },
       },
     };
     const handoff = await createComposerHandoff(db, "account-a", request);
@@ -351,6 +429,31 @@ describe("organization persistence and conflicts", () => {
       code: "handoff-expired",
     });
   });
+  it("rejects historical handoff context without claiming or modifying its draft", async () => {
+    const handoff = await createComposerHandoff(db, "account-a", {
+      operationId: op(),
+      draft: { text: "kept", context: { type: "library" } },
+    });
+    const raw = JSON.stringify({
+      text: "kept",
+      context: { type: "folder", folderId: "old", includeSubfolders: true },
+    });
+    await db.execute({
+      sql: "UPDATE composer_handoffs SET draft_json=? WHERE id=?",
+      args: [raw, handoff.id],
+    });
+    await expect(claimComposerHandoff(db, "account-a", handoff.id)).rejects.toMatchObject({
+      code: "handoff-unavailable",
+    });
+    expect(
+      (
+        await db.execute({
+          sql: "SELECT draft_json,claimed_at FROM composer_handoffs WHERE id=?",
+          args: [handoff.id],
+        })
+      ).rows[0],
+    ).toMatchObject({ draft_json: raw, claimed_at: null });
+  });
   it("resolves only selected context and reports missing sources", async () => {
     await seed("a");
     await seed("b");
@@ -362,19 +465,15 @@ describe("organization persistence and conflicts", () => {
     expect(resolved.sources.map((s) => s.id)).toEqual(["a"]);
     expect(resolved.unavailable[0]?.id).toBe("missing");
   });
-  it("round trips nested folders, categories, tags, reading, and manual provenance in v6", async () => {
+  it("round trips categories, tags, and manual provenance in v6", async () => {
     await seed("a", ["generated"]);
-    const parent = await folder("Root"),
-      child = await folder("Child", parent),
-      cat = await label("Own", "category");
+    const cat = await label("Own", "category");
     await editBookmark(db, "a", {
       operationId: op(),
       changes: {
-        folderId: child,
         title: "Manual",
         categoryId: cat,
         tags: [],
-        readingState: "read",
       },
     });
     const bundle = await exportUserData(db, new Date().toISOString());
@@ -388,11 +487,8 @@ describe("organization persistence and conflicts", () => {
         title: "Manual",
         category: "Own",
         tags: [],
-        readingState: "read",
       });
-      expect(
-        (await getOrganization(dest)).folders.find((f) => f.id === imported.folderId)?.path,
-      ).toBe("Root / Child");
+      expect((await getOrganization(dest)).categories.some((c) => c.name === "Own")).toBe(true);
       await updateBookmarkContent(dest, imported.id, {
         title: "AI",
         description: null,
@@ -431,7 +527,7 @@ describe("organization fault boundaries and scale", () => {
     await expect(
       editBookmark(db, "atomic", {
         operationId,
-        changes: { title: "must roll back", readingState: "read" },
+        changes: { title: "must roll back", categoryId: null },
       }),
     ).rejects.toThrow("injected");
     db.transaction = original;
@@ -458,7 +554,7 @@ describe("organization fault boundaries and scale", () => {
       operationId: op(),
       action: "bookmarks.update" as const,
       bookmarkIds: ids,
-      changes: { readingState: "unread" as const },
+      changes: { categoryId: null },
     };
     const original = db.transaction.bind(db);
     db.transaction = async (mode?: "write" | "read" | "deferred") => {
@@ -480,7 +576,7 @@ describe("organization fault boundaries and scale", () => {
     expect(
       (
         await db.execute(
-          "SELECT COUNT(*) AS n FROM bookmark_organization WHERE reading_state='unread'",
+          "SELECT COUNT(*) AS n FROM bookmark_organization WHERE json_extract(overrides_json,'$.category')=1",
         )
       ).rows[0]?.n,
     ).toBe(0);
@@ -490,7 +586,7 @@ describe("organization fault boundaries and scale", () => {
     await seed("mixed");
     const original = await editBookmark(db, "mixed", {
       operationId: op(),
-      changes: { title: "first", readingState: "read" },
+      changes: { title: "first", categoryId: null },
     });
     await editBookmark(db, "mixed", { operationId: op(), changes: { title: "newer" } });
     const undo = await undoOrganizationOperation(db, original.id, op());
@@ -499,12 +595,12 @@ describe("organization fault boundaries and scale", () => {
       status: "conflict",
       entityType: "bookmark",
       label: "first",
-      changedFields: ["readingState"],
+      changedFields: ["categoryId"],
       error: { fields: ["title"] },
     });
     expect(await getBookmark(db, "mixed")).toMatchObject({
       title: "newer",
-      readingState: "not_on_list",
+      category: "Research",
     });
   });
   it("blocks cross-tenant reads/edits even with another tenant's valid IDs", async () => {
@@ -540,6 +636,7 @@ describe("organization fault boundaries and scale", () => {
         ],
       })),
     );
+    const category = await label("Bulk category", "category");
     const timings: Record<string, number> = {};
     for (const n of [1, 50, 500]) {
       const started = performance.now();
@@ -547,7 +644,7 @@ describe("organization fault boundaries and scale", () => {
         operationId: op(),
         action: "bookmarks.update",
         bookmarkIds: Array.from({ length: n }, (_, i) => `bulk-${i}`),
-        changes: { readingState: n === 50 ? "read" : "unread" },
+        changes: { categoryId: n === 50 ? null : category },
       });
       timings[String(n)] = Math.round(performance.now() - started);
       expect(r.succeededCount).toBe(n);
@@ -558,29 +655,30 @@ describe("organization fault boundaries and scale", () => {
         operationId: op(),
         action: "bookmarks.update",
         bookmarkIds: Array.from({ length: 501 }, (_, i) => `bulk-${i}`),
-        changes: { readingState: "read" },
+        changes: { categoryId: null },
       }),
     ).rejects.toMatchObject({ code: "selection-too-large" });
-    expect((await getBookmark(db, "bulk-500"))?.readingState).toBe("not_on_list");
+    expect((await getBookmark(db, "bulk-500"))?.category).toBe("Uncategorized");
   });
-  it("folder filtering and search enforce descendant choice and frozen IDs", async () => {
+  it("category and tag filtering and search enforce frozen IDs", async () => {
     const { performSearch } = await import("@bookmark-ai/engine");
-    const p = await folder("Research"),
-      c = await folder("Child", p);
+    const c = await label("Focused", "category");
+    const t = await label("Selected");
     await seed("alpha");
     await seed("beta");
     await editBookmark(db, "alpha", {
       operationId: op(),
-      changes: { folderId: c, title: "common alpha" },
+      changes: { categoryId: c, tags: ["Selected"], title: "common alpha" },
     });
     await editBookmark(db, "beta", { operationId: op(), changes: { title: "common beta" } });
     expect(
-      (await listBookmarks(db, { folderId: p, limit: 100, offset: 0 })).bookmarks.map((b) => b.id),
+      (await listBookmarks(db, { categoryId: c, limit: 100, offset: 0 })).bookmarks.map(
+        (b) => b.id,
+      ),
     ).toEqual(["alpha"]);
     expect(
-      (await listBookmarks(db, { folderId: p, includeSubfolders: false, limit: 100, offset: 0 }))
-        .bookmarks,
-    ).toEqual([]);
+      (await listBookmarks(db, { tagId: t, limit: 100, offset: 0 })).bookmarks.map((b) => b.id),
+    ).toEqual(["alpha"]);
     expect(
       (
         await performSearch(db, null, {
@@ -614,6 +712,34 @@ describe("organization fault boundaries and scale", () => {
       tags: ["Renamed", "generated"],
     });
     expect((await getBookmark(db, "suppressed"))?.tags).toEqual([]);
+  });
+  it("keeps frozen IDs for an unsupported historical context without returning the removed variant", async () => {
+    const conversation = await createConversationRecord(db, "Legacy context");
+    const turn = await appendChatMessage(db, conversation.id, {
+      id: "legacy-context-turn",
+      role: "user",
+      parts: [{ type: "text", text: "Old question" }],
+    });
+    const raw = JSON.stringify({
+      context: { type: "folder", folderId: "old", includeSubfolders: true },
+      bookmarkIds: [],
+      sources: [],
+      unavailable: [],
+    });
+    await db.execute({
+      sql: "INSERT INTO chat_turn_contexts(conversation_id,message_id,context_json,created_at) VALUES(?,?,?,?)",
+      args: [conversation.id, turn.id, raw, new Date().toISOString()],
+    });
+    const message = (await loadConversationRecord(db, conversation.id))!.messages[0]!;
+    expect(message).not.toHaveProperty("context");
+    // The route recognizes this frozen scope and rejects regenerate instead of widening to library.
+    expect(message.contextBookmarkIds).toEqual([]);
+    expect(
+      (await exportUserData(db, new Date().toISOString())).conversations[0]!.messages[0],
+    ).not.toHaveProperty("context");
+    expect(
+      (await db.execute("SELECT context_json FROM chat_turn_contexts")).rows[0]?.context_json,
+    ).toBe(raw);
   });
   it("keeps a submitted context through reload/export/import and isolates unsent drafts from AI SQL", async () => {
     await seed("context-bookmark");
@@ -658,6 +784,8 @@ describe("organization fault boundaries and scale", () => {
       "organization_operations",
       "organization_selections",
       "bookmark_import_batches",
+      "organization_folders",
+      "bookmark_organization",
     ]) {
       await expect(runReadOnlySql(db, `SELECT * FROM ${table}`)).rejects.toThrow();
     }
@@ -665,7 +793,6 @@ describe("organization fault boundaries and scale", () => {
     expect((await db.execute("SELECT * FROM chat_turn_contexts")).rows).toHaveLength(0);
   });
   it("uses bounded round trips for structural changes and Undo across 5,000 bookmarks", async () => {
-    const folderId = await folder("Imported folder");
     const tagId = await label("OriginalTag"),
       targetId = await label("SurvivorTag");
     const categoryId = await label("Research", "category");
@@ -689,8 +816,8 @@ describe("organization fault boundaries and scale", () => {
       );
       await db.batch(
         Array.from({ length: 500 }, (_, i) => ({
-          sql: "INSERT INTO bookmark_organization(bookmark_id,folder_id) VALUES(?,?)",
-          args: [`large-${offset + i}`, folderId],
+          sql: "INSERT INTO bookmark_organization(bookmark_id) VALUES(?)",
+          args: [`large-${offset + i}`],
         })),
       );
     }
@@ -713,12 +840,6 @@ describe("organization fault boundaries and scale", () => {
       { action: "tag.rename" as const, id: tagId, name: "RenamedTag" },
       { action: "tag.merge" as const, sourceId: tagId, targetId },
       { action: "category.remove" as const, id: categoryId, replacementId: null },
-      {
-        action: "folder.remove" as const,
-        id: folderId,
-        destinationId: null,
-        children: "parent" as const,
-      },
     ];
     try {
       for (const action of actions) {
@@ -748,7 +869,6 @@ describe("organization fault boundaries and scale", () => {
         expect(undone.succeededFieldCount).toBeGreaterThanOrEqual(count);
         expect(metrics[`${action.action}.undo`]!.roundTrips).toBeLessThanOrEqual(35);
         expect(await getBookmark(db, "large-4999")).toMatchObject({
-          folderId,
           category: "Research",
           tags: ["OriginalTag"],
         });

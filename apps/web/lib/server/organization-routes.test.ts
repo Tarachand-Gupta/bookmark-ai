@@ -138,7 +138,7 @@ describe("protected organization route flows", () => {
         operationId: "tenant-operation-01",
         action: "bookmarks.update",
         bookmarkIds: ["owned-bookmark"],
-        changes: { readingState: "read" },
+        changes: { categoryId: null },
       }),
     );
     expect(saved.status).toBe(200);
@@ -176,7 +176,7 @@ describe("protected organization route flows", () => {
         operationId: "handoff-route-01",
         draft: {
           text: "Frozen question",
-          context: { type: "page", url: "https://page.invalid", title: "Frozen page" },
+          context: { type: "bookmarks", bookmarkIds: ["owned-bookmark"] },
         },
       }),
     );
@@ -211,7 +211,7 @@ describe("protected organization route flows", () => {
         operationId: "oversized-batch-01",
         action: "bookmarks.update",
         bookmarkIds: Array.from({ length: 501 }, (_, i) => `id-${i}`),
-        changes: { readingState: "read" },
+        changes: { categoryId: null },
       }),
     );
     expect(tooMany.status).toBe(422);

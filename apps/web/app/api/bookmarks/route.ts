@@ -53,9 +53,14 @@ async function POSTHandler(req: NextRequest) {
   }
 
   // A retried accepted save must not consume a second quota unit.
-  const prior = parsed.data.operationId
-    ? await getOrganizationOperation(db, parsed.data.operationId)
-    : null;
+  let prior;
+  try {
+    prior = parsed.data.operationId
+      ? await getOrganizationOperation(db, parsed.data.operationId)
+      : null;
+  } catch (e) {
+    return organizationErrorResponse(e);
+  }
   const overQuota = prior ? null : await enforceQuota(userId, "saves");
   if (overQuota) return overQuota;
 

@@ -1,19 +1,20 @@
 "use client";
 
-import { BookmarkTable } from "./bookmark-table";
-import { BookmarkActions } from "./organization/bookmark-actions";
 import { useMemo } from "react";
 import type { Bookmark } from "@bookmark-ai/types";
 import { BookmarkX, Loader2 } from "lucide-react";
 import {
   BookmarkCard,
+  BookmarkCompactRow,
+  BookmarkListItem,
   type BookmarkSelection,
 } from "@bookmark-ai/ui/components/bookmark-card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SMALL_BOOKMARK_GRID_COLUMNS } from "@/lib/bookmark-view";
+import { BOOKMARK_GRID_COLUMNS } from "@/lib/app-layout";
 import { groupBookmarksByDate } from "@/lib/date-groups";
 import type { SelectionState } from "@/hooks/use-selection";
+import { FirstRunPanel } from "./first-run-panel";
 import type { LibraryView } from "./view-toggle";
 
 export interface BookmarkGridProps {
@@ -24,11 +25,6 @@ export interface BookmarkGridProps {
   emptyHint: string;
   onDelete: (id: string) => void;
   onEdit?: (bookmark: Bookmark) => void;
-  onMove?: (bookmark: Bookmark) => void;
-  folderNames?: Record<string, string>;
-  currentFolderId?: string;
-  currentCategory?: string;
-  currentCategoryId?: string;
   /**
    * Group into relative date buckets (Today / Yesterday / …). Turned off while
    * searching or when a date-range filter is applied.
@@ -71,7 +67,7 @@ export interface BookmarkGridProps {
   selection?: SelectionState | null;
 }
 
-/** The bookmark collection in the original grid or a configurable table, optionally grouped by date. */
+/** The bookmark collection in one of three layouts, optionally grouped by date. */
 export function BookmarkGrid({
   bookmarks,
   view,
@@ -80,11 +76,6 @@ export function BookmarkGrid({
   emptyHint,
   onDelete,
   onEdit,
-  onMove,
-  folderNames,
-  currentFolderId,
-  currentCategory,
-  currentCategoryId,
   grouped,
   firstRun,
   onAdd,
@@ -121,7 +112,7 @@ export function BookmarkGrid({
     // Nothing saved ever → onboard. Nothing matching a filter/search → the
     // quiet one-liner; a full-page pitch would be shouting at someone who
     // already knows how this works.
-    if (firstRun) return <div className="py-16 text-center space-y-3"><h2 className="font-medium">Your saved links will appear here</h2><p className="text-sm text-muted-foreground">Save a link or import existing bookmarks to get started.</p>{onAdd && <button className="text-sm underline" onClick={onAdd}>Save a link</button>}</div>;
+    if (firstRun) return <FirstRunPanel onAdd={onAdd} />;
     return (
       <div className="flex flex-col items-center gap-3 py-20 text-center">
         <div className="flex size-12 items-center justify-center rounded-full bg-muted">
@@ -153,8 +144,6 @@ export function BookmarkGrid({
       node
     );
 
-  if (view === "table") return staleWrap(<BookmarkTable bookmarks={bookmarks} selection={selection} onDelete={onDelete} onEdit={onEdit} onMove={onMove} folderNames={folderNames} currentFolderId={currentFolderId} currentCategory={currentCategory} currentCategoryId={currentCategoryId} />);
-
   if (grouped) {
     const groups = groupBookmarksByDate(bookmarks);
     return staleWrap(
@@ -170,11 +159,6 @@ export function BookmarkGrid({
               view={view}
               onDelete={onDelete}
               onEdit={onEdit}
-      onMove={onMove}
-              folderNames={folderNames}
-              currentFolderId={currentFolderId}
-      currentCategory={currentCategory}
-      currentCategoryId={currentCategoryId}
               selection={selection}
               order={order}
             />
@@ -190,11 +174,6 @@ export function BookmarkGrid({
       view={view}
       onDelete={onDelete}
       onEdit={onEdit}
-      onMove={onMove}
-      folderNames={folderNames}
-      currentFolderId={currentFolderId}
-      currentCategory={currentCategory}
-      currentCategoryId={currentCategoryId}
       selection={selection}
       order={order}
     />,
@@ -207,11 +186,6 @@ function ItemLayout({
   view,
   onDelete,
   onEdit,
-  onMove,
-  folderNames,
-  currentFolderId,
-  currentCategory,
-  currentCategoryId,
   selection,
   order,
 }: {
@@ -219,11 +193,6 @@ function ItemLayout({
   view: LibraryView;
   onDelete: (id: string) => void;
   onEdit?: (bookmark: Bookmark) => void;
-  onMove?: (bookmark: Bookmark) => void;
-  folderNames?: Record<string, string>;
-  currentFolderId?: string;
-  currentCategory?: string;
-  currentCategoryId?: string;
   selection?: SelectionState | null;
   /** Flattened id order across ALL groups, for shift-click ranges. */
   order: readonly string[];
@@ -237,7 +206,6 @@ function ItemLayout({
           pinned: selection.active,
           control: (
             <Checkbox
-              className="relative after:absolute after:-inset-3.5 after:content-['']"
               checked={selection.has(b.id)}
               aria-label={`Select ${b.title}`}
               // onClick rather than onCheckedChange: the modifier keys only
@@ -253,30 +221,68 @@ function ItemLayout({
         }
       : undefined;
 
-  const item = (b: Bookmark) => {
-    const props = {
-      bookmark: b,
-      hideCategory: !!((currentCategory && currentCategory === b.category) || (currentCategoryId && currentCategoryId === b.categoryId)),
-      className: view === "grid" ? "h-full" : undefined,
-      onDelete,
-      selection: selectionFor(b),
-      actions: onEdit || onMove ? <BookmarkActions bookmark={b} onEdit={onEdit} onMove={onMove} onDelete={onDelete} /> : undefined,
-    };
-    return <div key={b.id} className="min-w-0">
-      <BookmarkCard {...props} />
-    </div>;
-  };
-  return <div className={`grid gap-4 ${SMALL_BOOKMARK_GRID_COLUMNS}`}>{items.map(item)}</div>;
+  if (view === "list") {
+    return (
+      <div className="flex flex-col gap-3">
+        {items.map((b) => (
+          <BookmarkListItem
+            key={b.id}
+            bookmark={b}
+            onDelete={onDelete}
+            onEdit={onEdit}
+            selection={selectionFor(b)}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  if (view === "compact") {
+    return (
+      <div className="divide-y overflow-hidden rounded-xl border bg-card">
+        {items.map((b) => (
+          <BookmarkCompactRow
+            key={b.id}
+            bookmark={b}
+            onDelete={onDelete}
+            onEdit={onEdit}
+            selection={selectionFor(b)}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // Columns come from the grid's OWN width (auto-fill of CARD_MIN_PX cells), not
+  // viewport breakpoints: beside a docked Ask AI panel and an expanded sidebar a
+  // 1136px window has ~700px for this grid, and a viewport rule drew three
+  // 155px columns there. See lib/app-layout.ts for the card minimum.
+  return (
+    <div className={`grid gap-4 ${BOOKMARK_GRID_COLUMNS}`}>
+      {items.map((b) => (
+        <BookmarkCard key={b.id} bookmark={b} onDelete={onDelete} onEdit={onEdit} selection={selectionFor(b)} />
+      ))}
+    </div>
+  );
 }
 
 /** Per-layout placeholder counts when the caller doesn't know the real one. */
-const SKELETON_DEFAULTS: Record<LibraryView, number> = { grid: 8, table: 10 };
+const SKELETON_DEFAULTS: Record<LibraryView, number> = { grid: 8, list: 6, compact: 10 };
 
 function LoadingSkeleton({ view, count }: { view: LibraryView; count?: number }) {
   // Never zero (an empty skeleton is indistinguishable from a broken screen) and
   // never more than the default — a 400-bookmark facet doesn't need 400 shapes.
   const n = Math.min(Math.max(count ?? SKELETON_DEFAULTS[view], 1), SKELETON_DEFAULTS[view]);
-  if (view === "table") {
+  if (view === "list") {
+    return (
+      <div className="flex flex-col gap-3">
+        {Array.from({ length: n }, (_, i) => (
+          <Skeleton key={i} className="h-28 w-full rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+  if (view === "compact") {
     return (
       <div className="divide-y overflow-hidden rounded-xl border">
         {Array.from({ length: n }, (_, i) => (
@@ -288,7 +294,7 @@ function LoadingSkeleton({ view, count }: { view: LibraryView; count?: number })
     );
   }
   return (
-    <div className={`grid gap-4 ${SMALL_BOOKMARK_GRID_COLUMNS}`}>
+    <div className={`grid gap-4 ${BOOKMARK_GRID_COLUMNS}`}>
       {Array.from({ length: n }, (_, i) => (
         <div key={i} className="space-y-3">
           <Skeleton className="aspect-[1.91/1] w-full rounded-xl" />

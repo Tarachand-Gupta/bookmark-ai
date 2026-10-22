@@ -177,9 +177,7 @@ export async function getDashboard(
     totalSessions,
   ] = await Promise.all([
     listBookmarks(db, { limit: RECENT_BOOKMARK_LIMIT, offset: 0 }),
-    listBookmarks(db, { readingState: "unread", limit: READING_QUEUE_LIMIT, offset: 0 }).then(
-      ({ bookmarks, total }) => ({ items: bookmarks, total }),
-    ),
+    listBookmarksByAnyTag(db, [...READING_TAGS], READING_QUEUE_LIMIT),
     listRecentSessionSummaries(db, RECENT_SESSION_LIMIT),
     getLatestSessionTabs(db, LAST_SESSION_TAB_LIMIT),
     device

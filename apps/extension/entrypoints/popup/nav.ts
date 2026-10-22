@@ -11,26 +11,14 @@ import { browser } from "wxt/browser";
  * (`/app`, `?section=live`, `?settings=devices`, `/sign-in`) are unchanged.
  */
 
-async function openAcknowledged(url: string): Promise<void> {
-  const tab = await browser.tabs.create({ url });
-  if (typeof tab?.id !== "number") throw new Error("Could not open the app. Please try again.");
-  window.close();
-}
 function open(url: string): void {
-  void openAcknowledged(url).catch(() => {});
-}
-export function openBookmark(webUrl: string, id: string): Promise<void> {
-  return openAcknowledged(`${webUrl}/app/library?bookmark=${encodeURIComponent(id)}`);
+  void browser.tabs.create({ url });
+  window.close();
 }
 
 /** The library. */
 export function openApp(webUrl: string): void {
   open(`${webUrl}/app`);
-}
-
-/** A full tab keeps import progress independent of the popup lifetime. */
-export function openBookmarkImport(): void {
-  open(browser.runtime.getURL("/import.html"));
 }
 
 /** The live-tabs view inside the app. */

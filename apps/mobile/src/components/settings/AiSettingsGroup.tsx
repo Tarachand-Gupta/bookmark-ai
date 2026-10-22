@@ -57,7 +57,7 @@ export function AiSettingsGroup({ state }: { state: AiPlanState }) {
           />
         ) : (
           <>
-
+            <CreditsRow settings={settings} />
             {settings.apiKeySet ? (
               <>
                 <ModeRow settings={settings} state={state} />
@@ -103,7 +103,7 @@ export function AiSettingsGroup({ state }: { state: AiPlanState }) {
 }
 
 /** "Free credits · 312 / 1,000" with a thin meter and the reset day. */
-export function CreditsRow({ settings }: { settings: UserSettings }) {
+function CreditsRow({ settings }: { settings: UserSettings }) {
   const { colors } = useAppTheme();
   const credits = creditsSummary(settings.aiUsage);
   const ownKey = settings.aiMode === "own";

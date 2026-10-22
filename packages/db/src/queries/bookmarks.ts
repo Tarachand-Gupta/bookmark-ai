@@ -77,15 +77,6 @@ export async function insertBookmark(db: Db, b: InsertBookmark): Promise<Bookmar
   }
 }
 
-export async function insertBookmarkIfAbsentInTransaction(
-  db: SqlExecutor,
-  b: InsertBookmark,
-): Promise<{ bookmark: Bookmark; inserted: boolean }> {
-  const existing = await getBookmarkByUrl(db, b.url);
-  if (existing) return { bookmark: existing, inserted: false };
-  return { bookmark: await insertBookmarkInTransaction(db, b), inserted: true };
-}
-
 export async function insertBookmarkInTransaction(
   db: SqlExecutor,
   b: InsertBookmark,

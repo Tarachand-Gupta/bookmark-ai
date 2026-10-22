@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { BookOpen, ChevronDown, CircleDot, Download, FolderInput, Loader2, MoreHorizontal, Sparkles, Tags, Trash2, X } from "lucide-react";
+import { ChevronDown, CircleDot, Download, Loader2, MoreHorizontal, Sparkles, Tags, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useSidebarWidth } from "@/hooks/use-app-layout";
@@ -20,7 +20,7 @@ export interface SelectionBarProps {
   onClear: () => void;
   /** A bulk delete is running — the actions lock and show progress. */
   busy?: boolean;
-  onOrganize?: (action: "move" | "category" | "tags" | "reading") => void;
+  onOrganize?: (action: "category" | "tags") => void;
   onAsk?: () => void;
 }
 
@@ -87,10 +87,8 @@ export function SelectionBar({
           <DropdownMenuContent side="top" align="center" sideOffset={12} collisionPadding={12} className="w-72 max-w-[calc(100vw-24px)]">
             <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Organize {count} {noun}{count === 1 ? "" : "s"}</DropdownMenuLabel>
             {([
-              ["move", "Move to folder…", "Choose a home for these bookmarks", FolderInput],
-              ["category", "Set topic…", "Choose what these bookmarks are about", CircleDot],
+              ["category", "Set category…", "Choose what these bookmarks are about", CircleDot],
               ["tags", "Edit tags…", "Add or remove labels across this selection", Tags],
-              ["reading", "Change reading status…", "Read later, mark read, or remove from the list", BookOpen],
             ] as const).map(([action, label, description, Icon]) => <DropdownMenuItem key={action} className="min-h-14 items-start gap-3 py-2.5" onSelect={() => onOrganize(action)}>
               <Icon className="mt-0.5" aria-hidden /><span className="min-w-0"><span className="block">{label}</span><span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{description}</span></span>
             </DropdownMenuItem>)}

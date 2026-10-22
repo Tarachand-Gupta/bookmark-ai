@@ -58,12 +58,6 @@ struct BookmarkContextMenu: View {
         }
         if appEnvironment.organization.available {
             Button("Edit details…") { appEnvironment.organization.editing = bookmark }
-            Button("Move to folder…") { appEnvironment.organization.editing = bookmark }
-            Menu("Reading state") {
-                ForEach(ReadingState.allCases) { state in
-                    Button(state.title) { Task { await appEnvironment.organization.edit(bookmark, changes: ["readingState": .string(state.rawValue)]) } }
-                }
-            }
             Button("Ask about this bookmark") { appEnvironment.chat.show(context: .bookmarks([bookmark.id])) }
         }
         Divider()

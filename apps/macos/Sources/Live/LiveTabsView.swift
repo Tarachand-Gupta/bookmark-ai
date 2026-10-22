@@ -307,7 +307,6 @@ private struct LiveDeviceHeader: View {
 /// One window as a card: clickable header (name, tab count, chevron), then —
 /// depending on state — nothing, a 3-tab preview + "Show all", or every tab.
 private struct LiveWindowCard: View {
-    @Environment(AppEnvironment.self) private var appEnvironment
     let device: LiveDevice
     let window: LiveWindow
     let title: String
@@ -378,7 +377,6 @@ private struct LiveWindowCard: View {
 
     @ViewBuilder
     private var saveMenuEntries: some View {
-        Button("Ask about this window") { appEnvironment.chat.show(context: ChatContext(type: "live_window", title: "Window on \(device.label)", deviceId: device.deviceId, windowId: window.windowId)) }
         Button("Save Window as Session") {
             Task { await model.saveAsSession(device: device, window: window) }
         }

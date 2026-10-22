@@ -686,8 +686,13 @@ async function POSTHandler(req: Request) {
   let resolvedContext: ResolvedChatContext | undefined;
   try {
     // Regenerating an existing user turn keeps its original frozen scope, even
-    // if the current draft or folder membership changed since that turn.
+    // if the current draft or bookmark selection changed since that turn.
     const storedTurn = history?.messages.find((m) => m.id === lastUserMessage?.id);
+    if (storedTurn && !storedTurn.context && storedTurn.contextBookmarkIds !== undefined)
+      return Response.json(
+        { error: "This saved context is no longer supported. Start a new message with your selected bookmarks." },
+        { status: 422 },
+      );
     if (storedTurn?.context) {
       resolvedContext = {
         context: storedTurn.context,

@@ -55,7 +55,7 @@ export function Omnibox({ className }: { className?: string }) {
         const trimmed = query.trim();
         router.push(trimmed ? searchHref(trimmed) : "/app/library");
       }}
-      className={cn("flex items-center gap-2 rounded-xl border bg-card p-2 shadow-sm", className)}
+      className={cn("flex items-center gap-2 rounded-xl border bg-card p-2 shadow-sm has-[input:focus-visible]:border-ring", className)}
     >
       <div className="relative min-w-0 flex-1">
         <Search

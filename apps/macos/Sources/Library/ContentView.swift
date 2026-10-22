@@ -49,7 +49,7 @@ struct ContentView: View {
             SessionsView()
         case .liveTabs:
             if appEnvironment.canUseData { LiveTabsView() } else { ContentUnavailableView("Live tabs need a connection", systemImage: "wifi.slash", description: Text("Your saved library and sessions remain available.")) }
-        case .allBookmarks, .unsorted, .readingList, .folder, .category, .tag:
+        case .allBookmarks, .category, .tag:
             LibraryDetailView()
         }
     }

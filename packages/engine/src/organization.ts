@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   ORGANIZATION_CAPABILITIES,
+  organizationOperationSchema,
+  updateBookmarkSchema,
   MAX_ORGANIZATION_SELECTION,
   type BookmarkChanges,
   type BulkBookmarkChanges,
@@ -21,21 +23,16 @@ import {
   getBookmarkOrganization,
   putBookmarkOrganization,
   bookmarkOrganizationStatement,
-  folderStatement,
   labelStatement,
-  organizationFolders,
   organizationLabels,
-  putFolder,
   putLabel,
   canonicalLabel,
-  descendantFolderIds,
   normalizeOrganizationName as norm,
   listBookmarks,
   json,
   type Db,
   type SqlExecutor,
   type BookmarkOrganization,
-  type FolderRecord,
   type LabelRecord,
 } from "@bookmark-ai/db";
 
@@ -63,7 +60,7 @@ function stableJson(v: unknown): string {
     .join(",")}}`;
 }
 const same = (a: unknown, b: unknown) => stableJson(a) === stableJson(b);
-type Entity = "bookmark" | "folder" | "label";
+type Entity = "bookmark" | "label";
 interface Delta {
   entity: Entity;
   id: string;
@@ -92,18 +89,65 @@ const fail = (
 ): never => {
   throw new OrganizationError(code, message, status, details);
 };
+// Historical v15 receipts remain on disk, but cannot replay removed operations.
+function retainedOperation(row: OperationRow): boolean {
+  if (
+    ![
+      "bookmark.save",
+      "bookmark.update",
+      "bookmarks.update",
+      "category.create",
+      "category.rename",
+      "category.remove",
+      "tag.create",
+      "tag.rename",
+      "tag.remove",
+      "tag.merge",
+      "undo",
+    ].includes(row.receipt.action)
+  )
+    return false;
+  if (
+    row.deltas.some(
+      (d) =>
+        !["bookmark", "label"].includes(d.entity) ||
+        (d.entity === "bookmark" && !["title", "categoryId", "tags"].includes(d.field)),
+    )
+  )
+    return false;
+  if (
+    row.receipt.results.some(
+      (r) =>
+        (r.entityType && !["bookmark", "category", "tag"].includes(r.entityType)) ||
+        [...(r.changedFields ?? []), ...(r.error?.fields ?? [])].some((field) =>
+          ["folderId", "readingState"].includes(field),
+        ),
+    )
+  )
+    return false;
+  if (row.request?.kind === "organization")
+    return organizationOperationSchema.safeParse(row.request.input).success;
+  if (row.request?.kind === "bookmark")
+    return updateBookmarkSchema.safeParse(row.request.input).success;
+  return true;
+}
+function operationRow(r: Record<string, unknown>): OperationRow {
+  return {
+    receipt: json(r.receipt_json, {} as OrganizationOperation),
+    deltas: json(r.deltas_json, []),
+    hash: String(r.request_hash),
+    request: json(r.request_json, null),
+  };
+}
 async function storedOperation(db: SqlExecutor, id: string): Promise<OperationRow | null> {
   const r = (
     await db.execute({ sql: "SELECT * FROM organization_operations WHERE id=?", args: [id] })
   ).rows[0];
-  return r
-    ? {
-        receipt: json(r.receipt_json, {} as OrganizationOperation),
-        deltas: json(r.deltas_json, []),
-        hash: String(r.request_hash),
-        request: json(r.request_json, null),
-      }
-    : null;
+  if (!r) return null;
+  const row = operationRow(r);
+  if (!retainedOperation(row))
+    fail("operation-unavailable", "This operation is no longer supported.", 410);
+  return row;
 }
 export async function getOrganizationOperation(
   db: SqlExecutor,
@@ -131,13 +175,28 @@ export async function listOrganizationOperations(
   offset = 0,
   now = new Date(),
 ): Promise<OrganizationOperation[]> {
-  const rows = await db.execute({
-    sql: "SELECT receipt_json FROM organization_operations ORDER BY created_at DESC,id LIMIT ? OFFSET ?",
-    args: [Math.min(Math.max(limit, 1), 100), Math.max(offset, 0)],
-  });
-  return rows.rows.map((r) =>
-    decorateReceipt(json(r.receipt_json, {} as OrganizationOperation), now),
-  );
+  const page: OrganizationOperation[] = [];
+  const pageSize = Math.min(Math.max(limit, 1), 100);
+  let skip = Math.max(offset, 0);
+  // Filter before applying public pagination: inert preview receipts must not
+  // hide retained changes behind an apparently empty first page.
+  for (let cursor = 0; ; cursor += 100) {
+    const rows = await db.execute({
+      sql: "SELECT * FROM organization_operations ORDER BY created_at DESC,id LIMIT 100 OFFSET ?",
+      args: [cursor],
+    });
+    for (const raw of rows.rows) {
+      const row = operationRow(raw);
+      if (!retainedOperation(row)) continue;
+      if (skip > 0) {
+        skip--;
+        continue;
+      }
+      page.push(decorateReceipt(row.receipt, now));
+      if (page.length === pageSize) return page;
+    }
+    if (rows.rows.length < 100) return page;
+  }
 }
 async function persistReceipt(
   db: SqlExecutor,
@@ -192,9 +251,6 @@ function description(action: string): string {
       {
         "bookmarks.update": "Update bookmarks",
         "bookmark.update": "Edit bookmark",
-        "folder.create": "Create folder",
-        "folder.update": "Edit folder",
-        "folder.remove": "Remove folder",
         "category.create": "Create category",
         "category.rename": "Rename category",
         "category.remove": "Remove category",
@@ -245,13 +301,6 @@ function delta(
   });
   versions[field] = version;
 }
-function requireFolder(folders: FolderRecord[], id: string | null): FolderRecord | null {
-  if (id === null) return null;
-  return (
-    folders.find((f) => f.id === id && !f.deleted) ??
-    fail("folder-not-found", "Folder no longer exists. Choose a new destination.", 404)
-  );
-}
 function requireLabel(labels: LabelRecord[], id: string, kind: LabelRecord["kind"]): LabelRecord {
   return (
     labels.find((l) => l.id === id && l.kind === kind && !l.deleted) ??
@@ -280,7 +329,7 @@ interface BookmarkSnapshot {
   states: Map<string, BookmarkOrganization>;
 }
 function emptyBookmarkState(): BookmarkOrganization {
-  return { folderId: null, readingState: "not_on_list", overrides: {}, versions: {} };
+  return { overrides: {}, versions: {} };
 }
 /** Two reads, regardless of library size; called inside the owning write transaction. */
 async function loadBookmarkSnapshot(db: SqlExecutor, ids?: string[]): Promise<BookmarkSnapshot> {
@@ -304,8 +353,6 @@ async function loadBookmarkSnapshot(db: SqlExecutor, ids?: string[]): Promise<Bo
     rows.rows.map((r) => [
       String(r.bookmark_id),
       {
-        folderId: r.folder_id == null ? null : String(r.folder_id),
-        readingState: r.reading_state as BookmarkOrganization["readingState"],
         overrides: json(r.overrides_json, {}),
         versions: json(r.versions_json, {}),
       },
@@ -323,7 +370,7 @@ function bookmarkFieldValue(b: Bookmark, s: BookmarkOrganization, field: string)
       added: s.overrides.addedTags ?? [],
       removed: s.overrides.removedTags ?? [],
     };
-  return field === "folderId" ? s.folderId : s.readingState;
+  return undefined;
 }
 function stageBookmarkField(
   b: Bookmark,
@@ -342,8 +389,7 @@ function stageBookmarkField(
     b.tags = value.value;
     s.overrides.addedTags = value.added;
     s.overrides.removedTags = value.removed;
-  } else if (field === "folderId") s.folderId = value;
-  else s.readingState = value;
+  }
   s.versions[field] = version;
 }
 function bookmarkWriteStatements(b: Bookmark, s: BookmarkOrganization): WriteStatement[] {
@@ -364,7 +410,7 @@ async function flushStatements(db: BatchExecutor, statements: WriteStatement[]) 
 interface PreparedBookmarkEdit {
   bookmark: Bookmark | null;
   state: BookmarkOrganization;
-  folders: FolderRecord[];
+
   labels: LabelRecord[];
   statements: { sql: string; args: (string | number | null)[] }[];
 }
@@ -391,10 +437,6 @@ async function applyBookmark(
   );
   const c = changes as BookmarkChanges & BulkBookmarkChanges;
   const proposed: Record<string, unknown> = {};
-  if (c.folderId !== undefined) {
-    requireFolder(prepared?.folders ?? (await organizationFolders(db)), c.folderId);
-    proposed.folderId = c.folderId;
-  }
   if (c.categoryId !== undefined) {
     const label =
       c.categoryId === null
@@ -411,7 +453,6 @@ async function applyBookmark(
   }
   if (c.title !== undefined)
     proposed.title = { value: c.title, manual: manual || !!state.overrides.title };
-  if (c.readingState !== undefined) proposed.readingState = c.readingState;
   if (c.tags !== undefined || c.addTags !== undefined || c.removeTags !== undefined) {
     const labels = prepared?.labels ?? (await organizationLabels(db));
     const requested = c.tags ?? [...b!.tags, ...(c.addTags ?? [])];
@@ -459,15 +500,11 @@ async function applyBookmark(
       added: state.overrides.addedTags ?? [],
       removed: state.overrides.removedTags ?? [],
     },
-    folderId: state.folderId,
-    readingState: state.readingState,
   };
   for (const [field, value] of Object.entries(proposed))
     delta(j, "bookmark", id, field, current[field], value, state.versions);
   if (j.deltas.length > start) {
     const next = { ...current, ...proposed } as any;
-    state.folderId = next.folderId;
-    state.readingState = next.readingState;
     state.overrides = {
       ...state.overrides,
       title: next.title.manual,
@@ -490,22 +527,6 @@ async function applyBookmark(
     changedFields: j.deltas.slice(start).map((d) => d.field),
   };
 }
-async function writeFolderChanges(
-  db: SqlExecutor,
-  f: FolderRecord,
-  changes: Partial<FolderRecord>,
-  j: Journal,
-  statements?: WriteStatement[],
-) {
-  f.versions.exists = randomUUID();
-  for (const field of Object.keys(changes)) {
-    if (field === "versions" || field === "id") continue;
-    delta(j, "folder", f.id, field, (f as any)[field], (changes as any)[field], f.versions);
-    (f as any)[field] = (changes as any)[field];
-  }
-  if (statements) statements.push(folderStatement(f));
-  else await putFolder(db, f);
-}
 async function writeLabelChanges(
   db: SqlExecutor,
   l: LabelRecord,
@@ -522,97 +543,19 @@ async function writeLabelChanges(
   if (statements) statements.push(labelStatement(l));
   else await putLabel(db, l);
 }
-function siblingAvailable(
-  folders: FolderRecord[],
-  name: string,
-  parentId: string | null,
-  except?: string,
-) {
-  const existing = folders.find(
-    (f) => !f.deleted && f.id !== except && f.parentId === parentId && norm(f.name) === norm(name),
-  );
-  if (existing)
-    fail("name-exists", "A folder with this name already exists here.", 409, {
-      existingId: existing.id,
-    });
-}
 async function applyManagement(
   db: BatchExecutor,
   input: Exclude<OrganizationOperationInput, { action: "bookmarks.update" }>,
   j: Journal,
 ): Promise<{ results: OrganizationItemResult[]; entityId?: string }> {
-  const folders = await organizationFolders(db);
   const labels = await organizationLabels(db);
   const start = j.deltas.length;
   const statements: WriteStatement[] = [];
   const display = new Map<string, Pick<OrganizationItemResult, "entityType" | "label">>([
-    ...folders.map((f) => [f.id, { entityType: "folder" as const, label: f.name }] as const),
     ...labels.map((l) => [l.id, { entityType: l.kind, label: l.name }] as const),
   ]);
   let entityId: string | undefined;
-  if (input.action === "folder.create") {
-    const parentId = input.parentId ?? null;
-    requireFolder(folders, parentId);
-    siblingAvailable(folders, input.name, parentId);
-    const f: FolderRecord = {
-      id: randomUUID(),
-      name: input.name,
-      parentId,
-      deleted: false,
-      versions: {},
-    };
-    delta(j, "folder", f.id, "exists", null, { ...f, versions: {} }, f.versions);
-    await putFolder(db, f);
-    display.set(f.id, { entityType: "folder", label: f.name });
-    entityId = f.id;
-  } else if (input.action === "folder.update") {
-    const f = requireFolder(folders, input.id)!;
-    const name = input.name ?? f.name;
-    const parentId = input.parentId === undefined ? f.parentId : input.parentId;
-    expectedFields(
-      f.versions,
-      input.expected,
-      Object.keys(input).filter((k) => k === "name" || k === "parentId"),
-      f as unknown as Record<string, unknown>,
-    );
-    requireFolder(folders, parentId);
-    if (parentId && descendantFolderIds(folders, f.id).includes(parentId))
-      fail("folder-cycle", "A folder cannot be moved into itself or a descendant.");
-    siblingAvailable(folders, name, parentId, f.id);
-    await writeFolderChanges(db, f, { name, parentId }, j);
-    display.set(f.id, { entityType: "folder", label: f.name });
-  } else if (input.action === "folder.remove") {
-    const f = requireFolder(folders, input.id)!;
-    requireFolder(folders, input.destinationId);
-    if (input.destinationId && descendantFolderIds(folders, f.id).includes(input.destinationId))
-      fail("folder-cycle", "Choose a destination outside the removed subtree.");
-    const childParent = input.children === "parent" ? f.parentId : input.destinationId;
-    const children = folders.filter((x) => x.parentId === f.id);
-    for (const child of children) siblingAvailable(folders, child.name, childParent, child.id);
-    // Validate collisions between moved children and the destination before changing anything.
-    for (const child of children)
-      await writeFolderChanges(db, child, { parentId: childParent }, j, statements);
-    const ids = (
-      await db.execute({
-        sql: "SELECT bookmark_id FROM bookmark_organization WHERE folder_id=?",
-        args: [f.id],
-      })
-    ).rows.map((r) => String(r.bookmark_id));
-    const snapshot = await loadBookmarkSnapshot(db, ids);
-    for (const id of ids) {
-      const bookmark = snapshot.bookmarks.get(id);
-      if (bookmark) display.set(id, { entityType: "bookmark", label: bookmark.title });
-      if (bookmark)
-        await applyBookmark(db, id, { folderId: input.destinationId }, undefined, j, true, {
-          bookmark,
-          state: snapshot.states.get(id)!,
-          folders,
-          labels,
-          statements,
-        });
-    }
-    await writeFolderChanges(db, f, { deleted: true }, j, statements);
-  } else if (input.action.endsWith(".create")) {
+  if (input.action.endsWith(".create")) {
     const i = input as Extract<
       OrganizationOperationInput,
       { action: "category.create" | "tag.create" }
@@ -815,11 +758,7 @@ export async function executeOrganizationOperation(
           resultError(
             "id" in input ? input.id : "sourceId" in input ? input.sourceId : input.operationId,
             error,
-            input.action.startsWith("folder")
-              ? "folder"
-              : input.action.startsWith("category")
-                ? "category"
-                : "tag",
+            input.action.startsWith("category") ? "category" : "tag",
             "name" in input ? input.name : undefined,
           ),
         ];
@@ -879,40 +818,10 @@ export async function getOrganization(db: Db): Promise<OrganizationResponse> {
   await db.execute(
     "INSERT OR IGNORE INTO organization_labels(id,kind,name,normalized_name) SELECT 'legacy-tag:'||lower(trim(value)),'tag',MIN(trim(value)),lower(trim(value)) FROM bookmarks,json_each(bookmarks.tags_json) WHERE trim(value)<>'' AND NOT EXISTS(SELECT 1 FROM organization_labels l WHERE l.kind='tag' AND l.normalized_name=lower(trim(value))) GROUP BY lower(trim(value))",
   );
-  const folders = await organizationFolders(db);
   const labels = await organizationLabels(db);
-  const rows = (
-    await db.execute(
-      "SELECT b.id,b.category,b.tags_json,o.folder_id FROM bookmarks b LEFT JOIN bookmark_organization o ON o.bookmark_id=b.id",
-    )
-  ).rows;
-  const path = (f: FolderRecord): string => {
-    const parts = [f.name];
-    const seen = new Set([f.id]);
-    let p = f.parentId;
-    while (p && !seen.has(p)) {
-      seen.add(p);
-      const parent = folders.find((x) => x.id === p);
-      if (!parent) break;
-      parts.unshift(parent.name);
-      p = parent.parentId;
-    }
-    return parts.join(" / ");
-  };
+  const rows = (await db.execute("SELECT id,category,tags_json FROM bookmarks")).rows;
   return {
     capabilities: ORGANIZATION_CAPABILITIES,
-    folders: folders.map((f) => {
-      const descendants = new Set(descendantFolderIds(folders, f.id));
-      return {
-        id: f.id,
-        name: f.name,
-        parentId: f.parentId,
-        path: path(f),
-        directCount: rows.filter((r) => r.folder_id === f.id).length,
-        count: rows.filter((r) => descendants.has(String(r.folder_id))).length,
-        fieldVersions: f.versions,
-      };
-    }),
     categories: labels
       .filter((l) => l.kind === "category")
       .map((l) => ({
@@ -1000,9 +909,11 @@ async function createSelectionInTransaction(
         title: "0",
         categoryId: "0",
         tags: "0",
-        folderId: "0",
-        readingState: "0",
-        ...versions.get(id),
+        ...Object.fromEntries(
+          Object.entries(versions.get(id) ?? {}).filter(([field]) =>
+            ["title", "categoryId", "tags"].includes(field),
+          ),
+        ),
       },
     ]),
   );
@@ -1024,7 +935,6 @@ async function createSelectionInTransaction(
   return selection;
 }
 interface UndoSnapshot extends BookmarkSnapshot {
-  folders: FolderRecord[];
   labels: LabelRecord[];
 }
 function readDelta(snapshot: UndoSnapshot, d: Delta): { value: unknown; version: string } {
@@ -1037,7 +947,7 @@ function readDelta(snapshot: UndoSnapshot, d: Delta): { value: unknown; version:
       version: state.versions[d.field] ?? "0",
     };
   }
-  const records = d.entity === "folder" ? snapshot.folders : snapshot.labels;
+  const records = snapshot.labels;
   const row = records.find((r) => r.id === d.id);
   if (!row) return { value: null, version: "0" };
   return {
@@ -1056,46 +966,26 @@ function reverseDelta(snapshot: UndoSnapshot, d: Delta, statements: WriteStateme
     );
     return;
   }
-  if (d.entity === "folder") {
-    const f = snapshot.folders.find((f) => f.id === d.id)!;
-    if (d.field === "exists") {
-      f.deleted = true;
-      f.versions.exists = randomUUID();
-    } else {
-      (f as any)[d.field] = d.before;
-      f.versions[d.field] = d.beforeVersion;
-    }
-    statements.push(folderStatement(f));
+  const l = snapshot.labels.find((l) => l.id === d.id)!;
+  if (d.field === "exists") {
+    l.deleted = true;
+    l.aliasTo = null;
+    l.versions.exists = randomUUID();
   } else {
-    const l = snapshot.labels.find((l) => l.id === d.id)!;
-    if (d.field === "exists") {
-      l.deleted = true;
-      l.aliasTo = null;
-      l.versions.exists = randomUUID();
-    } else {
-      (l as any)[d.field] = d.before;
-      l.versions[d.field] = d.beforeVersion;
-    }
-    statements.push(labelStatement(l));
+    (l as any)[d.field] = d.before;
+    l.versions[d.field] = d.beforeVersion;
   }
+  statements.push(labelStatement(l));
 }
 function validateStructuralUndo(snapshot: UndoSnapshot, deltas: Delta[]): void {
-  const folders = structuredClone(snapshot.folders),
-    labels = structuredClone(snapshot.labels);
+  const labels = structuredClone(snapshot.labels);
   for (const d of [...deltas].reverse())
     if (d.entity !== "bookmark") {
-      const row = (d.entity === "folder" ? folders : labels).find((r) => r.id === d.id)!;
+      const row = labels.find((r) => r.id === d.id)!;
       if (d.field === "exists") row.deleted = true;
       else (row as any)[d.field] = d.before;
     }
-  const activeFolders = folders.filter((f) => !f.deleted);
   const activeLabels = labels.filter((l) => !l.deleted);
-  for (const f of activeFolders) {
-    siblingAvailable(activeFolders, f.name, f.parentId, f.id);
-    requireFolder(activeFolders, f.parentId);
-    if (f.parentId && descendantFolderIds(activeFolders, f.id).includes(f.parentId))
-      fail("undo-conflict", "The folder hierarchy has changed.", 409);
-  }
   const names = new Set<string>();
   for (const l of activeLabels) {
     const key = l.kind + ":" + norm(l.name);
@@ -1105,17 +995,6 @@ function validateStructuralUndo(snapshot: UndoSnapshot, deltas: Delta[]): void {
   const changedFields = new Map(
     deltas.filter((d) => d.entity === "bookmark").map((d) => [`${d.id}:${d.field}`, d]),
   );
-  const activeFolderIds = new Set(activeFolders.map((f) => f.id));
-  for (const [id, state] of snapshot.states) {
-    const change = changedFields.get(`${id}:folderId`);
-    const folder = change ? change.before : state.folderId;
-    if (folder && !activeFolderIds.has(String(folder)))
-      fail(
-        "undo-conflict",
-        "This folder now contains additional bookmarks. Move them before Undo.",
-        409,
-      );
-  }
   // A newly created label cannot disappear while a later assignment still uses it.
   for (const d of deltas.filter((d) => d.entity === "label" && d.field === "exists")) {
     const label = d.after as LabelRecord;
@@ -1163,7 +1042,6 @@ export async function undoOrganizationOperation(
         tx,
         structural ? undefined : [...new Set(pending.map((d) => d.id))],
       )),
-      folders: structural ? await organizationFolders(tx, true) : [],
       labels: structural ? await organizationLabels(tx, true) : [],
     };
     const safe: Delta[] = [];
@@ -1301,10 +1179,6 @@ export async function saveBookmarkWithOperation(
     const existing = !!(await getBookmarkByUrl(tx, input.url));
     const bookmark = await saveBookmarkFastInTransaction(tx, input);
     let operation: OrganizationOperation | undefined;
-    if (input.readingState !== undefined) {
-      const j: Journal = { deltas: [], token: input.operationId ?? randomUUID() };
-      await applyBookmark(tx, bookmark.id, { readingState: input.readingState }, undefined, j);
-    }
     if (input.operationId) {
       operation = receipt(
         input.operationId,
@@ -1375,14 +1249,11 @@ async function applyBookmarkBatch(
   j: Journal,
 ): Promise<OrganizationItemResult[]> {
   const { bookmarks, states } = await loadBookmarkSnapshot(db, ids);
-  const folders = await organizationFolders(db),
-    labels = await organizationLabels(db);
+  const labels = await organizationLabels(db);
   const statements: PreparedBookmarkEdit["statements"] = [];
   const results: OrganizationItemResult[] = [];
   for (const id of ids) {
     const state = states.get(id) ?? {
-      folderId: null,
-      readingState: "not_on_list" as const,
       overrides: {},
       versions: {},
     };
@@ -1391,7 +1262,6 @@ async function applyBookmarkBatch(
         await applyBookmark(db, id, changes, expected?.[id], j, true, {
           bookmark: bookmarks.get(id) ?? null,
           state,
-          folders,
           labels,
           statements,
         }),

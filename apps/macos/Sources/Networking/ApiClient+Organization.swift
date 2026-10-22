@@ -1,6 +1,19 @@
 import Foundation
 
 extension ApiClient {
+    /// The subject only scopes local progress. The server verifies every request.
+    static func importSubject(_ token: String) -> String? {
+        let pieces = token.split(separator: ".")
+        guard pieces.count == 3 else { return nil }
+        var encoded = String(pieces[1]).replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        encoded += String(repeating: "=", count: (4 - encoded.count % 4) % 4)
+        guard let data = Data(base64Encoded: encoded),
+              let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let subject = body["sub"] as? String, !subject.isEmpty else { return nil }
+        return subject
+    }
+
     /// Capture credentials and destination before suspension. A retry cannot adopt
     /// another account or origin. The server remains the authority for ownership.
     func organizationRequest<T: Decodable>(_ path: String, method: String = "GET", body: [String: JSONValue]? = nil, scope: OrganizationScope) async throws -> T {

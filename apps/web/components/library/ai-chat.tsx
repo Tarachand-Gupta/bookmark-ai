@@ -59,7 +59,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  apiHeadersForAccount,
   deleteChatConversation,
   getChatConversation,
   getSettings,
@@ -281,22 +280,6 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
     return () => { cancelled = true; };
   }, [workspace, active.key, active.conversationId]);
   useEffect(() => { if (!open) setExpanded(false); }, [open]);
-  useEffect(() => {
-    const handoffId = searchParams.get("handoff");
-    if (!handoffId) return;
-    let cancelled = false;
-    void apiHeadersForAccount(accountId).then(headers => { if (cancelled || !workspace.isActive) throw new Error("This account is no longer active."); return fetch(`/api/composer/handoffs/${encodeURIComponent(handoffId)}/claim`, { method: "POST", headers }); }).then(async response => {
-      if (!response.ok) throw new Error(response.status === 410 ? "This transfer expired. Return to the extension and continue again." : "Couldn't open this transfer. Check that you're signed in to the same account.");
-      return response.json();
-    }).then(({ handoff }) => {
-      if (cancelled || !handoff?.draft) return;
-      const key = `handoff:${handoffId}`;
-      if (workspace.threads.has(key)) workspace.select(key);
-      else workspace.create({ key, text: handoff.draft.text, context: handoff.draft.context });
-      onOpen();
-    }).catch(err => { if (!cancelled) setLoadError(err.message); });
-    return () => { cancelled = true; };
-  }, [searchParams.get("handoff"), workspace]);
   // After the user saves their own key from the limit card, retry the send —
   // their key is unmetered, so the same last message now succeeds. The card
   // also calls this on a mode switch / key removal, so re-read the mode rather
@@ -529,7 +512,7 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
                     <h3 className="text-sm font-medium">Ask anything about your bookmarks</h3>
                     <p className="text-sm text-muted-foreground">
                       Find a saved article, compare ideas, or pick up your research.
-                      Choose specific links or a folder for a focused answer, and attach a document or image when it helps.
+                      Choose specific links for a focused answer, and attach a document or image when it helps.
                     </p>
                   </div>
                 </div>
@@ -635,6 +618,7 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
   const composer = (
     <div className={open ? "shrink-0 border-t p-2" : "p-0"}>
       <div className={open ? "contents" : "hidden"}>
+      {active.contextNeedsReview && <div role="status" className="px-3 py-2 text-xs space-y-2"><p>Your draft is saved. Its previous context is no longer available. Choose bookmarks or use your library before sending.</p><Button size="sm" variant="outline" onClick={() => setContextPicker(true)}>Choose bookmarks</Button><Button size="sm" variant="ghost" onClick={() => workspace.patch({ context: { type: "library" } })}>Use my library</Button></div>}
       {active.context.type !== "library" && <div className="flex items-center gap-2 px-2 pb-2 text-xs">
         <Popover><PopoverTrigger asChild><Button variant="secondary" size="sm">{contextLabel(active.context)}</Button></PopoverTrigger><PopoverContent className="text-sm break-words"><ChatContextPreview context={active.context} accountId={accountId} /></PopoverContent></Popover>
         <button type="button" onClick={() => workspace.patch({ context: { type: "library" } })} aria-label="Remove context"><X className="size-4" /></button>
@@ -655,7 +639,7 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
             className={open ? undefined : "col-start-2 row-start-1 h-[52px] min-h-[52px] max-h-[52px] min-w-0 overflow-hidden px-2 py-4 leading-5"}
             rows={1}
             wrap={open ? "soft" : "off"}
-            onFocus={() => { if (!open) { if (!active.text && !active.files.length && !messages.length && suggestedContext) workspace.patch({ context: suggestedContext }); onOpen(); } }}
+            onFocus={() => { if (!open) { if (!active.contextNeedsReview && !active.text && !active.files.length && !messages.length && suggestedContext) workspace.patch({ context: suggestedContext }); onOpen(); } }}
             placeholder={
               messages.length === 0
                 ? "Ask about your library"
@@ -676,7 +660,7 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
         )}
         <PromptInputFooter className={open ? undefined : "contents [&>button]:size-11 [&>button]:row-start-1 [&>button:first-child]:col-start-1 [&>button:last-child]:col-start-3"}>
           <AttachButton onOpen={onOpen} onSelectBookmarks={() => { onOpen(); setContextPicker(true); }} />
-          <ComposerSubmit status={status} onStop={stop} blocked={active.missingFiles.length > 0} className="ml-auto" />
+          <ComposerSubmit status={status} onStop={stop} blocked={active.contextNeedsReview || active.missingFiles.length > 0} className="ml-auto" />
         </PromptInputFooter>
       </PromptInput>
     </div>
@@ -686,7 +670,7 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
   // focus nor an IME composition ever moves the textarea to a second tree.
   return (
     <PromptInputProvider input={active.text} onInputChange={text => workspace.patch({ text }, active.key)} fileScopeKey={active.key} files={active.files} onFilesChange={files => workspace.attach(files, active.key)} prepareFiles={prepareAttachments} onError={onAttachError}>
-      <ChatDropZone className={expanded ? "fixed inset-2 z-[60] flex flex-col overflow-hidden rounded-xl border bg-card shadow-2xl sm:inset-6" : "flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[inherit] bg-card"}>
+      <ChatDropZone className={expanded ? "fixed inset-2 z-[60] flex flex-col overflow-hidden rounded-xl border bg-card shadow-2xl sm:inset-6" : `flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[inherit] ${open ? "bg-card" : "bg-transparent"}`}>
         <div className={open ? "contents" : "hidden"}>{header}</div>
         <div className={open ? "flex min-h-0 flex-1 flex-col" : "hidden"}>{thread}</div>
         {!open && (status === "streaming" || status === "submitted") && <span role="status" className="sr-only">Response in progress · Open to view</span>}

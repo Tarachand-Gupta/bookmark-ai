@@ -1,4 +1,3 @@
-import { mirrorReadingEntry, drainReadingEntries } from "./release-reading-list";
 import { SUPABASE_AUTH, getOAuthToken, oauthGeneration } from "./supabase-oauth";
 import { storage } from "#imports";
 import { browser } from "wxt/browser";
@@ -7,12 +6,6 @@ import { detectSource } from "@/lib/detect";
 import { diag } from "@/lib/diag";
 import { isBackfilledNode } from "@/lib/native-sync-import";
 import { drainMirrorQueue, enqueueMirrorAdd } from "@/lib/native-sync-queue";
-import {
-  canMirrorNativeBookmarks,
-  ensureImportOnlyConsent,
-  initializeBookmarkConsent,
-  revokeBookmarkConsent,
-} from "./native-bookmark-consent";
 
 /**
  * NATIVE BROWSER SYNC — mirror native bookmark additions (and Chrome's Reading
@@ -55,6 +48,9 @@ export const nativeSyncEnabledItem = storage.defineItem<boolean>("local:nativeSy
 export const nativeSyncFullItem = storage.defineItem<boolean>("local:nativeSyncFull", {
   fallback: false,
 });
+
+/** Reading-list entries get these tags so they're searchable later. */
+const READING_TAGS = ["reading", "article"];
 
 /** url → bookmark id for additions mirrored BY THIS INSTALL. Lets the removal
  * mirror delete by id directly (device tokens can't list the library, so a
@@ -128,7 +124,6 @@ async function sendMirrorAdd(
  * onCreated event that produced this call. */
 async function mirrorAdd(url: string | undefined, title: string | undefined, tags?: string[]) {
   if (importing || !isHttp(url)) return;
-  if (!tags && !(await canMirrorNativeBookmarks())) return;
   if (SUPABASE_AUTH && !(await getOAuthToken().catch(() => null))) return;
   const authGeneration = oauthGeneration();
   const enabled = await nativeSyncEnabledItem.getValue().catch(() => true);
@@ -156,21 +151,16 @@ export async function drainNativeSyncQueue(): Promise<void> {
   if (BROWSER === "safari") return; // the module no-ops there anyway
   const enabled = await nativeSyncEnabledItem.getValue().catch(() => true);
   if (!enabled) return;
-  if (BROWSER === "chrome") await drainReadingEntries().catch(() => {});
   await drainMirrorQueue(
     async (entry) => {
       try {
-        // Migrate historical tagged Reading List retries to canonical state.
-        if (entry.tags?.includes("reading") || entry.tags?.includes("article"))
-          await mirrorReadingEntry({ url: entry.url, title: entry.title });
-        else await sendMirrorAdd(entry.url, entry.title, entry.tags);
+        await sendMirrorAdd(entry.url, entry.title, entry.tags);
         return true;
       } catch {
         return false;
       }
     },
     () => !SUPABASE_AUTH || generation === oauthGeneration(),
-    async (entry) => !!entry.tags?.length || (await canMirrorNativeBookmarks()),
   );
 }
 
@@ -178,8 +168,6 @@ export async function drainNativeSyncQueue(): Promise<void> {
  * the folder node (children fire no events), so their mirrors always stay. */
 async function mirrorRemove(url: string | undefined) {
   if (!isHttp(url)) return;
-  if (!(await canMirrorNativeBookmarks("remove"))) return;
-  if (!(await nativeSyncEnabledItem.getValue().catch(() => false))) return;
   const full = await nativeSyncFullItem.getValue().catch(() => false);
   if (!full) return;
   const id = await takeUrlId(url);
@@ -210,15 +198,6 @@ export async function refreshNativeSyncSettings(): Promise<void> {
   });
 }
 
-async function mirrorReadingChange(entry: ReadingListEntry, removed = false): Promise<void> {
-  if (!(await nativeSyncEnabledItem.getValue().catch(() => false))) return;
-  try {
-    await mirrorReadingEntry(entry, removed);
-  } catch {
-    diag("nativeSync", "reading state pending or unavailable");
-  }
-}
-
 /** Chrome-only Reading List API (`browser`/webextension-polyfill don't expose
  * or type it) — present since Chrome 120; undefined on older versions and in
  * every non-Chrome build, and the listener additions feature-detect it. */
@@ -230,7 +209,6 @@ interface ReadingListEntry {
 interface ReadingListApi {
   onEntryAdded: { addListener: (cb: (entry: ReadingListEntry) => void) => void };
   onEntryRemoved: { addListener: (cb: (entry: ReadingListEntry) => void) => void };
-  onEntryUpdated?: { addListener: (cb: (entry: ReadingListEntry) => void) => void };
 }
 function chromeReadingList(): ReadingListApi | undefined {
   if (BROWSER !== "chrome") return undefined;
@@ -246,70 +224,41 @@ function chromeReadingList(): ReadingListApi | undefined {
 export function registerNativeSync(): void {
   if (BROWSER === "safari") return;
 
-  // Register synchronously where the namespace exists, so MV3 can wake for events.
-  // Every event checks the actual permission and separate consent before writing.
-  let attached = false;
-  const created: Parameters<typeof browser.bookmarks.onCreated.addListener>[0] = (_id, node) => {
-    if (isBackfilledNode(node.dateAdded)) return;
+  browser.bookmarks.onCreated.addListener((_id, node) => {
+    // Backfill gate (imports/restores/Sync): the cross-browser twin of the
+    // onImportBegan/onImportEnded bracket below — Firefox never implemented
+    // those events, so without this an import mirrored every node.
+    if (isBackfilledNode(node.dateAdded)) {
+      diag("nativeSync", "add skipped (backfilled node)", {
+        ageMs: Date.now() - (node.dateAdded ?? Date.now()),
+      });
+      return;
+    }
     void mirrorAdd(node.url, node.title);
-  };
-  const removed: Parameters<typeof browser.bookmarks.onRemoved.addListener>[0] = (_id, info) => {
-    void mirrorRemove(info.node?.url);
-  };
-  const importBegan = () => {
-    importing = true;
-  };
-  const importEnded = () => {
-    importing = false;
-  };
-  const attach = () => {
-    if (attached || !browser.bookmarks?.onCreated) return;
-    try {
-      browser.bookmarks.onCreated.addListener(created);
-      browser.bookmarks.onRemoved.addListener(removed);
-      browser.bookmarks.onImportBegan?.addListener(importBegan);
-      browser.bookmarks.onImportEnded?.addListener(importEnded);
-      attached = true;
-    } catch {
-      /* Some browsers hide the namespace until permission is granted. */
-    }
-  };
-  const detach = () => {
-    try {
-      browser.bookmarks?.onCreated?.removeListener(created);
-      browser.bookmarks?.onRemoved?.removeListener(removed);
-      browser.bookmarks?.onImportBegan?.removeListener(importBegan);
-      browser.bookmarks?.onImportEnded?.removeListener(importEnded);
-    } catch {
-      /* Revocation may already have hidden the namespace. */
-    }
-    attached = false;
-    importing = false;
-  };
-  attach();
-  void initializeBookmarkConsent().catch(() => {});
-  browser.permissions.onAdded.addListener((grant) => {
-    if (!grant.permissions?.includes("bookmarks")) return;
-    void ensureImportOnlyConsent()
-      .then(attach)
-      .catch(() => {});
   });
-  browser.permissions.onRemoved.addListener((grant) => {
-    if (!grant.permissions?.includes("bookmarks")) return;
-    detach();
-    void revokeBookmarkConsent().catch(() => {});
+  browser.bookmarks.onRemoved.addListener((_id, info) => {
+    void mirrorRemove(info.node?.url);
+  });
+  // Import-flood suppression. Firefox's onImportBegan/onImportEnded sit outside
+  // the polyfill's types on some versions — guard the whole pair.
+  const bookmarksApi = browser.bookmarks as unknown as {
+    onImportBegan?: { addListener: (cb: () => void) => void };
+    onImportEnded?: { addListener: (cb: () => void) => void };
+  };
+  bookmarksApi.onImportBegan?.addListener(() => {
+    importing = true;
+  });
+  bookmarksApi.onImportEnded?.addListener(() => {
+    importing = false;
   });
 
   const readingList = chromeReadingList();
   if (readingList) {
     readingList.onEntryAdded.addListener((entry) => {
-      void mirrorReadingChange(entry);
+      void mirrorAdd(entry.url, entry.title, READING_TAGS);
     });
     readingList.onEntryRemoved.addListener((entry) => {
-      void mirrorReadingChange(entry, true);
-    });
-    readingList.onEntryUpdated?.addListener((entry) => {
-      void mirrorReadingChange(entry);
+      void mirrorRemove(entry.url);
     });
     diag("nativeSync", "reading list listener registered");
   }

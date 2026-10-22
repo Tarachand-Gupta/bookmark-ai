@@ -21,7 +21,6 @@ struct BookmarkGridView: View {
                         .overlay(alignment: .topTrailing) {
                             if appEnvironment.library.selectedIDs.contains(bookmark.id) { Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint).padding(6).accessibilityLabel("Selected") }
                         }
-                        .onDrag { NSItemProvider(object: bookmark.id as NSString) }
                         .contextMenu { BookmarkContextMenu(bookmark: bookmark) }
                         .id(bookmark.id)
                         .accessibilityAddTraits(appEnvironment.library.selectedIDs.contains(bookmark.id) ? .isSelected : [])

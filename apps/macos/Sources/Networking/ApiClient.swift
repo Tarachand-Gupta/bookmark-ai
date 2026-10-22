@@ -49,8 +49,7 @@ final class ApiClient {
         browser: String? = nil,
         device: String? = nil,
         limit: Int = 100,
-        offset: Int = 0,
-        organizationFilters: [URLQueryItem] = []
+        offset: Int = 0
     ) async throws -> ListBookmarksResponse {
         var items = [
             URLQueryItem(name: "limit", value: String(min(max(limit, 1), Self.maxBookmarksLimit))),
@@ -61,7 +60,7 @@ final class ApiClient {
         if let day, !day.isEmpty { items.append(URLQueryItem(name: "day", value: day)) }
         if let browser, !browser.isEmpty { items.append(URLQueryItem(name: "browser", value: browser)) }
         if let device, !device.isEmpty { items.append(URLQueryItem(name: "device", value: device)) }
-        return try await get("/api/bookmarks", query: items + organizationFilters)
+        return try await get("/api/bookmarks", query: items)
     }
 
     /// `GET /api/meta` — the sidebar's facets and counts.

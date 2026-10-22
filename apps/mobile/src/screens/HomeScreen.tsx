@@ -3,7 +3,6 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "r
 import * as Haptics from "expo-haptics";
 import { CacheStatus } from "../components/CacheStatus";
 import {useWorkspace} from "../context/WorkspaceContext";
-import { GettingStartedCard } from "../components/onboarding/GettingStartedCard";
 import { BookmarkRow } from "../components/BookmarkRow";
 import { HomeActivityRow } from "../components/HomeActivityRow";
 import { HomeContinueCard } from "../components/HomeContinueCard";
@@ -47,7 +46,7 @@ export function HomeScreen({
   active,
   onNavigate,
   onOpenSettings,
-  refreshSignal = 0, onImport,
+  refreshSignal = 0,
 }: {
   /** Home is the foreground tab — gates the live stream and the staleness refetch. */
   active: boolean;
@@ -57,7 +56,7 @@ export function HomeScreen({
   onOpenSettings: () => void;
   /** Counter bumped by the Shell after a save it owns (a share-sheet save), so
    * "Recently saved" picks it up without waiting out the staleness window. */
-  refreshSignal?: number; onImport:()=>void;
+  refreshSignal?: number;
 }) {
   const { colors, radius } = useAppTheme();
   const workspace=useWorkspace();
@@ -200,7 +199,7 @@ export function HomeScreen({
           <LoadFailed message={dash.error} />
         )
       ) : freshAccount&&!workspace.readOnly ? (
-        <View style={{padding:20}}><GettingStartedCard onSaveLink={() => onNavigate({ tab: "library", add: true })} onImport={onImport}/></View>
+        <FirstRun onAdd={() => onNavigate({ tab: "library", add: true })} />
       ) : (
         <>
           {recents.length > 0 && (
@@ -223,7 +222,7 @@ export function HomeScreen({
             <HomeSection
               title={`Reading queue · ${readingTotal}`}
               actionLabel="See all"
-              onAction={() => onNavigate({ tab: "library", readingState: "unread" })}
+              onAction={() => onNavigate({ tab: "library", tag: READING_TAG })}
             >
               {reading.map((bookmark, i) => (
                 <BookmarkRow

@@ -1,4 +1,5 @@
-/** Additive organization state; original bookmark payload remains readable by older clients. */
+/** Additive manual-edit/composer state. Legacy v15 folder/read/import storage
+ * stays inert for existing local databases; no destructive rollback is needed. */
 export const ORGANIZATION_DDL = `
 CREATE TABLE IF NOT EXISTS organization_folders (
  id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL, parent_id TEXT,
@@ -39,8 +40,7 @@ CREATE TABLE IF NOT EXISTS chat_turn_contexts (
  conversation_id TEXT NOT NULL, message_id TEXT NOT NULL, context_json TEXT NOT NULL, created_at TEXT NOT NULL,
  PRIMARY KEY(conversation_id,message_id)
 );
-INSERT OR IGNORE INTO bookmark_organization(bookmark_id,reading_state)
- SELECT id, CASE WHEN EXISTS(SELECT 1 FROM json_each(bookmarks.tags_json) WHERE lower(value) IN ('reading','article')) THEN 'unread' ELSE 'not_on_list' END FROM bookmarks;
+INSERT OR IGNORE INTO bookmark_organization(bookmark_id) SELECT id FROM bookmarks;
 INSERT OR IGNORE INTO organization_labels(id,kind,name,normalized_name)
  SELECT 'legacy-category:'||lower(trim(category)),'category',MIN(trim(category)),lower(trim(category))
  FROM bookmarks WHERE lower(trim(category)) NOT IN ('','uncategorized') GROUP BY lower(trim(category));

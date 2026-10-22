@@ -102,11 +102,12 @@ describe("OAuth extension authority", () => {
       "GET /api/organization/operations/abc",
       "POST /api/organization/operations/abc/retry",
       "POST /api/composer/handoffs",
-      "POST /api/import/bookmarks",
     ])
       expect(extensionRouteAllowed(route)).toBe(true);
     expect(extensionRouteAllowed("POST /api/bookmarks")).toBe(true);
     expect(extensionRouteAllowed("DELETE /api/bookmarks/abc")).toBe(true);
+    expect(extensionRouteAllowed("POST /api/import/bookmarks")).toBe(false);
+    expect(extensionRouteAllowed("GET /api/import/bookmarks")).toBe(false);
     expect(extensionRouteAllowed(null)).toBe(false);
     expect(extensionRouteAllowed("DELETE /api/bookmarks/abc/other")).toBe(false);
   });

@@ -9,9 +9,9 @@ export function openBookmark(bookmark: Bookmark): void {
 
 /** Long-press menu: Open / Share / Copy Link — the iOS way to offer
  * secondary actions without cluttering the row. */
-export function showBookmarkActions(bookmark: Bookmark, actions: {edit?:()=>void; select?:()=>void; reading?:()=>void; ask?:()=>void} = {}): void {
+export function showBookmarkActions(bookmark: Bookmark, actions: {edit?:()=>void; select?:()=>void; ask?:()=>void} = {}): void {
   if (actions.edit) {
-    const entries = [{text:"Open link",onPress:()=>openBookmark(bookmark)}, {text:"Edit details",onPress:actions.edit}, {text:"Reading list",onPress:actions.reading}, {text:"Ask AI about this link",onPress:actions.ask}, ...(actions.select?[{text:"Select bookmark",onPress:actions.select}]:[]), {text:"Copy link",onPress:()=>void Clipboard.setStringAsync(bookmark.url)}];
+    const entries = [{text:"Open link",onPress:()=>openBookmark(bookmark)}, {text:"Edit details",onPress:actions.edit}, {text:"Ask AI about this link",onPress:actions.ask}, ...(actions.select?[{text:"Select bookmark",onPress:actions.select}]:[]), {text:"Copy link",onPress:()=>void Clipboard.setStringAsync(bookmark.url)}];
     if (Platform.OS === "ios") ActionSheetIOS.showActionSheetWithOptions({title:bookmark.title,options:[...entries.map(e=>e.text),"Cancel"],cancelButtonIndex:entries.length},index=>entries[index]?.onPress?.());
     else Alert.alert(bookmark.title,"Bookmark actions",[...entries,{text:"Cancel",onPress:()=>undefined}]);
     return;

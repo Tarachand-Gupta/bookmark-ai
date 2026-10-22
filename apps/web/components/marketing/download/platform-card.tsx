@@ -79,7 +79,7 @@ export function PlatformCard({ entry, wide = false }: { entry: PlatformEntry; wi
           href={`#source-${entry.id}`}
           className={cn(
             mono,
-            "group inline-flex w-fit items-center gap-1.5 rounded-sm text-xs font-medium text-foreground transition-colors hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+            "group inline-flex w-fit items-center gap-1.5 rounded-sm text-xs font-medium text-foreground transition-colors hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus-visible:ring-offset-background",
           )}
         >
           Build from source

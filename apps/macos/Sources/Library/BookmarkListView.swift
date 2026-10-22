@@ -27,7 +27,6 @@ struct BookmarkListView: View {
                                 TapGesture(count: 2).onEnded { open(bookmark) }
                             )
                             .contextMenu { BookmarkContextMenu(bookmark: bookmark) }
-                            .onDrag { NSItemProvider(object: bookmark.id as NSString) }
                             .accessibilityAddTraits(appEnvironment.library.selectedIDs.contains(bookmark.id) ? .isSelected : [])
                             .id(bookmark.id)
                     }

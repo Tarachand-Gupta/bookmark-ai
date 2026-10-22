@@ -108,7 +108,9 @@ const BLOCKED_IDENTIFIERS = [
   "chat_turn_contexts",
   "organization_operations",
   "organization_selections",
-  "bookmark_import_batches",
+  "bookmark_import_batches", // inert v15 data from the removed import flow
+  "organization_folders", // inert v15 data from removed folder operations
+  "bookmark_organization", // internal manual provenance and inert legacy state
   "user_settings", // holds the (encrypted-at-rest) ai_api_key secret + provider config
   "live_devices", // per-device open-tab checkpoints — sensitive, never agent-readable (§5.5)
   "live_settings", // the live-sessions opt-in flag

@@ -14,26 +14,20 @@ function fixture(initial: string | null = null) {
 }
 
 describe("device-local bookmark view", () => {
-  it("keeps original cards on phones and defaults desktop to grid without a stored write", () => {
+  it("defaults phones and desktop to grid without a stored write", () => {
     const { store, writes } = fixture();
     store.refresh();
     for (const width of [320, 390, 767.99, 768, 1600]) expect(resolveBookmarkView(store.getSnapshot(), width)).toBe("grid");
     expect(writes).toEqual([]);
   });
-  it.each(["grid", "table"] as const)("preserves desktop %s across navigation while keeping phone cards", (choice) => {
+  it.each(["grid", "list", "compact"] as const)("preserves %s across navigation on phones and desktop", (choice) => {
     const { store, writes } = fixture(choice);
     store.refresh();
-    for (const width of [320, 767]) expect(resolveBookmarkView(store.getSnapshot(), width)).toBe("grid");
+    for (const width of [320, 767]) expect(resolveBookmarkView(store.getSnapshot(), width)).toBe(choice);
     for (const width of [768, 1600]) expect(resolveBookmarkView(store.getSnapshot(), width)).toBe(choice);
     expect(writes).toEqual([]);
   });
-  it.each(["list", "compact"])("migrates legacy %s to the table without changing phone cards", (choice) => {
-    const { store } = fixture(choice);
-    store.refresh();
-    expect(resolveBookmarkView(store.getSnapshot(), 1280)).toBe("table");
-    expect(resolveBookmarkView(store.getSnapshot(), 390)).toBe("grid");
-  });
-  it.each([null, "automatic", "GRID", "", '{"userId":"private"}', 1])("rejects invalid saved values: %s", (value) => {
+  it.each([null, "table", "automatic", "GRID", "", '{"userId":"private"}', 1])("rejects invalid saved values: %s", (value) => {
     expect(parseBookmarkView(value)).toBeNull();
   });
   it("notifies all same-tab consumers and persists only the view token under the existing key", () => {
@@ -41,12 +35,12 @@ describe("device-local bookmark view", () => {
     const library: unknown[] = [], dashboard: unknown[] = [];
     const unsubscribe = store.subscribe(() => library.push(store.getSnapshot()));
     store.subscribe(() => dashboard.push(store.getSnapshot()));
-    store.set("table");
-    store.set("table");
+    store.set("list");
+    store.set("list");
     unsubscribe();
     store.set("grid");
-    expect(library).toEqual(["table"]);
-    expect(dashboard).toEqual(["table", "grid"]);
+    expect(library).toEqual(["list"]);
+    expect(dashboard).toEqual(["list", "grid"]);
     expect([...values]).toEqual([[BOOKMARK_VIEW_KEY, "grid"]]);
     expect(writes.every((key) => key === BOOKMARK_VIEW_KEY)).toBe(true);
   });
@@ -56,7 +50,7 @@ describe("device-local bookmark view", () => {
     store.receiveStorage("unrelated", "list");
     expect(store.getSnapshot()).toBe("grid");
     store.receiveStorage(BOOKMARK_VIEW_KEY, "list");
-    expect(store.getSnapshot()).toBe("table");
+    expect(store.getSnapshot()).toBe("list");
     store.receiveStorage(BOOKMARK_VIEW_KEY, null);
     expect(resolveBookmarkView(store.getSnapshot(), 390)).toBe("grid");
     store.receiveStorage(BOOKMARK_VIEW_KEY, "compact");
@@ -75,10 +69,10 @@ describe("device-local bookmark view", () => {
   it("works in memory when access to localStorage itself throws", () => {
     const store = createBookmarkViewStore(() => { throw new Error("SecurityError"); });
     expect(() => store.refresh()).not.toThrow();
-    store.set("table");
+    store.set("list");
     store.refresh();
-    expect(resolveBookmarkView(store.getSnapshot(), 390)).toBe("grid");
-    expect(resolveBookmarkView(store.getSnapshot(), 1200)).toBe("table");
+    expect(resolveBookmarkView(store.getSnapshot(), 390)).toBe("list");
+    expect(resolveBookmarkView(store.getSnapshot(), 1200)).toBe("list");
     expect(() => store.set(null)).not.toThrow();
   });
   it("keeps changes in memory when storage reads, writes or removal fail", () => {

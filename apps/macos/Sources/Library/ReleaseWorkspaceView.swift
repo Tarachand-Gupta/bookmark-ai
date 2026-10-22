@@ -7,11 +7,10 @@ import SwiftUI
 struct ReleaseWorkspaceView<Content: View>: View {
     @Environment(AppEnvironment.self) private var app
     @State private var composerHeight: CGFloat = 92
-    @State private var gettingStartedDismissed = false
     @ViewBuilder let content: () -> Content
     private var blocking: Bool {
         let organization = app.organization
-        return !app.canUseData || organization.showAdd || organization.showImport || organization.showBulk || organization.showManager || organization.showHistory || organization.editing != nil || app.isPresentingTour
+        return !app.canUseData || organization.showAdd || organization.showBulk || organization.showManager || organization.showHistory || organization.editing != nil || app.isPresentingTour
     }
     var body: some View {
         @Bindable var org = app.organization
@@ -61,10 +60,8 @@ struct ReleaseWorkspaceView<Content: View>: View {
         .sheet(isPresented: $org.showManager) { OrganizationManagerView() }
         .sheet(isPresented: $org.showHistory) { RecentChangesView() }
         .sheet(isPresented: $org.showAdd) { AddBookmarkView() }
-        .sheet(isPresented: $org.showImport, onDismiss: { Task { await app.loadEverything() } }) { ImportBookmarksView() }
         .sheet(isPresented: $org.showBulk) { if let frozen = org.frozenSelection { BulkOrganizationView(selection: frozen) } }
         .toolbar { ToolbarItem(placement: .primaryAction) { actionsMenu } }
-        .onChange(of: org.scope) { _, _ in gettingStartedDismissed = false }
     }
     @ViewBuilder private var libraryControls: some View {
         let library = app.library
@@ -80,18 +77,11 @@ struct ReleaseWorkspaceView<Content: View>: View {
                 }.padding(9).background(.bar)
             }
             if library.selection.isLibraryFilter {
-                if library.total == 0 && !library.isLoading && !library.isShowingSearchResults && !gettingStartedDismissed {
-                    GettingStartedView(onSaveLink: { app.organization.showAdd = true }, onImport: { app.organization.showImport = true }, onDismiss: { gettingStartedDismissed = true }).padding()
-                }
                 if app.organization.data != nil {
-                    if library.selection == .readingList {
-                        Picker("Reading list", selection: Binding(get: { library.readingFilter }, set: { library.readingFilter = $0 })) { Text("All on list").tag("on_list"); Text("Unread").tag("unread"); Text("Read").tag("read") }.pickerStyle(.segmented).padding(10)
-                    }
-                    if case .folder = library.selection { Toggle("Include subfolders", isOn: Binding(get: { library.includeSubfolders }, set: { library.includeSubfolders = $0 })).padding(10) }
                     if !library.selectedIDs.isEmpty && app.canUseData {
                         HStack {
                             Text("\(library.selectedIDs.count) selected").font(.callout.weight(.medium)).accessibilityLabel("\(library.selectedIDs.count) bookmarks selected")
-                            Button("Edit organization…") { Task { await reviewSelected() } }
+                            Button("Edit selected…") { Task { await reviewSelected() } }
                             Button("Ask AI") { app.chat.show(context: library.proposedChatContext) }.disabled(library.selectedIDs.count > 1000)
                             if library.selectedIDs.count > 1000 { Text("Choose up to 1,000 for AI context.").font(.caption) }
                             Spacer()
@@ -137,15 +127,14 @@ struct ReleaseWorkspaceView<Content: View>: View {
     private var actionsMenu: some View {
         Menu {
             Button("Save a link…") { app.organization.showAdd = true }
-            Button("Import existing links…") { app.organization.showImport = true }
             if app.organization.available {
                 Divider()
-                Button("New folder / Manage organization…") { app.organization.showManager = true }
+                Button("Categories & tags…") { app.organization.showManager = true }
                 Button("Recent changes…") { app.organization.showHistory = true }
                 if app.library.selection.isLibraryFilter {
                     Button("Select all visible") { app.library.selectedIDs = Set(app.library.visibleBookmarks.map(\.id)) }
                     Button(app.library.isShowingSearchResults ? "Select top ranked results…" : "Select all matching bookmarks…") { Task { await selectAll() } }
-                    Button("Edit selected organization…") { Task { await reviewSelected() } }.disabled(app.library.selectedIDs.isEmpty)
+                    Button("Edit selected…") { Task { await reviewSelected() } }.disabled(app.library.selectedIDs.isEmpty)
                 }
             }
         } label: { Label("Library actions", systemImage: "plus.circle") }.disabled(!app.canUseData)

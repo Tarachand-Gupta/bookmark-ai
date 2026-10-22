@@ -20,6 +20,9 @@ import { storedChatMessageSchema } from "./chat";
  *  - v5: adds `skills` (the user's reusable Ask AI instructions — tenant
  *    migration v14's `skills` table). New user-data table, so this bumps + adds
  *    a v4→v5 upgrader (`skills: []`); import upserts them by name.
+ *  - v6: manual title/category/tag provenance, label vocabulary, and frozen
+ *    selected-bookmark chat context. Unsupported preview folder/read fields
+ *    are ignored on import; no stored database columns are dropped.
  */
 export const SCHEMA_VERSION = 6;
 
@@ -31,8 +34,6 @@ export const SCHEMA_VERSION = 6;
  * the scraped Open Graph payload is lost.
  */
 export const exportedBookmarkSchema = z.object({
-  folderId: z.string().nullable().default(null),
-  readingState: z.enum(["not_on_list", "unread", "read"]).default("not_on_list"),
   manualOverrides: z
     .object({
       title: z.boolean().optional(),
@@ -137,16 +138,6 @@ export const exportBundleSchema = z.object({
   skills: z.array(exportedSkillSchema).max(1_000).default([]),
   organization: z
     .object({
-      folders: z
-        .array(
-          z.object({
-            id: z.string(),
-            name: z.string().min(1).max(80),
-            parentId: z.string().nullable(),
-          }),
-        )
-        .max(10000)
-        .default([]),
       labels: z
         .array(
           z.object({
@@ -160,7 +151,7 @@ export const exportBundleSchema = z.object({
         .max(10000)
         .default([]),
     })
-    .default({ folders: [], labels: [] }),
+    .default({ labels: [] }),
 });
 export type ExportBundle = z.infer<typeof exportBundleSchema>;
 
@@ -250,21 +241,8 @@ export function migrateExportBundle(raw: unknown): ExportBundle {
         data = {
           ...(data as Record<string, unknown>),
           schemaVersion: 6,
-          organization: { folders: [], labels: [] },
+          organization: { labels: [] },
         };
-        // The legacy reading queue is seeded once on import, just as on migration.
-        if (Array.isArray((data as any).bookmarks))
-          (data as any).bookmarks = (data as any).bookmarks.map((b: any) => ({
-            ...b,
-            readingState:
-              Array.isArray(b.tags) &&
-              b.tags.some(
-                (t: unknown) =>
-                  typeof t === "string" && ["reading", "article"].includes(t.toLowerCase()),
-              )
-                ? "unread"
-                : "not_on_list",
-          }));
         version = 6;
         break;
       default:

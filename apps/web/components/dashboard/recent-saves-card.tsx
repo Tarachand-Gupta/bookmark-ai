@@ -1,14 +1,8 @@
-"use client";
-
-import { BookmarkActions } from "@/components/library/organization/bookmark-actions";
+import { Pencil } from "lucide-react";
 import type { Bookmark } from "@bookmark-ai/types";
 import { mergeRecentSaves } from "@/lib/dashboard";
 import { FEATURE_ICONS } from "@/components/library/feature-icons";
-import { BookmarkCard } from "@bookmark-ai/ui/components/bookmark-card";
-import { useBookmarkView } from "@/hooks/use-bookmark-view";
-import { SMALL_BOOKMARK_GRID_COLUMNS } from "@/lib/bookmark-view";
-import { BookmarkTable } from "@/components/library/bookmark-table";
-import { ViewToggle } from "@/components/library/view-toggle";
+import { DashboardBookmarkRow } from "./bookmark-row";
 import { DashboardCard, DashboardCardEmpty } from "./dashboard-card";
 import { allBookmarksHref } from "./links";
 
@@ -19,7 +13,8 @@ import { allBookmarksHref } from "./links";
  * Cross-device saves are folded in here rather than getting a heading of their
  * own: they're the same objects from the same table, and one save appearing
  * twice under two labels was exactly the duplication the old resume hero
- * produced. The layout follows the same device preference as the library.
+ * produced. The device icon on the row carries that fact instead (see
+ * `mergeRecentSaves` and DashboardBookmarkRow).
  */
 
 /** Rows shown before "View all" takes over. Five, not the endpoint's eight: this
@@ -31,7 +26,6 @@ export function RecentSavesCard({
   otherDeviceBookmarks,
   total,
   className,
-  onMove,
   onEdit,
 }: {
   bookmarks: Bookmark[];
@@ -39,10 +33,8 @@ export function RecentSavesCard({
   otherDeviceBookmarks: Bookmark[];
   total: number;
   className?: string;
-  onMove?: (bookmark: Bookmark) => void;
   onEdit?: (bookmark: Bookmark) => void;
 }) {
-  const { view, changeView } = useBookmarkView();
   const rows = mergeRecentSaves(bookmarks, otherDeviceBookmarks, VISIBLE_SAVES);
 
   return (
@@ -59,17 +51,14 @@ export function RecentSavesCard({
           Nothing saved yet — anything you clip from the extension lands here.
         </DashboardCardEmpty>
       ) : (
-        <div className="min-w-0 p-3">
-          <div className="mb-2 flex justify-end"><ViewToggle view={view} onChange={changeView} /></div>
-          {view === "table" ? <BookmarkTable bookmarks={rows} onEdit={onEdit} onMove={onMove} /> : <ul className={`grid gap-3 ${SMALL_BOOKMARK_GRID_COLUMNS}`}>
-            {rows.map((b) => {
-              const props = { bookmark: b, actions: (onMove || onEdit) ? <BookmarkActions bookmark={b} onMove={onMove} onEdit={onEdit} /> : undefined };
-              return <li key={b.id} className="min-w-0">
-                <BookmarkCard {...props} className="h-full" />
-              </li>;
-            })}
-          </ul>}
-        </div>
+        <ul className="divide-y">
+          {rows.map((b) => (
+            <li key={b.id} className="flex items-center">
+              <div className="min-w-0 flex-1"><DashboardBookmarkRow bookmark={b} /></div>
+              {onEdit && <button type="button" className="mr-2 flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted" aria-label={`Edit ${b.title}`} onClick={() => onEdit(b)}><Pencil className="size-3.5" aria-hidden /></button>}
+            </li>
+          ))}
+        </ul>
       )}
     </DashboardCard>
   );

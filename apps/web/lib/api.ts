@@ -52,11 +52,8 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 export const LIVE_API_URL = process.env.NEXT_PUBLIC_LIVE_API_URL ?? "";
 
 export interface LibraryFilters {
-  folderId?: string;
-  includeSubfolders?: string;
   categoryId?: string;
   tagId?: string;
-  readingState?: string;
   category?: string;
   browser?: string;
   device?: string;

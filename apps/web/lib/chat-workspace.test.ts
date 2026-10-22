@@ -40,4 +40,28 @@ describe("account-owned chat workspace", () => {
     const storage = memory(); const workspace = new ChatWorkspace("one", async () => ({})); workspace.hydrate(storage); workspace.patch({text:"private"}); workspace.clearPrivateData(); workspace.patch({text:"late"}); workspace.dispose();
     expect(storage.getItem(workspaceStorageKey("one"))).toBeNull();
   });
+  it("preserves an old scoped draft through reloads and blocks sending until context is explicitly chosen", async () => {
+    const storage = memory();
+    storage.setItem(workspaceStorageKey("one"), JSON.stringify({version:1,accountId:"one",activeKey:"old",drafts:[{key:"old",conversationId:null,title:"Old draft",text:"Keep my research",context:{type:"folder",folderId:"old-folder"},files:[],missingFiles:[],updatedAt:"2026-10-16",interrupted:false}]}));
+    const fetch = vi.fn(() => Promise.resolve(response())); vi.stubGlobal("fetch", fetch);
+    const first = new ChatWorkspace("one", async () => ({})); first.hydrate(storage);
+    expect(first.active.text).toBe("Keep my research"); expect(first.active.contextNeedsReview).toBe(true);
+    first.patch({text:"Keep my edited research"}); first.dispose();
+    const reloaded = new ChatWorkspace("one", async () => ({})); reloaded.hydrate(storage);
+    expect(reloaded.active.text).toBe("Keep my edited research"); expect(reloaded.active.contextNeedsReview).toBe(true);
+    reloaded.send(); await Promise.resolve(); expect(fetch).not.toHaveBeenCalled();
+    reloaded.patch({context:{type:"bookmarks",bookmarkIds:["selected"]}}); reloaded.send();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(JSON.parse((fetch.mock.calls[0] as unknown as [unknown, RequestInit])[1].body as string).context).toEqual({type:"bookmarks",bookmarkIds:["selected"]});
+  });
+  it("retains an old failed message separately and requires context review when recovered", () => {
+    const storage = memory();
+    storage.setItem(workspaceStorageKey("one"), JSON.stringify({version:1,accountId:"one",activeKey:"old",drafts:[{key:"old",conversationId:null,title:"Draft",text:"Newer text",context:{type:"library"},files:[],missingFiles:[],updatedAt:"2026-10-16",interrupted:false,recoverable:{text:"Failed scoped turn",context:{type:"folder",folderId:"old-folder"},missingFiles:[]}}]}));
+    const workspace = new ChatWorkspace("one", async () => ({})); workspace.hydrate(storage);
+    expect(workspace.active.text).toBe("Newer text"); workspace.recoverFailedTurn();
+    expect(workspace.active.text).toBe("Failed scoped turn"); expect(workspace.active.contextNeedsReview).toBe(true);
+    const reloaded = new ChatWorkspace("one", async () => ({})); reloaded.hydrate(storage);
+    expect(reloaded.active.contextNeedsReview).toBe(true); reloaded.patch({context:{type:"library"}});
+    expect(reloaded.active.contextNeedsReview).toBe(false); reloaded.select("old"); expect(reloaded.active.text).toBe("Newer text");
+  });
 });

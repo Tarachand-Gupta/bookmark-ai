@@ -12,7 +12,11 @@ import {
   touchConversation,
   type Db,
 } from "@bookmark-ai/db";
-import type { ChatConversation, StoredChatMessage } from "@bookmark-ai/types";
+import {
+  chatContextSchema,
+  type ChatConversation,
+  type StoredChatMessage,
+} from "@bookmark-ai/types";
 
 /**
  * Chat persistence orchestration (id generation, title derivation, ordering).
@@ -181,7 +185,9 @@ export async function loadConversationRecord(
       parts: r.parts,
       ...(context
         ? {
-            context: context.context,
+            ...(chatContextSchema.safeParse(context.context).success
+              ? { context: context.context }
+              : {}),
             contextBookmarkIds: context.bookmarkIds,
             contextSources: context.sources,
             unavailableContext: context.unavailable,

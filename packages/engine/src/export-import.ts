@@ -4,9 +4,7 @@ import {
   createSession,
   getBookmarkOrganization,
   putBookmarkOrganization,
-  organizationFolders,
   organizationLabels,
-  ensureImportFolderPath,
   canonicalLabel,
   putLabel,
   normalizeOrganizationName,
@@ -23,6 +21,7 @@ import {
   type Db,
 } from "@bookmark-ai/db";
 import {
+  chatContextSchema,
   migrateExportBundle,
   SCHEMA_VERSION,
   type Browser,
@@ -51,7 +50,7 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
     db.execute(`
       SELECT b.url, b.domain, b.title, b.description, b.og_json, b.browser, b.device,
              b.device_name, b.os, b.saved_at, b.saved_day, b.category, b.tags_json, b.created_at,
-             o.folder_id, o.reading_state, o.overrides_json
+             o.overrides_json
       FROM bookmarks b LEFT JOIN bookmark_organization o ON o.bookmark_id = b.id
       ORDER BY b.created_at ASC
     `),
@@ -63,24 +62,22 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
   ]);
 
   const bookmarks: ExportedBookmark[] = bookmarkRows.rows.map((r) => ({
-      folderId: (r.folder_id as string | null) ?? null,
-      readingState: (r.reading_state as ExportedBookmark["readingState"]) ?? "not_on_list",
-      manualOverrides: json<ExportedBookmark["manualOverrides"]>(r.overrides_json, {}) ?? {},
-      url: String(r.url),
-      title: String(r.title),
-      description: (r.description as string | null) ?? null,
-      category: String(r.category),
-      tags: parseStringArray(r.tags_json),
-      browser: String(r.browser),
-      device: String(r.device),
-      deviceName: (r.device_name as string | null) ?? null,
-      os: (r.os as string | null) ?? null,
-      domain: String(r.domain),
-      ogJson: (r.og_json as string | null) ?? "{}",
-      savedAt: String(r.saved_at),
-      savedDay: String(r.saved_day),
-      createdAt: String(r.created_at),
-    }));
+    manualOverrides: json<ExportedBookmark["manualOverrides"]>(r.overrides_json, {}) ?? {},
+    url: String(r.url),
+    title: String(r.title),
+    description: (r.description as string | null) ?? null,
+    category: String(r.category),
+    tags: parseStringArray(r.tags_json),
+    browser: String(r.browser),
+    device: String(r.device),
+    deviceName: (r.device_name as string | null) ?? null,
+    os: (r.os as string | null) ?? null,
+    domain: String(r.domain),
+    ogJson: (r.og_json as string | null) ?? "{}",
+    savedAt: String(r.saved_at),
+    savedDay: String(r.saved_day),
+    createdAt: String(r.created_at),
+  }));
 
   const sessions: ExportedSession[] = sessionRows.rows.map((r) => ({
     name: String(r.name),
@@ -110,17 +107,29 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
     const context = json<ResolvedChatContext | null>(row.context_json, null);
     const parts = json<unknown>(row.parts_json, []);
     const message: ExportedConversation["messages"][number] = {
-      id: String(row.id), role: String(row.role),
-      parts: Array.isArray(parts) ? parts : [], createdAt: String(row.created_at),
-      ...(context ? { context: context.context, contextBookmarkIds: context.bookmarkIds,
-        contextSources: context.sources, unavailableContext: context.unavailable } : {}),
+      id: String(row.id),
+      role: String(row.role),
+      parts: Array.isArray(parts) ? parts : [],
+      createdAt: String(row.created_at),
+      ...(context && chatContextSchema.safeParse(context.context).success
+        ? {
+            context: context.context,
+            contextBookmarkIds: context.bookmarkIds,
+            contextSources: context.sources,
+            unavailableContext: context.unavailable,
+          }
+        : {}),
     };
     const conversationId = String(row.conversation_id);
     const messages = messagesByConversation.get(conversationId) ?? [];
-    messages.push(message); messagesByConversation.set(conversationId, messages);
+    messages.push(message);
+    messagesByConversation.set(conversationId, messages);
   }
-  const conversations: ExportedConversation[] = conversationRows.map(c => ({
-    id: c.id, title: c.title, createdAt: c.createdAt, updatedAt: c.updatedAt,
+  const conversations: ExportedConversation[] = conversationRows.map((c) => ({
+    id: c.id,
+    title: c.title,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
     messages: messagesByConversation.get(c.id) ?? [],
   }));
 
@@ -144,11 +153,6 @@ export async function exportUserData(db: Db, exportedAt: string): Promise<Export
       skills: skills.length,
     },
     organization: {
-      folders: (await organizationFolders(db)).map(({ id, name, parentId }) => ({
-        id,
-        name,
-        parentId,
-      })),
       labels: (await organizationLabels(db, true)).map(({ id, kind, name, deleted, aliasTo }) => ({
         id,
         kind,
@@ -182,28 +186,6 @@ export async function importUserData(
 ): Promise<{ bookmarks: number; sessions: number; conversations: number; skills: number }> {
   const migrated = migrateExportBundle(bundle);
 
-  const folderMap = new Map<string, string | null>();
-  const visiting = new Set<string>();
-  const paths = new Map<string, string[]>();
-  const pathFor = (id: string): string[] => {
-    const known = paths.get(id);
-    if (known) return known;
-    if (visiting.has(id)) throw new Error("Invalid export folder cycle");
-    const folder = migrated.organization.folders.find((f) => f.id === id);
-    if (!folder) throw new Error("Invalid export folder reference");
-    visiting.add(id);
-    const path = [...(folder.parentId ? pathFor(folder.parentId) : []), folder.name];
-    visiting.delete(id);
-    paths.set(id, path);
-    return path;
-  };
-  // Validate the complete graph before writing any imported rows.
-  for (const f of migrated.organization.folders) pathFor(f.id);
-  for (const b of migrated.bookmarks)
-    if (b.folderId && !paths.has(b.folderId))
-      throw new Error("Invalid export bookmark folder reference");
-  for (const f of migrated.organization.folders)
-    folderMap.set(f.id, await ensureImportFolderPath(db, pathFor(f.id)));
   const labelMap = new Map<string, string>();
   for (const l of migrated.organization.labels.filter((l) => !l.deleted)) {
     const target = await canonicalLabel(db, l.kind, l.name);
@@ -250,15 +232,12 @@ export async function importUserData(
     const saved = await getBookmarkByUrl(db, b.url);
     if (saved) {
       const state = await getBookmarkOrganization(db, saved.id);
-      state.folderId = b.folderId ? (folderMap.get(b.folderId) ?? null) : null;
-      state.readingState = b.readingState;
       state.overrides = b.manualOverrides;
       state.versions = {
+        ...state.versions,
         title: randomUUID(),
         categoryId: randomUUID(),
         tags: randomUUID(),
-        folderId: randomUUID(),
-        readingState: randomUUID(),
       };
       await putBookmarkOrganization(db, saved.id, state);
     }
@@ -385,4 +364,3 @@ function parseOpenGraph(raw: string): OpenGraph {
     return {};
   }
 }
-

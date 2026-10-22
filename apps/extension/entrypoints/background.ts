@@ -1,4 +1,3 @@
-import { handleReleaseCommand, clearReleasePrivateState, RELEASE_MESSAGE, type ReleaseCommand } from "@/lib/release-background";
 import {
   SUPABASE_AUTH,
   initializeOAuthStorage,
@@ -14,7 +13,7 @@ import { defineBackground, storage } from "#imports";
 import { browser } from "wxt/browser";
 import type { createClerkClient } from "@clerk/chrome-extension/background";
 import {
-  createBookmark,
+  createBookmarkResult,
   fetchMe,
   getApiBaseUrl,
   getLiveToken,
@@ -799,7 +798,6 @@ async function handleGetUser(): Promise<UserInfo> {
  * (which ends the same client session the WEB app uses — signing out of the
  * extension signs out of the site too, which is the honest behavior). */
 async function handleSignOut(): Promise<SignOutResult> {
-  await clearReleasePrivateState();
   if (SUPABASE_AUTH) {
     const result = await signOutOAuth();
     if (result.ok) void reportAuthState({ signedIn: false });
@@ -852,12 +850,12 @@ async function handleSignOut(): Promise<SignOutResult> {
 
 async function handleSaveBookmark(message: SaveBookmarkMessage): Promise<SaveBookmarkResult> {
   try {
-    const bookmark = await createBookmark({
+    const result = await createBookmarkResult({
       url: message.url,
       title: message.title,
       ...detectSource(),
     });
-    return { ok: true, bookmark };
+    return { ok: true, bookmark: result.bookmark, existing: result.existing === true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -1180,17 +1178,6 @@ export default defineBackground(() => {
           | { ok: boolean },
       ) => void,
     ) => {
-      if (typeof message === "object" && message !== null && (message as { type?: string }).type === RELEASE_MESSAGE) {
-        // Extension documents only: web content scripts cannot read drafts or mutate organization.
-        const extensionRoot = browser.runtime.getURL("/");
-        const trusted = _sender.id === browser.runtime.id && !!_sender.url?.startsWith(extensionRoot);
-        if (!trusted) { sendResponse({ ok: false }); return undefined; }
-        void handleReleaseCommand((message as { command: ReleaseCommand }).command).then(
-          value => sendResponse({ ok: true, value } as { ok: boolean }),
-          error => sendResponse({ ok: false, error: error instanceof Error ? error.message : "Request failed" } as { ok: boolean }),
-        );
-        return true;
-      }
       if (SUPABASE_AUTH && typeof message === "object" && message !== null) {
         const payload = message as { type?: string; url?: string };
         if (payload.type === "OAUTH_CALLBACK_READY" && import.meta.env.BROWSER === "safari") {

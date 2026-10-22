@@ -425,7 +425,7 @@ function WindowCard({
               onBlur={() => setEditing(false)}
               aria-label={`Rename ${label}`}
               placeholder={`Window ${ordinal}`}
-              className="min-w-0 flex-1 rounded-md border bg-background px-2 py-0.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="min-w-0 flex-1 rounded-md border bg-background px-2 py-0.5 text-sm font-medium outline-none focus-visible:border-ring focus-visible:ring-0 focus-visible:ring-ring"
             />
           </div>
         ) : (
