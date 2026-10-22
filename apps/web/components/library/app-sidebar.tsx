@@ -268,6 +268,10 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
+        {!facetsLoading && categories.length + browsers.length + devices.length + days.length > 0 && (
+          <SidebarSeparator className="hidden group-data-[collapsible=icon]:block" />
+        )}
+
         <CollapsibleGroup
           label="Categories"
           loading={facetsLoading}
@@ -312,6 +316,7 @@ export function AppSidebar({
           label="Browsers"
           loading={facetsLoading}
           count={browsers.length}
+          railItem={{ Icon: Globe, active: !!filters.browser }}
         >
           <SidebarMenu>
             {browsers.map((b) => {
@@ -337,6 +342,7 @@ export function AppSidebar({
           label="Devices"
           loading={facetsLoading}
           count={devices.length}
+          railItem={{ Icon: Monitor, active: !!filters.device }}
         >
           <SidebarMenu>
             {devices.map((d) => {
@@ -440,10 +446,8 @@ interface CollapsibleGroupProps {
   count: number;
   /**
    * On the icon rail, stand in for the WHOLE section with one icon that expands
-   * the sidebar. For sections whose rows all share a glyph (every category is a
-   * folder, every day a calendar) a rail of identical icons says nothing; one
-   * icon that says "Categories" and opens them does. Sections whose rows have
-   * distinct glyphs (browsers, devices) omit this and stay row-per-icon.
+   * the sidebar and opens that section. Keep all facets consistent: collapsed
+   * groups must not leave empty slots or separators in the icon rail.
    */
   railItem?: { Icon: React.ElementType; active: boolean };
   children: React.ReactNode;
@@ -478,36 +482,31 @@ function CollapsibleGroup({ label, loading, count, railItem, children }: Collaps
   // trigger, and the dock floats to make room (rule 4 in lib/app-layout.ts).
   if (railItem && state === "collapsed" && !isMobile) {
     return (
-      <>
-        <SidebarSeparator />
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={railItem.active}
-                  tooltip={label}
-                  aria-label={`${label} — expand sidebar`}
-                  onClick={() => setOpen(true)}
-                >
-                  <railItem.Icon aria-hidden />
-                  <span>{label}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </>
+      <SidebarGroup className="py-0">
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={railItem.active}
+                tooltip={label}
+                aria-label={`${label} — expand sidebar`}
+                onClick={() => { setUserOpen(true); setOpen(true); }}
+              >
+                <railItem.Icon aria-hidden />
+                <span>{label}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
     );
   }
 
   return (
     <Collapsible open={open} onOpenChange={setUserOpen} className="group/collapsible">
-      {/* Rail only: the label below folds away there (shadcn pulls it up under
-          the previous rows at zero height), so a hairline is what separates one
-          run of icons from the next. */}
-      <SidebarSeparator className="hidden group-data-[collapsible=icon]:block" />
-      <SidebarGroup>
+      {/* Closed desktop facets need only their heading and the content gap.
+          Keep full padding around expanded lists, mobile navigation, and rail icons. */}
+      <SidebarGroup className={!open && !isMobile && state !== "collapsed" ? "py-0" : undefined}>
         {/* pointer-events-none on the rail: the folded-away label still sits,
             invisible, over the bottom of the previous group's last row and would
             otherwise steal that row's clicks to toggle this section. */}

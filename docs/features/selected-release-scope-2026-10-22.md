@@ -9,6 +9,8 @@ reference for existing behavior; this change does not deploy or migrate producti
 - Full pre-reduction checkpoint: `9487f535d7e715c79f616f2bdb9515d87ff4b8ec`.
 - Backup branch: `codex/backup-release-1-full-2026-10-22`.
 - Reduced branch: `codex/release-1-selected-features`.
+- Follow-up sidebar/attachment polish: `codex/sidebar-collapsed-spacing`, based
+  on the reduced release checkpoint `efb0b44`.
 
 The backup contains folders, reading-list changes, the new onboarding/import
 flow, Table view, and the extension popup redesign. Recover selected paths or
@@ -52,6 +54,12 @@ operations belong in the reduced release.
   width with narrow edge gutters. Opening it still uses the existing AI panel.
 - At the sidebar's minimum expanded width, the full **Bookmark AI** brand must
   stay on one line. Its composer offset follows the actual sidebar width.
+- Closed desktop facet headings have compact 40px spacing. The icon rail has one
+  divider above the facets and one icon per available section, without empty
+  section separators. Choosing a facet icon expands its section.
+- The AI attachment overlay must clear after leaving the panel, cancelling a
+  drag, dropping elsewhere, or returning to normal clicks. Nested movement in
+  the panel must remain stable, and a valid drop must attach a file only once.
 - Compact rows prioritize the bookmark title (approximately 45% where metadata
   fits), limit the domain to about 14 characters, and adapt to the space remaining
   beside the AI panel. Full URLs are available on link hover; the links open the

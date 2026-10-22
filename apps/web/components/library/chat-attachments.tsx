@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type DragEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FileUIPart } from "ai";
 import { FileText, Paperclip, X, ZoomIn } from "lucide-react";
 import {
@@ -22,6 +22,7 @@ import {
   formatBytes,
 } from "@/lib/chat-attachments";
 import { cn } from "@/lib/utils";
+import { bindChatFileDropZone } from "@/lib/chat-file-drop-zone";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Plus } from "lucide-react";
 
@@ -128,16 +129,7 @@ export function AttachButton({ disabled, onOpen, onSelectBookmarks }: { disabled
   );
 }
 
-function dragHasFiles(dt: DataTransfer | null): boolean {
-  return !!dt && Array.from(dt.types ?? []).includes("Files");
-}
-
-/**
- * Wraps the chat column: dragging files over ANY part of it raises a full-panel
- * drop target, so the user doesn't have to aim at the composer. The overlay is
- * the drop target itself (it sits above the form), which is what keeps the
- * form's own drop handler from adding the same files a second time.
- */
+/** Dragging native files anywhere over the chat reveals its attachment target. */
 export function ChatDropZone({
   children,
   className,
@@ -147,34 +139,20 @@ export function ChatDropZone({
 }) {
   const attachments = usePromptInputAttachments();
   const [dragging, setDragging] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const addFiles = useRef(attachments.add);
+  addFiles.current = attachments.add;
 
-  const onDragEnter = (e: DragEvent<HTMLDivElement>) => {
-    if (!dragHasFiles(e.dataTransfer)) return;
-    e.preventDefault();
-    setDragging(true);
-  };
+  useEffect(() => {
+    if (!root.current) return;
+    return bindChatFileDropZone(root.current, setDragging, (files) => addFiles.current(files));
+  }, []);
 
   return (
-    <div className={cn("relative", className)} onDragEnter={onDragEnter}>
+    <div ref={root} className={cn("relative", className)}>
       {children}
       {dragging && (
-        <div
-          className="absolute inset-0 z-20 flex items-center justify-center bg-background/85 p-6 backdrop-blur-[2px]"
-          onDragOver={(e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "copy";
-          }}
-          onDragLeave={(e) => {
-            const next = e.relatedTarget as Node | null;
-            if (!next || !e.currentTarget.contains(next)) setDragging(false);
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragging(false);
-            const files = Array.from(e.dataTransfer.files ?? []);
-            if (files.length) attachments.add(files);
-          }}
-        >
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background/85 p-6 backdrop-blur-[2px]">
           <div className="pointer-events-none flex flex-col items-center gap-1.5 rounded-xl border-2 border-dashed border-primary/40 bg-card px-8 py-6 text-center shadow-lg">
             <Paperclip className="size-5 text-muted-foreground" aria-hidden />
             <p className="text-sm font-medium">Drop to attach</p>

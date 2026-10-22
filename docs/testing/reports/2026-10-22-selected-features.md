@@ -62,6 +62,36 @@ also inspected the saved screenshots. QA mutations used disposable fixture C at
   still shows a thin 1px accent ring on the Save name button. Screenshots confirm
   the thick halo is gone.
 
+## Follow-up: sidebar spacing and cancelled attachment drags
+
+The follow-up on `codex/sidebar-collapsed-spacing` starts from selected-feature
+commit `efb0b44`. The focused attachment suites pass (43 tests: 18 new drag
+lifecycle cases and 25 existing attachment cases), and web TypeScript and diff
+checks pass.
+
+- Collapsed headings in the expanded desktop sidebar now have a 40px pitch
+  (32px controls plus 8px gaps). Expanded lists and mobile spacing are retained.
+- The collapsed icon rail has one facet divider and four evenly spaced section
+  icons, with no empty groups. Clicking Browsers expands both the sidebar and
+  that section. Desktop and mobile screenshots show no horizontal overflow.
+- The attachment overlay clears on dragging outside, Escape, dropping outside,
+  and subsequent pointer interaction. Moving between descendants does not make
+  it flicker. The overlay does not intercept pointer events.
+- Dropping a local test file on the composer adds exactly one attachment. It was
+  removed afterward; the original draft remains. No message, upload, or AI
+  request was sent.
+
+Browser QA used synthetic `DragEvent`/`DataTransfer` events in the isolated
+fixture-C browser, not a physical Finder drag. It reproduced the original stuck
+overlay before the fix and checked the same sequence afterward. Details and
+visually inspected screenshots 29–35 are in
+`.work/reduction-oct22/visual-qa/SIDEBAR-SPACING.md` and `DRAG-OVERLAY.md`.
+
+For a manual OS-drag check: open the AI panel, drag a local file over it and then
+away, cancel with Escape, and separately drop outside the panel. Each should
+clear the overlay without attaching anything. Finally drop inside the composer,
+confirm exactly one attachment, and remove it without sending.
+
 ## Reproduce and extend
 
 1. Start with the isolated preview and verify `/api/me` reports fixture B or C
