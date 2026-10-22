@@ -1,7 +1,8 @@
 # Selected local release scope — 22 October 2026
 
-The owner reduced the local Release 1 scope before deployment. Production is the
-reference for existing behavior; this change does not deploy or migrate production.
+The owner reduced the local Release 1 scope before deployment. Production was the
+reference for existing behavior. The subsequent web/API deployment and final
+checks are recorded in the [23 October release report](../testing/reports/2026-10-23-production-selected-release.md).
 
 ## Recovery points
 
