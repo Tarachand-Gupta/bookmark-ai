@@ -92,6 +92,20 @@ away, cancel with Escape, and separately drop outside the panel. Each should
 clear the overlay without attaching anything. Finally drop inside the composer,
 confirm exactly one attachment, and remove it without sending.
 
+## Follow-up: floating composer theme and glass
+
+On `codex/composer-theme-glass`, the compact shell uses the existing theme-aware
+`rounded-xl` token instead of the fixed `rounded-2xl`, and `bg-card/70` instead
+of `bg-card/85`. No layout, input behavior, or expanded-panel styling changed.
+
+Verified visually in the in-app browser against the local preview: Neo Brutalism
+has a 0px shell radius; Violet Bloom has a 26.4px radius. Light and dark mode both
+resolve the shell background to alpha 0.7 with 24px backdrop blur. The shell and
+textarea retain opacity 1, and the inner input group and textarea backgrounds
+are transparent. The original Violet Bloom/light selection was restored.
+Screenshots 36–38 are in `.work/reduction-oct22/visual-qa/`. This was a CSS-only
+change checked through the rendered UI; no additional unit tests were added.
+
 ## Reproduce and extend
 
 1. Start with the isolated preview and verify `/api/me` reports fixture B or C

@@ -50,7 +50,9 @@ operations belong in the reduced release.
 ## UX acceptance notes
 
 - The collapsed desktop composer is approximately half its previous width
-  (360px maximum), with a translucent, blurred surface. Mobile uses the available
+  (360px maximum), with a 70%-opaque background (30% transparent), 24px backdrop
+  blur, and the theme's card corner radius. Text and controls stay fully opaque.
+  Mobile uses the available
   width with narrow edge gutters. Opening it still uses the existing AI panel.
 - At the sidebar's minimum expanded width, the full **Bookmark AI** brand must
   stay on one line. Its composer offset follows the actual sidebar width.
