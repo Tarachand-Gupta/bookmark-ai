@@ -23,7 +23,9 @@ describe("settings prefetch read attribution", () => {
     const controller = new AbortController();
     const result = await getLive(controller.signal, "account", Promise.resolve({ settings: { liveServerUrl: "https://live.example.test" } } as never));
     expect(result).toEqual(payload); expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledWith("https://live.example.test/live", expect.objectContaining({ signal: controller.signal, headers: expect.objectContaining({ authorization: "Bearer test-token" }) }));
+    // The Live origin accepts Authorization and Content-Type only. The main
+    // API's X-Bookmark-Client attribution must not trigger a rejected preflight.
+    expect(fetch).toHaveBeenCalledWith("https://live.example.test/live", expect.objectContaining({ signal: controller.signal, headers: { authorization: "Bearer test-token" } }));
   });
   it("does not send a live read after settings resolve across an account change or timeout", async () => {
     signedIn("other-account"); const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);

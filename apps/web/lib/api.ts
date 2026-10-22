@@ -384,8 +384,12 @@ export async function getLive(signal?: AbortSignal, accountId?: string, settings
   const base = settingsRead ? (await settingsRead).settings.liveServerUrl || LIVE_API_URL : await requireLiveUrl();
   if (!base) throw new Error(LIVE_NOT_CONFIGURED);
   signal?.throwIfAborted();
+  const boundHeaders = accountId ? await apiHeadersForAccount(accountId) : await authHeaders();
+  // Keep the account-switch guard, but only send the bearer header to the
+  // separate Live origin. Main-API attribution is not in its CORS allowlist.
+  const headers: Record<string, string> = boundHeaders.authorization ? { authorization: boundHeaders.authorization } : {};
   const res = await fetch(`${base}/live`, {
-    headers: accountId ? await apiHeadersForAccount(accountId) : await authHeaders(),
+    headers,
     signal,
   });
   if (!res.ok) {
