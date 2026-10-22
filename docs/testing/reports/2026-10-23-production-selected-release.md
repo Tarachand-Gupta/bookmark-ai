@@ -102,7 +102,7 @@ Final source SHA-256:
 | --- | --- | --- |
 | Chrome | User reloaded 0.1.7; actual signed-in toolbar popup visually verified | Uploaded and submitted; **Pending review**, automatic publication enabled |
 | Firefox | Clean locked install: **284 tests / 32 files passed**; second clean rebuild matched **21/21 files** | Version **6610253**, file **5154372**, **Awaiting Review**; matching reviewer source attached |
-| Safari | 0.1.7 **10700** installed; one extension registration; signed-in toolbar popup retained the session | Signed App Store package uploaded successfully; Apple began processing |
+| Safari | 0.1.7 **10700** installed; one extension registration; signed-in toolbar popup retained the session | Uploaded, processed, selected and saved; existing review item updated to **0.1.7 (10700), Ready for Review**; not resubmitted |
 
 Chrome package: `dist/production/chrome.zip`
 SHA-256: `7e8b6fc01e7fe4df3123e6032a372208f8046fc9fc0fb2aa0a81a914c0d965b7`.
@@ -127,6 +127,22 @@ build are correct; both Apple Distribution signatures verify deeply/strictly;
 no get-task-allow entitlement; all 12 shipped web resources match the tested
 Safari bundle. Both dSYM UUID sets match their executables. Upload receipt is
 `safari-store-upload.log`; **upload/processing is not App Review approval**.
+
+App Store Connect subsequently showed build **0.1.7 (10700)** available for
+selection. The old 0.1.6 (10601) draft association was replaced, the editable
+version changed to 0.1.7, and Save completed. The page then showed **macOS App
+Version 0.1.7**, **Prepare for Submission**, and the selected **0.1.7 (10700)**
+build. Evidence: `safari-017-draft-selected.png`. **Update Review** then replaced
+the old item in the existing submission. The review page visibly shows **macOS
+App 0.1.7**, **0.1.7 (10700)** and **Ready for Review**. **Resubmit to App Review**
+is available, but was not clicked because the requested demo evidence is still
+missing. Evidence: `safari-017-ready-for-review.png`.
+
+Apple's account banner requires the Account Holder to review and accept an
+updated Developer Program License Agreement. The existing App Review request
+also requires the user's physical-device demo recording. No agreement was
+accepted and no video evidence was fabricated. These remain Apple release
+requirements; this report does not claim Safari has been submitted or approved.
 
 ### Reproduction and automation limitations
 
