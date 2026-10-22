@@ -106,6 +106,47 @@ are transparent. The original Violet Bloom/light selection was restored.
 Screenshots 36–38 are in `.work/reduction-oct22/visual-qa/`. This was a CSS-only
 change checked through the rendered UI; no additional unit tests were added.
 
+## Follow-up: tag picker alignment and visible glass
+
+On `codex/tag-filter-popover`, desktop tag chips, dropdown, calendar and layout
+controls share a 36px height. The old in-flow expansion was removed. Desktop and
+mobile share a Radix overlay card with search, all tag counts, selected state,
+scrolling, and an All tags reset. Categories remain in their existing facet UI.
+The default date control is icon-only; selecting a range retains its label.
+
+Verified through CUA in Chrome at actual CSS viewports 1309px and 354px (the
+browser's existing zoom makes them smaller than the requested 1440/390px):
+
+- All desktop control heights measured 35.994px with the same top coordinate.
+- Opening the card leaves the first section heading unchanged: y=124.886px on
+  desktop and y=188.892px on mobile. The 320px card stays inside the mobile
+  viewport, with no document overflow.
+- All 11 fixture tags are present; search, choosing cooking on mobile, choosing
+  the last scrolled weekend tag on desktop, and All tags reset passed.
+- Selection and Escape close the picker and return focus to its trigger.
+  Outside-click dismissal passed. Opening it focuses a choice, not the search
+  input, avoiding an automatic mobile keyboard.
+- Last 7 days applies and labels the desktop trigger; clear returns to icon-only.
+  Mobile Filters still opens its drawer; Last month remains applied when a tag
+  is selected. Test filters were cleared and the temporary viewport reset.
+- Web typecheck and the 22 existing date-range tests pass. No new tests were
+  added just to assert CSS classes. No bookmark records or authentication changed.
+
+The owner found the initial composer still looked opaque. Its final compact
+shell now uses `bg-background/30` and 8px blur, matching the header's background
+color and blur strength with a lighter tint. The theme-aware radius remains;
+input/control opacity remains 1. Scrolling dark compact rows and a light mobile
+grid were visually checked. This supersedes the previous 70% tint/24px blur.
+
+The in-app preview was refreshed and visually confirmed in the owner's dark
+theme. Screenshots 39–43 under `.work/reduction-oct22/visual-qa/` record the
+glass, mobile card and desktop card. Browser viewport checks do not claim a
+physical iPhone/Safari run. Production remains unchanged.
+
+The optional Pi bridge worker timed out with unknown outcome; workspace
+inspection showed no worker code changes. The parent completed and verified
+the change without retrying the failed delegation.
+
 ## Reproduce and extend
 
 1. Start with the isolated preview and verify `/api/me` reports fixture B or C

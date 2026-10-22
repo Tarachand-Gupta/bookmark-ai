@@ -125,15 +125,18 @@ export function DateRangeFilter({ from, to, onChange, className }: DateRangeFilt
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-label={active ? `Date range: ${label}` : "Filter by date"}
+        title={active ? label : "Filter by date"}
         className={cn(
-          "cursor-pointer inline-flex h-9 max-w-full items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium transition-colors",
+          "cursor-pointer inline-flex h-9 max-w-full items-center justify-center gap-1.5 rounded-md border text-sm font-medium transition-colors",
+          active ? "px-2.5" : "w-9",
           active
             ? "border-primary/40 bg-primary/10 text-foreground"
             : "text-muted-foreground hover:bg-muted hover:text-foreground",
         )}
       >
         <CalendarRange className="size-4 shrink-0" aria-hidden />
-        <span className="max-w-[13rem] truncate">{label}</span>
+        {active && <span className="max-w-[13rem] truncate">{label}</span>}
         {active && (
           <span
             role="button"

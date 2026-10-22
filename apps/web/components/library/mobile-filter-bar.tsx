@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { MetaResponse } from "@bookmark-ai/types";
 import {
   CalendarDays,
+  ChevronDown,
   CheckSquare,
   Chrome,
   Compass,
@@ -32,6 +33,7 @@ import { formatRangeLabel } from "@/lib/date-range";
 import { cn } from "@/lib/utils";
 import { DateRangeFilter } from "./date-range-filter";
 import { ViewMenu, type LibraryView } from "./view-toggle";
+import { TagPicker } from "./tag-picker";
 
 const BROWSER_ICONS: Record<string, React.ElementType> = {
   chrome: Chrome,
@@ -114,8 +116,8 @@ export interface MobileFilterBarProps {
  * toggle crowding its right edge, and the sidebar (the only other way to filter)
  * is behind a hamburger — so filtering meant opening a navigation drawer, which
  * is a different job. This is a compact control row instead: two buttons with
- * active-count badges, each opening a bottom drawer of tappable chips, plus the
- * active filters as dismissible chips underneath.
+ * active-count badges: Filters opens the facet drawer, Tags opens the same
+ * floating picker as desktop. Active filters remain dismissible chips below.
  *
  * Sheet(side="bottom") rather than a vaul drawer: the sheet primitive is already
  * in this app (the sidebar's own mobile mode uses it), it slides from the bottom
@@ -139,7 +141,7 @@ export function MobileFilterBar({
   selectionActive,
   className,
 }: MobileFilterBarProps) {
-  const [openDrawer, setOpenDrawer] = useState<"filters" | "tags" | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const categories = meta?.categories ?? [];
   const browsers = meta?.browsers ?? [];
@@ -159,10 +161,6 @@ export function MobileFilterBar({
   const pickFacet = (key: "category" | "browser" | "device" | "day", value: string) => {
     const base: LibraryFilters = { tag: filters.tag, from: filters.from, to: filters.to };
     onFilterChange(filters[key] === value ? base : { ...base, [key]: value });
-  };
-
-  const pickTag = (tag: string) => {
-    onFilterChange({ ...filters, tag: filters.tag === tag ? undefined : tag });
   };
 
   const clearOne = (keys: (keyof LibraryFilters)[]) => {
@@ -190,7 +188,7 @@ export function MobileFilterBar({
           variant={filterCount ? "secondary" : "outline"}
           size="sm"
           className={TOUCH_TARGET}
-          onClick={() => setOpenDrawer("filters")}
+          onClick={() => setFiltersOpen(true)}
           aria-label="Filters"
           title="Filters"
         >
@@ -199,18 +197,20 @@ export function MobileFilterBar({
           {filterCount > 0 && <CountPill>{filterCount}</CountPill>}
         </Button>
         {tags.length > 0 && (
-          <Button
-            variant={tagCount ? "secondary" : "outline"}
-            size="sm"
-            className={TOUCH_TARGET}
-            onClick={() => setOpenDrawer("tags")}
-            aria-label="Tags"
-            title="Tags"
-          >
-            <Tag aria-hidden />
-            <span className={LABEL_VISIBLE}>Tags</span>
-            {tagCount > 0 && <CountPill>{tagCount}</CountPill>}
-          </Button>
+          <TagPicker tags={tags} active={filters.tag} onPick={tag => onFilterChange({ ...filters, tag })} align="start">
+            <Button
+              variant={tagCount ? "secondary" : "outline"}
+              size="sm"
+              className={TOUCH_TARGET}
+              aria-label="Tags"
+              title="Tags"
+            >
+              <Tag aria-hidden />
+              <span className={LABEL_VISIBLE}>Tags</span>
+              {tagCount > 0 && <CountPill>{tagCount}</CountPill>}
+              <ChevronDown className="size-3.5" aria-hidden />
+            </Button>
+          </TagPicker>
         )}
         {onSelectMode && (
           // Touch can't hover a row to reveal its checkbox, so selection mode
@@ -269,114 +269,93 @@ export function MobileFilterBar({
       )}
 
       <FilterDrawer
-        open={openDrawer !== null}
-        title={openDrawer === "tags" ? "Tags" : "Filters"}
-        description={
-          openDrawer === "tags"
-            ? "Filter the library by one of the tags the AI applied."
-            : "Filter the library by category, source, device or date."
-        }
-        onOpenChange={(next) => setOpenDrawer(next ? openDrawer : null)}
+        open={filtersOpen}
+        title="Filters"
+        description="Filter the library by category, source, device or date."
+        onOpenChange={setFiltersOpen}
         active={active}
         onClearOne={clearOne}
         onClearAll={() => onFilterChange({})}
       >
-        {openDrawer === "tags" ? (
-          <ChipSection title="Tags">
-            {tags.map((t) => (
+        {/* First, deliberately: its popover opens downward inside this
+            scrolling drawer, so it needs the room below it. */}
+        <div className="space-y-2">
+          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Date range
+          </h3>
+          <DateRangeFilter
+            from={filters.from}
+            to={filters.to}
+            onChange={({ from, to }) => onFilterChange({ ...filters, from, to })}
+          />
+        </div>
+        {categories.length > 0 && (
+          <ChipSection title="Categories">
+            {categories.map((c) => (
               <FacetChip
-                key={t.name}
-                label={t.name}
-                count={t.count}
-                Icon={Tag}
-                active={filters.tag === t.name}
-                onClick={() => pickTag(t.name)}
+                key={c.name}
+                label={c.name}
+                count={c.count}
+                Icon={Folder}
+                active={filters.category === c.name}
+                onClick={() => pickFacet("category", c.name)}
               />
             ))}
           </ChipSection>
-        ) : (
-          <>
-            {/* First, deliberately: its popover opens downward inside this
-                scrolling drawer, so it needs the room below it. */}
-            <div className="space-y-2">
-              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Date range
-              </h3>
-              <DateRangeFilter
-                from={filters.from}
-                to={filters.to}
-                onChange={({ from, to }) => onFilterChange({ ...filters, from, to })}
-              />
-            </div>
-            {categories.length > 0 && (
-              <ChipSection title="Categories">
-                {categories.map((c) => (
-                  <FacetChip
-                    key={c.name}
-                    label={c.name}
-                    count={c.count}
-                    Icon={Folder}
-                    active={filters.category === c.name}
-                    onClick={() => pickFacet("category", c.name)}
-                  />
-                ))}
-              </ChipSection>
-            )}
-            {browsers.length > 0 && (
-              <ChipSection title="Browsers">
-                {browsers.map((b) => (
-                  <FacetChip
-                    key={b.name}
-                    label={b.name}
-                    count={b.count}
-                    Icon={BROWSER_ICONS[b.name] ?? Globe}
-                    active={filters.browser === b.name}
-                    capitalize
-                    onClick={() => pickFacet("browser", b.name)}
-                  />
-                ))}
-              </ChipSection>
-            )}
-            {devices.length > 0 && (
-              <ChipSection title="Devices">
-                {devices.map((d) => (
-                  <FacetChip
-                    key={d.name}
-                    label={d.name}
-                    count={d.count}
-                    Icon={DEVICE_ICONS[d.name] ?? Monitor}
-                    active={filters.device === d.name}
-                    capitalize
-                    onClick={() => pickFacet("device", d.name)}
-                  />
-                ))}
-              </ChipSection>
-            )}
-            {days.length > 0 && (
-              <ChipSection title="Recent days">
-                {days.map((d) => (
-                  <FacetChip
-                    key={d.day}
-                    label={formatDayLabel(d.day)}
-                    count={d.count}
-                    Icon={CalendarDays}
-                    active={filters.day === d.day}
-                    onClick={() => pickFacet("day", d.day)}
-                  />
-                ))}
-              </ChipSection>
-            )}
-            {categories.length === 0 &&
-              browsers.length === 0 &&
-              devices.length === 0 &&
-              days.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  Nothing to filter by yet — save a few bookmarks and the categories, browsers and
-                  devices they came from show up here.
-                </p>
-              )}
-          </>
         )}
+        {browsers.length > 0 && (
+          <ChipSection title="Browsers">
+            {browsers.map((b) => (
+              <FacetChip
+                key={b.name}
+                label={b.name}
+                count={b.count}
+                Icon={BROWSER_ICONS[b.name] ?? Globe}
+                active={filters.browser === b.name}
+                capitalize
+                onClick={() => pickFacet("browser", b.name)}
+              />
+            ))}
+          </ChipSection>
+        )}
+        {devices.length > 0 && (
+          <ChipSection title="Devices">
+            {devices.map((d) => (
+              <FacetChip
+                key={d.name}
+                label={d.name}
+                count={d.count}
+                Icon={DEVICE_ICONS[d.name] ?? Monitor}
+                active={filters.device === d.name}
+                capitalize
+                onClick={() => pickFacet("device", d.name)}
+              />
+            ))}
+          </ChipSection>
+        )}
+        {days.length > 0 && (
+          <ChipSection title="Recent days">
+            {days.map((d) => (
+              <FacetChip
+                key={d.day}
+                label={formatDayLabel(d.day)}
+                count={d.count}
+                Icon={CalendarDays}
+                active={filters.day === d.day}
+                onClick={() => pickFacet("day", d.day)}
+              />
+            ))}
+          </ChipSection>
+        )}
+        {categories.length === 0 &&
+          browsers.length === 0 &&
+          devices.length === 0 &&
+          days.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Nothing to filter by yet — save a few bookmarks and the categories, browsers and
+              devices they came from show up here.
+            </p>
+          )}
       </FilterDrawer>
     </div>
   );

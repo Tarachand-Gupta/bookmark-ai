@@ -91,7 +91,7 @@ export function ChatPanel({ open, hidden, onClose, children }: { open: boolean; 
   // crosses a mode boundary and wipe the conversation mid-chat.
   const modeClass =
     !open
-      ? "fixed bottom-3 z-30 mx-auto overflow-hidden rounded-xl border border-border/60 bg-card/70 shadow-lg backdrop-blur-xl"
+      ? "fixed bottom-3 z-30 mx-auto overflow-hidden rounded-xl border border-border/60 bg-background/30 shadow-lg backdrop-blur"
       : dock === "full"
       ? "fixed inset-0 z-40 bg-card"
       : dock === "overlay"

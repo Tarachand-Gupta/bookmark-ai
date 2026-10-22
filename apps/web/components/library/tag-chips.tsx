@@ -2,18 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MetaResponse } from "@bookmark-ai/types";
-import { ChevronDown, ChevronUp, Tag } from "lucide-react";
+import { ChevronDown, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TagPicker } from "./tag-picker";
 
 export interface TagChipsProps {
   tags: MetaResponse["tags"] | undefined;
   active: string | undefined;
   onPick: (tag: string | undefined) => void;
-  /** Controlled expansion. The library page owns it so the wrapper can claim a
-   * full-width row of its own while the cloud is open (see library-page.tsx);
-   * omit both props and the toggle manages its own state. */
-  expanded?: boolean;
-  onExpandedChange?: (expanded: boolean) => void;
   className?: string;
 }
 
@@ -36,30 +32,15 @@ function edgeMask({ start, end }: Edges): string | undefined {
 
 /**
  * Tag rail above the grid: a "Tags" label, chips with counts on one
- * horizontally-scrollable line, and an expand toggle at the end that
- * reveals the full wrapped list. Desktop only — at <md the library page hides
- * this and offers the Tags drawer instead (see mobile-filter-bar.tsx).
- *
- * Expanded, the wrapped cloud renders as a SECOND row beneath the label/toggle
- * row rather than growing the rail in place: the rail shares its flex line with
- * the Date + view controls, and a cloud that wraps there collides with them. The
- * page pairs this with a full-width wrapper row for the expanded state.
+ * horizontally-scrollable line, and a floating picker for the full list.
+ * Mobile uses the same picker from its Tags button.
  */
 export function TagChips({
   tags,
   active,
   onPick,
-  expanded: expandedProp,
-  onExpandedChange,
   className,
 }: TagChipsProps) {
-  const [uncontrolled, setUncontrolled] = useState(false);
-  const expanded = expandedProp ?? uncontrolled;
-  const toggle = () => {
-    const next = !expanded;
-    setUncontrolled(next);
-    onExpandedChange?.(next);
-  };
   const railRef = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState<Edges>({ start: false, end: false });
 
@@ -76,7 +57,7 @@ export function TagChips({
 
   useEffect(() => {
     const el = railRef.current;
-    if (!el || expanded) {
+    if (!el) {
       setEdges({ start: false, end: false });
       return;
     }
@@ -88,13 +69,10 @@ export function TagChips({
       el.removeEventListener("scroll", measure);
       observer.disconnect();
     };
-  }, [expanded, tags, measure]);
+  }, [tags, measure]);
 
   if (!tags || tags.length === 0) return null;
 
-  // One chip list, rendered into whichever container the current state uses —
-  // the scrolling rail or the wrapped cloud. Building it once keeps the two
-  // presentations from drifting on styling or click semantics.
   const chips = tags.map((t) => {
     const isActive = t.name === active;
     return (
@@ -104,7 +82,7 @@ export function TagChips({
         aria-pressed={isActive}
         onClick={() => onPick(isActive ? undefined : t.name)}
         className={cn(
-          "cursor-pointer inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
+          "cursor-pointer inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors",
           isActive
             ? "border-transparent bg-primary text-primary-foreground"
             : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -125,48 +103,35 @@ export function TagChips({
 
   return (
     <div
-      className={cn("flex min-w-0 flex-col gap-2", className)}
+      className={cn("flex h-9 min-w-0 items-center gap-2", className)}
       role="group"
       aria-label="Filter by tag"
     >
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="flex h-7 shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <Tag className="size-3.5" aria-hidden />
-          Tags
-        </span>
-        {!expanded && (
-          <div
-            ref={railRef}
-            className={cn(
-              "flex min-w-0 flex-1 items-center gap-1.5",
-              // contain:inline-size zeroes the row's intrinsic width — without it
-              // the summed chip width propagates up and stretches the whole page
-              // sideways (overflow-x-auto does not reduce intrinsic size).
-              "-mb-2 overflow-x-auto pb-2 [contain:inline-size] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border",
-              edgeMask(edges),
-            )}
-          >
-            {chips}
-          </div>
+      <span className="flex h-9 shrink-0 items-center gap-1.5 text-sm font-medium text-muted-foreground">
+        <Tag className="size-4" aria-hidden />
+        Tags
+      </span>
+      <div
+        ref={railRef}
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-1.5",
+          // Contain the intrinsic chip width so the scroll rail cannot stretch the page.
+          "-mb-2 overflow-x-auto pb-2 [contain:inline-size] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border",
+          edgeMask(edges),
         )}
-        {/* Stays on the header row in both states, so collapsing is always one
-            click from where expanding happened — never at the end of the cloud. */}
+      >
+        {chips}
+      </div>
+      <TagPicker tags={tags} active={active} onPick={onPick}>
         <button
           type="button"
-          onClick={toggle}
-          aria-expanded={expanded}
-          aria-label={expanded ? "Collapse tags" : "Show all tags"}
-          title={expanded ? "Collapse tags" : "Show all tags"}
-          className="cursor-pointer flex size-7 shrink-0 items-center justify-center rounded-full border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          aria-label="Show all tags"
+          title="Show all tags"
+          className="cursor-pointer flex size-9 shrink-0 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[state=open]:bg-muted"
         >
-          {expanded ? (
-            <ChevronUp className="size-4" aria-hidden />
-          ) : (
-            <ChevronDown className="size-4" aria-hidden />
-          )}
+          <ChevronDown className="size-4" aria-hidden />
         </button>
-      </div>
-      {expanded && <div className="flex w-full flex-wrap items-center gap-1.5">{chips}</div>}
+      </TagPicker>
     </div>
   );
 }

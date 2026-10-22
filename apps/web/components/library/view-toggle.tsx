@@ -33,7 +33,7 @@ export function ViewToggle({
     <div
       role="group"
       aria-label="Layout"
-      className={cn("flex shrink-0 items-center gap-0.5 rounded-lg border bg-background p-0.5", className)}
+      className={cn("flex h-9 shrink-0 items-center gap-0.5 rounded-lg border bg-background p-0.5", className)}
     >
       {VIEWS.map(({ key, label, Icon }) => (
         <button

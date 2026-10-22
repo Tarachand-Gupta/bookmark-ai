@@ -50,8 +50,9 @@ operations belong in the reduced release.
 ## UX acceptance notes
 
 - The collapsed desktop composer is approximately half its previous width
-  (360px maximum), with a 70%-opaque background (30% transparent), 24px backdrop
-  blur, and the theme's card corner radius. Text and controls stay fully opaque.
+  (360px maximum), with a light 30%-opaque background tint, the header's gentler
+  8px backdrop blur, and the theme's card corner radius. Text and controls stay
+  fully opaque. This supersedes the initial 70% tint/24px blur, which looked solid.
   Mobile uses the available
   width with narrow edge gutters. Opening it still uses the existing AI panel.
 - At the sidebar's minimum expanded width, the full **Bookmark AI** brand must
@@ -70,6 +71,12 @@ operations belong in the reduced release.
 - Web focus indicators use a thin 1px line in the existing accent color. Keep
   keyboard focus visible. Text inputs, textareas, and grouped inputs change their
   existing thin border to the accent color, without an additional outer halo.
+- The desktop tag chips, dropdown, date control, and layout control align at
+  36px high. The tag dropdown opens a searchable, scrollable overlay card with
+  every tag and its count; it never expands the toolbar or pushes bookmarks
+  down. Mobile uses the same card with 44px choices. Categories remain their
+  existing separate facet. The date trigger is an accessible calendar icon until
+  a range is selected, then retains its existing range label and clear action.
 - The current-session **Sign out** action belongs at the bottom of the Settings
   navigation, styled as a red ghost button. Account retains device-management
   controls, including signing out other/all devices, but no duplicate standalone
