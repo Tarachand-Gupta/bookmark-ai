@@ -156,7 +156,8 @@ export function main(argv = process.argv.slice(2)) {
         const name = `${surface}-${surface === 'firefox' ? 'mv2' : 'mv3'}`;
         const bundle = join(app, '.output', name);
         const built = JSON.parse(readFileSync(join(bundle,'manifest.json'),'utf8'));
-        if (built.name !== 'Bookmark AI' || built.version !== '0.1.6') throw new Error('Unexpected production manifest identity/version');
+        const sourceVersion = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8')).version;
+        if (built.name !== 'Bookmark AI' || built.version !== sourceVersion || !/^\d+\.\d+\.\d+$/.test(sourceVersion)) throw new Error('Unexpected production manifest identity/version');
         updateStandardOutput(bundle, name);
         publishDirectory(bundle, surface, manifest, { extensionId: surface === 'chrome' ? 'ffhbgpgebpmofjkehpjcemepbgcmoelp' : surface === 'firefox' ? 'bookmark-ai@bookmark-ai.cloud' : 'ai.bookmark.safari.Extension', manifest: built });
         if (action === 'zip') {

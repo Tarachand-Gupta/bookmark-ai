@@ -55,7 +55,7 @@ describe("safari-version: the committed Version.xcconfig matches package.json", 
   });
 
   it("uses the current release version and retains historical re-upload suffixes", () => {
-    expect(currentValues({})).toEqual({ version: "0.1.6", build: 10602 });
+    expect(currentValues({})).toEqual({ version: "0.1.7", build: 10700 });
     expect(resolveBuildSuffix("0.1.4", {})).toBe(1);
     expect(resolveBuildSuffix("0.1.5", {})).toBe(0);
     expect(resolveBuildSuffix("0.1.4", { SAFARI_BUILD_SUFFIX: "7" })).toBe("7");
