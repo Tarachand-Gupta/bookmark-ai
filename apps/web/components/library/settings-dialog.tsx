@@ -6,9 +6,9 @@ import { preloadSettingsResources, settingsResourceCache } from "@/lib/settings-
 import { useEffect, useRef, useState } from "react";
 import { useUser, getBrowserSupabase, signOut } from "@/lib/auth";
 import { AccountSecurity } from "@/components/auth/account-security";
+import { AccountSettingsRow } from "@/components/auth/account-settings-row";
 import {
   Activity,
-  AlertTriangle,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -270,7 +270,7 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             )}
 
             {section === "plan" && <SettingsSection title="Plan & usage" icon={Activity} description="Your plan and included AI usage."><PlanGroup /><UsageGroup /></SettingsSection>}
-            {section === "account" && <AccountSection onRequestClose={() => onOpenChange(false)} />}
+            {section === "account" && <AccountSection />}
           </div>
         </div>
       </DialogContent>
@@ -440,30 +440,26 @@ function DataSection() {
   );
 }
 
-/**
- * Account section: ONE account surface. Everything account-shaped is reachable
- * from here — Clerk's account manager (profile, email addresses, connected
- * accounts, password, 2FA, active devices) behind one button, then our own
- * permanent account-deletion flow, which is required by the app stores and is the
- * one thing Clerk's UI can't do because it also has to wipe this account's
- * bookmarks/sessions DB. A two-step confirm guards it; on success it signs the
- * user out and sends them to the marketing home.
- *
- * The header avatar's "Manage account" lands HERE (see LibraryHeader's
- * `userProfileMode="navigation"`) instead of opening Clerk's modal on its own, so
- * the avatar menu and the Settings dialog agree on where "account" lives.
- */
-function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
+/** Account overview progressively reveals one task; sensitive actions retain their confirmations. */
+function AccountSection() {
+  const [activePanel, setActivePanel] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activePanel !== "delete") {
+      setConfirming(false);
+      setError(null);
+    }
+  }, [activePanel]);
 
   const runDelete = async () => {
     setDeleting(true);
     setError(null);
     try {
       await deleteAccount();
-      // Clear the Clerk session and land on the public home page.
+      // Clear the local session and land on the public home page.
       await getBrowserSupabase().auth.signOut({ scope: "local" });
       window.location.assign("/");
     } catch (e: unknown) {
@@ -476,23 +472,18 @@ function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
     <SettingsSection
       title="Account"
       icon={UserRound}
-      description="Your profile, sign-in methods, and account security."
+      description="Manage your profile and account access."
+      className="[&>header]:hidden md:[&>header]:block"
     >
       <IdentityGroup />
 
-      <AccountSecurity />
+      <div className="overflow-hidden rounded-xl border">
+        <AccountSecurity activePanel={activePanel} onPanelChange={setActivePanel} />
+      </div>
 
-      <SettingsGroup
-        divided
-        title="Delete account"
-        description="This permanently deletes your account and all of your bookmarks and sessions. This cannot be undone."
-      >
-        {/* The group's title + description above ARE the old in-box heading and
-            warning copy, so the box itself now carries only the glyph and the
-            action — same words, one heading level less. */}
-        <div className="flex items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
-          <AlertTriangle className="mt-1 size-4 shrink-0 text-destructive" aria-hidden />
-          <div className="min-w-0 flex-1 space-y-2">
+      <AccountSettingsRow panel="delete" title="Delete account" icon={Trash2} activePanel={activePanel} onPanelChange={setActivePanel} disabled={deleting}>
+        <p className="text-sm text-muted-foreground">Permanently delete your account and all bookmarks and sessions. This cannot be undone.</p>
+        <div className="space-y-3">
             {!confirming ? (
               <Button
                 type="button"
@@ -511,7 +502,7 @@ function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
                 <p className="text-xs font-medium">
                   Are you sure? This is permanent and cannot be undone.
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     type="button"
                     variant="destructive"
@@ -541,9 +532,8 @@ function AccountSection({ onRequestClose }: { onRequestClose: () => void }) {
               </>
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
-          </div>
         </div>
-      </SettingsGroup>
+      </AccountSettingsRow>
     </SettingsSection>
   );
 }
@@ -609,11 +599,11 @@ function IdentityGroup() {
   const initials = initialsFor(name, email);
 
   return (
-    <SettingsGroup title="Signed in as" description="The account this library belongs to.">
+    <SettingsGroup>
       {details?.errors.me && <p role="alert" className="text-sm text-destructive">Couldn’t refresh account details. Your signed-in profile is shown. <button className="underline" onClick={details.refresh}>Try again</button></p>}
       <div
         data-identity-row={loading ? "loading" : "ready"}
-        className="flex items-center gap-3 rounded-lg border bg-card p-3"
+        className="flex items-center gap-3 px-1 py-2"
       >
         {loading ? (
           <>

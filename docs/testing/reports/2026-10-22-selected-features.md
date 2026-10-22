@@ -189,6 +189,38 @@ This was local responsive-browser QA, not a physical iOS/Android test or real
 provider-auth test. No bookmark records were changed, no settings sign-out was
 performed, and production was not deployed.
 
+## Follow-up: quieter Account overview (23 October)
+
+On `codex/account-settings-disclosure`, Account presents identity and four
+single-open disclosures rather than every form/action at once. Deletion has a
+separate collapsed disclosure. Per-device Rename/Sign out moved into a menu;
+bulk sign-out has its own disclosure. Provider requests, identity guards and
+existing destructive confirmations are retained.
+
+- 18 existing auth-policy/private-state/account-security-cache tests and the web
+  typecheck pass. No CSS-mirroring tests were added.
+- Local browser checks: initial overview has no visible inputs; Profile reveals
+  its form with Save disabled until edited, then restores disabled when the
+  original value is restored. Opening Sign-in methods closes Profile and exposes
+  email plus Google/Apple actions. No profile or email change was submitted.
+- Security reveals password/MFA controls; password disclosure opens and closes
+  when switching tasks. No credential was entered or changed, provider connected,
+  or authenticator enrolled.
+- Devices overflow menu exposes Rename/Sign out; Rename opens and cancels without
+  saving. Bulk sign-out is available only after expanding its disclosure. No
+  device was renamed or signed out.
+- Deletion warning and the existing final confirmation were revealed and Cancel
+  exercised; the final delete action was never invoked. All capabilities remain
+  discoverable without destructive CTAs on the default overview.
+- Every disclosure fits at 320px without horizontal overflow, with exactly one
+  expanded top-level task. Overview also checked at 375px, approximately 414px,
+  768px and 1309px. Keyboard Enter toggles disclosures; the desktop settings rail
+  remains. Screenshots 49–51 under `.work/reduction-oct22/visual-qa/` record the
+  refreshed overview and responsive views.
+- The preview needed a reload and a dev compilation before updated components
+  appeared. No production deployment, native build or real provider-auth test
+  was performed. Fixture records and the owner's accounts are unchanged.
+
 ## Reproduce and extend
 
 1. Start with the isolated preview and verify `/api/me` reports fixture B or C

@@ -4,6 +4,7 @@ import { getBrowserSupabase, useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Mail, Plus, ShieldCheck, Smartphone, Trash2, Unlink } from "lucide-react";
+import { AccountSettingsRow, type AccountPanelState } from "./account-settings-row";
 import { GoogleIcon, AppleIcon } from "./provider-icons";
 import {
   Select,
@@ -29,14 +30,16 @@ function ProviderIcon({ provider }: { provider: string }) {
 const providerLabel = (provider: string) =>
   ({ google: "Google", apple: "Apple", email: "Email" })[provider] ?? provider;
 
-export function AccountFactors(props: { signInFields?: ReactNode; children?: ReactNode }) {
+export function AccountFactors(props: AccountPanelState & { signInFields?: ReactNode; children?: ReactNode }) {
   const { session } = useAuth();
   return session ? <AccountFactorsContent key={session.user.id} {...props} /> : null;
 }
 function AccountFactorsContent({
   signInFields,
   children,
-}: {
+  activePanel,
+  onPanelChange,
+}: AccountPanelState & {
   signInFields?: ReactNode;
   children?: ReactNode;
 }) {
@@ -130,10 +133,7 @@ function AccountFactorsContent({
   }
   return (
     <>
-      <section aria-labelledby="account-signin-heading" className="space-y-4 border-t pt-5">
-        <h3 id="account-signin-heading" className="text-sm font-semibold">
-          Sign-in methods
-        </h3>
+      <AccountSettingsRow panel="signin" title="Sign-in methods" description="Email and connected accounts" icon={Mail} activePanel={activePanel} onPanelChange={onPanelChange} disabled={busy}>
         {signInFields}
         <h4 className="text-sm font-medium">Connected accounts</h4>
         <ul className="space-y-2">
@@ -185,11 +185,8 @@ function AccountFactorsContent({
             <AppleIcon className="size-4" /> Connect Apple
           </Button>
         </div>
-      </section>
-      <section aria-labelledby="account-security-heading" className="space-y-4 border-t pt-5">
-        <h3 id="account-security-heading" className="text-sm font-semibold">
-          Security
-        </h3>
+      </AccountSettingsRow>
+      <AccountSettingsRow panel="security" title="Security" description="Password and two-factor authentication" icon={ShieldCheck} activePanel={activePanel} onPanelChange={onPanelChange} disabled={busy}>
         {children}
         <div className="space-y-2">
           <h4 className="flex items-center gap-2 text-sm font-medium">
@@ -329,17 +326,19 @@ function AccountFactorsContent({
             </form>
           )}
         </div>
+      </AccountSettingsRow>
+      <div aria-live="polite">
         {error && (
-          <p className="text-sm text-destructive" role="alert">
+          <p className="px-3 py-2 text-sm text-destructive" role="alert">
             {error}
           </p>
         )}
         {message && (
-          <p className="text-sm" role="status">
+          <p className="px-3 py-2 text-sm" role="status">
             {message}
           </p>
         )}
-      </section>
+      </div>
     </>
   );
 }

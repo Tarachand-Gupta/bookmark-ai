@@ -86,6 +86,13 @@ operations belong in the reduced release.
   down. Mobile uses the same card with 44px choices. Categories remain their
   existing separate facet. The date trigger is an accessible calendar icon until
   a range is selected, then retains its existing range label and clear action.
+- Account starts with identity and four quiet disclosures: Profile, Sign-in
+  methods, Security and Devices. Only one task is expanded at a time. Name/email
+  actions are disabled until edited. Device actions live in an overflow menu;
+  bulk sign-out is a separate disclosure. Account deletion is collapsed by
+  default and retains its existing final confirmation. Mobile does not repeat
+  the Account heading beneath its navigation bar. Existing provider operations
+  and account permission checks are unchanged.
 - The current-session **Sign out** action belongs at the bottom of the Settings
   navigation, styled as a red ghost button. Account retains device-management
   controls, including signing out other/all devices, but no duplicate standalone

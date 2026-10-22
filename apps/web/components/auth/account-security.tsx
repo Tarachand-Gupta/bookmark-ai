@@ -4,7 +4,7 @@ import { getAccessToken, getBrowserSupabase, signOut, useAuth } from "@/lib/auth
 import { displayName, profileName, profileNameUpdate } from "@/lib/auth-policy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, KeyRound, LogOut, Monitor, Pencil, Save } from "lucide-react";
+import { ChevronDown, KeyRound, LogOut, Monitor, MoreHorizontal, Pencil, Save, UserRound } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { announceExplicitSignOut } from "@/lib/account-private-state";
 import {
@@ -13,6 +13,8 @@ import {
   type AccountDevice as Device,
 } from "@/lib/account-security-cache";
 import { AccountFactors } from "./account-factors";
+import { AccountSettingsRow, type AccountPanelState } from "./account-settings-row";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 async function request(accountId: string, path: string, method = "GET", body?: unknown) {
   const token = await getAccessToken();
   const { data } = await getBrowserSupabase().auth.getSession();
@@ -32,11 +34,11 @@ async function request(accountId: string, path: string, method = "GET", body?: u
     );
   return response.status === 204 ? null : response.json();
 }
-export function AccountSecurity() {
+export function AccountSecurity(props: AccountPanelState) {
   const { session } = useAuth();
-  return session ? <AccountSecurityContent key={session.user.id} /> : null;
+  return session ? <AccountSecurityContent key={session.user.id} {...props} /> : null;
 }
-function AccountSecurityContent() {
+function AccountSecurityContent({ activePanel, onPanelChange }: AccountPanelState) {
   const { session } = useAuth();
   const accountId = session!.user.id;
   const mounted = useRef(true);
@@ -53,6 +55,12 @@ function AccountSecurityContent() {
   const [password, setPassword] = useState("");
   const [passwordOpen, setPasswordOpen] = useState(false);
   const passwordTrigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (activePanel !== "security") {
+      setPasswordOpen(false);
+      setPassword("");
+    }
+  }, [activePanel]);
   function disclosePassword(open: boolean) {
     setPasswordOpen(open);
     setPassword("");
@@ -159,11 +167,8 @@ function AccountSecurityContent() {
     } else await load();
   }
   return (
-    <div className="space-y-6">
-      <section aria-labelledby="account-profile-heading" className="space-y-3">
-        <h3 id="account-profile-heading" className="text-sm font-semibold">
-          Profile
-        </h3>
+    <>
+      <AccountSettingsRow panel="profile" title="Profile" description="Your display name" icon={UserRound} activePanel={activePanel} onPanelChange={onPanelChange} disabled={busy}>
         <div className="space-y-2">
           <label className="block text-sm">
             Display name
@@ -177,12 +182,14 @@ function AccountSecurityContent() {
               }}
             />
           </label>
-          <Button size="sm" disabled={busy} onClick={() => void run(profile)}>
+          <Button size="sm" disabled={busy || name === profileName(session?.user.user_metadata)} onClick={() => void run(profile)}>
             <Save aria-hidden className="size-4" /> Save name
           </Button>
         </div>
-      </section>
+      </AccountSettingsRow>
       <AccountFactors
+        activePanel={activePanel}
+        onPanelChange={onPanelChange}
         signInFields={
           <div className="space-y-2">
             <label className="block text-sm">
@@ -200,7 +207,7 @@ function AccountSecurityContent() {
             <Button
               size="sm"
               variant="outline"
-              disabled={busy || !email}
+              disabled={busy || !email || email === session?.user.email}
               onClick={() => void run(changeEmail)}
             >
               Change email
@@ -258,15 +265,7 @@ function AccountSecurityContent() {
           </CollapsibleContent>
         </Collapsible>
       </AccountFactors>
-      <section aria-labelledby="account-devices-heading" className="space-y-3 border-t pt-5">
-        <div>
-          <h3 id="account-devices-heading" className="text-sm font-semibold">
-            Devices
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            Sign out a device to end its access. Device names are labels only.
-          </p>
-        </div>
+      <AccountSettingsRow panel="devices" title="Devices" description="Where you’re signed in" icon={Monitor} activePanel={activePanel} onPanelChange={onPanelChange} disabled={busy}>
         {deviceError && <div role="alert" className="text-sm text-destructive">{deviceError} <Button size="sm" variant="ghost" disabled={loading} onClick={() => void load()}>Retry devices</Button></div>}
         {loading && devices.length === 0 ? (
           <p role="status">Loading devices…</p>
@@ -274,13 +273,13 @@ function AccountSecurityContent() {
           <ul className="divide-y">
             {devices.map((device) => (
               <li className="space-y-2 py-3" key={device.id}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="flex items-center gap-2 text-sm font-medium">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-medium [overflow-wrap:anywhere]">
                       <Monitor aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                       {device.displayName}
                       {device.isCurrent && (
-                        <span className="ml-2 text-xs text-muted-foreground">This device</span>
+                        <span className="text-xs text-muted-foreground">This device</span>
                       )}
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -290,31 +289,25 @@ function AccountSecurityContent() {
                         : ""}
                     </p>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={busy}
-                      onClick={() => {
-                        setRenaming(device.id);
-                        setLabel(device.displayName);
-                      }}
-                    >
-                      <Pencil aria-hidden className="size-3.5" /> Rename
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => void run(() => revoke(device))}
-                    >
-                      <LogOut aria-hidden className="size-3.5" /> Sign out
-                    </Button>
-                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="icon" variant="ghost" className="size-9 shrink-0" disabled={busy} aria-label={`Manage ${device.displayName}`}>
+                        <MoreHorizontal aria-hidden className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => { setRenaming(device.id); setLabel(device.displayName); }}>
+                        <Pencil aria-hidden className="size-3.5" /> Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem variant="destructive" onSelect={() => void run(() => revoke(device))}>
+                        <LogOut aria-hidden className="size-3.5" /> Sign out
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
                 {renaming === device.id && (
                   <form
-                    className="flex gap-2"
+                    className="flex flex-wrap gap-2"
                     onSubmit={(e) => {
                       e.preventDefault();
                       void run(async () => {
@@ -330,6 +323,7 @@ function AccountSecurityContent() {
                     }}
                   >
                     <Input
+                      className="min-w-0 basis-full sm:flex-1 sm:basis-0"
                       aria-label="Device name"
                       maxLength={80}
                       value={label}
@@ -352,47 +346,50 @@ function AccountSecurityContent() {
             ))}
           </ul>
         )}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() =>
-              void run(async () => {
-                if (window.confirm("Sign out every other device?")) {
-                  await signOut({ scope: "others" });
-                  await load();
-                }
-              })
-            }
-          >
-            <LogOut aria-hidden className="size-4" /> Sign out other devices
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() =>
-              void run(async () => {
-                if (window.confirm("Sign out all devices, including this one?"))
-                  await signOut({ scope: "global" });
-              })
-            }
-          >
-            <LogOut aria-hidden className="size-4" /> Sign out all devices
-          </Button>
-        </div>
-      </section>
+        <details className="border-t pt-3">
+          <summary className="cursor-pointer text-sm text-muted-foreground">Sign out multiple devices</summary>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  if (window.confirm("Sign out every other device?")) {
+                    await signOut({ scope: "others" });
+                    await load();
+                  }
+                })
+              }
+            >
+              <LogOut aria-hidden className="size-4" /> Sign out other devices
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  if (window.confirm("Sign out all devices, including this one?"))
+                    await signOut({ scope: "global" });
+                })
+              }
+            >
+              <LogOut aria-hidden className="size-4" /> Sign out all devices
+            </Button>
+          </div>
+        </details>
+      </AccountSettingsRow>
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="px-3 py-2 text-sm text-destructive">
           {error}
         </p>
       )}
       {message && (
-        <p role="status" className="text-sm">
+        <p role="status" className="px-3 py-2 text-sm">
           {message}
         </p>
       )}
-    </div>
+    </>
   );
 }
