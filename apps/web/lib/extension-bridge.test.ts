@@ -59,7 +59,7 @@ describe("fixed Chrome restore routing", () => {
       else lateReply = reply;
     });
     const result = restoreSessionViaExtension(urls);
-    await vi.advanceTimersByTimeAsync(800);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(await result).toBe(false);
     lateReply?.({ ok: true });
     await vi.runAllTimersAsync();
@@ -98,5 +98,47 @@ describe("fixed Chrome restore routing", () => {
     expect(RESTORE_EXTENSION_IDS).toEqual(["ffhbgpgebpmofjkehpjcemepbgcmoelp", "peikdeadpkgjgohdndljbciephekdpfg"]);
     expect(EXTENSION_IDS).toContain(qaId);
     expect(await pingExtensionOnce()).toBe(true);
+  });
+});
+
+function installPageBridge(handler: (message: Message, respond: (reply: unknown) => void) => void) {
+  const target = new EventTarget() as EventTarget & { location: { origin: string }; postMessage: ReturnType<typeof vi.fn> };
+  target.location = { origin: "https://www.bookmark-ai.cloud" };
+  target.postMessage = vi.fn(data => handler(data.message, response => {
+    const event = new Event("message");
+    Object.assign(event, { source: target, origin: target.location.origin, data: { ...data, direction: "response", response } });
+    target.dispatchEvent(event);
+  }));
+  vi.stubGlobal("window", target);
+  return target;
+}
+
+describe("Safari and Firefox content-script restore", () => {
+  it("restores once through the page bridge without a Chrome runtime", async () => {
+    const page = installPageBridge((message, reply) => reply(message.type === "BOOKMARK_AI_PING"
+      ? { ok: true, restoreWindow: true, tabGroups: false } : { ok: true }));
+    expect(await restoreSessionViaExtension(urls)).toBe(true);
+    expect(page.postMessage.mock.calls.map(([data]) => data.message.type)).toEqual(["BOOKMARK_AI_PING", "RESTORE_SESSION"]);
+    expect(page.postMessage.mock.calls[1][0].message.urls).toEqual(urls);
+  });
+  it("never sends a group restore when the browser reports no support", async () => {
+    const page = installPageBridge((_message, reply) => reply({ ok: true, restoreWindow: true, tabGroups: false }));
+    expect(await restoreSessionViaExtension(urls, { mode: "group" })).toBe(false);
+    expect(page.postMessage).toHaveBeenCalledTimes(1);
+  });
+  it("does not retry or fall back when a restore response is lost", async () => {
+    const page = installPageBridge((message, reply) => {
+      if (message.type === "BOOKMARK_AI_PING") reply({ ok: true, restoreWindow: true, tabGroups: false });
+    });
+    const pending = restoreSessionViaExtension(urls);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(await pending).toBe(false);
+    expect(page.postMessage).toHaveBeenCalledTimes(2);
+  });
+  it("reports the correct recovery instruction without mentioning Chrome or retrying an uncertain operation", async () => {
+    const { sessionRestoreNote } = await import("./extension-bridge");
+    expect(sessionRestoreNote("unavailable")).not.toMatch(/Chrome/);
+    expect(sessionRestoreNote("unsupported")).toContain("New window");
+    expect(sessionRestoreNote("unknown")).toContain("Check for a new window before trying again");
   });
 });

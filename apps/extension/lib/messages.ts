@@ -1,3 +1,4 @@
+import { validRestoreMessage } from "./session-restore";
 import type { Bookmark, Session } from "@bookmark-ai/types";
 import { browser } from "wxt/browser";
 import { diag } from "./diag";
@@ -34,12 +35,7 @@ export interface RestoreSessionMessage {
 }
 
 export function isRestoreSessionMessage(message: unknown): message is RestoreSessionMessage {
-  return (
-    typeof message === "object" &&
-    message !== null &&
-    (message as RestoreSessionMessage).type === RESTORE_SESSION &&
-    Array.isArray((message as RestoreSessionMessage).urls)
-  );
+  return validRestoreMessage(message);
 }
 
 export interface BookmarkAiPingMessage {

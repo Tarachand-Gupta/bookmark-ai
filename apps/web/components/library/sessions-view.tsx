@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { renameSession, summarizeSession } from "@/lib/api";
-import { restoreSessionViaExtension, type RestoreMode } from "@/lib/extension-bridge";
+import { getSessionRestoreCapabilities, requestSessionRestore, sessionRestoreNote, type RestoreMode } from "@/lib/extension-bridge";
 import { safeHref } from "@/lib/safe-href";
 import type { SelectionState } from "@/hooks/use-selection";
 import { SessionsEmpty } from "./sessions-empty";
@@ -135,6 +135,13 @@ export function SessionCard({
   // In search results, open with the matches visible instead of folded away.
   const [open, setOpen] = useState(matchCount > 0);
   const [openAllNote, setOpenAllNote] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [canGroup, setCanGroup] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void getSessionRestoreCapabilities().then(result => { if (active) setCanGroup(result.tabGroups); });
+    return () => { active = false; };
+  }, []);
 
   // ── Rename (inline) + Summarize (AI title + description) ──────────────────
   // Local display name/description are the optimistic source of truth; they
@@ -192,29 +199,16 @@ export function SessionCard({
     }
   };
 
-  // Restore: prefer the extension — it opens every tab as ONE new window or
-  // as a titled tab group in this window. The page-side fallback (window.open
-  // per tab) gets popup-blocked after the first tab, so when that happens we
-  // say so instead of failing silently; tab groups have no page-side fallback.
   const openAll = async (mode: RestoreMode) => {
+    if (restoring) return;
     const urls = session.tabs.map((t) => t.url).filter((u) => /^https?:/i.test(u));
     if (urls.length === 0) return;
     setOpenAllNote(null);
-    if (await restoreSessionViaExtension(urls, { mode, name })) return;
-    if (mode === "group") {
-      setOpenAllNote(
-        "Tab groups need the Bookmark AI extension (Chrome). Install it — or reload it if it's already installed — then try again, or use “New window”.",
-      );
-      return;
-    }
-    let opened = 0;
-    for (const u of urls) {
-      if (window.open(u, "_blank", "noopener,noreferrer")) opened++;
-    }
-    if (opened < urls.length) {
-      setOpenAllNote(
-        `Your pop-up blocker let ${opened} of ${urls.length} tabs through. Allow pop-ups for this site, or install the Bookmark AI extension to restore sessions in one window.`,
-      );
+    setRestoring(true);
+    try {
+      setOpenAllNote(sessionRestoreNote(await requestSessionRestore(urls, { mode, name })));
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -335,22 +329,22 @@ export function SessionCard({
             size="sm"
             variant="outline"
             onClick={() => void openAll("window")}
-            disabled={session.tabs.length === 0}
+            disabled={restoring || session.tabs.length === 0}
           >
             <AppWindow className="size-3.5" aria-hidden />
             <span className="hidden sm:inline">New window</span>
             <span className="sm:hidden">Window</span>
           </Button>
-          <Button
+          {canGroup && <Button
             size="sm"
             variant="outline"
             onClick={() => void openAll("group")}
-            disabled={session.tabs.length === 0}
+            disabled={restoring || session.tabs.length === 0}
           >
             <SquareStack className="size-3.5" aria-hidden />
             <span className="hidden sm:inline">New tab group</span>
             <span className="sm:hidden">Group</span>
-          </Button>
+          </Button>}
           <button
             type="button"
             onClick={() => onDelete(session.id)}

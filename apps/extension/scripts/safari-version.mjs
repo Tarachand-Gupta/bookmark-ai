@@ -30,6 +30,7 @@ export const XCCONFIG_PATH = join(EXT_DIR, "safari-app", "Version.xcconfig");
 export const REUPLOAD_SUFFIXES = Object.freeze({
   "0.1.4": 1,
   "0.1.6": 2,
+  "0.1.7": 1,
 });
 
 export function resolveBuildSuffix(version, env = process.env) {

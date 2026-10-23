@@ -1,3 +1,4 @@
+import { isRestoreSender, restoreCapabilities, restoreSession, type RestoreBrowser } from "@/lib/session-restore";
 import {
   SUPABASE_AUTH,
   initializeOAuthStorage,
@@ -18,6 +19,7 @@ import {
   getApiBaseUrl,
   getLiveToken,
   getWebBaseUrl,
+  DEFAULT_WEB_URL,
   saveSession,
   setAuthTokenProvider,
   setNoTokenFetcher,
@@ -77,7 +79,6 @@ import {
   type LiveWindowGetResult,
   type LiveWindowSetMessage,
   type LiveWindowSetResult,
-  type RestoreSessionMessage,
   type SaveBookmarkMessage,
   type SaveBookmarkResult,
   type SaveSessionMessage,
@@ -917,50 +918,6 @@ async function handleLiveWindowSet(message: LiveWindowSetMessage): Promise<LiveW
   return { ok: true, shared: message.shared };
 }
 
-// Tab-group APIs are Chrome ≥89; webextension-polyfill types don't know them.
-interface TabGroupApis {
-  tabs: {
-    group?: (options: { tabIds: number[] }) => Promise<number>;
-  };
-  tabGroups?: {
-    update: (groupId: number, props: { title?: string; color?: string }) => Promise<unknown>;
-  };
-}
-
-/** Open the urls as a titled tab group in `windowId` (the sender's window). */
-async function openAsTabGroup(
-  urls: string[],
-  windowId: number | undefined,
-  name: string | undefined,
-): Promise<{ ok: boolean }> {
-  const api = browser as unknown as TabGroupApis;
-  if (!api.tabs.group) return { ok: false }; // Firefox/Safari: no tab groups
-  const tabs = [];
-  for (const url of urls) {
-    // Sequential so the group keeps the session's tab order.
-    tabs.push(await browser.tabs.create({ windowId, url, active: false }));
-  }
-  const tabIds = tabs.map((t) => t.id).filter((id): id is number => typeof id === "number");
-  const groupId = await api.tabs.group({ tabIds });
-  try {
-    await api.tabGroups?.update(groupId, { title: name || "Restored session", color: "blue" });
-  } catch {
-    // Group exists even if titling fails (missing tabGroups permission).
-  }
-  return { ok: true };
-}
-
-async function handleRestoreSession(
-  message: RestoreSessionMessage,
-  senderWindowId: number | undefined,
-): Promise<{ ok: boolean }> {
-  const urls = message.urls.filter((u) => /^https?:/i.test(u)).slice(0, 100);
-  if (urls.length === 0) return { ok: false };
-  if (message.mode === "group") return openAsTabGroup(urls, senderWindowId, message.name);
-  await browser.windows.create({ url: urls });
-  return { ok: true };
-}
-
 /**
  * The periodic auth tick (6h alarm) and the boot tick share this: renew → VALIDATE
  * → mint → settings → drain the mirror retry queue.
@@ -1151,11 +1108,11 @@ export default defineBackground(() => {
       // wake latency.
       if (isBookmarkAiPingMessage(message)) {
         diag("bg", "external ping", { url: sender.url ?? null });
-        sendResponse({ ok: true });
+        sendResponse(restoreCapabilities(browser as unknown as RestoreBrowser));
         return undefined; // responded synchronously
       }
       if (!isRestoreSessionMessage(message)) return undefined;
-      handleRestoreSession(message, sender.tab?.windowId)
+      restoreSession(browser as unknown as RestoreBrowser, message, sender.tab?.windowId)
         .then(sendResponse)
         .catch(() => sendResponse({ ok: false }));
       return true; // async sendResponse
@@ -1178,6 +1135,18 @@ export default defineBackground(() => {
           | { ok: boolean },
       ) => void,
     ) => {
+      if (isBookmarkAiPingMessage(message) || isRestoreSessionMessage(message)) {
+        if (!isRestoreSender(_sender, browser.runtime.id, DEFAULT_WEB_URL)) {
+          sendResponse({ ok: false });
+          return undefined;
+        }
+        if (isBookmarkAiPingMessage(message)) {
+          sendResponse(restoreCapabilities(browser as unknown as RestoreBrowser));
+          return undefined;
+        }
+        void restoreSession(browser as unknown as RestoreBrowser, message, _sender.tab?.windowId).then(sendResponse);
+        return true;
+      }
       if (SUPABASE_AUTH && typeof message === "object" && message !== null) {
         const payload = message as { type?: string; url?: string };
         if (payload.type === "OAUTH_CALLBACK_READY" && import.meta.env.BROWSER === "safari") {
