@@ -63,6 +63,9 @@ Both bundle IDs/version/build values match; both Apple Distribution signatures
 verify deeply/strictly; neither has get-task-allow; all 13 shipped web resources
 match the production kit. Both architecture UUIDs match their dSYMs for each binary.
 Upload succeeded at 13:39 IST; upload receipt is `store-10701/upload.log`.
+App Store Connect subsequently showed 10701 as Ready to Submit. It was selected
+and saved in the 0.1.7 release draft, replacing the 10700 association. Neither
+build was deleted from the account.
 
 Chrome and Firefox's already-submitted 0.1.7 store packages were not replaced.
 The Firefox relay is present in source for its next extension release, but the
@@ -74,8 +77,15 @@ received a fresh live restore test during this Safari-specific fix.
 
 The Apple Developer account displays the updated Program License Agreement as
 **accepted October 23, 2026**. App Store Connect's agreement warning is absent;
-the current review item offers Resubmit to App Review. Evidence:
+the prior review item offered Resubmit to App Review. Evidence:
 `apple-agreement-accepted.png`, `apple-review-agreement-cleared.png`.
+
+Apple permits only one edit of an item within an unresolved submission. The
+old unsubmitted 10700 review draft was cancelled to unlock the version; its
+historical Apple message remains available. Build 10701 was saved and added to
+a new review draft. App Store Connect visibly shows Item Ready to Submit and
+0.1.7 (10701), with Submit for Review available but not clicked. Evidence:
+`safari-10701-review-draft.png`. This does not submit the app for review.
 
 The user's physical-Mac Safari demo video remains required by Apple's existing
 Guideline 2.1 request. No video was fabricated, and Resubmit has not been clicked.
