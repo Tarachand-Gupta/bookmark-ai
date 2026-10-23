@@ -177,7 +177,10 @@ export function AiChat({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
-  const [loadingConversation, setLoadingConversation] = useState(false);
+  const loadingConversation =
+    !workspace.hydrated ||
+    active.historyStatus === "unloaded" ||
+    active.historyStatus === "loading";
   const [loadError, setLoadError] = useState<string | null>(null);
   const [contextPicker, setContextPicker] = useState(false);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -284,27 +287,25 @@ export function AiChat({
     setAttachError(null);
     textarea.current?.focus();
   };
-  const loadConversation = async (id: string) => {
+  const loadConversation = (id: string) => {
     setHistoryOpen(false);
     setLoadError(null);
     const known = workspace.threads.get(id) ?? workspace.findConversation(id);
-    if (known) {
-      workspace.select(known.key);
-      return;
-    }
-    setLoadingConversation(true);
-    try {
-      const { conversation, messages: loaded } = await getChatConversation(id);
-      if (!workspace.isActive) return;
-      const thread = workspace.create({ conversationId: id, title: conversation.title });
-      thread.chat.messages = loaded as unknown as UIMessage[];
-      workspace.notify();
-    } catch {
-      setLoadError("Couldn't load that conversation. Your current draft is still here.");
-    } finally {
-      setLoadingConversation(false);
-    }
+    if (known) workspace.select(known.key);
+    else
+      workspace.create({
+        conversationId: id,
+        title: conversations.find((item) => item.id === id)?.title ?? "Conversation",
+      });
   };
+  const restoreConversation = useCallback(
+    (key: string) =>
+      workspace.ensureHistory(key, async (id) => {
+        const { conversation, messages } = await getChatConversation(id);
+        return { messages: messages as unknown as UIMessage[], title: conversation.title };
+      }),
+    [workspace],
+  );
   const handleDeleteConversation = async (id: string) => {
     const thread = workspace.threads.get(id) ?? workspace.findConversation(id);
     try {
@@ -317,26 +318,9 @@ export function AiChat({
     }
   };
   useEffect(() => {
-    // A reload restores the authoritative transcript; an unfinished previous
-    // process is reported as interrupted, never as background completion.
-    const thread = workspace.active;
-    if (!thread.conversationId || thread.chat.messages.length || thread.chat.status !== "ready")
-      return;
-    let cancelled = false;
-    void getChatConversation(thread.conversationId)
-      .then(({ messages: loaded }) => {
-        if (!cancelled) {
-          thread.chat.messages = loaded as unknown as UIMessage[];
-          workspace.notify();
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setLoadError("Couldn't restore the conversation. Your draft is retained.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [workspace, active.key, active.conversationId]);
+    if (workspace.hydrated && active.historyStatus === "unloaded")
+      void restoreConversation(active.key);
+  }, [workspace, workspace.hydrated, active.key, active.historyStatus, restoreConversation]);
   useEffect(() => {
     if (!open) setExpanded(false);
   }, [open]);
@@ -475,7 +459,7 @@ export function AiChat({
     </div>
   );
 
-  const isEmptyThread = messages.length === 0 && !loadingConversation;
+  const isEmptyThread = workspace.canShowSuggestions && !loadingConversation;
   // The free-credits greeting only makes sense for someone actually ON the free
   // tier — an own-key user's chat doesn't touch the meter.
   // Render (as the loading skeleton) while settings are still in flight —
@@ -527,7 +511,7 @@ export function AiChat({
   };
 
   const thread = (
-    <Conversation className="flex-1">
+    <Conversation key={active.key} className="flex-1">
       {/* min-h-full only while empty: StickToBottom's content div is auto-height
           inside a height:100% scroller, so the empty state's own `size-full`
           resolved against an auto parent and collapsed to the icon. Giving the
@@ -550,12 +534,29 @@ export function AiChat({
             </button>
           </div>
         )}
+        {active.historyError && (
+          <div role="alert" className="not-prose mb-2 space-y-2 rounded-lg border p-3 text-xs">
+            <p>{active.historyError}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void restoreConversation(active.key)}
+              >
+                Retry loading
+              </Button>
+              <Button variant="ghost" size="sm" onClick={startNewConversation}>
+                New conversation
+              </Button>
+            </div>
+          </div>
+        )}
         {loadingConversation ? (
           // Immediate feedback while the GET + setMessages round-trips.
           <ChatThreadSkeleton />
         ) : (
           <>
-            {messages.length === 0 && (
+            {isEmptyThread && (
               // THREE stacked blocks, not `ConversationEmptyState` — that primitive
               // assumes it owns the whole pane (size-full, centered), and the empty
               // state now carries a free-credits greeting on top and rotating sample
@@ -909,7 +910,12 @@ export function AiChat({
           <ComposerSubmit
             status={status}
             onStop={stop}
-            blocked={active.contextNeedsReview || active.missingFiles.length > 0}
+            blocked={
+              loadingConversation ||
+              active.historyStatus !== "ready" ||
+              active.contextNeedsReview ||
+              active.missingFiles.length > 0
+            }
             className="ml-auto"
           />
         </PromptInputFooter>

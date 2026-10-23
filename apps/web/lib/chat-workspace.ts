@@ -17,6 +17,8 @@ export interface ChatDraft {
   interrupted: boolean;
 }
 export interface WorkspaceThread extends ChatDraft {
+  historyStatus: "unloaded" | "loading" | "ready" | "error";
+  historyError: string | null;
   chat: Chat<UIMessage>;
   source: string | null;
   note: string | null;
@@ -81,17 +83,20 @@ export class ChatWorkspace {
   private listeners = new Set<() => void>();
   private storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
   private disposed = false;
+  private historyLoads = new Map<string, Promise<void>>();
+  hydrated = false;
   onFinish?: (message: UIMessage) => void;
   constructor(readonly accountId: string, private headers: () => Promise<Record<string, string>>) { this.create(); }
   subscribe = (callback: () => void) => { this.listeners.add(callback); return () => { this.listeners.delete(callback); }; };
   getSnapshot = () => this.revision;
   get active() { return this.threads.get(this.activeKey)!; }
   notify = () => { if (this.disposed) return; this.revision++; this.persist(); this.listeners.forEach(fn => fn()); };
-  hydrate(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
-    if (this.storage) return;
+  hydrate(storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
+    if (this.hydrated) return;
+    this.hydrated = true;
     this.storage = storage;
     let stored: StoredWorkspace | null = null;
-    try { stored = restoreDrafts(storage.getItem(workspaceStorageKey(this.accountId)), this.accountId); } catch { /* Restricted storage keeps an in-memory workspace. */ }
+    try { stored = restoreDrafts(storage?.getItem(workspaceStorageKey(this.accountId)) ?? null, this.accountId); } catch { /* Restricted storage keeps an in-memory workspace. */ }
     if (stored?.drafts.length) {
       this.threads.clear();
       for (const draft of stored.drafts) this.create(draft);
@@ -114,6 +119,7 @@ export class ChatWorkspace {
       key: draft?.key ?? `draft:${id()}`, conversationId: draft?.conversationId ?? null, title: draft?.title ?? "New conversation",
       text: draft?.text ?? "", files: draft?.files ?? [], missingFiles: draft?.missingFiles ?? [], context: draft?.context ?? { type: "library" }, updatedAt: draft?.updatedAt ?? new Date().toISOString(), interrupted: draft?.interrupted ?? false,
       contextNeedsReview: draft?.contextNeedsReview ?? false,
+      historyStatus: draft?.conversationId ? "unloaded" : "ready", historyError: null,
       source: null, note: null, limit: null, rejection: null, sourceByMessage: new Map(), noteByMessage: new Map(), pending: null, recoverable: null, lastSubmittedContext: null,
     } as WorkspaceThread;
     const transport = new DefaultChatTransport<UIMessage>({
@@ -175,9 +181,59 @@ export class ChatWorkspace {
   }
   select(key: string) { if (this.threads.has(key)) { this.activeKey = key; this.notify(); } }
   findConversation(conversationId: string) { return [...this.threads.values()].find(t => t.conversationId === conversationId); }
+  /** A restored conversation is never an empty/new chat. Load it once before
+   * accepting messages, and never let a late history response replace live turns. */
+  ensureHistory(
+    key: string,
+    load: (conversationId: string) => Promise<{ messages: UIMessage[]; title?: string }>,
+  ): Promise<void> {
+    const thread = this.threads.get(key);
+    if (!thread || this.disposed || !thread.conversationId || thread.historyStatus === "ready")
+      return Promise.resolve();
+    const existing = this.historyLoads.get(key);
+    if (existing) return existing;
+    thread.historyStatus = "loading";
+    thread.historyError = null;
+    const current = () => !this.disposed && this.threads.get(key) === thread;
+    const promise = Promise.resolve()
+      .then(() => load(thread.conversationId!))
+      .then((result) => {
+        if (!current()) return;
+        // Defensive guard for an externally changed chat (for example a retry
+        // already started by another presentation of this workspace).
+        if (!thread.pending && thread.chat.status === "ready" && !thread.chat.messages.length) {
+          thread.chat.messages = result.messages;
+          if (result.title) thread.title = result.title;
+        }
+        thread.historyStatus = "ready";
+        this.notify();
+      })
+      .catch(() => {
+        if (!current()) return;
+        thread.historyStatus = "error";
+        thread.historyError =
+          "Couldn’t restore this conversation. Your draft is safe. Retry loading or start a new chat.";
+        this.notify();
+      })
+      .finally(() => {
+        if (this.historyLoads.get(key) === promise) this.historyLoads.delete(key);
+      });
+    this.historyLoads.set(key, promise);
+    this.notify();
+    return promise;
+  }
+  get canShowSuggestions() {
+    const thread = this.active;
+    return (
+      this.hydrated &&
+      thread.historyStatus === "ready" &&
+      !thread.conversationId &&
+      !thread.chat.messages.length
+    );
+  }
   send(text = this.active.text, files: FileUIPart[] = this.active.files) {
     const thread = this.active;
-    if (this.disposed || thread.contextNeedsReview || thread.chat.status === "streaming" || thread.chat.status === "submitted" || thread.pending || thread.missingFiles.length || (!text.trim() && !files.length)) return;
+    if (this.disposed || !this.hydrated || thread.historyStatus !== "ready" || thread.contextNeedsReview || thread.chat.status === "streaming" || thread.chat.status === "submitted" || thread.pending || thread.missingFiles.length || (!text.trim() && !files.length)) return;
     thread.pending = { text, files: files.map((f, index) => ({ ...f, id: thread.files[index]?.id ?? id() })), context: structuredClone(thread.context) };
     thread.lastSubmittedContext = thread.pending.context;
     thread.text = ""; thread.files = []; thread.limit = null; thread.rejection = null; thread.interrupted = false;

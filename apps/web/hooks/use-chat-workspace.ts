@@ -9,7 +9,7 @@ export function useChatWorkspace(accountId: string) {
   useSyncExternalStore(workspace.subscribe, workspace.getSnapshot, workspace.getSnapshot);
   useEffect(() => {
     workspace.activate();
-    try { workspace.hydrate(localStorage); } catch { /* Browser policy can deny the storage object itself. */ }
+    try { workspace.hydrate(localStorage); } catch { workspace.hydrate(); /* Restricted storage still permits a new in-memory chat. */ }
     // Expiry/recovery hides the UI but retains the same-account draft. Explicit
     // sign-out removes private persisted content; account-keyed mounting keeps
     // a second account from observing this workspace.

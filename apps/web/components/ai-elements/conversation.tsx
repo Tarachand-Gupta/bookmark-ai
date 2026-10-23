@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { chatScrollTarget } from "@/lib/chat-scroll";
 import { ArrowDownIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { useCallback } from "react";
@@ -12,8 +13,11 @@ export type ConversationProps = ComponentProps<typeof StickToBottom>;
 export const Conversation = ({ className, ...props }: ConversationProps) => (
   <StickToBottom
     className={cn("relative flex-1 overflow-y-hidden", className)}
-    initial="smooth"
-    resize="smooth"
+    // A chat follows a changing bottom edge. Spring animation can keep chasing
+    // fractional scroll positions as streamed content settles; pin it directly.
+    initial="instant"
+    resize="instant"
+    targetScrollTop={(target, { scrollElement }) => chatScrollTarget(target, scrollElement.scrollTop)}
     role="log"
     {...props}
   />
@@ -25,10 +29,13 @@ export type ConversationContentProps = ComponentProps<
 
 export const ConversationContent = ({
   className,
+  scrollClassName,
   ...props
 }: ConversationContentProps) => (
   <StickToBottom.Content
     className={cn("flex flex-col gap-8 p-4", className)}
+    // StickToBottom owns position changes; native anchoring must not compete.
+    scrollClassName={cn("[overflow-anchor:none]", scrollClassName)}
     {...props}
   />
 );
@@ -77,7 +84,7 @@ export const ConversationScrollButton = ({
   const { isAtBottom, scrollToBottom } = useStickToBottomContext();
 
   const handleScrollToBottom = useCallback(() => {
-    scrollToBottom();
+    scrollToBottom("instant");
   }, [scrollToBottom]);
 
   return (
@@ -88,6 +95,8 @@ export const ConversationScrollButton = ({
           className
         )}
         onClick={handleScrollToBottom}
+        aria-label="Scroll to latest message"
+        title="Scroll to latest message"
         size="icon"
         type="button"
         variant="outline"

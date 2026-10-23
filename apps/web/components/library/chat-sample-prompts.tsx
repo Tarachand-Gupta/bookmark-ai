@@ -130,6 +130,7 @@ export function ChatSamplePrompts({ onPick, className }: ChatSamplePromptsProps)
               prompts={outgoing}
               onPick={onPick}
               aria-hidden
+              inert
               className="pointer-events-none absolute inset-0 animate-out slide-out-to-left-full fill-mode-both"
               style={SLIDE_TIMING}
             />

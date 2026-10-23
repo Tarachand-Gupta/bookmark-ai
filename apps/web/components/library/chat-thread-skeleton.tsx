@@ -27,11 +27,13 @@ function GhostTurn({ role }: { role: "user" | "assistant" }) {
  */
 export function ChatThreadSkeleton({ className }: { className?: string }) {
   return (
-    <div className={cn("space-y-5", className)} aria-hidden>
+    <div role="status" aria-label="Loading conversation" className={className}>
+      <div className="space-y-5" aria-hidden>
       <GhostTurn role="user" />
       <GhostTurn role="assistant" />
       <GhostTurn role="user" />
       <GhostTurn role="assistant" />
+      </div>
       <span className="sr-only">Loading conversation…</span>
     </div>
   );

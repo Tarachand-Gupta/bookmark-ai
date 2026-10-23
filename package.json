@@ -19,7 +19,8 @@
     "production:supabase": "node scripts/supabase-production.mjs",
     "test:supabase:production": "node --test scripts/supabase-production.test.mjs",
     "builds:retention": "node scripts/build-retention.mjs",
-    "test:builds:retention": "node --test scripts/build-retention.test.mjs"
+    "test:builds:retention": "node --test scripts/build-retention.test.mjs",
+    "dev:web:ai": "node scripts/dev-web-ai.mjs"
   },
   "devDependencies": {
     "prettier": "^3.4.2",
