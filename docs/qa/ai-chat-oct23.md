@@ -13,10 +13,14 @@ Run against a disposable tenant/fixture first. Real provider sign-in, model call
 
 ## Evidence from this pass
 
-- Focused backend/model tests and full web suite pass; final counts are in the release handoff.
+- Full web suite: 984 tests pass across 91 files. Three additional SSR disclosure tests pass separately; the final focused run passes 69 overlapping checks. Typechecking and the production Next.js build pass.
 - Isolated fixture at `.work/ai-chat-oct23/web-fixture`, preview port 3102; existing port 3000 was not replaced.
 - Real provider run returned 12 bookmarks in two categories. With one bookmark attached, a second real reply still counted all 12 and named the attached bookmark.
 - OpenRouter's configured provider policy rejected the primary request; Gemini fallback completed both real replies. This proves fallback, not working primary availability.
+- Real image upload was correctly described (red, green and blue vertical stripes) while the same reply counted all 12 library bookmarks. Image preview and Escape dismissal passed.
+- Retry reused the original attached source and retained an unsent draft/file. Reload produced an explicit reattachment notice; the Reattach button restored the file and enabled sending. Stop, history search, unavailable sources, error recovery and copy passed.
+- Visual checks passed in light/dark at actual CSS widths 320, 375, 767, 769 and 1600. Both sides of the tablet breakpoint were checked. Expanded chat uses a centered reading column.
+- Production source `17d88e634234`, deployment `dpl_rdJDk5kkBaroQtAUpnLj8CdamaFd`, promoted to `https://www.bookmark-ai.cloud`. Health/sign-in return 200; signed-out `/api/me` returns 401. The original AI-content-generation question retrieved saved sessions and matching tab records and produced linked results with collapsed activity.
 - Screenshots and command logs are under `.work/ai-chat-oct23/` (ignored, not product assets).
 
 ## Alternatives / harness notes
