@@ -532,7 +532,9 @@ export function AiChat({
           inside a height:100% scroller, so the empty state's own `size-full`
           resolved against an auto parent and collapsed to the icon. Giving the
           content a definite minimum lets the state below grow and center. */}
-      <ConversationContent className={isEmptyThread ? "min-h-full" : undefined}>
+      <ConversationContent
+        className={`mx-auto w-full max-w-3xl ${isEmptyThread ? "min-h-full" : ""}`}
+      >
         {/* Load failure: inline, dismissible, and the previous thread is already
             restored underneath — never a dead empty panel. */}
         {loadError && (
@@ -726,7 +728,11 @@ export function AiChat({
   );
 
   const composer = (
-    <div className={open ? "shrink-0 border-t p-2" : "p-0"}>
+    <div
+      className={
+        open ? `shrink-0 border-t p-2 ${expanded ? "mx-auto w-full max-w-3xl" : ""}` : "p-0"
+      }
+    >
       <div className={open ? "contents" : "hidden"}>
         {active.contextNeedsReview && (
           <div role="status" className="px-3 py-2 text-xs space-y-2">
