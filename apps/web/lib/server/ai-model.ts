@@ -22,6 +22,7 @@ import { withModelFallback } from "@/lib/server/ai-fallback-model";
  * Neither id is ever shown in the UI; `X-Ai-Model-Tier` tells clients which one
  * answered.
  */
+export const CLOUDFLARE_MODEL_ID = "@cf/zai-org/glm-5.3-flash";
 export const INCLUDED_PRIMARY_MODEL_ID = "z-ai/glm-5.3-flash";
 export const INCLUDED_FALLBACK_MODEL_ID = "gemini-3.8-flash";
 
@@ -46,6 +47,7 @@ export const INCLUDED_MODEL_ID = INCLUDED_FALLBACK_MODEL_ID;
  */
 export const INCLUDED_PROVIDER_OPTIONS: SharedV4ProviderOptions = {
   google: { thinkingConfig: { includeThoughts: true, thinkingLevel: "medium" } },
+  cloudflare: { reasoningEffort: "low" },
 };
 
 /** GLM's reasoning setting — see the note above; applied at model construction. */
@@ -264,6 +266,19 @@ function buildIncludedOpenRouter(): LanguageModel | null {
   );
 }
 
+/** Explicit opt-in keeps a partially configured deployment from silently switching providers. */
+function buildIncludedCloudflare(): LanguageModel | null {
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+  const apiKey = process.env.CLOUDFLARE_API_TOKEN;
+  if (!accountId || !/^[a-f0-9]{32}$/i.test(accountId) || !hasText(apiKey)) return null;
+  return createOpenAICompatible({
+    name: "cloudflare",
+    apiKey,
+    baseURL: `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1`,
+    includeUsage: true,
+  }).chatModel(CLOUDFLARE_MODEL_ID);
+}
+
 /**
  * The included model: GLM via OpenRouter wrapped so that any failure before the
  * first content chunk silently continues on Gemini. With only one of the two
@@ -275,7 +290,10 @@ export function buildIncludedModel(
   onFallback?: (reason: string) => void,
   onDecision?: (tier: ChatModelTier) => void,
 ): ResolvedChatModel | null {
-  const primary = buildIncludedOpenRouter();
+  const cloudflare = process.env.INCLUDED_AI_PROVIDER?.trim().toLowerCase() === "cloudflare";
+  const primary = cloudflare ? buildIncludedCloudflare() : buildIncludedOpenRouter();
+  const primaryId = cloudflare ? CLOUDFLARE_MODEL_ID : INCLUDED_PRIMARY_MODEL_ID;
+  const primaryProvider = cloudflare ? "cloudflare" : "openrouter";
   const geminiModel = buildIncludedGemini(gemini);
   const base = {
     usesServerKey: true as const,
@@ -285,10 +303,10 @@ export function buildIncludedModel(
     return {
       ...base,
       model: withModelFallback(primary, geminiModel, { onFallback, onDecision }),
-      label: `openrouter:${INCLUDED_PRIMARY_MODEL_ID} (env, gemini fallback)`,
+      label: `${primaryProvider}:${primaryId} (env, gemini fallback)`,
       providerOptions: INCLUDED_PROVIDER_OPTIONS,
       providerId: "custom",
-      modelId: INCLUDED_PRIMARY_MODEL_ID,
+      modelId: primaryId,
       tier: "primary",
     };
   }
@@ -296,10 +314,10 @@ export function buildIncludedModel(
     return {
       ...base,
       model: primary,
-      label: `openrouter:${INCLUDED_PRIMARY_MODEL_ID} (env)`,
+      label: `${primaryProvider}:${primaryId} (env)`,
       providerOptions: INCLUDED_PROVIDER_OPTIONS,
       providerId: "custom",
-      modelId: INCLUDED_PRIMARY_MODEL_ID,
+      modelId: primaryId,
       tier: "primary",
     };
   }

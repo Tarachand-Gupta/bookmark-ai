@@ -10,8 +10,8 @@ import { Markdown } from "./chat-markdown";
 
 /**
  * One `reasoning` part (CONTRACT §6). While the model is thinking the
- * disclosure is OPEN and its label shimmers ("Thinking…"); the moment the
- * reasoning ends it folds to "Thought for N s" with a chevron to reopen. A
+ * disclosure stays closed and its label shimmers ("Thinking…"); when reasoning
+ * ends the label becomes "Thought for N s". A
  * user who toggles it by hand wins over the automatic behaviour. Persisted
  * parts (reloaded from history) mount already finished, with no timing to
  * report, so they fold under a plain "Thought process".
@@ -36,7 +36,7 @@ export function ReasoningPart({ part, live }: { part: ReasoningUIPart; live: boo
   const text = part.text ?? "";
   if (!streaming && !text.trim()) return null;
 
-  const open = userOpen ?? streaming;
+  const open = userOpen ?? false;
   const label = streaming
     ? "Thinking…"
     : seconds !== null
@@ -58,7 +58,7 @@ export function ReasoningPart({ part, live }: { part: ReasoningUIPart; live: boo
           aria-hidden
         />
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-1 border-l-2 border-border pl-3">
+      <CollapsibleContent className="mt-1 border-l border-border pl-3">
         {text.trim() ? (
           <Markdown muted>{text}</Markdown>
         ) : (

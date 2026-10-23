@@ -90,6 +90,7 @@ export function AiCreditsMeter({ usage, loading, dim, className }: AiCreditsMete
 }
 
 export interface AiCreditsCalloutProps extends AiCreditsMeterProps {
+  compact?: boolean;
   /** Overrides the hero line's title (default "Free AI included"). */
   title?: string;
   /** One line under the title. Defaults to the shared free-tier pitch. */
@@ -115,7 +116,42 @@ export function AiCreditsCallout({
   action,
   onDismiss,
   className,
+  compact,
 }: AiCreditsCalloutProps) {
+  if (compact) {
+    const view = toCreditsView(usage);
+    return (
+      <div className={cn("flex items-start gap-1 text-xs text-muted-foreground", className)}>
+        <details className="min-w-0 flex-1 rounded-lg border border-border/60 bg-muted/20">
+          <summary className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <Sparkles className="size-3.5 shrink-0" aria-hidden />
+            <span className="font-medium">Included AI</span>
+            <span className="ml-auto tabular-nums">
+              {loading
+                ? "Checking allowance…"
+                : !view
+                  ? "Allowance unavailable"
+                  : `${formatCredits(Math.max(0, view.limitCredits - view.usedCredits))} credits left`}
+            </span>
+          </summary>
+          <div className="space-y-2 border-t px-3 py-3">
+            <AiCreditsMeter usage={usage} loading={loading} dim />
+            {action}
+          </div>
+        </details>
+        {onDismiss && (
+          <button
+            type="button"
+            aria-label="Dismiss allowance"
+            onClick={onDismiss}
+            className="flex size-8 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <X className="size-3.5" aria-hidden />
+          </button>
+        )}
+      </div>
+    );
+  }
   return (
     <div
       className={cn(

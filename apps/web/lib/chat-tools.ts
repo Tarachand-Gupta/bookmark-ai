@@ -44,6 +44,7 @@ export interface ToolView {
 }
 
 const TOOL_NOUNS: Record<string, string> = {
+  listContext: "Attached sources",
   searchBookmarks: "Bookmark search",
   queryDatabase: "Library query",
   listSessions: "Saved sessions",
@@ -162,6 +163,12 @@ export function describeToolPart(
   const softError = state === "output-available" ? outputError(output) : undefined;
 
   switch (toolName) {
+    case "listContext": {
+      if (running) return { phase: "running", icon: "page", label: "Checking attached bookmarks" };
+      if (failed || softError) return { phase: "error", icon: "page", label: "Couldn’t check attachments", errorText: softError ?? errorText };
+      const n = count(out.sources) ?? 0;
+      return { phase: "done", icon: "page", label: n ? `Checked ${plural(n, "attached bookmark")}` : "No additional bookmarks attached", detail: "Library available" };
+    }
     case "searchBookmarks": {
       const query = str(inp.query);
       const semantic = inp.mode === "semantic" || out.mode === "ai";

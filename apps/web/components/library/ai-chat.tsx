@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { useChatWorkspace } from "@/hooks/use-chat-workspace";
+import { ChatMessageSources } from "./chat-message-sources";
+import { ChatResponseActions } from "./chat-response-actions";
 import { contextLabel } from "@/lib/chat-workspace";
 import type { ChatContext } from "@bookmark-ai/types";
 import { ChatContextPreview } from "./organization/chat-context-preview";
@@ -24,6 +26,8 @@ import { skillsCreatedIn } from "@/lib/chat-tools";
 import { notifySkillsChanged } from "@/lib/skills";
 import {
   AlertTriangle,
+  Bookmark,
+  Library,
   ChevronDown,
   Ellipsis,
   Maximize2,
@@ -137,11 +141,22 @@ function hasVisibleContent(message: UIMessage): boolean {
  * in all four states, files — renders here (CONTRACT §6), plus attachments in
  * the composer (§4) and the `{ message, conversationId }` protocol (§5).
  */
-export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, requestedContext, onFilter }: AiChatProps) {
+export function AiChat({
+  onClose,
+  onOpen,
+  open,
+  accountId,
+  suggestedContext,
+  requestedContext,
+  onFilter,
+}: AiChatProps) {
   const workspace = useChatWorkspace(accountId);
   const active = workspace.active;
-  useEffect(() => { if (requestedContext) workspace.patch({ context: requestedContext.context }); }, [requestedContext?.id, workspace]);
-  const { messages, sendMessage, setMessages, regenerate, clearError, status, error, stop } = useChat({ chat: active.chat });
+  useEffect(() => {
+    if (requestedContext) workspace.patch({ context: requestedContext.context });
+  }, [requestedContext?.id, workspace]);
+  const { messages, sendMessage, setMessages, regenerate, clearError, status, error, stop } =
+    useChat({ chat: active.chat });
   const activeId = active.conversationId;
   const limitInfo = active.limit;
   const liveAiSource = active.source;
@@ -151,8 +166,12 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
   const attachmentRejected = !!active.rejection;
   const [attachErrors, setAttachErrors] = useState<Record<string, string | null>>({});
   const attachError = attachErrors[active.key];
-  const setAttachError = (message: string | null) => setAttachErrors(errors => ({ ...errors, [active.key]: message }));
-  const showAttachError = useCallback((message: string) => setAttachErrors(errors => ({ ...errors, [active.key]: message })), [active.key]);
+  const setAttachError = (message: string | null) =>
+    setAttachErrors((errors) => ({ ...errors, [active.key]: message }));
+  const showAttachError = useCallback(
+    (message: string) => setAttachErrors((errors) => ({ ...errors, [active.key]: message })),
+    [active.key],
+  );
   const [conversations, setConversations] = useState<ChatConversationSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -164,9 +183,13 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
   const textarea = useRef<HTMLTextAreaElement>(null);
   const refreshConversations = useCallback(async () => {
     setHistoryLoading(true);
-    try { setConversations((await listChatConversations()).conversations); }
-    catch { /* A failed history read does not block an active draft. */ }
-    finally { setHistoryLoading(false); }
+    try {
+      setConversations((await listChatConversations()).conversations);
+    } catch {
+      /* A failed history read does not block an active draft. */
+    } finally {
+      setHistoryLoading(false);
+    }
   }, []);
   // FREE CREDITS, FIRST OPEN. A user on the included free AI is metered weekly —
   // so the first thing an empty conversation shows is what they've got (credit
@@ -179,11 +202,19 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [greetingDismissed, setGreetingDismissed] = useState(false);
   useEffect(() => {
-    try { setGreetingDismissed(localStorage.getItem(GREETING_DISMISSED) === "1"); } catch { /* Session-only dismissal. */ }
+    try {
+      setGreetingDismissed(localStorage.getItem(GREETING_DISMISSED) === "1");
+    } catch {
+      /* Session-only dismissal. */
+    }
   }, []);
   const dismissGreeting = useCallback(() => {
     setGreetingDismissed(true);
-    try { localStorage.setItem(GREETING_DISMISSED, "1"); } catch { /* Session-only dismissal. */ }
+    try {
+      localStorage.setItem(GREETING_DISMISSED, "1");
+    } catch {
+      /* Session-only dismissal. */
+    }
   }, []);
   /** The full setup card, opened only from the free-limit wall's CTA. */
   const [keyFormOpen, setKeyFormOpen] = useState(false);
@@ -227,6 +258,9 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
   useEffect(() => {
     void refreshConversations();
   }, [refreshConversations]);
+  useEffect(() => {
+    if (historyOpen) void refreshConversations();
+  }, [historyOpen, refreshConversations]);
 
   const onAttachError = useCallback(
     (err: PromptInputError) => showAttachError(err.message),
@@ -234,7 +268,8 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
   );
 
   workspace.onFinish = (message) => {
-    void refreshConversations(); void refreshAiSettings();
+    void refreshConversations();
+    void refreshAiSettings();
     if (skillsCreatedIn(message.parts) > 0) notifySkillsChanged();
   };
   const send = (text: string, files: FileUIPart[] = []) => workspace.send(text, files);
@@ -243,13 +278,20 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
     workspace.send(message.text, message.files);
   };
   const startNewConversation = () => {
-    workspace.create({ context: suggestedContext ?? { type: "library" } }); setHistoryOpen(false); setLoadError(null); setAttachError(null);
+    workspace.create({ context: suggestedContext ?? { type: "library" } });
+    setHistoryOpen(false);
+    setLoadError(null);
+    setAttachError(null);
     textarea.current?.focus();
   };
   const loadConversation = async (id: string) => {
-    setHistoryOpen(false); setLoadError(null);
+    setHistoryOpen(false);
+    setLoadError(null);
     const known = workspace.threads.get(id) ?? workspace.findConversation(id);
-    if (known) { workspace.select(known.key); return; }
+    if (known) {
+      workspace.select(known.key);
+      return;
+    }
     setLoadingConversation(true);
     try {
       const { conversation, messages: loaded } = await getChatConversation(id);
@@ -257,29 +299,47 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
       const thread = workspace.create({ conversationId: id, title: conversation.title });
       thread.chat.messages = loaded as unknown as UIMessage[];
       workspace.notify();
-    } catch { setLoadError("Couldn't load that conversation. Your current draft is still here."); }
-    finally { setLoadingConversation(false); }
+    } catch {
+      setLoadError("Couldn't load that conversation. Your current draft is still here.");
+    } finally {
+      setLoadingConversation(false);
+    }
   };
   const handleDeleteConversation = async (id: string) => {
     const thread = workspace.threads.get(id) ?? workspace.findConversation(id);
     try {
-      if (thread?.conversationId || !thread) await deleteChatConversation(thread?.conversationId ?? id);
+      if (thread?.conversationId || !thread)
+        await deleteChatConversation(thread?.conversationId ?? id);
       if (thread) workspace.remove(thread.key);
-      setConversations(prev => prev.filter(c => c.id !== id));
-    } catch { setLoadError("Couldn't delete this conversation. Try again."); }
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+    } catch {
+      setLoadError("Couldn't delete this conversation. Try again.");
+    }
   };
   useEffect(() => {
     // A reload restores the authoritative transcript; an unfinished previous
     // process is reported as interrupted, never as background completion.
     const thread = workspace.active;
-    if (!thread.conversationId || thread.chat.messages.length || thread.chat.status !== "ready") return;
+    if (!thread.conversationId || thread.chat.messages.length || thread.chat.status !== "ready")
+      return;
     let cancelled = false;
-    void getChatConversation(thread.conversationId).then(({ messages: loaded }) => {
-      if (!cancelled) { thread.chat.messages = loaded as unknown as UIMessage[]; workspace.notify(); }
-    }).catch(() => { if (!cancelled) setLoadError("Couldn't restore the conversation. Your draft is retained."); });
-    return () => { cancelled = true; };
+    void getChatConversation(thread.conversationId)
+      .then(({ messages: loaded }) => {
+        if (!cancelled) {
+          thread.chat.messages = loaded as unknown as UIMessage[];
+          workspace.notify();
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError("Couldn't restore the conversation. Your draft is retained.");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [workspace, active.key, active.conversationId]);
-  useEffect(() => { if (!open) setExpanded(false); }, [open]);
+  useEffect(() => {
+    if (!open) setExpanded(false);
+  }, [open]);
   // After the user saves their own key from the limit card, retry the send —
   // their key is unmetered, so the same last message now succeeds. The card
   // also calls this on a mode switch / key removal, so re-read the mode rather
@@ -288,18 +348,34 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
     void refreshAiSettings();
     setKeyFormOpen(false);
     if (limitInfo) {
-      active.limit = null; workspace.notify();
+      active.limit = null;
+      workspace.notify();
       clearError();
       void regenerate();
     }
   }, [limitInfo, clearError, regenerate, refreshAiSettings]);
 
-  const headerTitle =
-    conversations.find((c) => c.id === activeId)?.title ?? active.title;
+  const headerTitle = conversations.find((c) => c.id === activeId)?.title ?? active.title;
 
   const history = (variant: "popover" | "panel") => (
     <ConversationHistory
-      conversations={[...workspace.threads.values()].filter(t => !t.conversationId && (t.text || t.files.length || t.missingFiles.length)).map(t => ({ id: t.key, title: `${t.title} · Draft`, createdAt: t.updatedAt, updatedAt: t.updatedAt } as ChatConversationSummary)).concat(conversations.map(c => ({ ...c, title: `${c.title}${workspace.findConversation(c.id)?.text ? " · Draft" : ""}` })))}
+      conversations={[...workspace.threads.values()]
+        .filter((t) => !t.conversationId && (t.text || t.files.length || t.missingFiles.length))
+        .map(
+          (t) =>
+            ({
+              id: t.key,
+              title: `${t.title} · Draft`,
+              createdAt: t.updatedAt,
+              updatedAt: t.updatedAt,
+            }) as ChatConversationSummary,
+        )
+        .concat(
+          conversations.map((c) => ({
+            ...c,
+            title: `${c.title}${workspace.findConversation(c.id)?.text ? " · Draft" : ""}`,
+          })),
+        )}
       activeId={activeId ?? active.key}
       loading={historyLoading}
       variant={variant}
@@ -341,7 +417,7 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="cursor-pointer flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted"
+            className="cursor-pointer flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             aria-label="Conversation history"
           >
             <Sparkles className="size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -489,6 +565,7 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
               <div className="not-prose flex min-h-[13rem] flex-1 flex-col gap-4 p-4">
                 {showGreeting && (
                   <AiCreditsCallout
+                    compact
                     usage={aiUsage}
                     loading={settingsLoading}
                     onDismiss={dismissGreeting}
@@ -506,13 +583,13 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
                 )}
                 {/* The original icon + heading, unchanged in wording — centered in
                     whatever height is left between the greeting and the prompts. */}
-                <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                <div className="mx-auto flex max-w-sm flex-1 flex-col items-center justify-center gap-3 py-6 text-center">
                   <Sparkles className="size-8 text-muted-foreground" aria-hidden />
                   <div className="space-y-1">
-                    <h3 className="text-sm font-medium">Ask anything about your bookmarks</h3>
+                    <h3 className="text-sm font-medium">What would you like to explore?</h3>
                     <p className="text-sm text-muted-foreground">
-                      Find a saved article, compare ideas, or pick up your research.
-                      Choose specific links for a focused answer, and attach a document or image when it helps.
+                      Find a saved page, connect ideas, or pick up where you left off. Your
+                      bookmarks, sessions and live tabs are ready to search.
                     </p>
                   </div>
                 </div>
@@ -525,8 +602,14 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
               const isLast = mi === messages.length - 1;
               const live = isLast && busy;
               const files = message.parts.filter(isFileUIPart);
-              const stored = message as UIMessage & { context?: ChatContext; contextSources?: { id: string; title: string; url: string }[]; unavailableContext?: { id: string; reason: string }[] };
-              const submittedContext = stored.context ?? (message.metadata as { context?: ChatContext } | undefined)?.context;
+              const stored = message as UIMessage & {
+                context?: ChatContext;
+                contextSources?: { id: string; title: string; url: string }[];
+                unavailableContext?: { id: string; reason: string }[];
+              };
+              const submittedContext =
+                stored.context ??
+                (message.metadata as { context?: ChatContext } | undefined)?.context;
               const source =
                 aiSourceByMessage.current.get(message.id) ?? (live ? liveAiSource : null);
               const noteCopy = describeAiNote(
@@ -537,9 +620,36 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
                   {/* w-full (not w-fit) so wide tool cards truncate instead of
                       propagating their intrinsic width and stretching the page. */}
                   <MessageContent className={message.role === "assistant" ? "w-full" : undefined}>
-                    {message.role === "user" && submittedContext && <details className="mb-2 text-xs"><summary className="cursor-pointer">Context: {contextLabel(submittedContext)}</summary>{stored.contextSources?.map(source => <p key={source.id} className="mt-1 break-words">{source.title || source.url}</p>)}{stored.unavailableContext?.map(source => <p key={source.id} className="mt-1">{source.reason}</p>)}{!stored.contextSources && <p className="mt-1">This context was fixed when you sent this message.</p>}</details>}
+                    {message.role === "user" && (
+                      <ChatMessageSources
+                        context={submittedContext}
+                        sources={stored.contextSources}
+                        unavailable={stored.unavailableContext}
+                      />
+                    )}
                     {files.length > 0 && <MessageFiles files={files} />}
                     {message.parts.map((part, i) => renderPart(message, part, i, live))}
+                    {message.role === "assistant" &&
+                      !live &&
+                      message.parts.some((part) => part.type === "text" && part.text.trim()) && (
+                        <ChatResponseActions
+                          text={message.parts
+                            .filter(
+                              (part): part is Extract<AnyPart, { type: "text" }> =>
+                                part.type === "text",
+                            )
+                            .map((part) => part.text)
+                            .join("\n\n")}
+                          onRetry={
+                            isLast && !busy && !error
+                              ? () => {
+                                  clearError();
+                                  void regenerate();
+                                }
+                              : undefined
+                          }
+                        />
+                      )}
                     {message.role === "assistant" && source === OWN_FALLBACK_SOURCE && (
                       <p className="not-prose text-[11px] leading-relaxed text-muted-foreground">
                         {AI_MODE_COPY.ownFallback}
@@ -618,17 +728,123 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
   const composer = (
     <div className={open ? "shrink-0 border-t p-2" : "p-0"}>
       <div className={open ? "contents" : "hidden"}>
-      {active.contextNeedsReview && <div role="status" className="px-3 py-2 text-xs space-y-2"><p>Your draft is saved. Its previous context is no longer available. Choose bookmarks or use your library before sending.</p><Button size="sm" variant="outline" onClick={() => setContextPicker(true)}>Choose bookmarks</Button><Button size="sm" variant="ghost" onClick={() => workspace.patch({ context: { type: "library" } })}>Use my library</Button></div>}
-      {active.context.type !== "library" && <div className="flex items-center gap-2 px-2 pb-2 text-xs">
-        <Popover><PopoverTrigger asChild><Button variant="secondary" size="sm">{contextLabel(active.context)}</Button></PopoverTrigger><PopoverContent className="text-sm break-words"><ChatContextPreview context={active.context} accountId={accountId} /></PopoverContent></Popover>
-        <button type="button" onClick={() => workspace.patch({ context: { type: "library" } })} aria-label="Remove context"><X className="size-4" /></button>
-      </div>}
-      {open && suggestedContext && JSON.stringify(suggestedContext) !== JSON.stringify(active.context) && <Button variant="ghost" size="sm" onClick={() => workspace.patch({ context: suggestedContext })}>Use {contextLabel(suggestedContext).toLowerCase()} for the next turn</Button>}
-      {active.recoverable && <div role="status" className="px-3 py-2 text-xs space-y-2"><p>A previous message failed while you were writing this draft. Both are retained.</p><Button size="sm" variant="outline" onClick={() => workspace.recoverFailedTurn()}>Open failed message as a draft</Button><Button size="sm" variant="ghost" onClick={() => workspace.discardFailedTurn()}>Discard failed message</Button></div>}
-      {active.interrupted && <p role="status" className="px-3 py-2 text-xs text-muted-foreground">The previous response was interrupted. Review the saved conversation before retrying.</p>}
-      {active.missingFiles.map(file => <div key={file.id} className="flex items-center gap-2 px-3 py-1 text-xs"><span>{file.filename} · Needs reattachment</span><Button variant="ghost" size="sm" onClick={() => workspace.patch({ missingFiles: active.missingFiles.filter(f => f.id !== file.id) })}>Remove</Button></div>)}
+        {active.contextNeedsReview && (
+          <div role="status" className="px-3 py-2 text-xs space-y-2">
+            <p>
+              Your draft is saved. Its previous context is no longer available. Choose bookmarks or
+              use your library before sending.
+            </p>
+            <Button size="sm" variant="outline" onClick={() => setContextPicker(true)}>
+              Choose bookmarks
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => workspace.patch({ context: { type: "library" } })}
+            >
+              Use my library
+            </Button>
+          </div>
+        )}
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 px-2 pb-2 text-xs text-muted-foreground">
+          <span
+            title="Bookmarks, saved sessions and live tabs remain available"
+            className="mr-auto inline-flex items-center gap-1.5 py-1"
+          >
+            <Library className="size-3.5" aria-hidden />
+            Your library
+          </span>
+          {active.context.type !== "library" && (
+            <div className="flex min-w-0 items-center rounded-md border bg-muted/30">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <Bookmark className="size-3.5 shrink-0" aria-hidden />
+                    <span className="truncate">{contextLabel(active.context)}</span>
+                    <ChevronDown className="size-3" aria-hidden />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[min(22rem,calc(100vw-2rem))]">
+                  <ChatContextPreview context={active.context} accountId={accountId} />
+                </PopoverContent>
+              </Popover>
+              <button
+                type="button"
+                className="flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={() => workspace.patch({ context: { type: "library" } })}
+                aria-label="Remove attached bookmarks"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+          )}
+          {open &&
+            suggestedContext?.type === "bookmarks" &&
+            JSON.stringify(suggestedContext) !== JSON.stringify(active.context) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => workspace.patch({ context: suggestedContext })}
+              >
+                Attach {contextLabel(suggestedContext).toLowerCase()}
+              </Button>
+            )}
+        </div>
+        {active.recoverable && (
+          <div role="status" className="px-3 py-2 text-xs space-y-2">
+            <p>A previous message failed while you were writing this draft. Both are retained.</p>
+            <Button size="sm" variant="outline" onClick={() => workspace.recoverFailedTurn()}>
+              Open failed message as a draft
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => workspace.discardFailedTurn()}>
+              Discard failed message
+            </Button>
+          </div>
+        )}
+        {active.interrupted && (
+          <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
+            The previous response was interrupted. Review the saved conversation before retrying.
+          </p>
+        )}
+        {active.missingFiles.map((file) => (
+          <div
+            key={file.id}
+            className="flex min-w-0 flex-wrap items-center gap-2 px-3 py-1 text-xs"
+          >
+            <span className="min-w-0 [overflow-wrap:anywhere]">
+              {file.filename} · Needs reattachment
+            </span>
+            <ReattachFile filename={file.filename} />
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Remove missing ${file.filename}`}
+              onClick={() =>
+                workspace.patch({
+                  missingFiles: active.missingFiles.filter((f) => f.id !== file.id),
+                })
+              }
+            >
+              Remove
+            </Button>
+          </div>
+        ))}
       </div>
-      <PromptInput className={open ? undefined : "[&>[data-slot=input-group]]:grid [&>[data-slot=input-group]]:grid-cols-[44px_minmax(0,1fr)_44px] [&>[data-slot=input-group]]:h-[54px] [&>[data-slot=input-group]]:border-0 [&>[data-slot=input-group]]:shadow-none [&>[data-slot=input-group]]:ring-0 [&>[data-slot=input-group]]:bg-transparent [&>[data-slot=input-group]]:px-1"} onSubmit={handleSubmit} clearOnSubmit={false} accept={ATTACHMENT_ACCEPT} multiple>
+      <PromptInput
+        className={
+          open
+            ? undefined
+            : "[&>[data-slot=input-group]]:grid [&>[data-slot=input-group]]:grid-cols-[44px_minmax(0,1fr)_44px] [&>[data-slot=input-group]]:h-[54px] [&>[data-slot=input-group]]:border-0 [&>[data-slot=input-group]]:shadow-none [&>[data-slot=input-group]]:ring-0 [&>[data-slot=input-group]]:bg-transparent [&>[data-slot=input-group]]:px-1"
+        }
+        onSubmit={handleSubmit}
+        clearOnSubmit={false}
+        accept={ATTACHMENT_ACCEPT}
+        multiple
+      >
         <PromptInputBody>
           <ComposerAttachments hidden={!open} />
           {/* "Ask a follow-up" is a lie on an empty thread — there's nothing to
@@ -636,15 +852,27 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
           <PromptInputTextarea
             ref={textarea}
             aria-label="Ask about your library"
-            className={open ? undefined : "col-start-2 row-start-1 h-[52px] min-h-[52px] max-h-[52px] min-w-0 overflow-hidden px-2 py-4 leading-5"}
+            className={
+              open
+                ? undefined
+                : "col-start-2 row-start-1 h-[52px] min-h-[52px] max-h-[52px] min-w-0 overflow-hidden px-2 py-4 leading-5"
+            }
             rows={1}
             wrap={open ? "soft" : "off"}
-            onFocus={() => { if (!open) { if (!active.contextNeedsReview && !active.text && !active.files.length && !messages.length && suggestedContext) workspace.patch({ context: suggestedContext }); onOpen(); } }}
-            placeholder={
-              messages.length === 0
-                ? "Ask about your library"
-                : "Ask a follow-up…"
-            }
+            onFocus={() => {
+              if (!open) {
+                if (
+                  !active.contextNeedsReview &&
+                  !active.text &&
+                  !active.files.length &&
+                  !messages.length &&
+                  suggestedContext
+                )
+                  workspace.patch({ context: suggestedContext });
+                onOpen();
+              }
+            }}
+            placeholder={messages.length === 0 ? "Ask about your library" : "Ask a follow-up…"}
           />
         </PromptInputBody>
         {/* Its own row, not squeezed between the paperclip and Send — the
@@ -658,9 +886,26 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
             <span className="min-w-0">{attachError}</span>
           </p>
         )}
-        <PromptInputFooter className={open ? undefined : "contents [&>button]:size-11 [&>button]:row-start-1 [&>button:first-child]:col-start-1 [&>button:last-child]:col-start-3"}>
-          <AttachButton onOpen={onOpen} onSelectBookmarks={() => { onOpen(); setContextPicker(true); }} />
-          <ComposerSubmit status={status} onStop={stop} blocked={active.contextNeedsReview || active.missingFiles.length > 0} className="ml-auto" />
+        <PromptInputFooter
+          className={
+            open
+              ? undefined
+              : "contents [&>button]:size-11 [&>button]:row-start-1 [&>button:first-child]:col-start-1 [&>button:last-child]:col-start-3"
+          }
+        >
+          <AttachButton
+            onOpen={onOpen}
+            onSelectBookmarks={() => {
+              onOpen();
+              setContextPicker(true);
+            }}
+          />
+          <ComposerSubmit
+            status={status}
+            onStop={stop}
+            blocked={active.contextNeedsReview || active.missingFiles.length > 0}
+            className="ml-auto"
+          />
         </PromptInputFooter>
       </PromptInput>
     </div>
@@ -669,14 +914,39 @@ export function AiChat({ onClose, onOpen, open, accountId, suggestedContext, req
   // Stable element identity from compact through wide/narrow/expanded. Neither
   // focus nor an IME composition ever moves the textarea to a second tree.
   return (
-    <PromptInputProvider input={active.text} onInputChange={text => workspace.patch({ text }, active.key)} fileScopeKey={active.key} files={active.files} onFilesChange={files => workspace.attach(files, active.key)} prepareFiles={prepareAttachments} onError={onAttachError}>
-      <ChatDropZone className={expanded ? "fixed inset-2 z-[60] flex flex-col overflow-hidden rounded-xl border bg-card shadow-2xl sm:inset-6" : `flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[inherit] ${open ? "bg-card" : "bg-transparent"}`}>
+    <PromptInputProvider
+      input={active.text}
+      onInputChange={(text) => workspace.patch({ text }, active.key)}
+      fileScopeKey={active.key}
+      files={active.files}
+      onFilesChange={(files) => workspace.attach(files, active.key)}
+      prepareFiles={prepareAttachments}
+      onError={onAttachError}
+    >
+      <ChatDropZone
+        className={
+          expanded
+            ? "fixed inset-2 z-[60] flex flex-col overflow-hidden rounded-xl border bg-card shadow-2xl sm:inset-6"
+            : `flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[inherit] ${open ? "bg-card" : "bg-transparent"}`
+        }
+      >
         <div className={open ? "contents" : "hidden"}>{header}</div>
         <div className={open ? "flex min-h-0 flex-1 flex-col" : "hidden"}>{thread}</div>
-        {!open && (status === "streaming" || status === "submitted") && <span role="status" className="sr-only">Response in progress · Open to view</span>}
+        {!open && (status === "streaming" || status === "submitted") && (
+          <span role="status" className="sr-only">
+            Response in progress · Open to view
+          </span>
+        )}
         {composer}
       </ChatDropZone>
-      <ChatContextPicker open={contextPicker} onOpenChange={setContextPicker} onSelect={context => { workspace.patch({ context }); setContextPicker(false); }} />
+      <ChatContextPicker
+        open={contextPicker}
+        onOpenChange={setContextPicker}
+        onSelect={(context) => {
+          workspace.patch({ context });
+          setContextPicker(false);
+        }}
+      />
       <SkillsDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
     </PromptInputProvider>
   );
@@ -703,7 +973,7 @@ function ComposerSubmit({
   const busy = status === "submitted" || status === "streaming";
   return (
     <PromptInputSubmit
-      status={status}
+      status={status === "error" ? "ready" : status}
       className={className}
       disabled={!busy && (empty || blocked || attachments.preparing)}
       aria-label={busy ? "Stop generating" : "Send message"}
@@ -715,5 +985,21 @@ function ComposerSubmit({
         }
       }}
     />
+  );
+}
+
+function ReattachFile({ filename }: { filename: string }) {
+  const { attachments } = usePromptInputController();
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-7 text-xs"
+      aria-label={`Reattach ${filename}`}
+      onClick={() => attachments.openFileDialog()}
+    >
+      Reattach
+    </Button>
   );
 }

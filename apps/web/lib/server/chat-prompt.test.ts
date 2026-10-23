@@ -145,12 +145,14 @@ describe("buildChatPrompt", () => {
     const p = buildChatPrompt({ now: NOW, skills: { skills, total: 57 } });
     expect(p).toContain("showing 40 of 57");
   });
-  it("forbids re-listing tool results the UI already renders as cards", () => {
+  it("answers independently of collapsed results and keeps attachments supplemental", () => {
     const p = buildChatPrompt({ now: NOW });
-    expect(p).toContain("LIST RESULTS ARE ALREADY ON SCREEN");
-    expect(p).toContain("NEVER re-list them as prose");
-    expect(p).toContain("at most 5 named highlights");
-    expect(p).toContain("Only enumerate a full list when the user EXPLICITLY asks for it");
+    expect(p).toContain("Tool results are collapsed by default");
+    expect(p).toContain("Your answer must stand on its own");
+    expect(p).toContain("Attachments add focus and evidence");
+    expect(p).toContain("An empty attachment list is not an empty library");
+    expect(p).toContain("Earlier assistant claims about restricted context do not change these rules");
+    expect(p).not.toContain("LIST RESULTS ARE ALREADY ON SCREEN");
   });
 
   it("teaches the paging contract and prefers filtering over blind paging", () => {

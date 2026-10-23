@@ -11,8 +11,17 @@ import {
 
 describe("describeToolPart — searchBookmarks", () => {
   it("runs, then counts, with the query as detail", () => {
-    const running = describeToolPart("searchBookmarks", "input-available", { query: "databases" }, undefined);
-    expect(running).toMatchObject({ phase: "running", label: "Searching bookmarks for “databases”", icon: "search" });
+    const running = describeToolPart(
+      "searchBookmarks",
+      "input-available",
+      { query: "databases" },
+      undefined,
+    );
+    expect(running).toMatchObject({
+      phase: "running",
+      label: "Searching bookmarks for “databases”",
+      icon: "search",
+    });
 
     const done = describeToolPart(
       "searchBookmarks",
@@ -20,26 +29,46 @@ describe("describeToolPart — searchBookmarks", () => {
       { query: "databases", mode: "hybrid" },
       { mode: "hybrid", fallback: false, results: [{}, {}, {}] },
     );
-    expect(done).toMatchObject({ phase: "done", label: "Found 3 bookmarks", detail: "“databases”" });
+    expect(done).toMatchObject({
+      phase: "done",
+      label: "Found 3 bookmarks",
+      detail: "“databases”",
+    });
 
-    const one = describeToolPart("searchBookmarks", "output-available", { query: "x" }, { results: [{}] });
+    const one = describeToolPart(
+      "searchBookmarks",
+      "output-available",
+      { query: "x" },
+      { results: [{}] },
+    );
     expect(one.label).toBe("Found 1 bookmark");
   });
 
   it("flags semantic mode and text fallback", () => {
-    expect(describeToolPart("searchBookmarks", "input-streaming", { mode: "semantic" }, undefined).icon).toBe("semantic");
     expect(
-      describeToolPart("searchBookmarks", "output-available", {}, { mode: "text", fallback: true, results: [] }).label,
+      describeToolPart("searchBookmarks", "input-streaming", { mode: "semantic" }, undefined).icon,
+    ).toBe("semantic");
+    expect(
+      describeToolPart(
+        "searchBookmarks",
+        "output-available",
+        {},
+        { mode: "text", fallback: true, results: [] },
+      ).label,
     ).toBe("Found 0 bookmarks · text fallback");
   });
 
   it("treats output-error and {error} outputs as failures", () => {
-    expect(describeToolPart("searchBookmarks", "output-error", { query: "q" }, undefined, "boom")).toMatchObject({
+    expect(
+      describeToolPart("searchBookmarks", "output-error", { query: "q" }, undefined, "boom"),
+    ).toMatchObject({
       phase: "error",
       label: "Bookmark search failed",
       errorText: "boom",
     });
-    expect(describeToolPart("searchBookmarks", "output-available", {}, { error: "index offline" })).toMatchObject({
+    expect(
+      describeToolPart("searchBookmarks", "output-available", {}, { error: "index offline" }),
+    ).toMatchObject({
       phase: "error",
       errorText: "index offline",
     });
@@ -48,16 +77,23 @@ describe("describeToolPart — searchBookmarks", () => {
 
 describe("describeToolPart — queryDatabase", () => {
   it("counts rows from rowCount or rows, marks capped results", () => {
-    expect(describeToolPart("queryDatabase", "input-available", { purpose: "per category" }, undefined)).toMatchObject({
+    expect(
+      describeToolPart("queryDatabase", "input-available", { purpose: "per category" }, undefined),
+    ).toMatchObject({
       phase: "running",
       label: "Querying your library",
       detail: "per category",
     });
-    expect(describeToolPart("queryDatabase", "output-available", {}, { rowCount: 12, rows: [] }).label).toBe("12 rows");
-    expect(describeToolPart("queryDatabase", "output-available", {}, { rows: [[1]] }).label).toBe("1 row");
-    expect(describeToolPart("queryDatabase", "output-available", {}, { rowCount: 200, truncated: true }).label).toBe(
-      "200 rows · clipped",
+    expect(
+      describeToolPart("queryDatabase", "output-available", {}, { rowCount: 12, rows: [] }).label,
+    ).toBe("12 rows");
+    expect(describeToolPart("queryDatabase", "output-available", {}, { rows: [[1]] }).label).toBe(
+      "1 row",
     );
+    expect(
+      describeToolPart("queryDatabase", "output-available", {}, { rowCount: 200, truncated: true })
+        .label,
+    ).toBe("200 rows · clipped");
     // Paged: the row says the TRUE total and how much of it is on screen.
     expect(
       describeToolPart(
@@ -67,7 +103,9 @@ describe("describeToolPart — queryDatabase", () => {
         { rowCount: 50, page: { total: 312, offset: 0, limit: 50, hasMore: true, nextOffset: 50 } },
       ).label,
     ).toBe("312 rows · showing 50");
-    expect(describeToolPart("queryDatabase", "output-available", {}, { error: "no such table" })).toMatchObject({
+    expect(
+      describeToolPart("queryDatabase", "output-available", {}, { error: "no such table" }),
+    ).toMatchObject({
       phase: "error",
       errorText: "no such table",
     });
@@ -76,22 +114,30 @@ describe("describeToolPart — queryDatabase", () => {
 
 describe("describeToolPart — listSessions / listLiveTabs", () => {
   it("counts sessions", () => {
-    expect(describeToolPart("listSessions", "input-available", {}, undefined).label).toBe("Listing saved sessions");
-    expect(describeToolPart("listSessions", "output-available", {}, { total: 5, sessions: [{}, {}] }).label).toBe(
-      "2 sessions",
+    expect(describeToolPart("listSessions", "input-available", {}, undefined).label).toBe(
+      "Listing saved sessions",
     );
+    expect(
+      describeToolPart("listSessions", "output-available", {}, { total: 5, sessions: [{}, {}] })
+        .label,
+    ).toBe("2 sessions");
     expect(
       describeToolPart(
         "listSessions",
         "output-available",
         {},
-        { sessions: [{}, {}], page: { total: 9, offset: 0, limit: 2, hasMore: true, nextOffset: 2 } },
+        {
+          sessions: [{}, {}],
+          page: { total: 9, offset: 0, limit: 2, hasMore: true, nextOffset: 2 },
+        },
       ).label,
     ).toBe("9 sessions · showing 2");
   });
 
   it("reports live tabs across devices, sharing off, and unavailable", () => {
-    expect(describeToolPart("listLiveTabs", "input-streaming", {}, undefined).label).toBe("Checking live tabs");
+    expect(describeToolPart("listLiveTabs", "input-streaming", {}, undefined).label).toBe(
+      "Checking live tabs",
+    );
     const done = describeToolPart(
       "listLiveTabs",
       "output-available",
@@ -119,13 +165,18 @@ describe("describeToolPart — listSessions / listLiveTabs", () => {
       ),
     ).toMatchObject({ label: "1 tab on 1 device", detail: "“digitalocean”" });
     expect(
-      describeToolPart("listLiveTabs", "input-available", { query: "digitalocean" }, undefined).label,
+      describeToolPart("listLiveTabs", "input-available", { query: "digitalocean" }, undefined)
+        .label,
     ).toBe("Looking for “digitalocean” in your live tabs");
-    expect(describeToolPart("listLiveTabs", "output-available", {}, { enabled: false, devices: [] })).toMatchObject({
+    expect(
+      describeToolPart("listLiveTabs", "output-available", {}, { enabled: false, devices: [] }),
+    ).toMatchObject({
       phase: "done",
       label: "Live sharing is off",
     });
-    expect(describeToolPart("listLiveTabs", "output-available", {}, { error: "live tabs unavailable" })).toMatchObject({
+    expect(
+      describeToolPart("listLiveTabs", "output-available", {}, { error: "live tabs unavailable" }),
+    ).toMatchObject({
       phase: "error",
       label: "Live tabs unavailable",
       errorText: "live tabs unavailable",
@@ -153,13 +204,25 @@ describe("describeToolPart — visual state", () => {
 
   it("output-available + {error} is the error phase with the text verbatim, for every tool", () => {
     for (const tool of tools) {
-      const view = describeToolPart(tool, "output-available", { query: "q", name: "x", url: "https://x.io" }, {
-        error: "blocked address 10.255.255.1",
-      });
+      const view = describeToolPart(
+        tool,
+        "output-available",
+        { query: "q", name: "x", url: "https://x.io" },
+        {
+          error: "blocked address 10.255.255.1",
+        },
+      );
       expect(view.phase, tool).toBe("error");
       expect(view.errorText, tool).toBe("blocked address 10.255.255.1");
     }
-    expect(describeToolPart("useSkill", "output-available", { name: "x" }, { error: 'Skill "x" is disabled' })).toMatchObject({
+    expect(
+      describeToolPart(
+        "useSkill",
+        "output-available",
+        { name: "x" },
+        { error: 'Skill "x" is disabled' },
+      ),
+    ).toMatchObject({
       phase: "error",
       label: "Skill “x” unavailable",
       errorText: 'Skill "x" is disabled',
@@ -168,7 +231,10 @@ describe("describeToolPart — visual state", () => {
 
   it("output-error / output-denied with errorText is the error phase too", () => {
     for (const tool of tools) {
-      expect(describeToolPart(tool, "output-error", {}, undefined, "provider exploded"), tool).toMatchObject({
+      expect(
+        describeToolPart(tool, "output-error", {}, undefined, "provider exploded"),
+        tool,
+      ).toMatchObject({
         phase: "error",
         errorText: "provider exploded",
       });
@@ -178,28 +244,45 @@ describe("describeToolPart — visual state", () => {
 
   it("input states are running; a non-error output is done", () => {
     for (const tool of tools) {
-      expect(describeToolPart(tool, "input-streaming", undefined, undefined).phase, tool).toBe("running");
+      expect(describeToolPart(tool, "input-streaming", undefined, undefined).phase, tool).toBe(
+        "running",
+      );
       expect(describeToolPart(tool, "input-available", {}, undefined).phase, tool).toBe("running");
-      expect(describeToolPart(tool, "output-available", {}, { ok: true, results: [], rows: [] }).phase, tool).toBe("done");
+      expect(
+        describeToolPart(tool, "output-available", {}, { ok: true, results: [], rows: [] }).phase,
+        tool,
+      ).toBe("done");
     }
     // An `error` key that isn't a string is not a failure signal.
-    expect(describeToolPart("fetchUrl", "output-available", {}, { error: null, title: "T" }).phase).toBe("done");
+    expect(
+      describeToolPart("fetchUrl", "output-available", {}, { error: null, title: "T" }).phase,
+    ).toBe("done");
   });
 });
 
 describe("describeToolPart — webSearch / fetchUrl / useSkill", () => {
   it("web search copy", () => {
-    expect(describeToolPart("webSearch", "input-available", { query: "sqlite fts5" }, undefined).label).toBe(
-      "Searching the web for “sqlite fts5”",
-    );
-    expect(describeToolPart("webSearch", "output-available", { query: "x" }, { results: [{}, {}, {}, {}] }).label).toBe(
-      "4 sources",
-    );
+    expect(
+      describeToolPart("webSearch", "input-available", { query: "sqlite fts5" }, undefined).label,
+    ).toBe("Searching the web for “sqlite fts5”");
+    expect(
+      describeToolPart(
+        "webSearch",
+        "output-available",
+        { query: "x" },
+        { results: [{}, {}, {}, {}] },
+      ).label,
+    ).toBe("4 sources");
   });
 
   it("fetchUrl reads a host, then names the title", () => {
     expect(
-      describeToolPart("fetchUrl", "input-available", { url: "https://www.example.com/a/b" }, undefined).label,
+      describeToolPart(
+        "fetchUrl",
+        "input-available",
+        { url: "https://www.example.com/a/b" },
+        undefined,
+      ).label,
     ).toBe("Reading example.com");
     expect(
       describeToolPart(
@@ -209,7 +292,14 @@ describe("describeToolPart — webSearch / fetchUrl / useSkill", () => {
         { url: "https://example.com/a", title: "Example Domain" },
       ),
     ).toMatchObject({ phase: "done", label: "Read Example Domain", detail: "example.com" });
-    expect(describeToolPart("fetchUrl", "output-available", { url: "https://x.io" }, { error: "blocked" })).toMatchObject({
+    expect(
+      describeToolPart(
+        "fetchUrl",
+        "output-available",
+        { url: "https://x.io" },
+        { error: "blocked" },
+      ),
+    ).toMatchObject({
       phase: "error",
       label: "Couldn't read x.io",
       errorText: "blocked",
@@ -217,16 +307,29 @@ describe("describeToolPart — webSearch / fetchUrl / useSkill", () => {
   });
 
   it("useSkill loads then applies, and reports an unknown skill", () => {
-    expect(describeToolPart("useSkill", "input-available", { name: "Link triage" }, undefined)).toMatchObject({
+    expect(
+      describeToolPart("useSkill", "input-available", { name: "Link triage" }, undefined),
+    ).toMatchObject({
       phase: "running",
       label: "Loading skill “Link triage”",
       icon: "skill",
     });
     expect(
-      describeToolPart("useSkill", "output-available", { name: "link triage" }, { name: "Link triage", instructions: "…" })
-        .label,
+      describeToolPart(
+        "useSkill",
+        "output-available",
+        { name: "link triage" },
+        { name: "Link triage", instructions: "…" },
+      ).label,
     ).toBe("Using skill “Link triage”");
-    expect(describeToolPart("useSkill", "output-available", { name: "Nope" }, { error: "No skill named Nope" })).toMatchObject({
+    expect(
+      describeToolPart(
+        "useSkill",
+        "output-available",
+        { name: "Nope" },
+        { error: "No skill named Nope" },
+      ),
+    ).toMatchObject({
       phase: "error",
       label: "Skill “Nope” unavailable",
       errorText: "No skill named Nope",
@@ -236,7 +339,9 @@ describe("describeToolPart — webSearch / fetchUrl / useSkill", () => {
 
 describe("describeToolPart — createSkill / installSkill (CONTRACT §3b)", () => {
   it("createSkill: creating → created, names from the output first", () => {
-    expect(describeToolPart("createSkill", "input-available", { name: "Changelog writer" }, undefined)).toMatchObject({
+    expect(
+      describeToolPart("createSkill", "input-available", { name: "Changelog writer" }, undefined),
+    ).toMatchObject({
       phase: "running",
       icon: "skill",
       label: "Creating skill “Changelog writer”",
@@ -250,13 +355,27 @@ describe("describeToolPart — createSkill / installSkill (CONTRACT §3b)", () =
       ),
     ).toMatchObject({ phase: "done", label: "Created skill “Changelog writer”" });
     expect(
-      describeToolPart("createSkill", "output-available", { name: "Dup" }, { error: "A skill with this name already exists — try “Dup 2”" }),
-    ).toMatchObject({ phase: "error", label: "Couldn't create skill “Dup”", errorText: expect.stringContaining("already exists") });
+      describeToolPart(
+        "createSkill",
+        "output-available",
+        { name: "Dup" },
+        { error: "A skill with this name already exists — try “Dup 2”" },
+      ),
+    ).toMatchObject({
+      phase: "error",
+      label: "Couldn't create skill “Dup”",
+      errorText: expect.stringContaining("already exists"),
+    });
   });
 
   it("installSkill: from host → installed “name”", () => {
     expect(
-      describeToolPart("installSkill", "input-available", { url: "https://github.com/x/y/blob/main/SKILL.md" }, undefined),
+      describeToolPart(
+        "installSkill",
+        "input-available",
+        { url: "https://github.com/x/y/blob/main/SKILL.md" },
+        undefined,
+      ),
     ).toMatchObject({ phase: "running", label: "Installing skill from github.com" });
     expect(
       describeToolPart(
@@ -267,19 +386,41 @@ describe("describeToolPart — createSkill / installSkill (CONTRACT §3b)", () =
       ),
     ).toMatchObject({ phase: "done", label: "Installed skill “PDF triage”", detail: "github.com" });
     expect(
-      describeToolPart("installSkill", "output-available", { url: "http://10.0.0.1/x.md" }, { error: "blocked address 10.0.0.1" }),
-    ).toMatchObject({ phase: "error", label: "Couldn't install skill from 10.0.0.1", errorText: "blocked address 10.0.0.1" });
+      describeToolPart(
+        "installSkill",
+        "output-available",
+        { url: "http://10.0.0.1/x.md" },
+        { error: "blocked address 10.0.0.1" },
+      ),
+    ).toMatchObject({
+      phase: "error",
+      label: "Couldn't install skill from 10.0.0.1",
+      errorText: "blocked address 10.0.0.1",
+    });
   });
 
   it("skillsCreatedIn counts settled skill-writing parts with a skill", () => {
     expect(
       skillsCreatedIn([
         { type: "text" },
-        { type: "tool-createSkill", state: "output-available", output: { skill: { id: "a", name: "A" } } },
+        {
+          type: "tool-createSkill",
+          state: "output-available",
+          output: { skill: { id: "a", name: "A" } },
+        },
         { type: "tool-createSkill", state: "output-available", output: { error: "nope" } },
         { type: "tool-installSkill", state: "input-available" },
-        { type: "dynamic-tool", toolName: "installSkill", state: "output-available", output: { skill: { id: "b" } } },
-        { type: "tool-useSkill", state: "output-available", output: { name: "A", instructions: "…" } },
+        {
+          type: "dynamic-tool",
+          toolName: "installSkill",
+          state: "output-available",
+          output: { skill: { id: "b" } },
+        },
+        {
+          type: "tool-useSkill",
+          state: "output-available",
+          output: { name: "A", instructions: "…" },
+        },
       ]),
     ).toBe(2);
     expect(skillsCreatedIn([])).toBe(0);
@@ -288,13 +429,20 @@ describe("describeToolPart — createSkill / installSkill (CONTRACT §3b)", () =
 
 describe("describeToolPart — unknown / dynamic tools", () => {
   it("never crashes and humanizes the name", () => {
-    expect(describeToolPart("summarizeThread", "input-streaming", undefined, undefined)).toMatchObject({
+    expect(
+      describeToolPart("summarizeThread", "input-streaming", undefined, undefined),
+    ).toMatchObject({
       phase: "running",
       label: "Running summarize thread",
       icon: "generic",
     });
-    expect(describeToolPart("summarize_thread", "output-available", null, "ok").label).toBe("Ran summarize thread");
-    expect(describeToolPart("x", "output-error", 1, 2, "nope")).toMatchObject({ phase: "error", errorText: "nope" });
+    expect(describeToolPart("summarize_thread", "output-available", null, "ok").label).toBe(
+      "Ran summarize thread",
+    );
+    expect(describeToolPart("x", "output-error", 1, 2, "nope")).toMatchObject({
+      phase: "error",
+      errorText: "nope",
+    });
     expect(describeToolPart("", "output-available", [], []).label).toBe("Ran tool");
   });
 });
@@ -323,5 +471,21 @@ describe("helpers", () => {
     expect(reasoningSeconds(0, 200)).toBe(1);
     expect(reasoningSeconds(0, 2600)).toBe(3);
     expect(reasoningSeconds(10, 5)).toBe(1);
+  });
+});
+
+describe("additional source activity", () => {
+  it("does not present an empty attachment list as an empty library", () => {
+    const result = describeToolPart(
+      "listContext",
+      "output-available",
+      {},
+      { sources: [], libraryAvailable: true },
+    );
+    expect(result.label).toBe("No additional bookmarks attached");
+    expect(result.detail).toBe("Library available");
+    expect(
+      describeToolPart("listContext", "output-available", {}, { sources: [{ id: "b" }] }).label,
+    ).toBe("Checked 1 attached bookmark");
   });
 });
