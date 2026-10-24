@@ -206,6 +206,7 @@ function ItemLayout({
           pinned: selection.active,
           control: (
             <Checkbox
+              className="size-6 [@media(pointer:coarse)]:size-11"
               checked={selection.has(b.id)}
               aria-label={`Select ${b.title}`}
               // onClick rather than onCheckedChange: the modifier keys only

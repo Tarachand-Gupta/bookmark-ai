@@ -13,12 +13,11 @@ import {
   Monitor,
   Smartphone,
   Tablet,
-  Trash2,
-  Pencil,
 } from "lucide-react";
 import { cn } from "../lib/cn";
 import { Badge } from "./badge";
 import { Card } from "./card";
+import { BookmarkActions } from "./bookmark-actions";
 
 const BROWSER_META: Record<Browser, { label: string; Icon: React.ElementType }> = {
   chrome: { label: "Chrome", Icon: Chrome },
@@ -177,7 +176,7 @@ export function BookmarkCard({ bookmark: b, onDelete, onEdit, className, selecti
         {/* Provenance. The two labels ellipsize (never clip mid-glyph) and the
             date and delete button keep their width, so a narrow card reads
             "Chrome · Lap… · Today" at worst, never "Chrome  La". */}
-        <div className="mt-auto flex min-w-0 items-center gap-3 pt-2 text-xs text-muted-foreground">
+        <div className="bookmark-action-footer relative mt-auto flex min-w-0 items-center gap-2 pt-2 text-xs text-muted-foreground">
           <span
             className="inline-flex min-w-0 items-center gap-1"
             title={`Saved from ${browser.label}`}
@@ -195,17 +194,7 @@ export function BookmarkCard({ bookmark: b, onDelete, onEdit, className, selecti
           <time dateTime={b.source.savedAt} className="ml-auto shrink-0 whitespace-nowrap">
             {formatDay(b.source.savedAt)}
           </time>
-          {onEdit && <button type="button" onClick={() => onEdit(b)} aria-label={`Edit ${b.title}`} className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"><Pencil className="size-3.5" aria-hidden /></button>}
-          {onDelete ? (
-            <button
-              type="button"
-              onClick={() => onDelete(b.id)}
-              aria-label={`Delete ${b.title}`}
-              className="shrink-0 rounded-md p-1 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-            >
-              <Trash2 className="size-3.5" aria-hidden />
-            </button>
-          ) : null}
+          <BookmarkActions bookmark={b} onEdit={onEdit} onDelete={onDelete} />
         </div>
       </div>
     </Card>
@@ -282,7 +271,7 @@ export function BookmarkListItem({
           <p className="line-clamp-1 text-sm text-muted-foreground">{b.description}</p>
         ) : null}
 
-        <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1.5">
+        <div className="bookmark-action-footer relative mt-auto flex flex-wrap items-center gap-1.5 pt-1.5">
           <CategoryBadge category={b.category} />
           {b.tags.slice(0, 4).map((tag) => (
             <TagBadge key={tag} tag={tag} />
@@ -294,17 +283,7 @@ export function BookmarkListItem({
             <browser.Icon className="size-3.5" aria-hidden />
             <device.Icon className="size-3.5" aria-hidden />
           </span>
-          {onEdit && <button type="button" onClick={() => onEdit(b)} aria-label={`Edit ${b.title}`} className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"><Pencil className="size-3.5" aria-hidden /></button>}
-          {onDelete ? (
-            <button
-              type="button"
-              onClick={() => onDelete(b.id)}
-              aria-label={`Delete ${b.title}`}
-              className="rounded-md p-1 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-            >
-              <Trash2 className="size-3.5" aria-hidden />
-            </button>
-          ) : null}
+          <BookmarkActions bookmark={b} onEdit={onEdit} onDelete={onDelete} />
         </div>
       </div>
     </Card>
@@ -323,12 +302,11 @@ export function BookmarkCompactRow({
   selection,
 }: BookmarkCardProps) {
   const browser = BROWSER_META[b.source.browser] ?? BROWSER_META.other;
-  const hasActions = Boolean(onEdit || onDelete);
 
   return (
     <div
       className={cn(
-        "@container/compact group relative min-w-0 px-3 py-2 transition-colors hover:bg-muted/50",
+        "@container/compact group relative flex min-w-0 items-center gap-1 px-3 py-1 transition-colors hover:bg-muted/50",
         // Keep the selection treatment inside the row's dividers.
         selection?.selected &&
           "bg-primary/10 ring-1 ring-inset ring-primary/30 hover:bg-primary/15",
@@ -337,14 +315,12 @@ export function BookmarkCompactRow({
     >
       <div
         className={cn(
-          "grid min-h-5 min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-2 text-xs",
-          "@min-[28rem]/compact:grid-cols-[1rem_minmax(0,1fr)_minmax(0,14ch)_auto]",
-          "@min-[34rem]/compact:grid-cols-[1rem_minmax(0,45%)_minmax(0,14ch)_minmax(0,1fr)_auto]",
-          "@min-[52rem]/compact:grid-cols-[1rem_minmax(0,45%)_minmax(0,14ch)_minmax(0,1fr)_auto_auto]",
-          // Touch has persistent controls. Fine-pointer controls overlay metadata
-          // without reserving space or changing column widths on hover/focus.
-          hasActions && "min-h-9 [@media(hover:hover)_and_(pointer:fine)]:min-h-5 [@media(hover:hover)_and_(pointer:fine)]:pr-0",
-          hasActions && (onEdit && onDelete ? "pr-20" : "pr-10"),
+          "grid min-h-8 min-w-0 flex-1 grid-cols-[var(--bookmark-select-width,1.5rem)_minmax(0,1fr)_auto] items-center gap-x-2 text-xs",
+          "@min-[28rem]/compact:grid-cols-[var(--bookmark-select-width,1.5rem)_minmax(0,1fr)_minmax(0,14ch)_auto]",
+          "@min-[34rem]/compact:grid-cols-[var(--bookmark-select-width,1.5rem)_minmax(0,45%)_minmax(0,14ch)_minmax(0,1fr)_auto]",
+          "@min-[52rem]/compact:grid-cols-[var(--bookmark-select-width,1.5rem)_minmax(0,45%)_minmax(0,14ch)_minmax(0,1fr)_auto_auto]",
+          selection?.pinned && "[@media(pointer:coarse)]:[--bookmark-select-width:2.75rem]",
+
         )}
       >
         <FaviconOrSelect bookmark={b} selection={selection} />
@@ -383,32 +359,7 @@ export function BookmarkCompactRow({
           {formatDay(b.source.savedAt)}
         </time>
       </div>
-      {hasActions && (
-        <div
-          className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-md bg-background p-0.5 shadow-sm transition-opacity [@media(hover:hover)_and_(pointer:fine)]:pointer-events-none [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
-        >
-          {onEdit && (
-            <button
-              type="button"
-              onClick={() => onEdit(b)}
-              aria-label={`Edit ${b.title}`}
-              className="flex size-9 [@media(hover:hover)_and_(pointer:fine)]:size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <Pencil className="size-3.5" aria-hidden />
-            </button>
-          )}
-          {onDelete && (
-            <button
-              type="button"
-              onClick={() => onDelete(b.id)}
-              aria-label={`Delete ${b.title}`}
-              className="flex size-9 [@media(hover:hover)_and_(pointer:fine)]:size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <Trash2 className="size-3.5" aria-hidden />
-            </button>
-          )}
-        </div>
-      )}
+      <BookmarkActions bookmark={b} onEdit={onEdit} onDelete={onDelete} className="bookmark-compact-actions" />
     </div>
   );
 }
@@ -530,7 +481,7 @@ function FaviconOrSelect({
 }) {
   if (!selection) return <Favicon bookmark={b} />;
   return (
-    <span className="relative flex size-4 shrink-0 items-center justify-center">
+    <span className={cn("relative flex size-6 shrink-0 items-center justify-center", selection.pinned && "[@media(pointer:coarse)]:size-11")}>
       <span
         className={cn(
           "flex items-center justify-center transition-opacity",
@@ -540,8 +491,9 @@ function FaviconOrSelect({
         <Favicon bookmark={b} />
       </span>
       <span
+        data-pinned={selection.pinned}
         className={cn(
-          "absolute inset-0 flex items-center justify-center transition-opacity",
+          "bookmark-selection-control absolute inset-0 flex items-center justify-center transition-opacity",
           selection.pinned
             ? "opacity-100"
             : "opacity-0 focus-within:opacity-100 group-hover:opacity-100",

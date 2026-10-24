@@ -1,4 +1,4 @@
-import { Pencil } from "lucide-react";
+import { BookmarkActions } from "@bookmark-ai/ui/components/bookmark-actions";
 import type { Bookmark } from "@bookmark-ai/types";
 import { mergeRecentSaves } from "@/lib/dashboard";
 import { FEATURE_ICONS } from "@/components/library/feature-icons";
@@ -53,9 +53,9 @@ export function RecentSavesCard({
       ) : (
         <ul className="divide-y">
           {rows.map((b) => (
-            <li key={b.id} className="flex items-center">
+            <li key={b.id} className="group relative flex items-center pr-2">
               <div className="min-w-0 flex-1"><DashboardBookmarkRow bookmark={b} /></div>
-              {onEdit && <button type="button" className="mr-2 flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted" aria-label={`Edit ${b.title}`} onClick={() => onEdit(b)}><Pencil className="size-3.5" aria-hidden /></button>}
+              <BookmarkActions bookmark={b} onEdit={onEdit} />
             </li>
           ))}
         </ul>

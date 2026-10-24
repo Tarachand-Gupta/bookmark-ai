@@ -105,3 +105,24 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
+
+/* Input capability, not just viewport width: large touch screens need menus too.
+ * Desktop actions overlay the trailing metadata, never an empty reserved column.
+ * Keyboard focus reveals them without requiring hover. */
+.bookmark-actions-direct { display: none; }
+@media (hover: none), (pointer: coarse) {
+  .bookmark-selection-control[data-pinned="false"] { display: none; }
+}
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  .bookmark-actions { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+  .bookmark-actions.bookmark-compact-actions { right: 4px; }
+  .bookmark-actions-menu { display: none; }
+  .bookmark-actions-direct { display: flex; opacity: 0; pointer-events: none; }
+  .group:hover > .bookmark-actions .bookmark-actions-direct,
+  .group:focus-within > .bookmark-actions .bookmark-actions-direct,
+  .group:hover .bookmark-action-footer > .bookmark-actions .bookmark-actions-direct,
+  .group:focus-within .bookmark-action-footer > .bookmark-actions .bookmark-actions-direct {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
