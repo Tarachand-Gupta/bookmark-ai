@@ -18,10 +18,12 @@ export function ChatContextPicker({
   open,
   onOpenChange,
   onSelect,
+  onReturnFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (context: ChatContext) => void;
+  onReturnFocus?: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<Bookmark[]>([]);
@@ -63,7 +65,7 @@ export function ChatContextPicker({
   }, [open, query]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden" onCloseAutoFocus={event => { if (onReturnFocus) { event.preventDefault(); onReturnFocus(); } }}>
         <DialogHeader>
           <DialogTitle>Choose bookmarks</DialogTitle>
           <DialogDescription>
@@ -81,7 +83,7 @@ export function ChatContextPicker({
             {error}
           </p>
         )}
-        <div className="max-h-80 space-y-1 overflow-auto">
+        <div className="min-h-0 max-h-80 space-y-1 overflow-auto overscroll-contain">
           {loading ? (
             <p role="status">Loading…</p>
           ) : (
@@ -94,7 +96,7 @@ export function ChatContextPicker({
               {rows.map((row) => (
                 <label
                   key={row.id}
-                  className="flex items-start gap-3 rounded-md p-2 hover:bg-muted"
+                  className="flex min-h-11 cursor-pointer items-start gap-3 rounded-md p-2 hover:bg-muted focus-within:outline focus-within:outline-2 focus-within:outline-ring"
                 >
                   <input
                     type="checkbox"
@@ -110,7 +112,7 @@ export function ChatContextPicker({
                     className="mt-1"
                   />
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium">{row.title}</span>
+                    <span className="block break-words text-sm font-medium">{row.title}</span>
                     <span className="block truncate text-xs text-muted-foreground">{row.url}</span>
                   </span>
                 </label>
@@ -118,9 +120,10 @@ export function ChatContextPicker({
             </>
           )}
         </div>
-        <DialogFooter>
-          <span className="mr-auto text-sm">{ids.length} selected · up to 1,000</span>
+        <DialogFooter className="shrink-0 items-center">
+          <span role="status" className="mr-auto text-sm">{ids.length} selected · up to 1,000</span>
           <Button
+            className="min-h-11"
             disabled={!ids.length}
             onClick={() => {
               onSelect({ type: "bookmarks", bookmarkIds: ids });

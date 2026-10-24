@@ -183,6 +183,8 @@ export function AiChat({
     active.historyStatus === "loading";
   const [loadError, setLoadError] = useState<string | null>(null);
   const [contextPicker, setContextPicker] = useState(false);
+  const [libraryContextOpen, setLibraryContextOpen] = useState(false);
+  const libraryContextButton = useRef<HTMLButtonElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const refreshConversations = useCallback(async () => {
     setHistoryLoading(true);
@@ -754,20 +756,37 @@ export function AiChat({
           </div>
         )}
         <div className="flex min-w-0 flex-wrap items-center gap-1.5 px-2 pb-2 text-xs text-muted-foreground">
-          <span
-            title="Bookmarks, saved sessions and live tabs remain available"
-            className="mr-auto inline-flex items-center gap-1.5 py-1"
-          >
-            <Library className="size-3.5" aria-hidden />
-            Your library
-          </span>
+          <Popover open={libraryContextOpen} onOpenChange={setLibraryContextOpen}>
+            <PopoverTrigger asChild>
+              <button
+                ref={libraryContextButton}
+                type="button"
+                aria-label="Context: your library"
+                className="mr-auto inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:min-h-8"
+              >
+                <Library className="size-3.5" aria-hidden />
+                Your library
+                <ChevronDown className="size-3" aria-hidden />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" side="top" className="w-[min(22rem,calc(100vw-2rem))]">
+              <p className="mb-1 text-sm font-medium">Library access is always on</p>
+              <p className="text-sm text-muted-foreground">
+                AI can search your bookmarks, saved sessions and enabled live tabs. Attach bookmarks or files to guide an answer; your library stays available.
+              </p>
+              <Button variant="outline" className="mt-3 min-h-11 w-full" onClick={() => { setLibraryContextOpen(false); setContextPicker(true); }}>
+                <Bookmark className="size-4" aria-hidden />
+                Choose bookmarks
+              </Button>
+            </PopoverContent>
+          </Popover>
           {active.context.type !== "library" && (
             <div className="flex min-w-0 items-center rounded-md border bg-muted/30">
               <Popover>
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className="flex min-h-11 min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:min-h-8"
                   >
                     <Bookmark className="size-3.5 shrink-0" aria-hidden />
                     <span className="truncate">{contextLabel(active.context)}</span>
@@ -780,7 +799,7 @@ export function AiChat({
               </Popover>
               <button
                 type="button"
-                className="flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="flex size-11 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring md:size-8"
                 onClick={() => workspace.patch({ context: { type: "library" } })}
                 aria-label="Remove attached bookmarks"
               >
@@ -952,6 +971,7 @@ export function AiChat({
         {composer}
       </ChatDropZone>
       <ChatContextPicker
+        onReturnFocus={() => libraryContextButton.current?.focus({ preventScroll: true })}
         open={contextPicker}
         onOpenChange={setContextPicker}
         onSelect={(context) => {
