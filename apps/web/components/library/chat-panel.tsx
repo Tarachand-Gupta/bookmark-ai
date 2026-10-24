@@ -44,8 +44,9 @@ export function ChatPanel({ open, hidden, compactVisibility = DEFAULT_FLOATING_A
     if (!open || dock !== "full" || !panel.current) return;
     const previous: [HTMLElement, boolean][] = [];
     let current: HTMLElement | null = panel.current;
-    while (current?.parentElement && current.parentElement !== document.body) {
+    while (current?.parentElement) {
       for (const sibling of current.parentElement.children) if (sibling !== current && sibling instanceof HTMLElement) { previous.push([sibling, sibling.inert]); sibling.inert = true; }
+      if (current.parentElement === document.body) break;
       current = current.parentElement;
     }
     return () => { for (const [element, inert] of previous) element.inert = inert; };
