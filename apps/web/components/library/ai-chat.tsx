@@ -414,6 +414,7 @@ export function AiChat({
           </button>
         </PopoverTrigger>
         <PopoverContent
+          aria-label="Conversation history"
           align="start"
           sideOffset={6}
           className="w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden p-0"
@@ -769,7 +770,7 @@ export function AiChat({
                 <ChevronDown className="size-3" aria-hidden />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="start" side="top" className="w-[min(22rem,calc(100vw-2rem))]">
+            <PopoverContent aria-label="Library context" align="start" side="top" className="w-[min(22rem,calc(100vw-2rem))]">
               <p className="mb-1 text-sm font-medium">Library access is always on</p>
               <p className="text-sm text-muted-foreground">
                 AI can search your bookmarks, saved sessions and enabled live tabs. Attach bookmarks or files to guide an answer; your library stays available.
@@ -793,7 +794,7 @@ export function AiChat({
                     <ChevronDown className="size-3" aria-hidden />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[min(22rem,calc(100vw-2rem))]">
+                <PopoverContent aria-label="Attached bookmarks" className="w-[min(22rem,calc(100vw-2rem))]">
                   <ChatContextPreview context={active.context} accountId={accountId} />
                 </PopoverContent>
               </Popover>
