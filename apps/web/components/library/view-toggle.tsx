@@ -33,7 +33,7 @@ export function ViewToggle({
     <div
       role="group"
       aria-label="Layout"
-      className={cn("flex h-9 shrink-0 items-center gap-0.5 rounded-lg border bg-background p-0.5", className)}
+      className={cn("flex h-9 shrink-0 items-center gap-0.5 rounded-lg border bg-background p-0.5 [@media(pointer:coarse)]:h-auto", className)}
     >
       {VIEWS.map(({ key, label, Icon }) => (
         <button
@@ -44,7 +44,7 @@ export function ViewToggle({
           title={label}
           onClick={() => onChange(key)}
           className={cn(
-            "cursor-pointer flex size-7 items-center justify-center rounded-md transition-colors",
+            "cursor-pointer flex size-7 items-center justify-center rounded-md transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring [@media(pointer:coarse)]:size-11",
             view === key
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:text-foreground",

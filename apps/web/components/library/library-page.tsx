@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { restoreBookmarkFocus } from "@/lib/bookmark-focus";
 import { flushSync } from "react-dom";
 import type { Bookmark, OrganizationOperation } from "@bookmark-ai/types";
 import { useAuth } from "@/lib/auth";
@@ -428,6 +429,7 @@ export function LibraryPage() {
   } | null>(null);
   /** Progress of the delete now running, or null when nothing is in flight. */
   const [deleting, setDeleting] = useState<{ done: number; total: number } | null>(null);
+  const deleteBookmarkFocus = useRef<string | undefined>(undefined);
 
   const savedSessions = sessions.data?.sessions ?? null;
 
@@ -437,6 +439,7 @@ export function LibraryPage() {
   const askDeleteBookmark = useCallback(
     (id: string) => {
       setNotice(null);
+      deleteBookmarkFocus.current = id;
       const title =
         (bookmarks ?? []).find((b) => b.id === id)?.title ??
         (relatedMatches ?? []).find((b) => b.id === id)?.title ??
@@ -449,6 +452,7 @@ export function LibraryPage() {
   const askDeleteSession = useCallback(
     (id: string) => {
       setNotice(null);
+      deleteBookmarkFocus.current = undefined;
       const name =
         savedSessions?.find((s) => s.id === id)?.name ??
         sessionMatches.find(({ session }) => session.id === id)?.session.name;
@@ -459,6 +463,7 @@ export function LibraryPage() {
 
   const askDeleteSelected = useCallback(() => {
     if (selection.count === 0) return;
+    deleteBookmarkFocus.current = undefined;
     setNotice(null);
     // The noun IS the kind here ("3 sessions" / "3 bookmarks").
     const kind = sessionsActive ? "session" : "bookmark";
@@ -573,6 +578,7 @@ export function LibraryPage() {
 
   return (
     <SidebarProvider open={shell.sidebar === "expanded"} onOpenChange={shell.setSidebarOpen}>
+      <a href="#library-content" className="sr-only fixed left-4 top-4 z-[70] rounded-md border bg-background px-4 py-3 font-medium text-foreground focus:not-sr-only focus:outline focus:outline-2 focus:outline-ring">Skip to library</a>
       <AppSidebar
         meta={meta.data}
         metaLoading={meta.loading}
@@ -612,7 +618,7 @@ export function LibraryPage() {
         >
         {/* p-3 at mobile widths — 16px gutters either side of a 390px screen left
             the cards noticeably narrower than they need to be. */}
-        <main className="min-w-0 flex-1 p-3 sm:p-4" style={{ paddingBottom: "calc(7rem + var(--floating-composer-h, 0px))" }}>
+        <main id="library-content" tabIndex={-1} className="min-w-0 flex-1 p-3 outline-none sm:p-4" style={{ paddingBottom: "calc(7rem + var(--floating-composer-h, 0px))" }}>
           {/* Width-capped and centered so content isn't stretched thin on
               widescreen/desktop; full-bleed below the cap on smaller screens. */}
           <div className="mx-auto w-full max-w-7xl">
@@ -873,6 +879,7 @@ export function LibraryPage() {
             : null
         }
         onConfirm={() => void runDelete()}
+        onReturnFocus={() => restoreBookmarkFocus(deleteBookmarkFocus.current)}
       />
       <AddBookmarkDialog open={addOpen} onOpenChange={setAddOpen} onSaved={refresh} onEdit={organization.supported ? setEditorBookmark : undefined} />
       {organization.data && editorBookmark && <BookmarkEditor key={editorBookmark.id} bookmark={editorBookmark} data={organization.data} onClose={() => { setEditorBookmark(null); const params = new URLSearchParams(window.location.search); params.delete("bookmark"); window.history.replaceState(null, "", `${window.location.pathname}?${params}`); }} onResult={operationResult} onRefresh={organization.refresh} />}

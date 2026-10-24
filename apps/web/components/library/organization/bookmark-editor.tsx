@@ -5,6 +5,7 @@ import { bookmarkChangesSchema, type Bookmark, type OrganizationOperationInput, 
 import { getBookmark, updateBookmark } from "@/lib/api";
 import { changedBookmarkFields, expectedBookmarkVersions, operationSummary, readableCurrentValues } from "@/lib/organization-ui";
 import { useAuth } from "@/lib/auth";
+import { restoreBookmarkFocus } from "@/lib/bookmark-focus";
 import { runOrganizationRequest } from "@/lib/organization-requests";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -76,7 +77,7 @@ export function BookmarkEditor({ bookmark, data, onClose, onResult, onRefresh }:
     catch { setCopied(false); setError("Couldn't copy the link. Select the URL to copy it manually."); }
   };
   return <Dialog open onOpenChange={value => { if (!value) close(); }}>
-    <DialogContent showCloseButton={false} className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[560px]" onInteractOutside={event => { if (changes || busy || pending.current || pendingLabel.current) event.preventDefault(); }}>
+    <DialogContent showCloseButton={false} className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[560px]" onCloseAutoFocus={event => { event.preventDefault(); restoreBookmarkFocus(bookmark.id); }} onInteractOutside={event => { if (changes || busy || pending.current || pendingLabel.current) event.preventDefault(); }}>
       <DialogHeader className="shrink-0 border-b px-5 py-4 text-left">
         <DialogTitle className="pr-10 leading-6">Edit bookmark</DialogTitle>
         <DialogDescription className="sr-only">Edit the title, category, and tags.</DialogDescription>

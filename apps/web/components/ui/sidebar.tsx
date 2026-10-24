@@ -322,9 +322,9 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
 // there was room, so it looked like the toggle broke the layout. min-width:0
 // lets the flex algorithm hand it the 1155 it's due; every `truncate`/`min-w-0`
 // inside then has a definite width to ellipsize against.
-function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
+function SidebarInset({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <main
+    <div
       data-slot="sidebar-inset"
       className={cn(
         "relative flex w-full min-w-0 flex-1 flex-col bg-background",

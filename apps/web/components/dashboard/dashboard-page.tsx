@@ -223,7 +223,7 @@ export function DashboardPage() {
           className="flex min-w-0 flex-1 items-stretch"
           style={{ paddingRight: "var(--chat-dock-w, 0px)" }}
         >
-          <main className="min-w-0 flex-1 p-3 sm:p-4" style={{ paddingBottom: "calc(1rem + var(--floating-composer-h, 0px))" }}>
+          <main id="library-content" tabIndex={-1} className="min-w-0 flex-1 p-3 outline-none sm:p-4" style={{ paddingBottom: "calc(1rem + var(--floating-composer-h, 0px))" }}>
             <div className="mx-auto w-full max-w-7xl">
               {view === "provisioning" ? (
                 <AccountSetup />

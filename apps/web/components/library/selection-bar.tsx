@@ -79,7 +79,7 @@ export function SelectionBar({
     >
       <div className="pointer-events-auto flex min-w-0 max-w-full items-center gap-0.5 rounded-2xl border bg-popover p-1.5 pl-3 text-popover-foreground shadow-lg">
         <span className="min-w-0 truncate pr-2 text-xs font-medium tabular-nums sm:text-sm" aria-live="polite">{count} selected</span>
-        {busy && <Loader2 className="size-4 shrink-0 animate-spin" aria-label="Applying changes" />}
+        {busy && <span role="status"><Loader2 className="size-4 shrink-0 animate-spin" aria-hidden /><span className="sr-only">Applying changes…</span></span>}
         {onOrganize && <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="secondary" className="h-11 shrink-0 px-3" disabled={busy}>Organize<ChevronDown aria-hidden /></Button>

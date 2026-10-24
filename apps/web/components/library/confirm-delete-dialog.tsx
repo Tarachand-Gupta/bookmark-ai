@@ -29,6 +29,7 @@ export interface ConfirmDeleteDialogProps {
   /** Progress line while `busy` (e.g. "Deleted 4 of 12…"). */
   progress?: string | null;
   onConfirm: () => void;
+  onReturnFocus?: () => void;
 }
 
 /**
@@ -46,6 +47,7 @@ export function ConfirmDeleteDialog({
   busy,
   progress,
   onConfirm,
+  onReturnFocus,
 }: ConfirmDeleteDialogProps) {
   return (
     <AlertDialog
@@ -57,7 +59,7 @@ export function ConfirmDeleteDialog({
         onOpenChange(next);
       }}
     >
-      <AlertDialogContent>
+      <AlertDialogContent onCloseAutoFocus={event => { if (onReturnFocus) { event.preventDefault(); onReturnFocus(); } }}>
         <AlertDialogHeader>
           <AlertDialogTitle className="[overflow-wrap:anywhere]">Delete {label}?</AlertDialogTitle>
           <AlertDialogDescription>
@@ -70,7 +72,7 @@ export function ConfirmDeleteDialog({
           </p>
         )}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel className="min-h-11" disabled={busy}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             // onClick, not the default close-on-select: bulk deletes need the
             // dialog to stay up and report progress.
@@ -79,7 +81,7 @@ export function ConfirmDeleteDialog({
               onConfirm();
             }}
             disabled={busy}
-            className={cn(buttonVariants({ variant: "destructive" }))}
+            className={cn(buttonVariants({ variant: "destructive" }), "min-h-11")}
           >
             {busy ? (
               <>

@@ -269,3 +269,19 @@
     transform: translateY(-1px);
   }
 }
+
+/* Menus and dialogs remain usable without zoom/slide effects. Status text and
+ * progress feedback stay present when the user requests reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="dialog-overlay"],
+  [data-slot="dialog-content"],
+  [data-slot="alert-dialog-overlay"],
+  [data-slot="alert-dialog-content"],
+  [data-slot="sheet-overlay"],
+  [data-slot="sheet-content"],
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"] {
+    animation: none !important;
+    transition: none !important;
+  }
+}
